@@ -136,7 +136,7 @@ type RouteOverrideProvider interface {
 // operations used by the internal gateway handler. Defined here (neutral package)
 // to avoid an import cycle between internal/handler and plugins/.
 type HmacSecretServicer interface {
-	ListByArtifactUUID(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error)
+	ListByArtifactUUID(artifactUUID, orgUUID string) ([]*model.WebSubAPIHmacSecret, error)
 	DecryptSecret(s *model.WebSubAPIHmacSecret) (string, error)
 }
 

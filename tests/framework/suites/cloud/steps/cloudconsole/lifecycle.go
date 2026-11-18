@@ -587,24 +587,15 @@ func (s *Steps) getProject(ctx context.Context) error {
 }
 
 func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	items, err := s.listEnvironments(ctx)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
-	}
-	items, err := listItems(resp)
+	name, err := usableEnvironment(items, hostsSuiteGateways(ctx, s.rawDo))
 	if err != nil {
-		return fmt.Errorf("decoding APIP environments: %w", err)
+		return err
 	}
-	for _, item := range items {
-		name, ok := item["name"].(string)
-		if ok && strings.TrimSpace(name) != "" {
-			return tcontext.Set(ctx, keyEnvironmentName, name)
-		}
-	}
-	return fmt.Errorf("APIP environment list contains no usable environment")
+	return tcontext.Set(ctx, keyEnvironmentName, name)
 }
 
 // selectOtherGatewayEnvironment selects a listed non-production environment other than the active
@@ -615,27 +606,75 @@ func (s *Steps) selectOtherGatewayEnvironment(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("the active gateway does not report its environment: %w", err)
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	items, err := s.listEnvironments(ctx)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
-	}
-	items, err := listItems(resp)
+	name, err := otherEnvironment(items, active, hostsSuiteGateways(ctx, s.rawDo))
 	if err != nil {
-		return fmt.Errorf("decoding APIP environments: %w", err)
+		return err
 	}
+	return tcontext.Set(ctx, keyEnvironmentName, name)
+}
+
+// listEnvironments reads every page of the environments the platform lists for the organisation,
+// as the starter does, so both see the same list.
+func (s *Steps) listEnvironments(ctx context.Context) ([]map[string]any, error) {
+	token, err := bearerToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	if err != nil {
+		return nil, err
+	}
+	items, err := listCollection(ctx, s.client, base, token, "/environments")
+	if errors.Is(err, errCollectionNotServed) {
+		return nil, errors.New("the platform does not serve APIP environments")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("listing APIP environments: %w", err)
+	}
+	return items, nil
+}
+
+// usableEnvironment returns the name of the first listed environment the suite may select (the
+// default one or one named with the suite's prefix) and that fits reports as allowing the suite's
+// gateway names.
+func usableEnvironment(items []map[string]any, fits func(string) bool) (string, error) {
+	for _, item := range items {
+		name, ok := item["name"].(string)
+		if ok && ownedEnvironment(name) && fits(name) {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("APIP environment list contains no environment named %q or starting with %q that allows a gateway handle of %d characters",
+		defaultEnvironmentName, testResourcePrefix, minGatewayHandleBudget)
+}
+
+// otherEnvironment returns the first listed non-production environment besides the active one that
+// the suite may select (the default one or one named with the suite's prefix), that fits reports as
+// allowing the suite's gateway names and that no suite run created for itself.
+func otherEnvironment(items []map[string]any, active string, fits func(string) bool) (string, error) {
 	for _, item := range items {
 		name, _ := item["name"].(string)
 		name = strings.TrimSpace(name)
-		if name == "" || name == active || item["isProduction"] == true ||
-			syntheticEnvironmentName.MatchString(strings.ToLower(name)) {
+		if !ownedEnvironment(name) || name == active || item["isProduction"] == true ||
+			syntheticEnvironmentName.MatchString(strings.ToLower(name)) || !fits(name) {
 			continue
 		}
-		return tcontext.Set(ctx, keyEnvironmentName, name)
+		return name, nil
 	}
-	return fmt.Errorf("the organization has no non-production environment besides %q to create a second gateway in", active)
+	return "", fmt.Errorf("the organization has no non-production environment named %q or starting with %q besides %q that allows a gateway handle of %d characters, to create a second gateway in",
+		defaultEnvironmentName, testResourcePrefix, active, minGatewayHandleBudget)
+}
+
+// rawDo sends a JSON request as the scenario's user without publishing the answer.
+func (s *Steps) rawDo(ctx context.Context, method, path string, body []byte) (*httpx.Response, error) {
+	if body == nil {
+		return s.doAuthenticatedRaw(ctx, method, path, nil)
+	}
+	return s.doAuthenticatedRaw(ctx, method, path, json.RawMessage(body))
 }
 
 func (s *Steps) awaitNotFound(ctx context.Context, path, what string) error {

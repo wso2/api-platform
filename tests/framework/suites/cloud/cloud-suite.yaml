@@ -37,10 +37,9 @@ blocks:
       - name: apip-self-hosted-gateway
         features:
           - features/apip_self_hosted_gateway.feature
-      # This test skipped until fix the issue of stale data while project creation.
-      # - name: apip-promotion
-      #   features:
-      #     - features/apip_promotion.feature
+      - name: apip-promotion
+        features:
+          - features/apip_promotion.feature
       - name: apip-secrets
         features:
           - features/apip_secrets.feature

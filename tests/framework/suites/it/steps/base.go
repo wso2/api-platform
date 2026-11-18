@@ -293,6 +293,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I generate a unique API context from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueContext)
 	sc.Step(`^I generate a UUID and store it as "([^"]*)"$`, b.generateUUID)
+	sc.Step(`^I generate a string of (\d+) characters and store it as "([^"]*)"$`,
+		stepscommon.GenerateStringAndStore)
 	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
