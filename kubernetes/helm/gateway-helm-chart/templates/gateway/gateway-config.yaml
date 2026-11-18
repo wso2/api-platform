@@ -104,9 +104,10 @@ data:
       and the "" default arg), not just the bare variable name, so a DSN that merely
       mentions the name elsewhere (e.g. in the dbname) still fails the guard. With
       passwordSecretRef.source=file the DSN must instead reference the mounted file
-      with a {{ file "<mountPath>/<key>" }} token for exactly that path.
+      with a {{ file "<mountPath>/<key>" }} token for exactly that path: the closing
+      quote and }} are part of the match, so "<path>-old" does not pass.
     */ -}}
-    {{- if and $controller.postgres.passwordSecretRef.name (eq $pgSecret.source "file") (not (regexMatch (printf `\{\{-? *file +"%s"` (regexQuoteMeta $pgSecret.path)) $pg.dsn)) }}
+    {{- if and $controller.postgres.passwordSecretRef.name (eq $pgSecret.source "file") (not (regexMatch (printf `\{\{-? *file +"%s" *-?\}\}` (regexQuoteMeta $pgSecret.path)) $pg.dsn)) }}
     {{- fail (printf "gateway.config.controller.storage.postgres.dsn is set together with gateway.controller.postgres.passwordSecretRef (source: file), but the DSN does not reference the mounted password file. A full DSN is used verbatim; the mounted password is ignored. Either embed the file token in the DSN, e.g. dsn: 'postgres://user:{{ file \"%s\" }}@host:5432/db?sslmode=require', or unset gateway.controller.postgres.passwordSecretRef and put the password directly in the DSN." $pgSecret.path) }}
     {{- end }}
     {{- if and $controller.postgres.passwordSecretRef.name (eq $pgSecret.source "env") (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD"` $pg.dsn)) }}
@@ -147,9 +148,10 @@ data:
       spacing, and the "" default arg), not just the bare variable name, so a DSN that
       merely mentions the name elsewhere (e.g. in the dbname) still fails the guard.
       With passwordSecretRef.source=file the DSN must instead reference the mounted
-      file with a {{ file "<mountPath>/<key>" }} token for exactly that path.
+      file with a {{ file "<mountPath>/<key>" }} token for exactly that path: the
+      closing quote and }} are part of the match, so "<path>-old" does not pass.
     */ -}}
-    {{- if and $controller.sqlserver.passwordSecretRef.name (eq $sqlSecret.source "file") (not (regexMatch (printf `\{\{-? *file +"%s"` (regexQuoteMeta $sqlSecret.path)) $db.dsn)) }}
+    {{- if and $controller.sqlserver.passwordSecretRef.name (eq $sqlSecret.source "file") (not (regexMatch (printf `\{\{-? *file +"%s" *-?\}\}` (regexQuoteMeta $sqlSecret.path)) $db.dsn)) }}
     {{- fail (printf "gateway.config.controller.storage.database.dsn is set together with gateway.controller.sqlserver.passwordSecretRef (source: file), but the DSN does not reference the mounted password file. A full DSN is used verbatim; the mounted password is ignored. Either embed the file token in the DSN, e.g. dsn: 'sqlserver://user:{{ file \"%s\" }}@host:1433?database=gateway', or unset gateway.controller.sqlserver.passwordSecretRef and put the password directly in the DSN." $sqlSecret.path) }}
     {{- end }}
     {{- if and $controller.sqlserver.passwordSecretRef.name (eq $sqlSecret.source "env") (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD"` $db.dsn)) }}
