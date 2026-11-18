@@ -20,6 +20,7 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -57,7 +58,8 @@ func (b *Base) registerHealthSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request to the `+healthComponents+
 		` health path "([^"]*)"(?: with header "([^"]*)" set to "([^"]*)")?$`, b.sendHealth)
 	sc.Step(`^I send a "([^"]*)" request to the `+healthComponents+
-		` health path "([^"]*)" until status (\d+)$`, b.sendHealthUntilStatus)
+		` health path "([^"]*)" until status (\d+)(?:, each answer within ([0-9.]+) seconds)?$`,
+		b.sendHealthUntilStatus)
 	sc.Step(`^I (stop|start|pause|unpause) the "([^"]*)" database server$`, b.controlDatabaseServer)
 }
 
@@ -139,18 +141,51 @@ func (b *Base) sendHealth(ctx context.Context, method, component, path, header, 
 }
 
 // sendHealthUntilStatus polls a health path until it answers with the wanted status, and
-// publishes that answer.
-func (b *Base) sendHealthUntilStatus(ctx context.Context, method, component, path string, want int) error {
+// publishes that answer. With a bound ("each answer within N seconds"), every attempt must
+// answer within it: an attempt that does not, or that answers later, fails the step at once
+// instead of being retried, so a probe that hangs once cannot pass on a later fast answer.
+func (b *Base) sendHealthUntilStatus(ctx context.Context, method, component, path string, want int,
+	within string) error {
 	req, err := b.healthRequest(ctx, method, component, path, "", "")
 	if err != nil {
 		return err
 	}
-	funnel := b.healthFunnel(component)
+	var bound time.Duration
+	if within != "" {
+		seconds, err := parseSeconds(within)
+		if err != nil {
+			return err
+		}
+		if seconds <= 0 {
+			return fmt.Errorf("the answer bound must be positive, got %q seconds", within)
+		}
+		bound = time.Duration(seconds * float64(time.Second))
+	}
+	return pollHealth(ctx, b.healthFunnel(component), req, component, path, want, bound)
+}
+
+// pollHealth sends req until it answers with want. A zero bound retries every request
+// error; a positive bound limits each attempt and treats exceeding it as a failure.
+func pollHealth(ctx context.Context, funnel *httpx.Funnel, req httpx.Request, component, path string,
+	want int, bound time.Duration) error {
 	return retry.Await[*httpx.Response](ctx, retry.Options{Timeout: healthTransitionTimeout},
 		func(ctx context.Context) (*httpx.Response, error) {
-			resp, sendErr := funnel.Send(ctx, req)
+			attemptCtx, cancel := ctx, context.CancelFunc(func() {})
+			if bound > 0 {
+				attemptCtx, cancel = context.WithTimeout(ctx, bound)
+			}
+			defer cancel()
+			resp, sendErr := funnel.Send(attemptCtx, req)
 			if sendErr != nil {
+				if bound > 0 && ctx.Err() == nil && errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
+					return nil, fmt.Errorf("%s %s health path %s did not answer within %s", req.Method,
+						component, path, bound)
+				}
 				return nil, retry.Transient(sendErr)
+			}
+			if bound > 0 && resp.Elapsed > bound {
+				return nil, fmt.Errorf("%s %s health path %s answered after %s, longer than %s: %s",
+					req.Method, component, path, resp.Elapsed, bound, resp.Describe())
 			}
 			return resp, nil
 		},

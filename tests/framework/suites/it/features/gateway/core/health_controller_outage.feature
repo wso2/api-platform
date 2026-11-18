@@ -56,3 +56,17 @@ Feature: Runtime health during a short controller outage
     And I send a "GET" request to the gateway runtime health path "/_gateway-health/ready"
     Then the response status code should be 200
     And the JSON response field "checks.xds_connection.status" should be "up"
+    Given I generate a unique value from "health-xds-api" and store it as "reconnectApiName"
+    And I generate a unique API version from "health-xds" and store it as "reconnectApiVersion"
+    And I generate a unique API context from "/health-xds" and store it as "reconnectApiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                          |
+      | name                   | ${CTX:reconnectApiName}                            |
+      | spec.displayName       | ${CTX:reconnectApiName}                            |
+      | spec.version           | ${CTX:reconnectApiVersion}                         |
+      | spec.context           | ${CTX:reconnectApiContext}/$version                |
+      | spec.upstream.main.url | http://testbench:3000/api/v2                       |
+      | spec.operations        | [{"method":"GET","path":"/{country_code}/{city}"}] |
+    Then the response should be successful
+    And the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:reconnectApiContext}/${CTX:reconnectApiVersion}/us/seattle" until status 200

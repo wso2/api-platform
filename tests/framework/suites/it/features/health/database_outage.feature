@@ -89,15 +89,15 @@ Feature: Health during a database outage
     And I send a "GET" request to the API Portal health path "/ready" until status 200
     And I send a "GET" request to the gateway controller health path "/api/admin/v1/ready" until status 200
     When I pause the "postgres" database server
-    And I send a "GET" request to the platform-api health path "/ready" until status 503
+    And I send a "GET" request to the platform-api health path "/ready" until status 503, each answer within 3 seconds
     Then the JSON response field "checks.database.status" should be "down"
     And the response body should match pattern "error.:.(timed out after [0-9.]+m?s|database connection pool exhausted)"
     And the response should have arrived within 3 seconds
-    When I send a "GET" request to the API Portal health path "/ready" until status 503
+    When I send a "GET" request to the API Portal health path "/ready" until status 503, each answer within 3 seconds
     Then the JSON response field "checks.database.status" should be "down"
     And the response body should match pattern "error.:.(timed out after [0-9.]+m?s|database connection pool exhausted)"
     And the response should have arrived within 3 seconds
-    When I send a "GET" request to the gateway controller health path "/api/admin/v1/ready" until status 503
+    When I send a "GET" request to the gateway controller health path "/api/admin/v1/ready" until status 503, each answer within 3 seconds
     Then the JSON response field "checks.database.status" should be "down"
     And the response body should match pattern "error.:.(timed out after [0-9.]+m?s|database connection pool exhausted)"
     And the response should have arrived within 3 seconds

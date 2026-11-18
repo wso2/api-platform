@@ -25,12 +25,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1094,6 +1096,67 @@ func TestHealthFeatureStepsAreDefined(t *testing.T) {
 		t.Run(strings.Join(relative[1:], "/"), func(t *testing.T) {
 			requireFeatureStepsDefined(t, relative...)
 		})
+	}
+}
+
+// healthAnswers serves a health endpoint whose nth answer (from 1) is delays[n-1] late with
+// statuses[n-1]; requests past the end repeat the last entry.
+func healthAnswers(t *testing.T, delays []time.Duration, statuses []int) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := int(calls.Add(1))
+		i := min(n, len(statuses)) - 1
+		select {
+		case <-time.After(delays[min(n, len(delays))-1]):
+		case <-r.Context().Done():
+			return
+		}
+		w.WriteHeader(statuses[i])
+	}))
+	t.Cleanup(server.Close)
+	return server, &calls
+}
+
+func TestPollHealthWithABoundFailsOnTheFirstLateAnswer(t *testing.T) {
+	server, calls := healthAnswers(t, []time.Duration{2 * time.Second, 0}, []int{503, 503})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	req := httpx.Request{Method: http.MethodGet, URL: server.URL + "/ready"}
+
+	err := pollHealth(ctx, funnel, req, "platform-api", "/ready", 503, 300*time.Millisecond)
+	require.ErrorContains(t, err, "GET platform-api health path /ready did not answer within 300ms")
+	require.Equal(t, int32(1), calls.Load(), "a late answer is not retried")
+}
+
+func TestPollHealthWithABoundKeepsPollingFastAnswersUntilTheWantedStatus(t *testing.T) {
+	server, calls := healthAnswers(t, []time.Duration{0}, []int{200, 200, 503})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	req := httpx.Request{Method: http.MethodGet, URL: server.URL + "/ready"}
+
+	require.NoError(t, pollHealth(ctx, funnel, req, "platform-api", "/ready", 503, 2*time.Second))
+	require.Equal(t, int32(3), calls.Load())
+	resp, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 503, resp.StatusCode, "the wanted answer is the one published")
+}
+
+func TestPollHealthWithoutABoundRetriesALateAnswer(t *testing.T) {
+	server, calls := healthAnswers(t, []time.Duration{600 * time.Millisecond, 0}, []int{200, 503})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	req := httpx.Request{Method: http.MethodGet, URL: server.URL + "/ready"}
+
+	require.NoError(t, pollHealth(ctx, funnel, req, "platform-api", "/ready", 503, 0))
+	require.Equal(t, int32(2), calls.Load())
+}
+
+func TestSendHealthUntilStatusRejectsAnInvalidAnswerBound(t *testing.T) {
+	base := &Base{topo: healthTopology(t)}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	for _, within := range []string{"0", "0.0", "1.2.3"} {
+		require.Error(t, base.sendHealthUntilStatus(ctx, "GET", "platform-api", "/ready", 503, within), within)
 	}
 }
 
