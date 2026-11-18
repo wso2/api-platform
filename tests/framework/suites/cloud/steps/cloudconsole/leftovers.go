@@ -213,7 +213,7 @@ func projectScopedSweep(client *httpx.Client, base, token string, owns func(name
 		Timeout: finalizerCollectionBudget,
 		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 			items, err := projectScopedItems(ctx, client, base, token, owns, collection)
-			return leftoversOf(items, []string{"id"}), err
+			return leftoversByID(items), err
 		},
 		Delete: func(ctx context.Context, id string) error {
 			return deleteLeftover(ctx, client, base, token, collection, id)
@@ -530,6 +530,17 @@ func deleteLeftover(ctx context.Context, client *httpx.Client, base, token, coll
 }
 
 // namesOf collects the values of an item a generated name can appear in.
+// leftoversByID describes items that are deleted by their id, judged by that id alone: another
+// name of an item, such as a display name, can carry a run's suffix without the run owning it.
+func leftoversByID(items []map[string]any) []finalizer.Leftover {
+	leftovers := make([]finalizer.Leftover, 0, len(items))
+	for _, item := range items {
+		id := firstString(item, []string{"id"})
+		leftovers = append(leftovers, finalizer.Leftover{ID: id, Names: []string{id}})
+	}
+	return leftovers
+}
+
 func namesOf(item map[string]any) []string {
 	names := make([]string, 0, len(nameFields))
 	for _, field := range nameFields {

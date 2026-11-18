@@ -636,13 +636,11 @@ func (s *Steps) keepReturningFor(ctx context.Context, method, target string, wan
 	if err != nil {
 		return err
 	}
-	last, err := retry.Never(ctx, retry.Options{}, time.Duration(seconds)*time.Second,
+	// A probe that gets no answer is not the expected status, so it fails the window too.
+	noRetry := retry.Options{Retryable: func(error) bool { return false }}
+	last, err := retry.Never(ctx, noRetry, time.Duration(seconds)*time.Second,
 		func(ctx context.Context) (*httpx.Response, error) {
-			response, sendErr := s.funnel.Send(ctx, request)
-			if sendErr != nil {
-				return nil, retry.Transient(sendErr)
-			}
-			return response, nil
+			return s.funnel.Send(ctx, request)
 		},
 		func(response *httpx.Response) bool { return response.StatusCode != want })
 	if err != nil {

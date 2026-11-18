@@ -274,6 +274,7 @@ Feature: APIP cloud REST API lifecycle
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/pets" until status 200
     And the echoed request should carry the header policy's header
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/store/inventory" until status 200
     When I replace the definition of the synthetic REST API with the spec fixture "petstore-v2.yaml"
     Then the synthetic REST API should have the operations of the spec fixture "petstore-v2.yaml"
     And the "listPets" operation of the synthetic REST API should keep the header policy

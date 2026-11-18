@@ -196,7 +196,8 @@ Feature: APIP cloud builds and deployments
     And a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" should keep returning 404 for 20 seconds
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
     When I prepare a build of the synthetic REST API
-    And I deploy build 2 of the synthetic REST API to the active gateway
+    Then a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" should keep returning 404 for 20 seconds
+    When I deploy build 2 of the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" until status 200
     And the synthetic REST API data-plane response should contain post 2
@@ -248,11 +249,7 @@ Feature: APIP cloud builds and deployments
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     When I prepare 5 builds of the synthetic REST API
-    Then the synthetic REST API should hold 5 builds
-    And the synthetic REST API builds should include build 1
-    And the synthetic REST API builds should not include build 2
-    And the synthetic REST API builds should include build 3
-    And the synthetic REST API builds should list build 6 first
+    Then the synthetic REST API builds should be exactly builds 6, 5, 4, 3 and 1
     And the builds of the synthetic REST API should all have different identifiers
 
   @ID_APIP_DEPLOY_016 @type:negative

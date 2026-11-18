@@ -236,8 +236,11 @@ func (s *Steps) prepareBuild(ctx context.Context, table *godog.Table) error {
 	return tcontext.Set(ctx, keyBuildIDs, buildID)
 }
 
-// latestPreparedBuild is the most recently prepared build of the scenario.
+// latestPreparedBuild is the most recently prepared build of the scenario's API.
 func latestPreparedBuild(ctx context.Context) (string, error) {
+	if err := ownBuildState(ctx); err != nil {
+		return "", err
+	}
 	prepared, err := requiredValue(ctx, keyBuildIDs)
 	if err != nil {
 		return "", fmt.Errorf("no build has been prepared: %w", err)
@@ -305,20 +308,22 @@ func (s *Steps) awaitBuilds(ctx context.Context, ids []string) ([]map[string]any
 	return listed, err
 }
 
-// assertBuildListed checks that the latest prepared build is listed with the metadata it was
-// prepared with. The metadata names the build it was prepared with, which a later deployment's
-// build does not replace.
+// assertBuildListed checks that the build the scenario last prepared is listed, with the metadata
+// it was prepared with. That is the build a prepare recorded, which a later deployment's build does
+// not replace; without a prepare it is the latest build the scenario saw.
 func (s *Steps) assertBuildListed(ctx context.Context) error {
-	id, err := latestPreparedBuild(ctx)
-	if err != nil {
+	if err := ownBuildState(ctx); err != nil {
 		return err
 	}
-	encoded := optionalValue(ctx, keyBuildMetadata)
-	if encoded != "" {
-		if id, err = requiredValue(ctx, keyBuildMetadataOf); err != nil {
-			return fmt.Errorf("the prepared metadata names no build: %w", err)
+	id := optionalValue(ctx, keyBuildMetadataOf)
+	if id == "" {
+		latest, err := latestPreparedBuild(ctx)
+		if err != nil {
+			return err
 		}
+		id = latest
 	}
+	encoded := optionalValue(ctx, keyBuildMetadata)
 	listed, err := s.awaitBuilds(ctx, []string{id})
 	if err != nil {
 		return err

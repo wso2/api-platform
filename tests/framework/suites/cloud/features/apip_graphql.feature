@@ -124,7 +124,7 @@ Feature: APIP cloud GraphQL API lifecycle
     And I send the GraphQL request "{ hello }" to the synthetic GraphQL API until status 404
 
   @ID_APIP_GRAPHQL_008
-  Scenario: A GraphQL API with API key security refuses a request without a key, accepts its key, and refuses it once revoked
+  Scenario: A GraphQL API with API key security refuses a request without a key, accepts its keys, and refuses a revoked key while another key still works
     Given I obtain an APIP cloud console token
     And I find the default APIP project
     And I find an active APIP gateway
@@ -134,7 +134,11 @@ Feature: APIP cloud GraphQL API lifecycle
     Then the synthetic GraphQL API deployment should become DEPLOYED
     And I send the GraphQL request "{ hello }" to the synthetic GraphQL API until status 401
     When I create an API key for the synthetic GraphQL API
+    And I create another API key for the synthetic GraphQL API
     And I send the GraphQL request "{ hello }" to the synthetic GraphQL API with header "X-API-Key" set to the API key until status 200
     Then the GraphQL response should come from the GraphQL backend
+    And I send the GraphQL request "{ hello }" to the synthetic GraphQL API with header "X-API-Key" set to the other API key until status 200
     When I revoke the API key of the synthetic GraphQL API
     Then I send the GraphQL request "{ hello }" to the synthetic GraphQL API with header "X-API-Key" set to the API key until status 401
+    And I send the GraphQL request "{ hello }" to the synthetic GraphQL API with header "X-API-Key" set to the other API key until status 200
+    And the GraphQL response should come from the GraphQL backend

@@ -41,6 +41,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -991,6 +992,8 @@ func TestPrepareBuildRejectsAnythingButCreated(t *testing.T) {
 
 func TestAssertBuildIDShape(t *testing.T) {
 	steps, ctx, local, _ := cloudSteps(t, nil)
+	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keyBuildsOwner, "syn-api-1")
 	require.Error(t, steps.assertBuildIDShape(ctx), "no build prepared")
 	for id, ok := range map[string]bool{"2026-01-31-1": true, "2026-01-31-12": true, "2026-01-31-0": false, "build-1": false, "2026-1-31-1": false,
 		"2026-99-99-1": false, "2026-02-30-1": false} {
@@ -1008,6 +1011,7 @@ func TestBuildListingAssertions(t *testing.T) {
 	})
 	local.Set(keyProjectID, "default")
 	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keyBuildsOwner, "syn-api-1")
 
 	local.Set(keyBuildIDs, "2026-01-31-1,2026-01-31-2")
 	require.NoError(t, steps.assertBuildsNewestFirst(ctx))
@@ -1050,6 +1054,7 @@ func TestRequestDeploymentRecordsWhatWasDeployed(t *testing.T) {
 	local.Set(keyProjectID, "default")
 	local.Set(keyAPIID, "syn-api-1")
 	local.Set(keyGatewayID, "dev-default")
+	local.Set(keyBuildsOwner, "syn-api-1")
 	local.Set(keyBuildIDs, "2026-01-31-1")
 
 	table := valuesTable(t, []string{"environment", "development"}, []string{"gatewayIds", "dev-default,dev-extra"})
@@ -6815,8 +6820,10 @@ func TestDeleteBuildAddressesTheBuildThroughTheWayNamed(t *testing.T) {
 func TestBuildPresenceOrderAndIdentifierAssertions(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	listed := []string{"2026-11-18-6", "2026-11-18-5", "2026-11-18-4", "2026-11-18-3", "2026-11-18-1"}
+	var served atomic.Int32
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/default/apis/api-1/builds", r.URL.Path)
+		served.Add(1)
 		items := make([]map[string]string, 0, len(listed))
 		for _, id := range listed {
 			items = append(items, map[string]string{"buildId": id})
@@ -6831,12 +6838,23 @@ func TestBuildPresenceOrderAndIdentifierAssertions(t *testing.T) {
 
 	require.NoError(t, steps.assertBuildPresence(ctx, "include", 1))
 	require.NoError(t, steps.assertBuildPresence(ctx, "not include", 2))
-	require.NoError(t, steps.assertBuildListedFirst(ctx, 6))
-	short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
-	defer cancel()
-	require.Error(t, steps.assertBuildPresence(short, "include", 2))
-	require.Error(t, steps.assertBuildPresence(short, "not include", 1))
-	require.Error(t, steps.assertBuildListedFirst(short, 5))
+	require.NoError(t, steps.assertBuildsExactly(ctx, "6, 5, 4, 3 and 1"))
+	// Each negative check gets a context of its own and must have read a listing to fail.
+	for name, check := range map[string]func(context.Context) error{
+		"a build that was pruned":      func(ctx context.Context) error { return steps.assertBuildPresence(ctx, "include", 2) },
+		"a build that is still listed": func(ctx context.Context) error { return steps.assertBuildPresence(ctx, "not include", 1) },
+		"another order":                func(ctx context.Context) error { return steps.assertBuildsExactly(ctx, "5, 6, 4, 3 and 1") },
+		"a missing build":              func(ctx context.Context) error { return steps.assertBuildsExactly(ctx, "6, 5, 3 and 1") },
+		"a build too many":             func(ctx context.Context) error { return steps.assertBuildsExactly(ctx, "6, 5, 4, 3, 2 and 1") },
+	} {
+		before := served.Load()
+		short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+		require.Error(t, check(short), name)
+		cancel()
+		require.Greater(t, served.Load(), before, "%s: the check read a listing", name)
+	}
+	require.ErrorContains(t, steps.assertBuildsExactly(ctx, "6, five and 1"), "not a list of build numbers")
+	require.ErrorContains(t, steps.assertBuildsExactly(ctx, "6, 5 and 9"), "was not seen")
 	require.NoError(t, steps.assertBuildsDistinct(ctx))
 
 	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
@@ -7349,6 +7367,8 @@ type graphQLStub struct {
 	keyStatus    int
 	keyRequests  []string
 	apis         map[string]bool
+	// keyAnswer, when set, replaces the answer to a key creation.
+	keyAnswer map[string]string
 }
 
 // metadata reads the metadata part of a GraphQL API form; ok is false once a request it cannot
@@ -7408,7 +7428,11 @@ func (s *graphQLStub) handler(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/graphql-apis/gql-1/api-keys"):
 		s.keyRequests = append(s.keyRequests, r.Method+" "+r.URL.Path)
 		if r.Method == http.MethodPost {
-			writeJSON(w, s.keyStatus, map[string]string{"status": "success", "apiKey": "key-value", "keyId": "key-1"})
+			answer := map[string]string{"status": "success", "apiKey": "key-value", "keyId": "key-1"}
+			if s.keyAnswer != nil {
+				answer = s.keyAnswer
+			}
+			writeJSON(w, s.keyStatus, answer)
 			return
 		}
 		w.WriteHeader(s.keyStatus)
@@ -7486,6 +7510,9 @@ func TestUpdateGraphQLAPISendsTheStoredMetadataWithTheChanges(t *testing.T) {
 
 func TestGraphQLAnswerSource(t *testing.T) {
 	require.Equal(t, "GraphQL backend", graphQLAnswerSource([]byte(`{"query":"{ hello }"}`), "{ hello }"))
+	require.Equal(t, "GraphQL backend", graphQLAnswerSource([]byte(`{"query":""}`), ""), "an empty query echoed as sent")
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{}`), ""), "an answer without a query is not an echo of one")
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{"method":"POST","path":"/echo","json":{}}`), ""))
 	require.Equal(t, "", graphQLAnswerSource([]byte(`{"query":"{ other }"}`), "{ hello }"))
 	require.Equal(t, "echo backend", graphQLAnswerSource([]byte(`{"method":"POST","path":"/echo","json":{"query":"{ hello }"}}`), "{ hello }"))
 	require.Equal(t, "", graphQLAnswerSource([]byte(`{"method":"POST","path":"/echo","json":{"query":"{ other }"}}`), "{ hello }"),
@@ -7534,11 +7561,14 @@ func TestSendGraphQLRequestPostsTheQueryToTheAPIContext(t *testing.T) {
 	require.NoError(t, steps.assertGraphQLResponseSource(ctx, "GraphQL backend"))
 	require.Error(t, steps.assertGraphQLResponseSource(ctx, "echo backend"))
 
-	require.ErrorContains(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", http.StatusOK), keyAPIKey)
+	require.ErrorContains(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", "API key", http.StatusOK), keyAPIKey)
 	local.Set(keyAPIKey, "key-value")
-	require.Error(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", " ", http.StatusOK))
-	require.NoError(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", http.StatusOK))
+	local.Set(keyOtherAPIKey, "other-value")
+	require.Error(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", " ", "API key", http.StatusOK))
+	require.NoError(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", "API key", http.StatusOK))
 	require.Equal(t, "key-value", (*seen)[1].Header.Get("X-API-Key"))
+	require.NoError(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", "other API key", http.StatusOK))
+	require.Equal(t, "other-value", (*seen)[2].Header.Get("X-API-Key"))
 
 	local.Set(keyGraphQLDefinition, `{"id":"gql-1"}`)
 	require.ErrorContains(t, steps.sendGraphQLRequest(ctx, "{ hello }", http.StatusOK), "no context")
@@ -7604,6 +7634,8 @@ func TestGraphQLTokensSplitsSDLIntoTokens(t *testing.T) {
 	require.Equal(t, []string{"type", "Query", "{", "a", "(", "n", ":", "Int", "=", "-1.5e+3", ")", ":", "[", "Int", "!", "]", "@", "x", "}"},
 		graphQLTokens("type Query{a(n:Int=-1.5e+3):[Int!] @x}"))
 	require.Equal(t, []string{"fragment", "F", "on", "Q", "{", "...", "G", "}"}, graphQLTokens("fragment F on Q { ...G }"))
+	require.Equal(t, []string{"[", "1", "-2", "]"}, graphQLTokens("[1-2]"), "adjacent signed numbers stay apart")
+	require.True(t, sameSchema("directive @d(a: [Int] = [1,-2]) on FIELD", "directive @d(a: [Int] = [1 -2]) on FIELD"))
 	require.Equal(t, []string{`"""a \""" b"""`, "type"}, graphQLTokens(`"""a \""" b""" type`), "an escaped triple quote does not end a block string")
 	require.Equal(t, []string{`"a \" b"`, "x"}, graphQLTokens(`"a \" b" x`))
 	require.Equal(t, []string{`"open`}, graphQLTokens(`"open`), "an unterminated string ends with the text")
@@ -7626,6 +7658,8 @@ func TestValidateGraphQLSchemaAndItsAssertions(t *testing.T) {
 
 	for name, body := range map[string]string{
 		"no errors":    `{"resolved":false,"sdl":""}`,
+		"a null error": `{"resolved":false,"sdl":"","sdlErrors":[null]}`,
+		"no message":   `{"resolved":false,"sdl":"","sdlErrors":[{"message":" "}]}`,
 		"a schema":     `{"resolved":false,"sdl":"type Query { a: String }","sdlErrors":[{}]}`,
 		"not a result": `{"sdl":""}`,
 	} {
@@ -7640,7 +7674,7 @@ func TestGraphQLAPIKeyIsKeptOutOfTheAnswerSlotAndRevokedByItsID(t *testing.T) {
 	steps, ctx, local, stub := graphQLSteps(t)
 	local.Set(keyGraphQLAPIID, "gql-1")
 
-	require.NoError(t, steps.createGraphQLAPIKey(ctx))
+	require.NoError(t, steps.createGraphQLAPIKey(ctx, "an"))
 	require.Equal(t, "key-value", optionalValue(ctx, keyAPIKey))
 	require.Equal(t, "key-1", optionalValue(ctx, keyGraphQLKeyID))
 	_, err := httpx.Published(ctx)
@@ -7652,7 +7686,7 @@ func TestGraphQLAPIKeyIsKeptOutOfTheAnswerSlotAndRevokedByItsID(t *testing.T) {
 
 	stub.keyStatus = http.StatusNotFound
 	require.Error(t, steps.revokeGraphQLAPIKey(ctx))
-	err = steps.createGraphQLAPIKey(ctx)
+	err = steps.createGraphQLAPIKey(ctx, "an")
 	require.ErrorContains(t, err, "unexpected status 404")
 	require.NotContains(t, err.Error(), "key-value", "a refused key request is reported without its body")
 }
@@ -7701,13 +7735,20 @@ func TestNewVersionAndOperationAssertionsReadThePlatform(t *testing.T) {
 	})
 	local.Set(keyAPIID, "api-1")
 	local.Set(keyVersionAPIID, "api-2")
+	local.Set(keyAPIDefinition, `{"id":"api-1","version":"1.0.0"}`)
 
 	require.NoError(t, steps.assertNewVersionOfTheAPI(ctx, "2.0.0"))
+	for name, version := range map[string]any{"a missing version": nil, "another version": "1.5.0"} {
+		apis["api-1"]["version"] = version
+		require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "2.0.0"), "it was imported with", name)
+	}
+	apis["api-1"]["version"] = "1.0.0"
 	require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "3.0.0"), "has the version")
 	apis["api-2"]["displayName"] = "Other"
 	require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "2.0.0"), "is named")
 	apis["api-2"]["displayName"], apis["api-2"]["version"] = "Pets", "1.0.0"
-	require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "1.0.0"), "also has the version")
+	require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "1.0.0"), "it was imported with",
+		"a new version under the first API's version is not a new version")
 
 	require.NoError(t, steps.assertOperationNamed(ctx, "getPostTwo"))
 	require.ErrorContains(t, steps.assertOperationNamed(ctx, "getPostThree"), "no operation named")
@@ -7755,7 +7796,7 @@ func TestGraphQLAPIKeyIsRegisteredForCleanupUntilItIsRevoked(t *testing.T) {
 	steps, ctx, local, stub := graphQLSteps(t)
 	local.Set(keyGraphQLAPIID, "gql-1")
 
-	require.NoError(t, steps.createGraphQLAPIKey(ctx))
+	require.NoError(t, steps.createGraphQLAPIKey(ctx, "an"))
 	require.Equal(t, []string{"gql-1/key-1"}, pendingOf(stub.registry, kindGraphQLAPIKey))
 	stub.keyStatus = http.StatusNoContent
 	require.NoError(t, steps.revokeGraphQLAPIKey(ctx))
@@ -7779,4 +7820,130 @@ func TestProbeHeaderAbsenceCountsAHeaderWithoutAValue(t *testing.T) {
 	steps, ctx, _, _ := restAPISteps(t)
 	publishedResponse(t, steps, ctx, http.StatusOK, `{"path":"/animals","headers":{"X-Apip-Operation-Probe":null}}`)
 	require.ErrorContains(t, steps.assertProbeHeaderAbsent(ctx), "want none")
+}
+
+func TestAddOperationPolicyKeepsTheOperationsOtherPolicies(t *testing.T) {
+	steps, ctx, _, stub := restAPISteps(t)
+	other := map[string]any{"name": "rate-limit", "version": "v1"}
+	stub.api["operations"] = []any{
+		map[string]any{"name": "listPets", "request": map[string]any{"method": "GET", "path": "/pets", "policies": []any{other}}},
+	}
+	require.NoError(t, steps.refreshDefinition(ctx, primaryAPI))
+
+	require.NoError(t, steps.addOperationPolicy(ctx, "listPets"))
+	policies := stub.putBody["operations"].([]any)[0].(map[string]any)["request"].(map[string]any)["policies"].([]any)
+	require.Len(t, policies, 2, "the probe is added beside the policy the operation had")
+	require.Equal(t, other, policies[0])
+	require.Equal(t, headerPolicyName, policies[1].(map[string]any)["name"])
+
+	stub.api["operations"] = stub.putBody["operations"]
+	require.NoError(t, steps.refreshDefinition(ctx, primaryAPI))
+	require.NoError(t, steps.addOperationPolicy(ctx, "listPets"))
+	require.Len(t, stub.putBody["operations"].([]any)[0].(map[string]any)["request"].(map[string]any)["policies"], 2,
+		"an operation that already has the probe keeps one")
+}
+
+func TestBuildStateAfterAReimportIsTheNewAPIs(t *testing.T) {
+	steps, ctx, local, _ := importSteps(t)
+	require.NoError(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
+	local.Set(keyBuildMetadata, `{"commit":"abc"}`)
+	local.Set(keyBuildMetadataOf, "2026-11-18-1")
+
+	require.NoError(t, steps.reimportAPI(ctx, "inventory.yaml"))
+	for _, key := range []string{keyBuildIDs, keyBuildID, keyBuildMetadata, keyBuildMetadataOf} {
+		require.Empty(t, optionalValue(ctx, key), "%s is dropped at the reimport", key)
+	}
+	_, err := latestPreparedBuild(ctx)
+	require.ErrorContains(t, err, "no build has been prepared")
+}
+
+func TestAssertBuildListedChecksThePreparedBuildWithoutMetadata(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	listed := []string{"2026-11-18-2", "2026-11-18-1"}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			writeJSON(w, http.StatusCreated, map[string]string{"buildId": "2026-11-18-1"})
+			return
+		}
+		items := []map[string]any{}
+		for _, id := range listed {
+			items = append(items, map[string]any{"buildId": id})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": items})
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyAPIID, "api-1")
+
+	require.NoError(t, steps.prepareBuilds(ctx, "a"))
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-2"), "a deployment renders a later build")
+	require.NoError(t, steps.assertBuildListed(ctx))
+	listed = []string{"2026-11-18-2"}
+	short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	require.Error(t, steps.assertBuildListed(short), "the prepared build is the one checked, not the latest")
+}
+
+func TestKeepReturningForFailsWhenTheGatewayStopsAnswering(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(server.Close)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+
+	require.ErrorContains(t, steps.keepReturningFor(ctx, http.MethodGet, server.URL, http.StatusNotFound, 30), "did not keep returning 404",
+		"a probe that gets no answer fails the window")
+}
+
+func TestCloudSweepsJudgeAProjectScopedItemByItsIDAlone(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.lists["/graphql-apis?projectId=default"] = []map[string]any{
+		{"id": "syn-graphql-abcde234-1"}, {"id": "ops-graphql", "displayName": "Synthetic syn-graphql-abcde234-9"},
+	}
+	stub.lists["/rest-apis?projectId=default"] = append(stub.lists["/rest-apis?projectId=default"],
+		map[string]any{"id": "ops-named-api", "displayName": "Synthetic syn-api-abcde234-7"})
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	_, err = sweepLeftovers(context.Background(), base, 5*time.Second)
+	require.NoError(t, err)
+	require.Contains(t, stub.deleted, "graphql-apis/syn-graphql-abcde234-1")
+	require.NotContains(t, stub.deleted, "graphql-apis/ops-graphql", "a display name with a run's suffix does not make the run its owner")
+	require.NotContains(t, stub.deleted, "rest-apis/ops-named-api")
+}
+
+func TestGraphQLAPIKeyIsRegisteredBeforeItsValueIsRead(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set(keyGraphQLAPIID, "gql-1")
+	stub.keyAnswer = map[string]string{"status": "success", "keyId": "key-1"}
+
+	require.ErrorContains(t, steps.createGraphQLAPIKey(ctx, "an"), "apiKey")
+	require.Equal(t, []string{"gql-1/key-1"}, pendingOf(stub.registry, kindGraphQLAPIKey), "the key is cleaned up though its value never came")
+
+	stub.keyAnswer = map[string]string{"status": "success", "apiKey": "second-value", "keyId": "key-2"}
+	require.NoError(t, steps.createGraphQLAPIKey(ctx, "another"))
+	require.Equal(t, "second-value", optionalValue(ctx, keyOtherAPIKey))
+	require.Equal(t, "key-2", optionalValue(ctx, keyOtherGraphQLKeyID))
+	require.Empty(t, optionalValue(ctx, keyAPIKey), "the other key does not take the first key's place")
+
+	for status, ok := range map[int]bool{http.StatusNoContent: true, http.StatusNotFound: true, http.StatusServiceUnavailable: false} {
+		stub.keyStatus = status
+		err := steps.revokeGraphQLKey(ctx, "gql-1", "key-9")
+		if ok {
+			require.NoError(t, err, status)
+			continue
+		}
+		require.ErrorContains(t, err, "unexpected status 503")
+		require.ErrorContains(t, err, "key-9")
+	}
 }

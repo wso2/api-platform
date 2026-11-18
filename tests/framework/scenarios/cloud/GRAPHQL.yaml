@@ -83,10 +83,10 @@ scenarios:
         - feature: suites/cloud/features/apip_graphql.feature
           scenario: "Deploying a GraphQL API's build serves it, deploying an earlier build serves that one again, and undeploying stops it"
   - id: ID_APIP_GRAPHQL_008
-    title: "A GraphQL API with API key security refuses a request without a key, accepts its key, and refuses it once revoked."
+    title: "A GraphQL API with API key security refuses a request without a key, accepts its keys, and refuses a revoked key while another key still works."
     priority: P0
     cloud:
       status: automated
       refs:
         - feature: suites/cloud/features/apip_graphql.feature
-          scenario: "A GraphQL API with API key security refuses a request without a key, accepts its key, and refuses it once revoked"
+          scenario: "A GraphQL API with API key security refuses a request without a key, accepts its keys, and refuses a revoked key while another key still works"

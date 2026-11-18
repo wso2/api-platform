@@ -24,6 +24,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -237,7 +238,10 @@ func (s *Steps) reimportAPI(ctx context.Context, fixture string) error {
 		return err
 	}
 	// The builds seen for the deleted API are not the new API's, though it has the same id.
-	return tcontext.Set(ctx, primaryAPI.buildsOwner, "")
+	if err := tcontext.Set(ctx, primaryAPI.buildsOwner, ""); err != nil {
+		return err
+	}
+	return ownBuildState(ctx)
 }
 
 // importAPIAs creates the REST API a ref names from a specs fixture and keeps its definition. It
@@ -507,7 +511,11 @@ func (s *Steps) addOperationPolicy(ctx context.Context, name string) error {
 	if request == nil {
 		return fmt.Errorf("operation %q has no request", name)
 	}
-	request["policies"] = []any{headerPolicy()}
+	policies, _ := request["policies"].([]any)
+	probe := headerPolicy()
+	if !slices.ContainsFunc(policies, func(policy any) bool { return reflect.DeepEqual(normalizedJSON(policy), normalizedJSON(probe)) }) {
+		request["policies"] = append(policies, probe)
+	}
 	resp, err := s.doAuthenticated(ctx, http.MethodPut, restAPIsCollection+"/"+url.PathEscape(id), definition)
 	if err != nil {
 		return err
@@ -721,10 +729,29 @@ func (s *Steps) assertNewVersionOfTheAPI(ctx context.Context, version string) er
 	if second["version"] != version {
 		return fmt.Errorf("the new API version has the version %v, want %q", second["version"], version)
 	}
-	if first["version"] == version {
-		return fmt.Errorf("the synthetic REST API also has the version %q", version)
+	imported, err := s.storedDefinition(ctx, primaryAPI)
+	if err != nil {
+		return err
+	}
+	want, _ := imported["version"].(string)
+	if want == "" || want == version || first["version"] != want {
+		return fmt.Errorf("the synthetic REST API has the version %v, want the version %q it was imported with", first["version"], want)
 	}
 	return nil
+}
+
+// normalizedJSON is a value as it reads after a JSON round trip, so a policy built here compares
+// equal to the same policy read back from the platform.
+func normalizedJSON(value any) any {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	var decoded any
+	if json.Unmarshal(encoded, &decoded) != nil {
+		return value
+	}
+	return decoded
 }
 
 // readDefinitionOf reads the definition the platform holds for the API a ref points at.

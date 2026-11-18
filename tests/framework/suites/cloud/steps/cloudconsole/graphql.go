@@ -46,6 +46,8 @@ const (
 	keySubmittedGraphQLID   = "cloudSubmittedGraphQLAPIID"
 	keyGraphQLRequest       = "cloudGraphQLRequest"
 	keyGraphQLKeyID         = "cloudGraphQLAPIKeyID"
+	keyOtherAPIKey          = "cloudOtherAPIKey"
+	keyOtherGraphQLKeyID    = "cloudOtherGraphQLAPIKeyID"
 	keyValidatedGraphQLText = "cloudValidatedGraphQLSchema"
 
 	// graphQLBackendEnv overrides the backend the synthetic GraphQL APIs call.
@@ -77,7 +79,7 @@ func (s *Steps) registerGraphQLSteps(sc stepRegistrar) {
 	sc.Step(`^I submit a synthetic GraphQL API creation request with:$`, s.submitGraphQLAPI)
 	sc.Step(`^I update the synthetic GraphQL API with:$`, s.updateGraphQLAPI)
 	sc.Step(`^I send the GraphQL request "([^"]*)" to the synthetic GraphQL API until status (\d+)$`, s.sendGraphQLRequest)
-	sc.Step(`^I send the GraphQL request "([^"]*)" to the synthetic GraphQL API with header "([^"]*)" set to the API key until status (\d+)$`,
+	sc.Step(`^I send the GraphQL request "([^"]*)" to the synthetic GraphQL API with header "([^"]*)" set to the (API key|other API key) until status (\d+)$`,
 		s.sendGraphQLRequestWithAPIKey)
 	sc.Step(`^I send the GraphQL request "([^"]*)" to the synthetic GraphQL API until the (GraphQL backend|echo backend) answers$`,
 		s.sendGraphQLUntilAnsweredBy)
@@ -87,7 +89,7 @@ func (s *Steps) registerGraphQLSteps(sc stepRegistrar) {
 	sc.Step(`^the submitted GraphQL API should (exist|not exist)$`, s.assertSubmittedGraphQL)
 	sc.Step(`^I validate the GraphQL schema "([^"]*)"$`, s.validateGraphQLSchema)
 	sc.Step(`^the GraphQL schema should be reported as (resolved|not resolved)$`, s.assertGraphQLValidation)
-	sc.Step(`^I create an API key for the synthetic GraphQL API$`, s.createGraphQLAPIKey)
+	sc.Step(`^I create (an|another) API key for the synthetic GraphQL API$`, s.createGraphQLAPIKey)
 	sc.Step(`^I revoke the API key of the synthetic GraphQL API$`, s.revokeGraphQLAPIKey)
 }
 
@@ -280,9 +282,19 @@ func (s *Steps) sendGraphQLRequest(ctx context.Context, request string, want int
 	return s.sendGraphQL(ctx, request, nil, want)
 }
 
-// sendGraphQLRequestWithAPIKey sends a GraphQL request with the stored API key in the named header.
-func (s *Steps) sendGraphQLRequestWithAPIKey(ctx context.Context, request, header string, want int) error {
-	key, err := requiredValue(ctx, keyAPIKey)
+// graphQLKeySlots names the scenario keys that hold an API key's value and id: the first key
+// created, or the other one.
+func graphQLKeySlots(which string) (value, id string) {
+	if which == "another" || which == "other API key" {
+		return keyOtherAPIKey, keyOtherGraphQLKeyID
+	}
+	return keyAPIKey, keyGraphQLKeyID
+}
+
+// sendGraphQLRequestWithAPIKey sends a GraphQL request with a stored API key in the named header.
+func (s *Steps) sendGraphQLRequestWithAPIKey(ctx context.Context, request, header, which string, want int) error {
+	slot, _ := graphQLKeySlots(which)
+	key, err := requiredValue(ctx, slot)
 	if err != nil {
 		return err
 	}
@@ -364,20 +376,21 @@ func (s *Steps) graphQLCall(ctx context.Context, request string, headers map[str
 // JSON body is that request. It is empty for any other answer.
 func graphQLAnswerSource(body []byte, request string) string {
 	var answer struct {
-		Query  string `json:"query"`
-		Method string `json:"method"`
-		Path   string `json:"path"`
+		Query  *string `json:"query"`
+		Method string  `json:"method"`
+		Path   string  `json:"path"`
 		JSON   struct {
-			Query string `json:"query"`
+			Query *string `json:"query"`
 		} `json:"json"`
 	}
 	if json.Unmarshal(body, &answer) != nil {
 		return ""
 	}
 	switch {
-	case answer.Query == request && answer.Method == "":
+	case answer.Query != nil && *answer.Query == request && answer.Method == "":
 		return "GraphQL backend"
-	case answer.Method == http.MethodPost && answer.Path != "" && answer.Query == "" && answer.JSON.Query == request:
+	case answer.Query == nil && answer.Method == http.MethodPost && answer.Path != "" &&
+		answer.JSON.Query != nil && *answer.JSON.Query == request:
 		return "echo backend"
 	default:
 		return ""
@@ -464,9 +477,13 @@ func graphQLTokens(sdl string) []string {
 		case strings.IndexByte(graphQLPunctuators, c) >= 0:
 			tokens = append(tokens, string(c))
 			i++
+		case c == '-' || isDigit(c):
+			j := graphQLNumberEnd(sdl, i)
+			tokens = append(tokens, sdl[i:j])
+			i = j
 		default:
 			j := i + 1
-			for j < len(sdl) && isGraphQLWordByte(sdl[j]) {
+			for isGraphQLNameByte(c) && j < len(sdl) && isGraphQLNameByte(sdl[j]) {
 				j++
 			}
 			tokens = append(tokens, sdl[i:j])
@@ -474,6 +491,33 @@ func graphQLTokens(sdl string) []string {
 		}
 	}
 	return tokens
+}
+
+// graphQLNumberEnd is the index just past the number that starts at from: an optional minus, its
+// integer digits, an optional fraction and an optional exponent with its own sign.
+func graphQLNumberEnd(sdl string, from int) int {
+	j := from
+	if sdl[j] == '-' {
+		j++
+	}
+	digits := func() {
+		for j < len(sdl) && isDigit(sdl[j]) {
+			j++
+		}
+	}
+	digits()
+	if j < len(sdl) && sdl[j] == '.' {
+		j++
+		digits()
+	}
+	if j < len(sdl) && (sdl[j] == 'e' || sdl[j] == 'E') {
+		j++
+		if j < len(sdl) && (sdl[j] == '+' || sdl[j] == '-') {
+			j++
+		}
+		digits()
+	}
+	return j
 }
 
 // blockStringEnd is the index just past the block string whose content starts at from: after its
@@ -491,10 +535,11 @@ func blockStringEnd(sdl string, from int) int {
 	return len(sdl)
 }
 
-// isGraphQLWordByte reports whether a byte continues a name or a number.
-func isGraphQLWordByte(c byte) bool {
-	return c == '_' || c == '.' || c == '+' || c == '-' ||
-		(c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+// isGraphQLNameByte reports whether a byte belongs to a GraphQL name.
+func isGraphQLNameByte(c byte) bool {
+	return c == '_' || isDigit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 func (s *Steps) assertGraphQLSchema(ctx context.Context, which, want string) error {
@@ -575,7 +620,9 @@ func (s *Steps) assertGraphQLValidation(ctx context.Context, outcome string) err
 	var answer struct {
 		Resolved  *bool  `json:"resolved"`
 		SDL       string `json:"sdl"`
-		SDLErrors []any  `json:"sdlErrors"`
+		SDLErrors []*struct {
+			Message string `json:"message"`
+		} `json:"sdlErrors"`
 	}
 	if err := json.Unmarshal(response.Body, &answer); err != nil || answer.Resolved == nil {
 		return fmt.Errorf("the answer is not a schema validation result: %s", response.Describe())
@@ -586,15 +633,22 @@ func (s *Steps) assertGraphQLValidation(ctx context.Context, outcome string) err
 		}
 		return nil
 	}
-	if *answer.Resolved || strings.TrimSpace(answer.SDL) != "" || len(answer.SDLErrors) == 0 {
-		return fmt.Errorf("the schema %q was not reported as unresolved with its errors: %s", schema, response.Describe())
+	diagnosed := slices.ContainsFunc(answer.SDLErrors, func(issue *struct {
+		Message string `json:"message"`
+	}) bool {
+		return issue != nil && strings.TrimSpace(issue.Message) != ""
+	})
+	if *answer.Resolved || strings.TrimSpace(answer.SDL) != "" || !diagnosed {
+		return fmt.Errorf("the schema %q was not reported as unresolved with a diagnostic: %s", schema, response.Describe())
 	}
 	return nil
 }
 
-// createGraphQLAPIKey issues an API key for the synthetic GraphQL API and keeps its value in
-// scenario state only; the answer is not published so the key never reaches a step's response slot.
-func (s *Steps) createGraphQLAPIKey(ctx context.Context) error {
+// createGraphQLAPIKey issues an API key for the synthetic GraphQL API, as the first key or as
+// another one, and keeps its value in scenario state only; the answer is not published so the key
+// never reaches a step's response slot. The key is registered for cleanup before its value is read.
+func (s *Steps) createGraphQLAPIKey(ctx context.Context, which string) error {
+	valueSlot, idSlot := graphQLKeySlots(which)
 	id, err := requiredValue(ctx, keyGraphQLAPIID)
 	if err != nil {
 		return err
@@ -607,10 +661,6 @@ func (s *Steps) createGraphQLAPIKey(ctx context.Context) error {
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("creating an API key for %s: unexpected status %d", id, resp.StatusCode)
 	}
-	key, err := stringField(resp, "apiKey")
-	if err != nil {
-		return fmt.Errorf("creating an API key for %s: %w", id, err)
-	}
 	keyID, err := stringField(resp, "keyId")
 	if err != nil {
 		return fmt.Errorf("creating an API key for %s: %w", id, err)
@@ -619,15 +669,32 @@ func (s *Steps) createGraphQLAPIKey(ctx context.Context) error {
 		Kind: kindGraphQLAPIKey, ID: graphQLKeyResource(id, keyID), Actor: resourceActor,
 		Description: "API key " + keyID + " of GraphQL API " + id,
 	}); err != nil {
-		if _, revokeErr := s.sendGraphQLKeyRevoke(ctx, id, keyID); revokeErr != nil {
+		if revokeErr := s.revokeGraphQLKey(ctx, id, keyID); revokeErr != nil {
 			return fmt.Errorf("registering the API key for cleanup: %w; revoking it: %v", err, revokeErr)
 		}
 		return fmt.Errorf("registering the API key for cleanup: %w", err)
 	}
-	if err := tcontext.Set(ctx, keyGraphQLKeyID, keyID); err != nil {
+	if err := tcontext.Set(ctx, idSlot, keyID); err != nil {
 		return err
 	}
-	return tcontext.Set(ctx, keyAPIKey, key)
+	key, err := stringField(resp, "apiKey")
+	if err != nil {
+		return fmt.Errorf("creating an API key for %s: %w", id, err)
+	}
+	return tcontext.Set(ctx, valueSlot, key)
+}
+
+// revokeGraphQLKey revokes an API key of a GraphQL API. A key the platform no longer has counts as
+// revoked; any other answer is reported by its status only, never with the body.
+func (s *Steps) revokeGraphQLKey(ctx context.Context, apiID, keyID string) error {
+	resp, err := s.sendGraphQLKeyRevoke(ctx, apiID, keyID)
+	if err != nil {
+		return err
+	}
+	if !resp.Succeeded() && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("revoking API key %s of GraphQL API %s: unexpected status %d", keyID, apiID, resp.StatusCode)
+	}
+	return nil
 }
 
 // graphQLKeyResource is the cleanup id of an API key of a GraphQL API.
