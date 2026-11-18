@@ -248,12 +248,10 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
-  // Org-level portal registry in the cloud build, owned by a cloud-plugin
-  // sidebar entry; named here so the core does not encode the plugin's
-  // routePath literal. The open-source build uses `orgApiPortals` instead.
-  managedApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/managed-api-portals`,
-  // The built-in registry of self-hosted API Portals. Distinct from the
-  // API-scoped `apiPortals` below, which lists one API's publications.
+  // The organization's API Portals registry: self-hosted portals in the
+  // open-source build, managed portals in the cloud build (which overrides the
+  // page via `PAGE_API_PORTALS_SLOT`). Distinct from the API-scoped `apiPortals`
+  // below, which lists one API's publications.
   orgApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/api-portals`,
   newOrgApiPortal: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/api-portals/new`,
   orgApiPortal: (orgHandle = ':orgHandle', apiPortalId = ':apiPortalId') =>

@@ -57,7 +57,6 @@ import { routes } from '@/routes/paths';
 import { apiCreationEntry } from '../apis/create/entryPoint';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
-import { usePortalRegistryPath } from '../apiPortals/usePortalRegistryPath';
 import ExploreMoreCard from './components/ExploreMoreCard';
 import { Can } from '@/permissions/Can';
 import { CanCreate } from '@/permissions/CanCreate';
@@ -309,7 +308,6 @@ function OrganizationHomePageContent() {
   const organizationQuery = useOrganization(orgHandle);
   const gatewaysQuery = useGateways({ limit: 100 });
   const portalsQuery = useApiPortals();
-  const portalRegistryPath = usePortalRegistryPath();
   const deleteProjectMutation = useDeleteProject();
   const trackFeature = useTrackFeature();
   const restApiCountsQuery = useRestApiCounts(projects.map((project) => project.id));
@@ -453,7 +451,7 @@ function OrganizationHomePageContent() {
                   ? '—'
                   : intl.formatNumber(portalsQuery.data?.pagination.total ?? 0)
               }
-              onAction={() => navigate(portalRegistryPath(orgHandle))}
+              onAction={() => navigate(routes.orgApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
               operationId="CreateApiPortal"
               component="portals"

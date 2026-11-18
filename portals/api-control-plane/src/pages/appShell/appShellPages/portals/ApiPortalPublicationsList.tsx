@@ -28,7 +28,7 @@ import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useTrackFeature } from '@/featureUsage';
 import { useActionPermission, useCan } from '@/permissions';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { usePortalRegistryPath } from '../apiPortals/usePortalRegistryPath';
+import { routes } from '@/routes/paths';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
 import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublishWithDefaults } from './components/PublishWithDefaults';
@@ -164,11 +164,10 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
     });
   const publicationsQuery = useApiPublications(target.apiType, apiHandler, { limit: LIST_LIMIT });
 
-  // The empty-state "Add Portal" action opens the org-level portal registry: the
-  // cloud plugin's managed portals page when it is registered, the built-in
-  // registry of self-hosted portals otherwise. Only for a user who may create a
-  // portal there; others see the empty state without an action.
-  const portalRegistryPath = usePortalRegistryPath();
+  // The empty-state "Add Portal" action opens the org-level portal registry,
+  // which the cloud build overrides with its managed portals at the same URL.
+  // Only for a user who may create a portal there; others see the empty state
+  // without an action.
   const offerAddPortal = useCan('CreateApiPortal');
 
   // Rendered first in every branch below, so React keeps them mounted whichever one shows. Each reads and
@@ -266,7 +265,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
           description={intl.formatMessage(messages.emptyDescription)}
           illustration={<PortalPublishIllustration />}
           singleLineDescription
-          onAction={offerAddPortal ? () => navigate(portalRegistryPath(orgHandle)) : undefined}
+          onAction={offerAddPortal ? () => navigate(routes.orgApiPortals(orgHandle)) : undefined}
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (

@@ -34,6 +34,7 @@ import {
   HOME_GREETING_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
+  PAGE_API_PORTALS_SLOT,
   PAGE_GATEWAYS_SLOT,
   PROJECT_HEADER_ACTIONS_SLOT,
   type ApiControlPlaneCloudEntry,
@@ -144,10 +145,12 @@ function CloudDeployPage({ port }: { port: CloudHostPort }) {
  * thing to do) left a dead end instead of the project/API picker that navigates
  * to the scoped URL.
  *
- * `managed-api-portals` is an organization-level sidebar item, one WSO2-managed
- * developer portal per entry in the org. Talks to apip-platform-api's cloud-only
- * `/managed-api-portals` resource via the host port; SaaS-only, distinct from
- * the OSS `/api-portals` registry (SaaS lifecycle vs plain registry).
+ * `managed-api-portals` overrides the built-in API Portals registry via the
+ * `page.apiPortals` slot, the same way `gateways` does: the native nav entry and
+ * route (`/organizations/<org>/api-portals`) stay in place, and the cloud's managed
+ * portals render there instead of the open-source registry of self-hosted portals.
+ * Talks to apip-platform-api's cloud-only `/managed-api-portals` resource via the
+ * host port.
  *
  * `insights` registers org/project sidebar Moesif embeds. Both claim the
  * built-in Insights item, so it gives way wherever one of them is visible (org
@@ -346,15 +349,19 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     version: '0.1.0',
     extensions: [
       {
-        id: 'managed-api-portals',
-        slot: 'sidebar.organization',
-        // Takes the place of the built-in registry of self-hosted portals,
-        // which the cloud does not offer.
-        claims: 'apiPortals',
-        // Last in the sidebar, after the Gateways override (110).
+        // Matched by `id` to the built-in API Portals item, whose page it replaces.
+        id: 'apiPortals',
+        slot: PAGE_API_PORTALS_SLOT,
+        // Cloud-only nav placement for that item: the same unnamed cluster as the
+        // Gateways override (see there), last, after Gateways (110).
+        group: '',
         order: 120,
-        routePath: 'managed-api-portals',
+        // Inert, as for `gateways`: the override is consumed by the
+        // `api-portals/*` route wrapper in `AppRoutes`.
+        routePath: 'api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
+        // Gates the built-in item while this override is registered, and the page
+        // gates itself the same way.
         requiredScopes: PORTAL_OPERATIONS.ListManagedApiPortals,
         label: 'Portals',
         icon: <PanelsTopLeft size={20} />,

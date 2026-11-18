@@ -417,6 +417,9 @@ export const navigationRegistry: NavigationDefinition[] = [
     group: CLUSTER.place,
     order: 32,
     icon: <PanelsTopLeft />,
+    // Only for a user who may list portals. The cloud build replaces the page
+    // (and repositions this item) through `PAGE_API_PORTALS_SLOT`.
+    permission: 'ListApiPortals',
     to: orgLevelTo(routes.orgApiPortals),
     match: matchRoutes(routes.orgApiPortals(), routes.newOrgApiPortal(), routes.orgApiPortal()),
   },
