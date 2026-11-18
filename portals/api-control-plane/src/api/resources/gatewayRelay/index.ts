@@ -16,10 +16,11 @@
  * under the License.
  */
 
-export { default as EnvironmentsFeature } from './EnvironmentsFeature';
-export type { EnvironmentsFeatureProps } from './EnvironmentsFeature';
-export { default as EnvironmentsList } from './EnvironmentsList';
-export { default as EnvironmentForm } from './EnvironmentForm';
-export type { Environment, CreateEnvironmentInput, EnvironmentPort } from './types';
-export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity, PermissionsPort } from './hostPort';
-export { ENVIRONMENT_OPERATIONS, NO_PERMISSION_TOOLTIP } from './permissions';
+/**
+ * Public surface of the gateway relay resource module.
+ * Import from `api/resources/gatewayRelay` only.
+ */
+
+export type { InvokeApiOnGatewayResponse } from './gatewayRelay.endpoints';
+
+export { useInvokeApiOnGateway, type InvokeApiOnGatewayVariables } from './gatewayRelay.hooks';

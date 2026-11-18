@@ -17,18 +17,17 @@ portal's native extension contract.
   project-level notice, and the per-API Logs page), Portals (managed API
   portals) and Insights.
 - `src/hosts/ai-workspace.tsx` is the AI Workspace registry. It registers the
-  trial-status header action, Environments, Pipelines, AI Gateways (replacing
+  trial-status header action, AI Gateways (replacing
   what renders at the built-in `gateways` route), Insights, and the Deploy
   panels for MCP, LLM proxy, LLM provider and agent proxy.
 - `src/runtimeFlags.ts` drops the Insights entries unless the `cloudProxyEnabled`
   runtime flag is set.
 - The feature packages are siblings under `portals/cloud-plugins`, each a
   `file:` dependency of this package: `apip-cloud-ui-deploy`,
-  `apip-cloud-ui-entitlements`, `apip-cloud-ui-environments-new`,
-  `apip-cloud-ui-gateways`, `apip-cloud-ui-insights`,
-  `apip-cloud-ui-managed-portals`, `apip-cloud-ui-marketing-consent`,
-  `apip-cloud-ui-pipelines`,
-  `apip-cloud-ui-settings` and `apip-cloud-ui-trial-status`.
+  `apip-cloud-ui-entitlements`, `apip-cloud-ui-gateways`,
+  `apip-cloud-ui-insights`, `apip-cloud-ui-managed-portals`,
+  `apip-cloud-ui-marketing-consent`, `apip-cloud-ui-settings` and
+  `apip-cloud-ui-trial-status`.
 
 Each portal has an injection seam at `src/cloud/index.ts` that exports an empty
 `cloudExtensions` and an undefined `cloudBrandLogo`; its `main.tsx` imports
@@ -55,9 +54,8 @@ The feature packages have no `node_modules` of their own: a package's
 `tsconfig.json` resolves against the AI Workspace's and its
 `tsconfig.console.json` against the console's. `tsconfig.json` excludes the
 package's tests, so `tsconfig.console.json` is the configuration that typechecks
-and runs them. The `typecheck`/`build` scripts of `deploy`, `environments-new`,
-`gateways`, `insights`, `logs`, `managed-portals` and `pipelines` run `tsc` with
-both; `entitlements` has no console configuration and `trial-status` runs only
+and runs them. The `typecheck`/`build` scripts of `deploy`, `gateways`,
+`insights`, `logs` and `managed-portals` run `tsc` with both; `entitlements` has no console configuration and `trial-status` runs only
 `tsconfig.json`.
 
 ## Scopes
@@ -84,8 +82,7 @@ with:
   whole list is passed to `canAny`, which mirrors how platform-api's
   `ScopeEnforcer` admits a call (one held scope matching one accepted entry), so
   no feature reasons about scope inheritance itself. The tables are
-  `ENVIRONMENT_OPERATIONS`, `GATEWAY_OPERATIONS`, `PIPELINE_OPERATIONS`,
-  `PORTAL_OPERATIONS`, and in the deploy package
+  `GATEWAY_OPERATIONS`, `PORTAL_OPERATIONS`, and in the deploy package
   `API_DEPLOYMENT_OPERATIONS`, `PROVIDER_DEPLOYMENT_OPERATIONS` and
   `PROVIDER_BUILD_OPERATIONS`. The deploy package also gates on two Platform API
   scopes from `platform-api/resources/openapi.yaml`: `ARTIFACT_READ_OPERATIONS`
@@ -102,9 +99,7 @@ A feature uses the answer to disable a control with that tooltip, to show a
 no-permission notice in place of a page it may not read, and to skip a call it
 knows would be refused (a list, a poll, an environment catalogue). A
 confirmation dialog or drawer re-checks the scope when confirmed and closes if
-the scope was lost while it was open. Where a page is readable but
-`/environments` is not, the pipeline pages fall back to the environment names
-the pipelines already carry, and gateway creation is offered only when the
+the scope was lost while it was open. Gateway creation is offered only when the
 environment list can be read, since the form cannot be submitted without one.
 
 The console registry declares `requiredScopes` on each nav entry whose page

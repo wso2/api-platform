@@ -63,6 +63,10 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-vhosts
+        tags: "~@known-issue"
+        features:
+          - features/management-portal/deployments/vhosts.feature
       - name: platform-api-build-deployment
         features:
           - features/management-portal/builds/build_deployment.feature

@@ -204,9 +204,9 @@ function TestConsole() {
    * gateways the user's browser can reach rather than anything about this API.
    */
   const [storedCallMode, setCallMode] = useTestCallMode();
-  // The proxy mode relays through the control plane (an InvokeRESTAPIOnGateway
+  // The proxy mode relays through the control plane (an InvokeAPIOnGateway
   // call); a caller who may not relay sends the request from the browser.
-  const canRelay = useCan('InvokeRESTAPIOnGateway');
+  const canRelay = useCan('InvokeAPIOnGateway');
   const callMode = canRelay ? storedCallMode : 'direct';
 
   const [selectedGatewayId, setSelectedGatewayId] = useState('');

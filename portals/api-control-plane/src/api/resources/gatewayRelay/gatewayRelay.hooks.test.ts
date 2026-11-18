@@ -19,16 +19,22 @@
 import { http as mswHttp, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { accepts, recorder, type Recorder } from '../../../../test/msw';
-import { renderApiHook, TEST_ORG } from '../../../../test/renderApiHook';
-import { server } from '../../../../test/server';
-import { isApiError } from '../../../core/errors';
-import { resetHttpClient } from '../../../core/http';
-import { useInvokeRestApiOnGateway } from './apiGateways.hooks';
+import { accepts, recorder, type Recorder } from '../../../test/msw';
+import { renderApiHook, TEST_ORG } from '../../../test/renderApiHook';
+import { server } from '../../../test/server';
+import { isApiError } from '../../core/errors';
+import { resetHttpClient } from '../../core/http';
+import { useInvokeApiOnGateway } from './gatewayRelay.hooks';
 
 const INVOKE = '/gateway-relay/invoke';
 const variables = {
-  body: { restApiId: 'pizza-shack', gatewayId: 'prod-gw', method: 'GET', path: '/orders' },
+  body: {
+    apiType: 'rest-api' as const,
+    apiId: 'pizza-shack',
+    gatewayId: 'prod-gw',
+    method: 'GET',
+    path: '/orders',
+  },
 };
 
 let requests: Recorder;
@@ -38,7 +44,7 @@ beforeEach(() => {
   resetHttpClient();
 });
 
-describe('useInvokeRestApiOnGateway', () => {
+describe('useInvokeApiOnGateway', () => {
   it('sends the test request in the page’s organization', async () => {
     const relayed = {
       outcome: 'response',
@@ -54,7 +60,7 @@ describe('useInvokeRestApiOnGateway', () => {
     };
     server.use(accepts('post', INVOKE, relayed, { record: requests, status: 200 }));
 
-    const { result } = renderApiHook(() => useInvokeRestApiOnGateway());
+    const { result } = renderApiHook(() => useInvokeApiOnGateway());
     const response = await result.current.mutateAsync(variables);
 
     expect(response.response.body).toBe('[]');
@@ -70,7 +76,7 @@ describe('useInvokeRestApiOnGateway', () => {
       }),
     );
 
-    const { result } = renderApiHook(() => useInvokeRestApiOnGateway());
+    const { result } = renderApiHook(() => useInvokeApiOnGateway());
     const error = await result.current.mutateAsync(variables).catch((e: unknown) => e);
 
     expect(isApiError(error) && error.kind).toBe('network');

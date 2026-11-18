@@ -33,8 +33,8 @@ import (
 // kindSelfHostedGateway is a kind of its own, not cleanup.KindGateway, because the registry keeps
 // one deleter per kind name and the two are deleted through different collections
 // (/self-hosted-gateways and /managed-gateways): sharing the kind would send one of them to the
-// wrong collection, which answers 404 and is swept as already gone. It lives in an environment, so
-// it is deleted with the managed gateways, before the environment.
+// wrong collection, which answers 404 and is swept as already gone. It is deleted with the managed
+// gateways.
 var kindSelfHostedGateway = cleanup.Kind{Name: "self-hosted-gateway", Order: cleanup.KindGateway.Order}
 
 const (
