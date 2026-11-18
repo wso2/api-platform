@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -454,8 +455,10 @@ func CopyPolicyToWorkspace(policyName, policyVersion, sourcePath string, isLocal
 			return "", fmt.Errorf("failed to copy local policy directory: %w", err)
 		}
 
-		// Return relative path for build file: policies/<original-dir-name>
-		return filepath.Join("policies", dirName), nil
+		// Return relative path for build file: policies/<original-dir-name>.
+		// The build file is read inside the Linux gateway-builder container, so this must be
+		// slash-separated on every host OS; filepath.Join would emit a backslash on Windows.
+		return path.Join("policies", dirName), nil
 	}
 
 	return "", fmt.Errorf("non-local policies are not supported by CLI workspace copy: %s", sourcePath)
