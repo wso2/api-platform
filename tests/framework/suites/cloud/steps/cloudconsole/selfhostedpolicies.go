@@ -19,6 +19,7 @@ package cloudconsole
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -176,8 +177,8 @@ func checkManifestPolicy(policies []manifestPolicy, name, version string, custom
 		return fmt.Errorf("the gateway manifest reports %s %s with isCustomPolicy=%t, want %t", name, version, policy.IsCustomPolicy, custom)
 	}
 	hasDefinition := hasJSONValue(policy.PolicyDefinition)
-	if custom && !hasDefinition {
-		return fmt.Errorf("the gateway manifest reports custom policy %s %s without its definition", name, version)
+	if custom && !isJSONObject(policy.PolicyDefinition) {
+		return fmt.Errorf("the gateway manifest reports custom policy %s %s without a definition object", name, version)
 	}
 	if !custom && hasDefinition {
 		return fmt.Errorf("the gateway manifest reports built-in policy %s %s with a definition", name, version)
@@ -189,6 +190,12 @@ func checkManifestPolicy(policies []manifestPolicy, name, version string, custom
 func hasJSONValue(raw json.RawMessage) bool {
 	trimmed := strings.TrimSpace(string(raw))
 	return trimmed != "" && trimmed != "null"
+}
+
+// isJSONObject reports whether raw holds a JSON object with at least one field.
+func isJSONObject(raw json.RawMessage) bool {
+	var object map[string]any
+	return json.Unmarshal(raw, &object) == nil && len(object) > 0
 }
 
 // listCustomPolicies reads every custom policy the organisation holds.
@@ -203,15 +210,35 @@ func (s *Steps) listCustomPolicies(ctx context.Context) ([]map[string]any, error
 		if resp.StatusCode != http.StatusOK {
 			return nil, responseError(resp)
 		}
-		items, err := listItems(resp)
+		items, err := customPolicyPage(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("decoding the organisation's custom policies: %w", err)
+			return nil, err
 		}
 		all = append(all, items...)
 		if len(items) < customPolicyListPage {
 			return all, nil
 		}
 	}
+}
+
+// customPolicyPage reads one page of the organisation's custom policies. A response without a
+// "list" field is an error, not an empty page: absence is only ever read from a list the platform
+// returned. The platform answers an organisation that holds none with "list": null, which is an
+// empty page.
+func customPolicyPage(body []byte) ([]map[string]any, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("decoding the organisation's custom policies: %w", err)
+	}
+	raw, present := envelope["list"]
+	if !present {
+		return nil, fmt.Errorf("the organisation's custom policies response has no list")
+	}
+	var items []map[string]any
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, fmt.Errorf("decoding the organisation's custom policies: %w", err)
+	}
+	return items, nil
 }
 
 // customPolicyRecords returns the "<uuid>/<version>" of every record of the named policy.
@@ -238,17 +265,26 @@ func (s *Steps) removeLeftoverCustomPolicy(ctx context.Context, name string) err
 		return err
 	}
 	for _, record := range customPolicyRecords(items, name) {
-		_, path, settled, err := deleteCustomPolicyRequest(record)
-		if err != nil {
-			return err
+		if err := s.removeCustomPolicyRecord(ctx, record); err != nil {
+			return fmt.Errorf("removing custom policy %s left by an earlier run: %w", name, err)
 		}
-		resp, err := s.doAuthenticatedRaw(ctx, http.MethodDelete, path, nil)
-		if err != nil {
-			return err
-		}
-		if !settled(resp) {
-			return fmt.Errorf("removing custom policy %s left by an earlier run: %w", name, responseError(resp))
-		}
+	}
+	return nil
+}
+
+// removeCustomPolicyRecord deletes the custom policy "<uuid>/<version>"; one already gone counts
+// as deleted.
+func (s *Steps) removeCustomPolicyRecord(ctx context.Context, record string) error {
+	_, path, settled, err := deleteCustomPolicyRequest(record)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticatedRaw(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return fmt.Errorf("deleting custom policy %s: %w", record, err)
+	}
+	if !settled(resp) {
+		return fmt.Errorf("deleting custom policy %s: %w", record, responseError(resp))
 	}
 	return nil
 }
@@ -281,7 +317,8 @@ func (s *Steps) syncCustomPolicy(ctx context.Context, name, version string) erro
 		Kind: kindGatewayCustomPolicy, ID: id + "/" + synced, Actor: resourceActor,
 		Description: "custom policy " + name + " " + synced,
 	}); err != nil {
-		return fmt.Errorf("registering custom policy %s %s for cleanup: %w", name, synced, err)
+		err = fmt.Errorf("registering custom policy %s %s for cleanup: %w", name, synced, err)
+		return errors.Join(err, s.removeCustomPolicyRecord(ctx, id+"/"+synced))
 	}
 	for key, value := range map[string]string{keyCustomPolicyID: id, keyCustomPolicyVersion: synced, keyCustomPolicyName: name} {
 		if err := tcontext.Set(ctx, key, value); err != nil {
@@ -380,10 +417,22 @@ func (s *Steps) assertNoCustomPolicy(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if records := customPolicyRecords(items, name); len(records) > 0 {
-		return fmt.Errorf("the organisation holds custom policy %s: %s", name, strings.Join(records, ", "))
+	if matches := customPoliciesNamed(items, name); len(matches) > 0 {
+		return fmt.Errorf("the organisation holds custom policy %s: %v", name, matches)
 	}
 	return nil
+}
+
+// customPoliciesNamed returns every listed item with the name, whatever else it reports, so an
+// item without a uuid or version still counts as present.
+func customPoliciesNamed(items []map[string]any, name string) []map[string]any {
+	var matches []map[string]any
+	for _, item := range items {
+		if itemName, _ := item["name"].(string); itemName == name {
+			matches = append(matches, item)
+		}
+	}
+	return matches
 }
 
 // deleteCustomPolicyRequest is the delete of a synced custom policy identified "<uuid>/<version>".

@@ -67,7 +67,7 @@ scenarios:
         - feature: suites/cloud/features/apip_self_hosted_gateway_custom_policies.feature
           scenario: "A custom policy synced from a self-hosted gateway is added to the organisation and can be deleted"
   - id: ID_APIP_SELF_HOSTED_GATEWAY_006
-    title: "Syncing a policy the self-hosted gateway reports as built in is refused with POLICY_INVALID_STATE and adds nothing to the organisation."
+    title: "Syncing a policy the self-hosted gateway reports as built in is refused with POLICY_INVALID_STATE and adds nothing to the organisation, while a policy it reports as custom syncs and is listed."
     priority: P1
     cloud:
       status: automated

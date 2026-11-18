@@ -55,7 +55,13 @@ Feature: APIP cloud custom policies of a self-hosted gateway
 
   @ID_APIP_SELF_HOSTED_GATEWAY_006 @type:negative
   Scenario: Syncing a policy the self-hosted gateway does not report as custom is refused
+    Given I remove any custom policy "it-custom-control" an earlier run left in the organisation
     When I sync the custom policy "it-builtin" version "v1.0.0" from the self-hosted APIP gateway
     Then the cloud API response status code should be 409
     And the cloud API error code should be "POLICY_INVALID_STATE"
+    # The positive control: a policy the gateway does report as custom syncs, and the same list
+    # that shows it does not show it-builtin.
+    When I sync the custom policy "it-custom-control" version "v1.0.0" from the self-hosted APIP gateway
+    Then the cloud API response status code should be 200
+    And the synced custom policy should be listed in the organisation
     And the organisation should hold no custom policy "it-builtin"
