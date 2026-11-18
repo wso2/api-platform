@@ -77,8 +77,8 @@ Feature: APIP cloud managed gateway lifecycle
     Given I obtain an APIP cloud console token
     And I find the default APIP project
     And I find an active APIP gateway
-    And I create a synthetic non-production APIP environment that lasts for the runner
-    And I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the synthetic environment
+    And I select an existing APIP environment other than the active gateway's for a managed gateway
+    And I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the selected environment
     When I request a synthetic managed APIP gateway that lasts for the runner with:
       | environment | ${CTX:cloudGatewayEnvironment} |
       | displayName | ${CTX:cloudManagedGatewayName} |
@@ -102,7 +102,7 @@ Feature: APIP cloud managed gateway lifecycle
     And the managed APIP gateway endpoint should answer requests
 
   @TC_APIP_PROV_005 @TC_APIP_PROV_007 @ID_APIP_GATEWAY_007
-  Scenario: A gateway created in a new environment is built and connects, and handles at the length limit still receive a routable service
+  Scenario: A gateway created in another environment is built and connects, and handles at the length limit still receive a routable service
     Given I obtain an APIP cloud console token
     And I work with synthetic managed APIP gateway 2
     Then synthetic managed APIP gateway 2 should become active

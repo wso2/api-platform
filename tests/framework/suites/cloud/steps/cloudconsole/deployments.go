@@ -670,26 +670,42 @@ type promotionPath struct {
 
 // pipelinePathsOf reads the promotion paths of the deployment pipeline a project is bound to.
 func pipelinePathsOf(ctx context.Context, projectID string, get pipelineGetter) ([]promotionPath, error) {
+	_, paths, err := boundPipelineOf(ctx, projectID, get)
+	return paths, err
+}
+
+// boundPipelineOf reads which deployment pipeline a project is bound to and that pipeline's
+// promotion paths.
+func boundPipelineOf(ctx context.Context, projectID string, get pipelineGetter) (string, []promotionPath, error) {
 	bound, err := get(ctx, "/projects/"+url.PathEscape(projectID)+"/deployment-pipeline")
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if bound.StatusCode != http.StatusOK {
-		return nil, responseError(bound)
+		return "", nil, responseError(bound)
 	}
 	name, err := stringField(bound, "pipeline")
 	if err != nil {
-		return nil, fmt.Errorf("reading the project's deployment pipeline: %w", err)
+		return "", nil, fmt.Errorf("reading the project's deployment pipeline: %w", err)
 	}
 	listed, err := get(ctx, "/pipelines")
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if listed.StatusCode != http.StatusOK {
-		return nil, responseError(listed)
+		return "", nil, responseError(listed)
 	}
+	paths, err := listedPipelinePaths(listed, name)
+	return name, paths, err
+}
+
+// listedPipelinePaths finds a pipeline in a /pipelines listing and returns its promotion paths. A
+// binding names a pipeline by its resource id, which need not be the pipeline's name, so either
+// matches.
+func listedPipelinePaths(listed *httpx.Response, pipeline string) ([]promotionPath, error) {
 	var document struct {
 		List []struct {
+			ID             string          `json:"id"`
 			Name           string          `json:"name"`
 			PromotionPaths []promotionPath `json:"promotionPaths"`
 		} `json:"list"`
@@ -697,12 +713,12 @@ func pipelinePathsOf(ctx context.Context, projectID string, get pipelineGetter) 
 	if err := json.Unmarshal(listed.Body, &document); err != nil {
 		return nil, fmt.Errorf("decoding deployment pipelines: %w", err)
 	}
-	for _, pipeline := range document.List {
-		if pipeline.Name == name {
-			return pipeline.PromotionPaths, nil
+	for _, candidate := range document.List {
+		if candidate.ID == pipeline || candidate.Name == pipeline {
+			return candidate.PromotionPaths, nil
 		}
 	}
-	return nil, fmt.Errorf("deployment pipeline %q is not listed", name)
+	return nil, fmt.Errorf("deployment pipeline %q is not listed", pipeline)
 }
 
 // assertStagesMatchPipeline checks that the deployment listing has exactly one stage for each
