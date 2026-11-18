@@ -299,10 +299,11 @@ management paths, and compatibility selection. For example, the command above pu
 
 `-gateway-version latest` pulls the images that the `gateway-images` job of `daily-builds.yml`
 publishes every day at 03:00 UTC from `main`, and whenever it is started by hand with the
-`gateway` component (`gateway-controller`, `gateway-runtime` and `gateway-builder`, tagged `latest`
-and `main-<sha>`, where `<sha>` is the newest commit that changed the gateway), so a project that
-has no gateway source can test against the current gateway. A merge reaches `latest` at the next
-run, so it can be up to a day behind.
+`gateway` component (`gateway-controller`, `gateway-runtime` and `gateway-builder`). Each is a single
+image tagged `latest` that every build replaces, and no other tag is published. A run builds nothing
+when the images are already newer than the last gateway commit. A project that has no gateway source
+can test against the current gateway this way. A merge reaches `latest` at the next run, so it can be
+up to a day behind.
 It is not a release: it uses the current configuration and contract, runners are matched as they
 are for a source build (`gateway-version>=1.2.0` runs, `gateway-version<1.2.0` is skipped), and
 policy images built on it are re-pulled each run because the tag moves.
