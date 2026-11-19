@@ -49,7 +49,7 @@ describe('MarketingConsentGate', () => {
   it.each(['No Opt-in', 'Unconfirmed'])('asks someone whose status is %s', async (consentStatus) => {
     stubConsent({ optoutOfEmails: false, consentStatus });
     render(<MarketingConsentGate port={{}} />);
-    expect(await screen.findByRole('dialog', { name: 'Welcome to WSO2 API Platform' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Welcome to Choreo API Management' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'privacy policy' })).toHaveAttribute(
       'href',
       'https://wso2.com/privacy-policy/'

@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@sandbox-upstream-url-validation
+@SVR @sandbox-upstream-url-validation
 Feature: Sandbox upstream URL validation
   As an API developer
   I want invalid upstream URL paths to be rejected
@@ -26,6 +26,7 @@ Feature: Sandbox upstream URL validation
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
+  @SVR-028
   Scenario: Deploy fails when an upstreamDefinitions URL contains a path
     Given I generate a unique value from "sandbox-routing-11" and store it as "apiName11"
     And I generate a unique API context from "/sandbox-routing-11" and store it as "apiContext11"

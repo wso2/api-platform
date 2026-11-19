@@ -15,6 +15,7 @@ blocks:
       - name: apip-basic
         features:
           - features/apip_basic.feature
+          - features/apip_graphql.feature
       # This test skipped until fix the issue of stale data while project creation.
       # - name: apip-project
       #   features:
@@ -36,10 +37,9 @@ blocks:
       - name: apip-self-hosted-gateway
         features:
           - features/apip_self_hosted_gateway.feature
-      # This test skipped until fix the issue of stale data while project creation.
-      # - name: apip-promotion
-      #   features:
-      #     - features/apip_promotion.feature
+      - name: apip-promotion
+        features:
+          - features/apip_promotion.feature
       - name: apip-secrets
         features:
           - features/apip_secrets.feature
@@ -47,3 +47,16 @@ blocks:
         tags: "~@known-issue && ~@skip"
         features:
           - features/apip_portal.feature
+
+  # Runs self-hosted gateway containers against the cloud control plane; requires Docker and
+  # gateway images. Kept separate from the Docker-less apip-cloud job.
+  - name: apip-cloud-self-hosted
+    parallel: 1
+    components:
+      - name: cloud-console
+      - name: platform-gateway
+        db: sqlite
+    runners:
+      - name: apip-self-hosted-gateway-runtime
+        features:
+          - features/apip_self_hosted_gateway_runtime.feature

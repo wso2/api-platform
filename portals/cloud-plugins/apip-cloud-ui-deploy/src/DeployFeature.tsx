@@ -17,7 +17,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { ChoreoLoader } from './components/ChoreoLoader';
 import DeployPage from './DeployPage';
 import { createDeployClient, gatewayTypeForKind, takesEndpointUrl, type ArtifactKind } from './deployApi';
 import {
@@ -492,9 +493,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         <PageTitle sx={{ mb: 2 }}>
           <PageTitle.Header>Deploy</PageTitle.Header>
         </PageTitle>
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <ChoreoLoader />
       </PageContent>
     );
   }

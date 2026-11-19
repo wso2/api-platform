@@ -78,7 +78,7 @@ describe('toUsagePanel', () => {
         key: 'gateways',
         title: 'Gateways',
         items: [
-          { key: 'gateways', label: 'WSO2 Managed', count: 0, limit: 1 },
+          { key: 'gateways', label: 'Cloud gateway', count: 0, limit: 1 },
           { key: 'hybrid_gateways', label: 'Self-Hosted', count: 1, limit: 1 },
         ],
       },

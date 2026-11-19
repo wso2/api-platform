@@ -33,8 +33,8 @@ import (
 // kindSelfHostedGateway is a kind of its own, not cleanup.KindGateway, because the registry keeps
 // one deleter per kind name and the two are deleted through different collections
 // (/self-hosted-gateways and /managed-gateways): sharing the kind would send one of them to the
-// wrong collection, which answers 404 and is swept as already gone. It lives in an environment, so
-// it is deleted with the managed gateways, before the environment.
+// wrong collection, which answers 404 and is swept as already gone. It is deleted with the managed
+// gateways.
 var kindSelfHostedGateway = cleanup.Kind{Name: "self-hosted-gateway", Order: cleanup.KindGateway.Order}
 
 const (
@@ -67,6 +67,7 @@ func (s *Steps) registerSelfHostedGatewaySteps(sc stepRegistrar) {
 	sc.Step(`^the revoked registration tokens should no longer be active$`, s.assertRevokedTokensInactive)
 	sc.Step(`^I delete the synthetic self-hosted APIP gateway$`, s.deleteSelfHostedGateway)
 	sc.Step(`^the self-hosted APIP gateway should eventually be absent$`, s.verifySelfHostedGatewayDeleted)
+	s.registerLocalGatewaySteps(sc)
 }
 
 func selfHostedGatewayPath(id string) string {
@@ -209,43 +210,58 @@ func (s *Steps) generateRegistrationToken(ctx context.Context) error {
 }
 
 // mintRegistrationToken mints a token and checks it came back, without the token's value
-// ever leaving this function. The response is deliberately neither published to the
-// funnel nor described in an error: the plain-text token appears only in this response.
+// ever leaving this function.
 func (s *Steps) mintRegistrationToken(ctx context.Context, gatewayID string) error {
+	_, err := s.mintRegistrationTokenValue(ctx, gatewayID)
+	return err
+}
+
+// mintRegistrationTokenValue mints a token and returns its plain-text value, which the caller
+// must hand only to the gateway it is for. The response is deliberately neither published to
+// the funnel nor described in an error: the plain-text token appears only in this response.
+func (s *Steps) mintRegistrationTokenValue(ctx context.Context, gatewayID string) (string, error) {
 	resp, err := s.doAuthenticatedRaw(ctx, http.MethodPost, selfHostedGatewayTokensPath(gatewayID), map[string]any{})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if resp.StatusCode != http.StatusCreated {
 		if resp.StatusCode >= http.StatusBadRequest {
-			return responseError(resp) // an error body holds no minted token
+			return "", responseError(resp) // an error body holds no minted token
 		}
-		return fmt.Errorf("minting a registration token: %s %s -> %d, want %d (body withheld: it may hold a token)",
+		return "", fmt.Errorf("minting a registration token: %s %s -> %d, want %d (body withheld: it may hold a token)",
 			resp.Method, resp.URL, resp.StatusCode, http.StatusCreated)
 	}
-	if _, err := mintedTokenID(resp.Body); err != nil {
-		return fmt.Errorf("minting a registration token for self-hosted gateway %q: %w", gatewayID, err)
+	_, token, err := parseMintedToken(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("minting a registration token for self-hosted gateway %q: %w", gatewayID, err)
 	}
-	return nil
+	return token, nil
 }
 
 // mintedTokenID checks a mint response carries both a token and its id, and returns the id.
 // Its errors never quote the body.
 func mintedTokenID(body []byte) (string, error) {
+	id, _, err := parseMintedToken(body)
+	return id, err
+}
+
+// parseMintedToken returns the id and the plain-text value of a minted token. Its errors never
+// quote the body.
+func parseMintedToken(body []byte) (id, token string, err error) {
 	var document struct {
 		ID    string `json:"id"`
 		Token string `json:"token"`
 	}
 	if err := json.Unmarshal(body, &document); err != nil {
-		return "", fmt.Errorf("the token response is not a JSON object")
+		return "", "", fmt.Errorf("the token response is not a JSON object")
 	}
 	if strings.TrimSpace(document.Token) == "" {
-		return "", fmt.Errorf("the token response has no token")
+		return "", "", fmt.Errorf("the token response has no token")
 	}
 	if strings.TrimSpace(document.ID) == "" {
-		return "", fmt.Errorf("the token response has no token id")
+		return "", "", fmt.Errorf("the token response has no token id")
 	}
-	return document.ID, nil
+	return document.ID, strings.TrimSpace(document.Token), nil
 }
 
 // reconfigureRegistrationToken does what the console's "reconfigure" does: revoke every

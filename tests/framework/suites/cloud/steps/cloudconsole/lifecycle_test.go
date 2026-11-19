@@ -25,9 +25,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/png"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -40,10 +42,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
@@ -54,6 +59,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 	"github.com/wso2/api-platform/tests/framework/suites/cloud/setup/finalizer"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 )
 
 func TestBearerTokenReadsAndCachesEnvironmentToken(t *testing.T) {
@@ -412,17 +418,21 @@ func TestSendUntilStatusWithSendsHeaders(t *testing.T) {
 	require.Equal(t, "secret", gotKey)
 }
 
-func TestSendWithAPIKeyRequiresStoredKeyAndHeader(t *testing.T) {
+func TestSendWithCredentialRequiresAStoredCredentialAndAHeader(t *testing.T) {
 	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
 	steps := &Steps{}
 
-	err := steps.sendWithAPIKeyUntilStatus(ctx, http.MethodGet, "https://x.gateway.wso2.com", "X-API-Key", http.StatusOK)
-	require.ErrorContains(t, err, keyAPIKey)
+	for credential, key := range credentialKeys {
+		err := steps.sendWithCredentialUntilStatus(ctx, http.MethodGet, "https://x.gateway.wso2.com", "X-API-Key", credential, http.StatusOK)
+		require.ErrorContains(t, err, key, credential)
+	}
+	err := steps.sendWithCredentialUntilStatus(ctx, http.MethodGet, "https://x.gateway.wso2.com", "X-API-Key", "password", http.StatusOK)
+	require.ErrorContains(t, err, `unsupported credential "password"`)
 
 	local, ok := tcontext.LocalOf(ctx)
 	require.True(t, ok)
 	local.Set(keyAPIKey, "secret")
-	err = steps.sendWithAPIKeyUntilStatus(ctx, http.MethodGet, "https://x.gateway.wso2.com", " ", http.StatusOK)
+	err = steps.sendWithCredentialUntilStatus(ctx, http.MethodGet, "https://x.gateway.wso2.com", " ", "API key", http.StatusOK)
 	require.ErrorContains(t, err, "header name is required")
 }
 
@@ -459,7 +469,10 @@ func cloudAPIStub(t *testing.T, handler http.HandlerFunc) *frameworkruntime.Topo
 	}))
 	t.Cleanup(server.Close)
 	inst, err := components.NewExternalInstance(corecatalog.CloudConsole(), 0, 1,
-		map[string]string{corecatalog.EndpointAPIPPlatformAPI: server.URL + platformAPIRoute})
+		map[string]string{
+			corecatalog.EndpointAPIPPlatformAPI:     server.URL + platformAPIRoute,
+			corecatalog.EndpointGatewayControlPlane: "https://cloud-console.example.test/api-management/connect",
+		})
 	require.NoError(t, err)
 	set := components.NewSet()
 	require.NoError(t, set.Add(inst))
@@ -536,11 +549,11 @@ func TestUndeployAPIUsesTheProjectAndEnvironmentRoute(t *testing.T) {
 	local.Set(keyGatewayID, "gw-1")
 	local.Set(keyProjectID, "default")
 
-	err := steps.undeployAPI(ctx)
+	err := steps.undeployAPI(ctx, "synthetic REST API")
 	require.ErrorContains(t, err, "environment", "the environment is required by the route")
 	local.Set(keyGatewayEnv, "development")
 
-	require.NoError(t, steps.undeployAPI(ctx))
+	require.NoError(t, steps.undeployAPI(ctx, "synthetic REST API"))
 	require.Equal(t, http.MethodPost, method)
 	require.Equal(t, "/projects/default/apis/syn-api-1/deployments/dep 1/undeploy", path)
 	require.Equal(t, "development", environment)
@@ -548,7 +561,7 @@ func TestUndeployAPIUsesTheProjectAndEnvironmentRoute(t *testing.T) {
 
 	for _, rejected := range []int{http.StatusOK, http.StatusNotFound} {
 		status = rejected
-		require.Error(t, steps.undeployAPI(ctx), "only 204 is the documented success")
+		require.Error(t, steps.undeployAPI(ctx, "synthetic REST API"), "only 204 is the documented success")
 	}
 }
 
@@ -729,10 +742,10 @@ func TestSendWithoutAuthorizationOmitsTheHeaderAndPublishesTheResponse(t *testin
 		authorization, method, path = r.Header.Values("Authorization"), r.Method, r.URL.Path
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	require.NoError(t, steps.sendWithoutAuthorization(ctx, "post", "/environments"))
+	require.NoError(t, steps.sendWithoutAuthorization(ctx, "post", "/projects"))
 	require.Empty(t, authorization)
 	require.Equal(t, http.MethodPost, method)
-	require.Equal(t, "/environments", path)
+	require.Equal(t, "/projects", path)
 	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusUnauthorized))
 }
 
@@ -892,11 +905,11 @@ func TestResponseAssertions(t *testing.T) {
 	publishedResponse(t, steps, ctx, 404, `{"code":"not_found","message":"gone"}`)
 	require.NoError(t, steps.assertCloudResponseClientError(ctx))
 
-	require.NoError(t, steps.assertCloudResponseContains(ctx, "gone"))
-	require.Error(t, steps.assertCloudResponseContains(ctx, "present"))
+	require.NoError(t, steps.assertCloudResponseContains(ctx, "contain", "gone"))
+	require.Error(t, steps.assertCloudResponseContains(ctx, "contain", "present"))
 	local.Set("gateway", "gw-1")
 	publishedResponse(t, steps, ctx, 400, `{"message":"Gateway \"gw-1\" is not in environment"}`)
-	require.NoError(t, steps.assertCloudResponseContains(ctx, `${CTX:gateway}`))
+	require.NoError(t, steps.assertCloudResponseContains(ctx, "contain", `${CTX:gateway}`))
 
 	publishedResponse(t, steps, ctx, 409, `{"code":"gateway_set_incomplete","message":"m"}`)
 	require.NoError(t, steps.assertCloudErrorCode(ctx, "gateway_set_incomplete"))
@@ -985,6 +998,8 @@ func TestPrepareBuildRejectsAnythingButCreated(t *testing.T) {
 
 func TestAssertBuildIDShape(t *testing.T) {
 	steps, ctx, local, _ := cloudSteps(t, nil)
+	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keyBuildsOwner, "syn-api-1")
 	require.Error(t, steps.assertBuildIDShape(ctx), "no build prepared")
 	for id, ok := range map[string]bool{"2026-01-31-1": true, "2026-01-31-12": true, "2026-01-31-0": false, "build-1": false, "2026-1-31-1": false,
 		"2026-99-99-1": false, "2026-02-30-1": false} {
@@ -1002,6 +1017,7 @@ func TestBuildListingAssertions(t *testing.T) {
 	})
 	local.Set(keyProjectID, "default")
 	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keyBuildsOwner, "syn-api-1")
 
 	local.Set(keyBuildIDs, "2026-01-31-1,2026-01-31-2")
 	require.NoError(t, steps.assertBuildsNewestFirst(ctx))
@@ -1012,6 +1028,7 @@ func TestBuildListingAssertions(t *testing.T) {
 
 	local.Set(keyBuildIDs, "2026-01-31-1")
 	local.Set(keyBuildMetadata, `{"commit":"abc"}`)
+	local.Set(keyBuildMetadataOf, "2026-01-31-1")
 	require.NoError(t, steps.assertBuildListed(ctx))
 	local.Set(keyBuildMetadata, `{"commit":"def"}`)
 	require.ErrorContains(t, steps.assertBuildListed(ctx), "metadata")
@@ -1043,6 +1060,7 @@ func TestRequestDeploymentRecordsWhatWasDeployed(t *testing.T) {
 	local.Set(keyProjectID, "default")
 	local.Set(keyAPIID, "syn-api-1")
 	local.Set(keyGatewayID, "dev-default")
+	local.Set(keyBuildsOwner, "syn-api-1")
 	local.Set(keyBuildIDs, "2026-01-31-1")
 
 	table := valuesTable(t, []string{"environment", "development"}, []string{"gatewayIds", "dev-default,dev-extra"})
@@ -1192,7 +1210,7 @@ func TestDeployAPIDeploysThroughTheProjectAndKeepsTheDeploymentID(t *testing.T) 
 	require.Len(t, requests, 2)
 
 	status = http.StatusNotFound
-	require.ErrorContains(t, steps.redeployAPI(ctx), "deploying APIP REST API")
+	require.ErrorContains(t, steps.redeployAPI(ctx), "deploying APIP API syn-api-1")
 }
 
 func TestDeployToGatewayRejectsAResponseThatListsNoDeploymentOnTheGateway(t *testing.T) {
@@ -1230,39 +1248,6 @@ func TestAssertDeploymentStatusReason(t *testing.T) {
 	require.ErrorContains(t, steps.assertDeploymentStatusReason(ctx), "error code")
 	local.Set(keyDeploymentID, "unknown")
 	require.ErrorContains(t, steps.assertDeploymentStatusReason(ctx), "not listed")
-}
-
-func TestEmptyEnvironmentDeletesOnlyThatEnvironmentsGateways(t *testing.T) {
-	var deleted []string
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			deleted = append(deleted, r.URL.Path)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]string{
-			{"id": "syn-env-default", "environment": "syn-env"},
-			{"id": "syn-env-extra", "environment": "syn-env"},
-			{"id": "development-default", "environment": "development"},
-		}})
-	})
-	base, err := steps.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
-	require.NoError(t, err)
-	require.NoError(t, emptyEnvironment(ctx, steps.client, base, "console-token", "syn-env"))
-	require.Equal(t, []string{"/managed-gateways/syn-env-default", "/managed-gateways/syn-env-extra"}, deleted)
-}
-
-func TestEmptyEnvironmentReportsRefusals(t *testing.T) {
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]string{{"id": "g", "environment": "e"}}})
-	})
-	base, _ := steps.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
-	require.Error(t, emptyEnvironment(ctx, steps.client, base, "console-token", "e"))
-	require.NoError(t, emptyEnvironment(ctx, steps.client, base, "console-token", "another"), "nothing to delete in another environment")
 }
 
 func TestRecordRenderedBuild(t *testing.T) {
@@ -1323,185 +1308,6 @@ func TestParseConfigCellReadsJSONLiteralsAndOtherwiseText(t *testing.T) {
 	require.Equal(t, "[x]\nlevel = 1", parseConfigCell("[x]\nlevel = 1"))
 }
 
-func expandNothing(value string) (string, error) { return value, nil }
-
-func TestPromotionPathsFromTable(t *testing.T) {
-	table := valuesTable(t,
-		[]string{"source", "targets"},
-		[]string{" dev ", "staging, prod"},
-		[]string{"staging", "prod"})
-	paths, err := promotionPathsFromTable(table, expandNothing)
-	require.NoError(t, err)
-	require.Equal(t, []map[string]any{
-		{"sourceEnvironment": "dev", "targetEnvironments": []string{"staging", "prod"}},
-		{"sourceEnvironment": "staging", "targetEnvironments": []string{"prod"}},
-	}, paths)
-
-	expanded, err := promotionPathsFromTable(valuesTable(t, []string{"source", "targets"}, []string{"${A}", "${B}"}),
-		func(value string) (string, error) {
-			return strings.NewReplacer("${A}", "one", "${B}", "two").Replace(value), nil
-		})
-	require.NoError(t, err)
-	require.Equal(t, "one", expanded[0]["sourceEnvironment"])
-	require.Equal(t, []string{"two"}, expanded[0]["targetEnvironments"])
-}
-
-func TestPromotionPathsFromTableRejectsMalformedTables(t *testing.T) {
-	for name, table := range map[string]*godog.Table{
-		"nil":             nil,
-		"header only":     valuesTable(t, []string{"source", "targets"}),
-		"wrong header":    valuesTable(t, []string{"from", "to"}, []string{"a", "b"}),
-		"three columns":   valuesTable(t, []string{"source", "targets"}, []string{"a", "b", "c"}),
-		"no source":       valuesTable(t, []string{"source", "targets"}, []string{" ", "b"}),
-		"no targets":      valuesTable(t, []string{"source", "targets"}, []string{"a", " , "}),
-		"unknown context": valuesTable(t, []string{"source", "targets"}, []string{"a", "${CTX:nothing}"}),
-	} {
-		_, err := promotionPathsFromTable(table, func(value string) (string, error) {
-			if strings.Contains(value, "${CTX:") {
-				return "", errors.New("unresolved")
-			}
-			return value, nil
-		})
-		require.Error(t, err, name)
-	}
-}
-
-func TestCreatePipelineRegistersItBeforeTheRequest(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var pending func() []cleanup.Resource
-	registeredBeforeRequest := false
-	var sent map[string]any
-	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/pipelines", r.URL.Path)
-		registeredBeforeRequest = len(pending()) == 1
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
-		writeJSON(w, http.StatusCreated, map[string]any{"id": sent["name"], "name": sent["name"]})
-	})
-	pending = registry.Pending
-	local.Set("environmentOne", "development")
-	local.Set("environmentTwo", "syn-env-1")
-
-	require.NoError(t, steps.createPipeline(ctx, valuesTable(t,
-		[]string{"source", "targets"}, []string{"${CTX:environmentOne}", "${CTX:environmentTwo}"})))
-
-	require.True(t, registeredBeforeRequest, "the pipeline must be registered for cleanup before it is requested")
-	id, err := requiredValue(ctx, keyPipelineID)
-	require.NoError(t, err)
-	require.Equal(t, id, sent["name"])
-	require.Equal(t, []any{map[string]any{"sourceEnvironment": "development", "targetEnvironments": []any{"syn-env-1"}}}, sent["promotionPaths"])
-	require.Equal(t, "pipeline", registry.Pending()[0].Kind.Name)
-}
-
-func TestCreatePipelineDoesNotKeepAFailedRequestUnregistered(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
-	})
-	err := steps.createPipeline(ctx, valuesTable(t, []string{"source", "targets"}, []string{"a", "b"}))
-	require.ErrorContains(t, err, "400")
-	require.Len(t, registry.Pending(), 1, "a request that may have created the pipeline stays registered")
-}
-
-func TestCreateProjectBoundToPipelineWaitsForTheProjectAndDeletesItBeforeThePipeline(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	binds := 0
-	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/projects":
-			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/deployment-pipeline"):
-			binds++
-			if binds == 1 {
-				writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"pipeline": body["pipeline"]})
-		default:
-			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
-		}
-	})
-	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), "no deployment pipeline")
-
-	local.Set(keyPipelineID, "syn-pipeline-1")
-	require.NoError(t, steps.createProjectBoundToPipeline(ctx))
-	require.Equal(t, 2, binds, "a project that is not readable yet is bound again")
-	project, err := requiredValue(ctx, keyProjectID)
-	require.NoError(t, err)
-	require.NotEqual(t, "default", project)
-
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: kindPipeline, ID: "syn-pipeline-1", Actor: resourceActor}))
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindGateway, ID: "gw", Actor: resourceActor}))
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindEnvironment, ID: "env", Actor: resourceActor}))
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindAPI, ID: "api", Actor: resourceActor}))
-	var order []string
-	for _, resource := range registry.Pending() {
-		order = append(order, resource.Kind.Name)
-	}
-	require.Equal(t, []string{"api", "project", "pipeline", "gateway", "environment"}, order)
-}
-
-func TestCreateProjectBoundToPipelineRefusesAMismatchedBinding(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		if r.Method == http.MethodPost {
-			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"pipeline": "default"})
-	})
-	local.Set(keyPipelineID, "syn-pipeline-1")
-	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), `bound to deployment pipeline "default"`)
-}
-
-func TestCreateProjectBoundToPipelineStopsOnARefusedBinding(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		if r.Method == http.MethodPost {
-			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-			return
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
-	})
-	local.Set(keyPipelineID, "syn-pipeline-1")
-	started := time.Now()
-	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), "400")
-	require.Less(t, time.Since(started), 10*time.Second, "a refused binding is not retried")
-}
-
-func TestRegisterDeletersRemovesPromotionResourcesInDependencyOrder(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var mu sync.Mutex
-	var deleted []string
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			writeJSON(w, http.StatusOK, map[string]any{"list": []any{}})
-			return
-		}
-		mu.Lock()
-		deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/"))
-		mu.Unlock()
-		w.WriteHeader(http.StatusNotFound)
-	})
-	require.NoError(t, RegisterDeleters(registry, steps.topo))
-
-	for _, resource := range []cleanup.Resource{
-		{Kind: cleanup.KindEnvironment, ID: "env"}, {Kind: cleanup.KindGateway, ID: "gw"}, {Kind: kindPipeline, ID: "pipe"},
-		{Kind: kindPromotionProject, ID: "proj"}, {Kind: cleanup.KindAPI, ID: "api"},
-	} {
-		resource.Actor = resourceActor
-		require.NoError(t, cleanup.Register(ctx, resource))
-	}
-	require.NoError(t, registry.Sweep(ctx))
-	require.Equal(t, []string{"rest-apis/api", "projects/proj", "pipelines/pipe", "managed-gateways/gw", "environments/env"}, deleted)
-}
-
 func TestHandleDefectsBreakOneRuleEach(t *testing.T) {
 	const valid = "syn-project-abcde-3"
 	require.Equal(t, "SYN-PROJECT-ABCDE-3", handleDefects["uppercase"](valid))
@@ -1518,15 +1324,17 @@ func TestHandleDefectsBreakOneRuleEach(t *testing.T) {
 func TestReadDefaultAndAbsentProjects(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	var seen []string
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.Method+" "+r.URL.Path)
 		writeJSON(w, http.StatusNotFound, map[string]string{"code": "PROJECT_NOT_FOUND"})
 	})
+	require.ErrorContains(t, steps.readDefaultProject(ctx), "project is not known")
+	local.Set(keyScenarioProject, projectOne)
 	require.NoError(t, steps.readDefaultProject(ctx))
 	require.NoError(t, steps.readAbsentProject(ctx))
 	absent, err := requiredValue(ctx, keyAbsentProjectID)
 	require.NoError(t, err)
-	require.Equal(t, []string{"GET /projects/default", "GET /projects/" + absent}, seen)
+	require.Equal(t, []string{"GET /projects/" + projectOne, "GET /projects/" + absent}, seen)
 	require.Empty(t, registry.Pending(), "a project that is never created is never registered")
 	published, err := httpx.Published(ctx)
 	require.NoError(t, err)
@@ -1622,34 +1430,41 @@ func TestAwaitProjectActive(t *testing.T) {
 	require.Less(t, time.Since(started), 10*time.Second, "a failed project is not waited for")
 }
 
-func TestProjectPipelineBindingSteps(t *testing.T) {
+func TestProjectPipelineReadSteps(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	bound := "default"
-	var put map[string]string
+	bound := "release"
+	pipelines := `{"list":[{"id":"default","name":"default"},{"id":"release","name":"Release","promotionPaths":[]}]}`
+	var seen []string
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/projects/syn-project-1/deployment-pipeline", r.URL.Path)
-		if r.Method == http.MethodPut {
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&put))
-			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
-			return
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/projects/payments/deployment-pipeline":
+			writeJSON(w, http.StatusOK, map[string]any{"pipeline": bound})
+		case "/pipelines":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(pipelines))
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"pipeline": bound})
 	})
-	require.ErrorContains(t, steps.bindProjectToPipeline(ctx, "x"), "no synthetic project")
-	require.ErrorContains(t, steps.readProjectPipeline(ctx), "no synthetic project")
-	local.Set(keyProjectID, "syn-project-1")
-	local.Set(keyPipelineID, "syn-pipeline-1")
-
-	require.NoError(t, steps.bindProjectToPipeline(ctx, "${CTX:cloudPipelineID}"))
-	require.Equal(t, map[string]string{"pipeline": "syn-pipeline-1"}, put)
-	require.NoError(t, steps.bindProjectToPipeline(ctx, ""))
-	require.Equal(t, map[string]string{"pipeline": ""}, put, "a blank pipeline is sent as it is")
+	require.ErrorContains(t, steps.readProjectPipeline(ctx), "no project")
+	local.Set(keyProjectID, "payments")
 
 	require.NoError(t, steps.readProjectPipeline(ctx))
-	require.NoError(t, steps.assertProjectBoundTo(ctx, "default"))
-	require.ErrorContains(t, steps.assertProjectBoundTo(ctx, "${CTX:cloudPipelineID}"), `bound to deployment pipeline "default"`)
-	bound = "syn-pipeline-1"
-	require.NoError(t, steps.assertProjectBoundTo(ctx, "${CTX:cloudPipelineID}"))
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusOK))
+	require.NoError(t, steps.assertBoundPipelineListed(ctx), "a pipeline is matched by its id")
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusOK), "the listing read does not replace the binding")
+
+	bound = "Release"
+	require.NoError(t, steps.readProjectPipeline(ctx))
+	require.NoError(t, steps.assertBoundPipelineListed(ctx), "a pipeline is matched by its name")
+
+	bound = "retired"
+	require.NoError(t, steps.readProjectPipeline(ctx))
+	require.ErrorContains(t, steps.assertBoundPipelineListed(ctx), `"retired" is not listed`)
+	for _, request := range seen {
+		require.True(t, strings.HasPrefix(request, "GET "), "the steps only read: %s", request)
+	}
 }
 
 func TestCreateProjectsUntilRefusedStopsAtTheFirstRefusal(t *testing.T) {
@@ -1764,12 +1579,13 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/projects":                                   {{"id": projectOne}, {"id": "syn-project-abcde234-2"}, {"id": projectTwo}},
+		"/rest-apis?projectId=" + projectOne:          {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
-		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
-		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
-		"/environments":                               {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
+		"/rest-apis?projectId=" + projectTwo:          {{"id": "syn-api-abcde234-9"}, {"id": "ops-project-api"}},
+		"/graphql-apis?projectId=" + projectOne:       {{"id": "syn-gql-abcde234-1"}, {"id": "ops-gql"}},
+		"/graphql-apis?projectId=" + projectTwo:       {{"id": "syn-gql-zzzzz222-1"}},
+		"/subscription-plans":                         {{"id": "syn-plan-abcde234-1"}, {"id": "syn-plan-zzzzz222-1"}, {"id": "ops-plan"}},
 	}}
 }
 
@@ -1794,35 +1610,40 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"api-portals/ops-portal/apis/rest-api/syn-api-abcde234-2/unpublish",
 		"managed-api-portals/syn-portal-abcde234-3",
 		"rest-apis/syn-api-abcde234-1",
+		"rest-apis/syn-api-abcde234-9",
 		"rest-apis/syn-api-abcde234-2",
+		"graphql-apis/syn-gql-abcde234-1",
+		"subscription-plans/syn-plan-abcde234-1",
 		"secrets/syn-secret-abcde234-1",
 		"self-hosted-gateways/development-syn-shgw-abcde234-1",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
-		"pipelines/syn-pipeline-abcde234-1",
-		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:12])
-	require.Len(t, removed, 12)
+	}, stub.deleted[:13])
+	require.Len(t, removed, 13)
 	for _, collection := range projectScopedCollections {
 		listed := slices.Clone(stub.listedProjects[collection])
 		slices.Sort(listed)
-		require.Equal(t, []string{"default", "syn-project-abcde234-2"}, slices.Compact(listed),
-			collection+" is listed for the default project and the run's projects only")
+		require.Equal(t, []string{projectOne, projectTwo, "syn-project-abcde234-2"}, slices.Compact(listed),
+			collection+" is listed for the suite's projects and the run's projects only")
 	}
 	for _, id := range stub.deleted {
-		require.NotContains(t, id, "default")
-		require.NotContains(t, id, "zzzzz222")
-		require.NotContains(t, id, "ops-api")
-		require.NotContains(t, id, "syn-api-abcde234-9")
+		require.NotEqual(t, "managed-gateways/development-default", id, "the default gateway is never deleted")
+		require.NotEqual(t, "managed-gateways/development-syn-gw-zzzzz222-1", id, "another run's gateway stays")
+		require.NotEqual(t, "self-hosted-gateways/development-ops-shgw", id)
+		require.NotEqual(t, "secrets/ops-secret", id)
+		require.NotContains(t, id, "ops-api", "an API the organisation owns stays")
+		require.NotContains(t, id, "ops-project-api")
+		require.NotContains(t, id, "ops-gql")
+		require.NotContains(t, id, "zzzzz222", "another run's APIs and plans stay")
+		require.NotEqual(t, "subscription-plans/ops-plan", id, "a plan the organisation owns stays")
 		require.NotContains(t, id, "managed-api-portals/ops-portal")
 		require.NotContains(t, id, "managed-api-portals/dap-")
-		require.NotContains(t, id, "ops-api")
-		require.NotContains(t, id, "ops-shgw")
+		require.False(t, strings.HasPrefix(id, "projects/apip-test-"), "the suite's projects are never deleted: "+id)
 	}
 }
 
-func TestCloudSweepsStillSweepTheDefaultProjectWhenTheProjectsCannotBeListed(t *testing.T) {
+func TestCloudSweepsStillSweepTheSuiteProjectsWhenTheProjectsCannotBeListed(t *testing.T) {
 	stub := newLeftoverStub()
 	stub.failing["/projects"] = http.StatusForbidden
 	topo := cloudAPIStub(t, stub.handler)
@@ -1831,19 +1652,19 @@ func TestCloudSweepsStillSweepTheDefaultProjectWhenTheProjectsCannotBeListed(t *
 
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
 	require.ErrorContains(t, err, "listing the projects that hold /rest-apis")
-	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-1", "the default project is still swept")
+	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-1", "the suite's projects are still swept")
 	require.NotContains(t, removed, "/rest-apis/syn-api-abcde234-2")
 }
 
 func TestCloudSweepsKeepSweepingTheOtherProjectsWhenOneProjectCannotBeListed(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/rest-apis?projectId=default"] = http.StatusForbidden
+	stub.failing["/rest-apis?projectId="+projectOne] = http.StatusForbidden
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
 
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
-	require.ErrorContains(t, err, "project default")
+	require.ErrorContains(t, err, "project "+projectOne)
 	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-2")
 	require.NotContains(t, removed, "/rest-apis/syn-api-abcde234-1")
 }
@@ -1980,20 +1801,20 @@ func TestListCollectionDoesNotRetryAClientError(t *testing.T) {
 
 func TestCloudSweepsCarryOnPastAListingThatFails(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/projects"] = http.StatusForbidden
+	stub.failing["/secrets"] = http.StatusForbidden
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
 
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
-	require.ErrorContains(t, err, "listing /projects")
-	require.Contains(t, removed, "/pipelines/syn-pipeline-abcde234-1")
-	require.Contains(t, removed, "/environments/syn-env-abcde234-1")
+	require.ErrorContains(t, err, "listing /secrets")
+	require.Contains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1")
+	require.Contains(t, removed, "/projects/syn-project-abcde234-2")
 }
 
 func TestCloudSweepsSkipACollectionThePlatformDoesNotServe(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/pipelines"] = http.StatusNotFound
+	stub.failing["/self-hosted-gateways"] = http.StatusNotFound
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
@@ -2001,7 +1822,7 @@ func TestCloudSweepsSkipACollectionThePlatformDoesNotServe(t *testing.T) {
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
 	require.NoError(t, err, "a route the platform does not serve holds no leftovers")
 	require.Contains(t, removed, "/projects/syn-project-abcde234-2")
-	require.NotContains(t, removed, "/pipelines/syn-pipeline-abcde234-1")
+	require.NotContains(t, removed, "/self-hosted-gateways/development-syn-shgw-abcde234-1")
 }
 
 func TestCloudSweepsReportALeftoverThatCannotBeDeleted(t *testing.T) {
@@ -2040,7 +1861,8 @@ func TestFinalizerSweepsTheRunnersItObserved(t *testing.T) {
 
 	removed, err = finalizer.Finalize(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, []string{"/managed-gateways/development-syn-gw-" + generator.Suffix() + "-1"}, removed)
+	require.Contains(t, removed, "/managed-gateways/development-syn-gw-"+generator.Suffix()+"-1")
+	require.NotContains(t, removed, "/managed-gateways/development-syn-gw-zzzzz222-1", "another run's gateway stays")
 }
 
 func TestFinalizerNeedsTheConsoleTokenToLookForLeftovers(t *testing.T) {
@@ -2182,17 +2004,34 @@ func TestFindActiveGatewayChoosesARegularGatewayOfThePipelineThatNoRunCreated(t 
 	require.Equal(t, []string{"functionalityType=regular"}, queries, "the platform is asked for regular gateways only")
 }
 
+func TestFindActiveGatewayPassesOverAGatewayOfAPromotionTarget(t *testing.T) {
+	steps, ctx := gatewayChoiceStub(t, []map[string]any{
+		listedGateway("stage-default", "staging", nil),
+		listedGateway("dev-default", "development", nil),
+	}, nil)
+
+	require.NoError(t, steps.findActiveGateway(ctx))
+	id, err := tcontext.ResolveString(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "dev-default", id, "the platform accepts a deployment to the entry environment only")
+	env, err := tcontext.ResolveString(ctx, keyGatewayEnv)
+	require.NoError(t, err)
+	require.Equal(t, "development", env)
+}
+
 func TestFindActiveGatewayNamesWhyEveryGatewayWasRejected(t *testing.T) {
 	steps, ctx := gatewayChoiceStub(t, []map[string]any{
 		listedGateway("prod-default", "production", nil),
+		listedGateway("stage-default", "staging", nil),
 		listedGateway("dev-ai", "development", map[string]any{"functionalityType": "ai"}),
 		listedGateway("dev-sgw", "development", map[string]any{"displayName": "sgw-abcdefg2-1"}),
 		listedGateway("", "development", nil),
 	}, nil)
 
 	err := steps.findActiveGateway(ctx)
-	require.ErrorContains(t, err, "no usable APIP gateway among 4 listed")
+	require.ErrorContains(t, err, "no usable APIP gateway among 5 listed")
 	require.ErrorContains(t, err, `prod-default: environment "production" is not in the project's deployment pipeline`)
+	require.ErrorContains(t, err, `stage-default: environment "staging" is a promotion target of the project's deployment pipeline`)
 	require.ErrorContains(t, err, `dev-ai: functionality type "ai"`)
 	require.ErrorContains(t, err, "dev-sgw: a synthetic gateway of a suite run")
 }
@@ -2243,23 +2082,6 @@ func TestFindActiveGatewayRefusesAPinnedGatewayOfASuiteRun(t *testing.T) {
 
 	t.Setenv(cloudGatewayPinEnv, "dev-operator")
 	require.NoError(t, steps.findActiveGateway(ctx), "an operator's gateway that looks like a suite run's is still taken")
-}
-
-func TestAnEnvironmentDeletionHasABudgetOfItsOwn(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/managed-gateways" {
-			writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{}})
-			return
-		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
-	})
-	spent, cancel := context.WithCancel(ctx)
-	cancel()
-
-	deleter := cloudDeleter(steps.topo, steps.client, "/environments", true)
-	require.NoError(t, deleter(spent, cleanup.Resource{Kind: cleanup.KindEnvironment, ID: "e-1"}),
-		"a sweep that has used its time does not stop the deletion of the next environment")
 }
 
 func TestFindActiveGatewayFailsWhenThePipelineCannotBeRead(t *testing.T) {
@@ -2923,13 +2745,14 @@ func TestSendUntilEchoesRotatedWaitsForTheNewValue(t *testing.T) {
 	require.GreaterOrEqual(t, calls, 2, "the first answer still carried the old value")
 }
 
-func TestCreateAPIInSyntheticProjectRefusesTheDefaultProject(t *testing.T) {
+func TestCreateAPIInPipelineProjectRefusesAnyOtherProject(t *testing.T) {
 	steps, ctx, local, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("no request may be sent")
 	})
-	require.ErrorContains(t, steps.createAPIInSyntheticProject(ctx, nil), "no synthetic project")
 	local.Set(keyProjectID, "default")
-	require.ErrorContains(t, steps.createAPIInSyntheticProject(ctx, nil), `"default"`)
+	require.ErrorContains(t, steps.createAPIInPipelineProject(ctx), "has not found its project", "the scenario's project is not known")
+	local.Set(keyScenarioProject, projectTwo)
+	require.ErrorContains(t, steps.createAPIInPipelineProject(ctx), `"default"`, "the scenario has not found its project")
 }
 
 func TestAssertStageHoldsNothing(t *testing.T) {
@@ -2967,6 +2790,218 @@ func TestStageLookups(t *testing.T) {
 		_, err = stageOf([]map[string]any{stage}, "dev")
 		require.Error(t, err, name)
 	}
+}
+
+func TestPromotionChainFollowsThePipelineFromAnEntryEnvironment(t *testing.T) {
+	all := func(string) bool { return true }
+	linear := []promotionPath{
+		{SourceEnvironment: "dev", TargetEnvironments: []string{"staging"}},
+		{SourceEnvironment: "staging", TargetEnvironments: []string{"prod"}},
+	}
+	require.Equal(t, []string{"dev", "staging"}, promotionChain(linear, 2, all))
+	require.Equal(t, []string{"dev", "staging", "prod"}, promotionChain(linear, 3, all))
+	require.Nil(t, promotionChain(linear, 4, all), "the pipeline is shorter than the chain")
+	require.Nil(t, promotionChain(nil, 2, all))
+	require.Equal(t, []string{"dev", "staging", "prod"}, promotionChain([]promotionPath{linear[1], linear[0]}, 3, all),
+		"the chain starts where no path leads, whatever order the paths are listed in")
+	require.Nil(t, promotionChain(linear, 2, func(environment string) bool { return environment != "staging" }),
+		"an environment that cannot be used breaks the chain")
+
+	branching := []promotionPath{
+		{SourceEnvironment: "dev", TargetEnvironments: []string{"qa", "staging"}},
+		{SourceEnvironment: "staging", TargetEnvironments: []string{"prod"}},
+	}
+	require.Equal(t, []string{"dev", "qa"}, promotionChain(branching, 2, all))
+	require.Equal(t, []string{"dev", "staging"}, promotionChain(branching, 2, func(environment string) bool { return environment != "qa" }))
+	require.Equal(t, []string{"dev", "staging", "prod"}, promotionChain(branching, 3, all), "a branch that ends early is passed over")
+
+	shortcut := []promotionPath{
+		{SourceEnvironment: "dev", TargetEnvironments: []string{"staging", "prod"}},
+		{SourceEnvironment: "staging", TargetEnvironments: []string{"prod"}},
+	}
+	require.Equal(t, []string{"dev", "staging"}, promotionChain(shortcut, 2, all))
+	require.Nil(t, promotionChain(shortcut, 3, all), "the first environment reaches the third directly, so no promotion skips one")
+
+	cyclic := []promotionPath{
+		{SourceEnvironment: "a", TargetEnvironments: []string{"b"}},
+		{SourceEnvironment: "b", TargetEnvironments: []string{"a"}},
+	}
+	require.Nil(t, promotionChain(cyclic, 2, all), "a pipeline that every environment is promoted into has no entry environment")
+
+	blank := []promotionPath{
+		{SourceEnvironment: " ", TargetEnvironments: []string{"x"}},
+		{SourceEnvironment: "dev", TargetEnvironments: []string{" ", "qa"}},
+	}
+	require.Equal(t, []string{"dev", "qa"}, promotionChain(blank, 2, all))
+}
+
+func TestFindPipelineProject(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	status := http.StatusOK
+	var seen []string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		writeJSON(w, status, map[string]any{"id": projectTwo})
+	})
+	require.ErrorContains(t, steps.findPipelineProject(ctx), "project is not known")
+	require.Empty(t, seen)
+
+	local.Set(keyScenarioProject, projectTwo)
+	require.NoError(t, steps.findPipelineProject(ctx))
+	require.Equal(t, projectTwo, optionalValue(ctx, keyProjectID))
+	require.Equal(t, []string{"GET /projects/" + projectTwo}, seen)
+
+	status = http.StatusNotFound
+	require.ErrorContains(t, steps.findPipelineProject(ctx), "has no")
+	status = http.StatusForbidden
+	require.ErrorContains(t, steps.findPipelineProject(ctx), "unexpected response")
+}
+
+func TestFindTestProjectFindsTheProjectOfTheScenariosFeature(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var seen []string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		writeJSON(w, http.StatusOK, map[string]any{"id": "x"})
+	})
+	require.ErrorContains(t, steps.findTestProject(ctx), "project is not known")
+
+	for feature, want := range map[string]string{
+		"features/apip_basic.feature":                     projectOne,
+		"/repo/suites/cloud/features/apip_deploy.feature": projectOne,
+		"apip_gateway.feature":                            projectOne,
+		"apip_gateway_config.feature":                     projectOne,
+		"apip_secrets.feature":                            projectOne,
+		"features/apip_auth.feature":                      projectTwo,
+		"features/apip_self_hosted_gateway.feature":       projectTwo,
+		"features/apip_promotion.feature":                 projectTwo,
+		"features/apip_portal.feature":                    projectTwo,
+		"features/apip_project.feature":                   projectTwo,
+	} {
+		require.Equal(t, want, projectOfFeature(feature), feature)
+	}
+
+	local.Set(keyScenarioProject, projectOne)
+	require.NoError(t, steps.findTestProject(ctx))
+	require.Equal(t, projectOne, optionalValue(ctx, keyProjectID))
+	require.Equal(t, []string{"GET /projects/" + projectOne}, seen)
+}
+
+// promotionChainStub serves the project "payments", bound to a pipeline with the given promotion
+// paths, and the given managed gateways. It records every request it receives.
+func promotionChainStub(t *testing.T, paths string, gateways []map[string]any) (*Steps, context.Context, *tcontext.Local, *[]string) {
+	return promotionChainStubOf(t, "apip-test-release", paths, gateways)
+}
+
+// promotionChainStubOf is promotionChainStub with the pipeline listed under the given name.
+func promotionChainStubOf(t *testing.T, pipelineName, paths string, gateways []map[string]any) (*Steps, context.Context, *tcontext.Local, *[]string) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var seen []string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.RequestURI())
+		switch r.URL.Path {
+		case "/projects/apip-test-payments/deployment-pipeline":
+			writeJSON(w, http.StatusOK, map[string]any{"pipeline": "release"})
+		case "/pipelines":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"list":[{"id":"release","name":"` + pipelineName + `","promotionPaths":` + paths + `}]}`))
+		case "/managed-gateways":
+			writeJSON(w, http.StatusOK, map[string]any{"list": gateways})
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	})
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set(keyProjectID, "apip-test-payments")
+	return steps, ctx, local, &seen
+}
+
+func TestFindPromotionChainRecordsTheChainAndItsGateways(t *testing.T) {
+	steps, ctx, local, seen := promotionChainStub(t,
+		`[{"sourceEnvironment":"development","targetEnvironments":["apip-test-staging"]},{"sourceEnvironment":"apip-test-staging","targetEnvironments":["apip-test-prod"]}]`,
+		[]map[string]any{
+			listedGateway("dev-sgw", "development", map[string]any{"displayName": "sgw-abcdefg2-3"}),
+			listedGateway("dev-default", "development", nil),
+			listedGateway("staging-default", "apip-test-staging", nil),
+			listedGateway("prod-idle", "apip-test-prod", map[string]any{"isActive": false}),
+		})
+
+	require.NoError(t, steps.findPromotionChain(ctx, 2))
+	for key, want := range map[string]string{
+		keyPipelineEnvironments:                      "development,apip-test-staging",
+		numberedKey(keyPipelineEnvironmentPrefix, 1): "development",
+		numberedKey(keyPipelineGatewayPrefix, 1):     "dev-default",
+		numberedKey(keyPipelineEndpointPrefix, 1):    "https://dev-default.example.com",
+		numberedKey(keyPipelineEnvironmentPrefix, 2): "apip-test-staging",
+		numberedKey(keyPipelineGatewayPrefix, 2):     "staging-default",
+		numberedKey(keyPipelineEndpointPrefix, 2):    "https://staging-default.example.com",
+		keyGatewayID:       "dev-default",
+		keyGatewayEnv:      "development",
+		keyGatewayEndpoint: "https://dev-default.example.com",
+	} {
+		require.Equal(t, want, optionalValue(ctx, key), key)
+	}
+	require.Contains(t, *seen, "GET /managed-gateways?functionalityType=regular")
+	for _, request := range *seen {
+		require.True(t, strings.HasPrefix(request, "GET "), "the chain is read, never written: %s", request)
+	}
+
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 3), godog.ErrSkip, "the third environment has no active gateway")
+	require.Empty(t, optionalValue(ctx, numberedKey(keyPipelineEnvironmentPrefix, 1)), "a skipped choice keeps nothing of an earlier one")
+	require.ErrorContains(t, steps.findPromotionChain(ctx, 1), "between 2 and")
+	require.ErrorContains(t, steps.findPromotionChain(ctx, maxPromotionEnvironments+1), "between 2 and")
+	local.Set(keyProjectID, "")
+	require.ErrorContains(t, steps.findPromotionChain(ctx, 2), "found no project")
+}
+
+func TestFindPromotionChainPassesOverEnvironmentsAndPipelinesTheSuiteDoesNotOwn(t *testing.T) {
+	paths := `[{"sourceEnvironment":"development","targetEnvironments":["qa"]},{"sourceEnvironment":"qa","targetEnvironments":["apip-test-staging"]}]`
+	gateways := []map[string]any{
+		listedGateway("dev-default", "development", nil),
+		listedGateway("qa-default", "qa", nil),
+		listedGateway("staging-default", "apip-test-staging", nil),
+	}
+
+	steps, ctx, _, _ := promotionChainStub(t, paths, gateways)
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 2), godog.ErrSkip, "qa is another console's environment, so development has no owned next stage")
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 3), godog.ErrSkip)
+
+	steps, ctx, _, _ = promotionChainStubOf(t, "release", paths, gateways)
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 2), godog.ErrSkip, "a pipeline other consoles share is not the suite's to use")
+}
+
+func TestSelectOtherGatewayEnvironmentPassesOverTheActiveProductionAndSyntheticOnes(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	environments := []map[string]any{
+		{"name": "development"},
+		{"name": "production", "isProduction": true},
+		{"name": "e-abcdefg2-1"},
+		{"name": "qa"},
+		{"name": "apip-test-environment"},
+		{"name": "apip-test-s1"},
+	}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "GET /environments":
+			writeJSON(w, http.StatusOK, map[string]any{"list": environments})
+		case "POST /managed-gateways":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(handleRefusal(body["environment"].(string))))
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	})
+	require.ErrorContains(t, steps.selectOtherGatewayEnvironment(ctx), "does not report its environment")
+	local.Set(keyGatewayEnv, "development")
+	require.NoError(t, steps.selectOtherGatewayEnvironment(ctx))
+	require.Equal(t, "apip-test-s1", optionalValue(ctx, keyEnvironmentName),
+		"qa belongs to other consoles and apip-test-environment leaves no room for a gateway name")
+
+	environments = environments[:4]
+	require.ErrorContains(t, steps.selectOtherGatewayEnvironment(ctx), `besides "development"`)
 }
 
 func configurationBody() map[string]any {
@@ -3039,9 +3074,9 @@ func stagesStub(t *testing.T, stages string) (*Steps, context.Context, *tcontext
 	})
 	local.Set(keyProjectID, "syn-project-1")
 	local.Set(keyAPIID, "syn-api-1")
-	local.Set(keySyntheticEnvironments, "dev,env-1,env-2")
-	local.Set(numberedKey(keySyntheticGatewayPrefix, 1), "gw-dev")
-	local.Set(numberedKey(keySyntheticGatewayPrefix, 2), "gw-1")
+	local.Set(keyPipelineEnvironments, "dev,env-1,env-2")
+	local.Set(numberedKey(keyPipelineGatewayPrefix, 1), "gw-dev")
+	local.Set(numberedKey(keyPipelineGatewayPrefix, 2), "gw-1")
 	return steps, ctx, local
 }
 
@@ -3131,6 +3166,57 @@ type starterPlatform struct {
 	portalFails    bool
 	// portalAbsent makes a portal lookup answer 404, as when a refused create left nothing behind.
 	portalAbsent bool
+
+	// noProjectOne and noProjectTwo make that project of the suite answer 404; noPipelineBinding
+	// makes project one's deployment pipeline answer 404.
+	noProjectOne      bool
+	noProjectTwo      bool
+	noPipelineBinding bool
+	// projectCreate is the status a request to create a project is answered with; zero creates it.
+	// createdProjects are the handles of the projects the starter created.
+	projectCreate   int
+	createdProjects []string
+	// environments are what GET /environments lists.
+	environments []map[string]any
+	// paths are the promotion paths of project one's pipeline, and pipelinePaths those of project
+	// two's.
+	pipelinePaths []promotionPath
+	// gatewayPipelineName and pipelineName are the names of those pipelines; empty means
+	// "apip-test-pipeline-1" and "apip-test-pipeline-2".
+	gatewayPipelineName string
+	pipelineName        string
+	// pipelinesAnswer, when set, is the status the pipeline list answers with instead of the list.
+	pipelinesAnswer int
+	// deleted records the gateways and portals the starter was asked to remove.
+	deleted []string
+	// requests counts every request the organisation answered; gatewayLists those that listed the
+	// managed gateways.
+	requests     int
+	gatewayLists int
+}
+
+// handleRefusal is the platform's refusal of a handle that is too long for an environment: the
+// limit is 37 minus twice the environment name's length, and at least 1.
+func handleRefusal(environment string) string {
+	budget := max(37-2*len(environment), 1)
+	return fmt.Sprintf(`{"code":"invalid_request","message":"The gateway name is too long for the %q environment: its handle %q must be %d characters or fewer."}`,
+		environment, strings.Repeat("a", handleProbeLength), budget)
+}
+
+// boundPipelineName is the name the fake lists project two's pipeline under.
+func (p *starterPlatform) boundPipelineName() string {
+	if p.pipelineName != "" {
+		return p.pipelineName
+	}
+	return "apip-test-pipeline-2"
+}
+
+// gatewayPipeline is the name the fake lists project one's pipeline under.
+func (p *starterPlatform) gatewayPipeline() string {
+	if p.gatewayPipelineName != "" {
+		return p.gatewayPipelineName
+	}
+	return "apip-test-pipeline-1"
 }
 
 func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
@@ -3138,15 +3224,56 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		require.Equal(t, "Bearer console-token", r.Header.Get("Authorization"))
+		p.requests++
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/projects/default/deployment-pipeline":
-			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": "default"})
+		case r.Method == http.MethodPost && r.URL.Path == "/projects":
+			var request map[string]string
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			if p.projectCreate != 0 {
+				w.WriteHeader(p.projectCreate)
+				_, _ = w.Write([]byte(`{"code":"refused","message":"the project was not created"}`))
+				return
+			}
+			p.createdProjects = append(p.createdProjects, request["id"])
+			p.noProjectOne = p.noProjectOne && request["id"] != projectOne
+			p.noProjectTwo = p.noProjectTwo && request["id"] != projectTwo
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": request["id"]})
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/"+projectOne && p.noProjectOne:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/"+projectOne:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": projectOne})
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/"+projectTwo && p.noProjectTwo:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/"+projectTwo:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": projectTwo})
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/"+projectTwo+"/deployment-pipeline":
+			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": p.boundPipelineName()})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/projects/") && strings.Count(r.URL.Path, "/") == 2:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/environments":
+			environments := p.environments
+			if environments == nil {
+				environments = []map[string]any{}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"list": environments})
+		case r.Method == http.MethodDelete:
+			p.deleted = append(p.deleted, r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/"+projectOne+"/deployment-pipeline" && p.noPipelineBinding:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/"+projectOne+"/deployment-pipeline":
+			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": p.gatewayPipeline()})
+		case r.Method == http.MethodGet && r.URL.Path == "/pipelines" && p.pipelinesAnswer != 0:
+			w.WriteHeader(p.pipelinesAnswer)
 		case r.Method == http.MethodGet && r.URL.Path == "/pipelines":
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
 				{"name": "other", "promotionPaths": []promotionPath{{SourceEnvironment: "elsewhere"}}},
-				{"name": "default", "promotionPaths": p.paths},
+				{"name": p.gatewayPipeline(), "promotionPaths": p.paths},
+				{"name": p.boundPipelineName(), "promotionPaths": p.pipelinePaths},
 			}})
 		case r.Method == http.MethodGet && r.URL.Path == "/managed-gateways":
+			p.gatewayLists++
 			if kind := r.URL.Query().Get("functionalityType"); kind != "" {
 				require.Equal(t, regularGatewayKind, kind)
 			}
@@ -3154,6 +3281,11 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodPost && r.URL.Path == "/managed-gateways":
 			var body map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			if handle, _ := body["handle"].(string); len(handle) == handleProbeLength {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(handleRefusal(body["environment"].(string))))
+				return
+			}
 			p.created = append(p.created, body)
 			if p.createAs != 0 {
 				w.WriteHeader(p.createAs)
@@ -3204,7 +3336,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				status = "failed"
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-api-portals/"), "status": status})
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/graphql-apis", "/self-hosted-gateways"}, r.URL.Path):
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/graphql-apis", "/subscription-plans", "/self-hosted-gateways"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -3224,7 +3356,7 @@ func (p *starterPlatform) api(t *testing.T) organisationAPI {
 const testDefaultGateway = defaultGatewayDisplayName + "-abcde234"
 
 func ensureForTest(t *testing.T, platform *starterPlatform) (gatewayOutcome, error) {
-	return ensureDefaultGateway(context.Background(), platform.api(t), testDefaultGateway, slog.Default())
+	return ensureDefaultGateway(context.Background(), platform.api(t), testDefaultGateway, projectOne, slog.Default())
 }
 
 func developmentPipeline() []promotionPath {
@@ -3241,7 +3373,7 @@ func TestEnsureDefaultGatewayLeavesAnActiveGatewayAlone(t *testing.T) {
 	}}
 	outcome, err := ensureForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, gatewayOutcome{ID: "development-default"}, outcome, "an existing gateway is used, not created")
+	require.Equal(t, gatewayOutcome{ID: "development-default", Environment: "development"}, outcome, "an existing gateway is used, not created")
 	require.Empty(t, platform.created)
 }
 
@@ -3253,7 +3385,7 @@ func TestEnsureDefaultGatewayCreatesOneWhenNoneIsUsable(t *testing.T) {
 	}}
 	outcome, err := ensureForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, gatewayOutcome{ID: "development-" + testDefaultGateway, Created: true}, outcome)
+	require.Equal(t, gatewayOutcome{ID: "development-" + testDefaultGateway, Environment: "development", Created: true}, outcome)
 	require.Len(t, platform.created, 1)
 	require.Equal(t, map[string]any{
 		"displayName": testDefaultGateway, "environment": "development", "functionalityType": regularGatewayKind,
@@ -3298,6 +3430,12 @@ func TestEnsureDefaultGatewayRefusesOtherAnswers(t *testing.T) {
 	platform := &starterPlatform{paths: developmentPipeline(), createAs: http.StatusForbidden}
 	_, err := ensureForTest(t, platform)
 	require.ErrorContains(t, err, "creating the default gateway")
+	require.ErrorIs(t, err, errUnavailable, "a platform that refuses the token cannot be asked to build a gateway")
+
+	platform = &starterPlatform{paths: developmentPipeline(), createAs: http.StatusInternalServerError}
+	_, err = ensureForTest(t, platform)
+	require.ErrorContains(t, err, "creating the default gateway")
+	require.NotErrorIs(t, err, errUnavailable, "a gateway the platform failed to create is a failure")
 }
 
 func TestEnsureDefaultGatewayNeverCreatesTheGatewayAPinNames(t *testing.T) {
@@ -3307,12 +3445,49 @@ func TestEnsureDefaultGatewayNeverCreatesTheGatewayAPinNames(t *testing.T) {
 	}}
 	_, err := ensureForTest(t, platform)
 	require.ErrorContains(t, err, cloudGatewayPinEnv)
+	require.NotErrorIs(t, err, errUnavailable, "a pinned gateway the organisation lacks fails the run")
 	require.Empty(t, platform.created)
 
 	platform.gateways = append(platform.gateways, map[string]any{"id": "wanted", "environment": "development", "status": "ACTIVE", "isActive": true})
 	outcome, err := ensureForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, gatewayOutcome{ID: "wanted"}, outcome)
+	require.Equal(t, gatewayOutcome{ID: "wanted", Environment: "development"}, outcome)
+}
+
+func TestEnsureDefaultGatewayUsesOnlyAGatewayOfAnEntryEnvironment(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	paths := []promotionPath{{SourceEnvironment: "development", TargetEnvironments: []string{"apip-test-e1"}}}
+	targetGateway := map[string]any{"id": "apip-test-e1-default", "environment": "apip-test-e1", "status": "ACTIVE", "isActive": true}
+
+	platform := &starterPlatform{paths: paths, gateways: []map[string]any{
+		targetGateway,
+		{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true},
+	}}
+	outcome, err := ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, gatewayOutcome{ID: "development-default", Environment: "development"}, outcome,
+		"a gateway of a promotion target is passed over even when it is listed first")
+	require.Empty(t, platform.created)
+
+	platform = &starterPlatform{paths: paths, activeAt: 2, gateways: []map[string]any{targetGateway}}
+	outcome, err = ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, gatewayOutcome{ID: "development-" + testDefaultGateway, Environment: "development", Created: true}, outcome,
+		"with no gateway in the entry environment, one is created there")
+}
+
+func TestEnsureDefaultGatewayRefusesAPinnedGatewayOfAPromotionTarget(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "apip-test-e1-default")
+	platform := &starterPlatform{
+		paths: []promotionPath{{SourceEnvironment: "development", TargetEnvironments: []string{"apip-test-e1"}}},
+		gateways: []map[string]any{
+			{"id": "apip-test-e1-default", "environment": "apip-test-e1", "status": "ACTIVE", "isActive": true},
+		},
+	}
+	_, err := ensureForTest(t, platform)
+	require.ErrorContains(t, err, "not an active regular gateway in an entry environment")
+	require.NotErrorIs(t, err, errUnavailable, "a pinned gateway the platform cannot deploy to fails the run")
+	require.Empty(t, platform.created)
 }
 
 func TestEnsureDefaultGatewayNeedsAPipeline(t *testing.T) {
@@ -3320,6 +3495,7 @@ func TestEnsureDefaultGatewayNeedsAPipeline(t *testing.T) {
 	platform := &starterPlatform{}
 	_, err := ensureForTest(t, platform)
 	require.ErrorContains(t, err, "no environment")
+	require.NotErrorIs(t, err, errUnavailable, "a pipeline with no stage to build in fails the run: the starter cannot fix it")
 }
 
 func TestDefaultGatewayEnvironmentPrefersDevelopmentThenTheFirstStage(t *testing.T) {
@@ -3330,7 +3506,15 @@ func TestDefaultGatewayEnvironmentPrefersDevelopmentThenTheFirstStage(t *testing
 	}{
 		"development is reached": {developmentPipeline(), "development", false},
 		"development is a target": {[]promotionPath{{SourceEnvironment: "dev-a", TargetEnvironments: []string{"development"}}},
-			"development", false},
+			"dev-a", false},
+		"development is between two stages": {[]promotionPath{
+			{SourceEnvironment: "build", TargetEnvironments: []string{"development"}},
+			{SourceEnvironment: "development", TargetEnvironments: []string{"prod"}},
+		}, "build", false},
+		"development is one of several entries": {[]promotionPath{
+			{SourceEnvironment: "alpha", TargetEnvironments: []string{"prod"}},
+			{SourceEnvironment: "development", TargetEnvironments: []string{"prod"}},
+		}, "development", false},
 		"the first stage in name order": {[]promotionPath{
 			{SourceEnvironment: "zeta", TargetEnvironments: []string{"prod"}},
 			{SourceEnvironment: "alpha", TargetEnvironments: []string{"prod"}},
@@ -3356,30 +3540,19 @@ func TestDefaultGatewayEnvironmentPrefersDevelopmentThenTheFirstStage(t *testing
 func TestStarterStartNeedsTheConsoleToken(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "")
 	topo := cloudAPIStub(t, func(http.ResponseWriter, *http.Request) {})
-	starter, err := NewStarter(nil)
+	starter, err := NewStarter()
 	require.NoError(t, err)
 	require.ErrorContains(t, starter.Start(context.Background(), topo), cloudConsoleAccessTokenEnv)
 }
 
-func TestStarterStartPreparesTheOrganisationOnce(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
-		{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true},
-	}}
-	var lists int
-	handler := platform.handler(t)
-	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/managed-gateways" && r.Method == http.MethodGet {
-			lists++
-		}
-		handler(w, r)
-	})
-	starter, err := NewStarter(nil)
-	require.NoError(t, err)
-	require.NoError(t, starter.Start(context.Background(), topo))
-	require.NoError(t, starter.Start(context.Background(), topo))
-	require.Equal(t, 1, lists, "the second runner shares the first one's preparation")
+func TestStarterSharesAPreconditionAcrossScenarios(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList()}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.checkScenario(context.Background(), "first", []precondition{gatewayOne}))
+	require.NoError(t, starter.checkScenario(context.Background(), "second", []precondition{gatewayOne}))
+
+	require.Equal(t, 1, platform.gatewayLists, "the second scenario shares the first one's check")
 }
 
 func TestFinalizerRemovesTheStartersGatewayAfterTheRunnersGateways(t *testing.T) {
@@ -3412,30 +3585,24 @@ func TestFinalizerRemovesTheStartersGatewayAfterTheRunnersGateways(t *testing.T)
 	}, gateways, "the starter's gateway goes last, and another run's default gateway stays")
 }
 
-func TestStarterHandsTheFinalizerWhatItWillCreate(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	finalizer := NewFinalizer()
-	starter, err := NewStarter(finalizer)
-	require.NoError(t, err)
+func TestStarterChecksNothingUntilAScenarioNeedsIt(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noPortals: true}
+	starter := starterAgainst(t, platform)
+	require.Zero(t, platform.requests, "starting the run asks the organisation nothing")
 
-	require.NoError(t, starter.Start(context.Background(), topo))
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario that needs nothing", nil))
+	require.Zero(t, platform.requests)
 
-	require.Len(t, platform.created, 1)
-	require.Equal(t, starter.gatewayDisplayName(), platform.created[0]["displayName"])
-	require.True(t, finalizer.finals.Tracked())
-	require.True(t, finalizer.finals.Owns([]string{"development-" + starter.gatewayDisplayName()}),
-		"the finalizer must recognise the gateway the starter created")
-	require.False(t, finalizer.finals.Owns([]string{"development-" + defaultGatewayDisplayName + "-zzzzz222"}))
-	finalizer.mu.Lock()
-	defer finalizer.mu.Unlock()
-	require.Len(t, finalizer.bases, 1, "the platform is known to the finalizer even if no scenario ran")
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario that needs its project", []precondition{projectOneNeed}))
+	require.Positive(t, platform.requests)
+	require.Zero(t, platform.gatewayLists, "no scenario needed a gateway")
+	require.Empty(t, platform.created)
+	require.Empty(t, platform.createdPortals, "no scenario needed a portal")
+	require.Empty(t, starter.Report())
 }
 
 func TestStarterGatewayNameFitsTheHandleLimitOfTheDevelopmentEnvironment(t *testing.T) {
-	starter, err := NewStarter(nil)
+	starter, err := NewStarter()
 	require.NoError(t, err)
 	const developmentHandleLimit = 15 // the platform allows 37 minus twice the environment name's length
 	require.LessOrEqual(t, len(starter.gatewayDisplayName()), developmentHandleLimit)
@@ -3444,11 +3611,16 @@ func TestStarterGatewayNameFitsTheHandleLimitOfTheDevelopmentEnvironment(t *test
 }
 
 func TestAGatewayTheOrganisationAlreadyHadIsUsedAndSurvivesTheFinalizer(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
 	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
 		{"id": "development-default", "displayName": "default", "environment": "development", "status": "ACTIVE", "isActive": true},
 	}}
+	starter := starterAgainst(t, platform)
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{gatewayOne}))
+	id, created := starter.Gateway()
+	require.Equal(t, "development-default", id)
+	require.False(t, created)
+	require.Empty(t, platform.created)
+
 	var mu sync.Mutex
 	var deletes []string
 	handler := platform.handler(t)
@@ -3465,19 +3637,47 @@ func TestAGatewayTheOrganisationAlreadyHadIsUsedAndSurvivesTheFinalizer(t *testi
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
 	finalizer := NewFinalizer()
-	starter, err := NewStarter(finalizer)
-	require.NoError(t, err)
-
-	require.NoError(t, starter.StartAt(context.Background(), base))
-	id, created := starter.Gateway()
-	require.Equal(t, "development-default", id)
-	require.False(t, created)
-	require.Empty(t, platform.created)
+	finalizer.Watch(base, "abcde234")
 
 	removed, err := finalizer.Finalize(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, removed)
 	require.Empty(t, deletes, "nothing the run did not create is deleted")
+}
+
+func TestWhatTheStarterBuiltSurvivesTheFinalizerOfARun(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	starter := starterAgainst(t, platform)
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{gatewayOne, preAPIPortal}))
+	gateway, gatewayCreated := starter.Gateway()
+	require.True(t, gatewayCreated)
+	_, portalCreated := starter.Portal()
+	require.True(t, portalCreated)
+
+	stub := newLeftoverStub()
+	stub.lists["/managed-gateways"] = []map[string]any{
+		{"id": gateway, "displayName": starter.gatewayDisplayName(), "environment": "development"},
+		{"id": "development-syn-gw-abcde234-1", "environment": "development"},
+	}
+	stub.lists["/managed-api-portals"] = []map[string]any{
+		{"id": starter.portalName(), "name": starter.portalName(), "status": "active"},
+	}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	finalizer := NewFinalizer()
+	finalizer.Watch(base, "abcde234")
+
+	removed, err := finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1", "the run's own gateway goes")
+	require.NotContains(t, removed, "/managed-gateways/"+gateway, "the starter's gateway stays for the next run")
+	for _, id := range stub.deleted {
+		require.NotContains(t, id, starter.portalName())
+		require.NotContains(t, id, starter.gatewayDisplayName())
+	}
 }
 
 func TestAGatewayTheStarterCreatesGetsAtLeastFiveMinutesToBecomeActive(t *testing.T) {
@@ -3809,71 +4009,6 @@ func TestDeleteManagedGatewayAcceptsOnlyAcceptedAndNoContent(t *testing.T) {
 	require.ErrorContains(t, steps.deleteManagedGateway(ctx), "409")
 	require.NoError(t, steps.requestGatewayDeletion(ctx), "a refusal is for the scenario to assert on")
 	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusConflict))
-}
-
-func TestRegularGatewayOfPrefersAnActiveGatewayOfTheEnvironment(t *testing.T) {
-	items := []map[string]any{
-		{"id": "ai", "environment": "e-1", "functionalityType": "ai", "isActive": true},
-		{"id": "other", "environment": "e-2", "isActive": true},
-		{"id": "building", "environment": "e-1", "isActive": false},
-		{"id": "ready", "environment": "e-1", "isActive": true},
-	}
-	require.Equal(t, "ready", regularGatewayOf(items, "e-1"))
-	require.Equal(t, "building", regularGatewayOf(items[:3], "e-1"))
-	require.Empty(t, regularGatewayOf(items, "e-3"))
-}
-
-func TestEnsureEnvironmentGatewayUsesTheOneTheEnvironmentLists(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var posted bool
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			posted = true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "e-1-default", "environment": "e-1", "isActive": false}}})
-	})
-	id, err := steps.ensureEnvironmentGateway(ctx, "e-1")
-	require.NoError(t, err)
-	require.Equal(t, "e-1-default", id)
-	require.False(t, posted, "no gateway is built beside the one the platform provisioned")
-	require.Empty(t, registry.Pending())
-}
-
-func TestEnsureEnvironmentGatewayReportsAListingThatNeverWorked(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var posted bool
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			posted = true
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"code": "internal_error"})
-	})
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	_, err := steps.ensureEnvironmentGateway(ctx, "e-1")
-	require.ErrorContains(t, err, `listing the gateways of environment "e-1"`)
-	require.False(t, posted, "no gateway is built because the listing failed")
-}
-
-func TestEnsureRunnerEnvironmentsKeepsWhatTheRunnerHolds(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var posted bool
-	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			posted = true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"name": "e-a-1"}, {"name": "e-b-2"}}})
-	})
-	for n, name := range []string{"e-a-1", "e-b-2"} {
-		local.Set(numberedKey(keySyntheticEnvironmentPrefix, n+1), name)
-		local.Set(numberedKey(keySyntheticGatewayPrefix, n+1), "gw-"+name)
-	}
-	local.Set(keySyntheticEnvironments, "e-a-1,e-b-2")
-
-	require.NoError(t, steps.ensureRunnerEnvironments(ctx, 2))
-	require.False(t, posted, "environments the runner already holds are not built again")
-	require.Equal(t, "e-a-1", optionalValue(ctx, keyEnvironmentName))
-	require.ErrorContains(t, steps.ensureRunnerEnvironments(ctx, 0), "between 1 and")
 }
 
 func TestRecordDeploymentsKeepsEachGatewaysDeployment(t *testing.T) {
@@ -4518,13 +4653,22 @@ type fakePortalSite struct {
 	mu       sync.Mutex
 	users    map[string]string
 	sessions map[string]bool
-	flows    []map[string]any
+	// signIns counts the sessions the callback started, so a session is never named twice.
+	signIns int
+	flows   []map[string]any
 	// wrongPasswordStatus is how the identity provider answers a wrong password: 200 with an
 	// ERROR flow status, or a client error.
 	wrongPasswordStatus int
+	// accountCreatedActions, when not nil, makes the registration answer with a prompt that
+	// confirms the new account and offers these actions, instead of signing the consumer in.
+	accountCreatedActions []string
 	// clientID and callbackHost let a test break the authorization request the portal sends.
 	clientID     string
 	callbackHost string
+	// consumer is the portal's REST API for the signed-in consumer.
+	consumer fakeConsumerAPI
+	// landingStatus, when set, is how the page the sign-in lands on answers.
+	landingStatus int
 }
 
 const fakeIdentityPrefix = "/t/acme"
@@ -4572,10 +4716,22 @@ func (f *fakePortalSite) servePortal(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		session := "signed-in-" + strconv.Itoa(len(f.sessions))
+		session := "signed-in-" + strconv.Itoa(f.signIns)
+		f.signIns++
 		f.sessions[session] = true
+		// Like the portal, the callback sets the replaced session's CSRF cookie; the landing page sets the new one.
 		http.SetCookie(w, &http.Cookie{Name: "portal.sid", Value: session, Path: "/api-portal"})
+		http.SetCookie(w, &http.Cookie{Name: portalCSRFCookie, Value: "csrf-anonymous", Path: "/api-portal"})
 		http.Redirect(w, r, view, http.StatusFound)
+	case view:
+		if f.landingStatus != 0 {
+			w.WriteHeader(f.landingStatus)
+			return
+		}
+		if session := f.sessionOf(r); f.sessions[session] {
+			http.SetCookie(w, &http.Cookie{Name: portalCSRFCookie, Value: "csrf-" + session, Path: "/api-portal"})
+		}
+		_, _ = w.Write([]byte("<html>home</html>"))
 	case view + "/applications":
 		if !f.sessions[f.sessionOf(r)] {
 			http.Redirect(w, r, view+"/login", http.StatusSeeOther)
@@ -4586,6 +4742,10 @@ func (f *fakePortalSite) servePortal(w http.ResponseWriter, r *http.Request) {
 		delete(f.sessions, f.sessionOf(r))
 		http.Redirect(w, r, f.idp.URL+fakeIdentityPrefix+"/oauth2/logout", http.StatusFound)
 	default:
+		if strings.HasPrefix(r.URL.Path, portalAPIBasePath+"/") {
+			f.serveConsumerAPI(w, r)
+			return
+		}
 		f.t.Errorf("unexpected portal request %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
 	}
@@ -4612,6 +4772,19 @@ func (f *fakePortalSite) serveIdentity(w http.ResponseWriter, r *http.Request) {
 		case body["action"] == flowActionSubmit && inputs["email"] != nil:
 			require.Equal(f.t, "ch-2", body["challengeToken"])
 			f.users[inputs["username"].(string)] = inputs["password"].(string)
+			if f.accountCreatedActions != nil {
+				actions := make([]map[string]string, 0, len(f.accountCreatedActions))
+				for _, ref := range f.accountCreatedActions {
+					actions = append(actions, map[string]string{"ref": ref, "nextNode": "authorization"})
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": "INCOMPLETE", "type": "VIEW",
+					"challengeToken": "ch-3", "data": map[string]any{"actions": actions}})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": flowStatusComplete, "assertion": "the-assertion"})
+		case body["action"] == flowActionContinue:
+			require.Equal(f.t, "ch-3", body["challengeToken"])
+			require.Contains(f.t, f.accountCreatedActions, flowActionContinue, "continue is taken only when the prompt offers it")
 			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": flowStatusComplete, "assertion": "the-assertion"})
 		case body["action"] == flowActionSubmit:
 			require.Equal(f.t, "ch-1", body["challengeToken"])
@@ -4649,6 +4822,9 @@ func signInSteps(t *testing.T, site *fakePortalSite) (*Steps, context.Context) {
 	steps := &Steps{funnel: httpx.NewFunnel(client, 0, 0), client: client}
 	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
 	require.NoError(t, tcontext.Set(ctx, keyAPIPortalURL, site.portal.URL))
+	registry := cleanup.NewRegistry(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, registerConsumerDeleters(registry, (&Steps{client: client}).signInConsumer))
+	require.NoError(t, cleanup.Install(ctx, registry))
 	return steps, ctx
 }
 
@@ -4724,6 +4900,45 @@ func TestSignUpThenSignInKeepsTheConsumersSession(t *testing.T) {
 	require.Equal(t, []any{nil, flowActionSubmit}, flowActions(site.flows))
 	require.NoError(t, steps.assertConsumerSignedIn(ctx))
 	require.ErrorContains(t, steps.assertSignInRefused(ctx), "accepted the sign-in")
+}
+
+func TestSignUpContinuesPastThePromptThatConfirmsTheAccount(t *testing.T) {
+	site := newFakePortalSite(t)
+	site.accountCreatedActions = []string{flowActionContinue}
+	steps, ctx := signInSteps(t, site)
+
+	require.NoError(t, steps.signUpConsumer(ctx))
+	require.Equal(t, []any{nil, flowActionSignUp, flowActionSubmit, flowActionContinue}, flowActions(site.flows))
+	require.Nil(t, site.flows[3]["inputs"], "continue submits no inputs")
+	require.NoError(t, steps.assertConsumerSignedIn(ctx))
+
+	site.flows = nil
+	require.NoError(t, steps.signInConsumer(ctx), "the consumer the flow created signs in again")
+	require.Equal(t, []any{nil, flowActionSubmit}, flowActions(site.flows))
+}
+
+func TestSignUpFailsWhenThePromptThatConfirmsTheAccountOffersNoWayOn(t *testing.T) {
+	site := newFakePortalSite(t)
+	site.accountCreatedActions = []string{}
+	steps, ctx := signInSteps(t, site)
+
+	err := steps.signUpConsumer(ctx)
+	require.ErrorContains(t, err, "refused the consumer's sign-in: the flow ended as INCOMPLETE")
+	require.Equal(t, []any{nil, flowActionSignUp, flowActionSubmit}, flowActions(site.flows), "an action the prompt does not offer is not sent")
+}
+
+func TestOnlyOptionalActionsFollow(t *testing.T) {
+	require.True(t, onlyOptional(nil), "no action follows")
+	require.True(t, onlyOptional([]flowAction{{action: flowActionContinue, optional: true}}))
+	require.False(t, onlyOptional([]flowAction{{action: flowActionContinue, optional: true}, {action: flowActionSubmit}}))
+}
+
+func TestFlowStepOffersOnlyTheActionsItsPromptLists(t *testing.T) {
+	var step identityFlowStep
+	require.NoError(t, json.Unmarshal([]byte(`{"flowStatus":"INCOMPLETE","data":{"actions":[{"ref":"action_001","nextNode":"credentials_auth"}]}}`), &step))
+	require.True(t, step.offers(flowActionSubmit))
+	require.False(t, step.offers(flowActionContinue))
+	require.False(t, identityFlowStep{}.offers(flowActionSubmit), "a step without a prompt offers nothing")
 }
 
 func flowActions(flows []map[string]any) []any {
@@ -5135,6 +5350,32 @@ func TestAssertCloudResponseStatusAndErrorCode(t *testing.T) {
 	require.ErrorContains(t, steps.assertCloudErrorCode(ctx, "UNAUTHORIZED"), "reading the error code")
 }
 
+// skipWhilePortalCreationIsOff skips a test that builds a portal while starterCreatesPortal is false.
+func skipWhilePortalCreationIsOff(t *testing.T) {
+	t.Helper()
+	if !starterCreatesPortal {
+		t.Skip("the starter does not create a portal while starterCreatesPortal is false")
+	}
+}
+
+func TestStarterSkipsThePortalScenariosAndFailsTheRunInsteadOfCreatingAPortalWhileCreationIsOff(t *testing.T) {
+	if starterCreatesPortal {
+		t.Skip("the starter creates a portal")
+	}
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 1}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}), godog.ErrSkip)
+
+	require.Empty(t, platform.createdPortals, "no portal is created")
+	require.ErrorContains(t, starter.Failures(), "the starter does not create one", "a portal that is not found fails the run")
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "api-portal could not be prepared, 1 scenario(s) skipped")
+
+	existing := &starterPlatform{portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
+	require.NoError(t, starterAgainst(t, existing).checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}),
+		"an active portal the organisation has is still used")
+}
+
 func ensurePortalForTest(t *testing.T, platform *starterPlatform) (portalOutcome, error) {
 	return ensureDefaultPortal(context.Background(), platform.api(t), defaultPortalName+"-abcde234", slog.Default())
 }
@@ -5162,6 +5403,7 @@ func TestEnsureDefaultPortalWaitsForAPortalThatIsBeingBuilt(t *testing.T) {
 }
 
 func TestEnsureDefaultPortalCreatesOneWhenTheOrganisationHasNone(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalActiveAt: 2}
 	got, err := ensurePortalForTest(t, platform)
 	require.NoError(t, err)
@@ -5173,6 +5415,7 @@ func TestEnsureDefaultPortalCreatesOneWhenTheOrganisationHasNone(t *testing.T) {
 }
 
 func TestEnsureDefaultPortalIgnoresPortalsThatCannotServe(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalActiveAt: 1, portals: []map[string]any{
 		{"id": "broken", "status": "failed"},
 		{"id": "going", "status": "deleting"},
@@ -5184,12 +5427,14 @@ func TestEnsureDefaultPortalIgnoresPortalsThatCannotServe(t *testing.T) {
 }
 
 func TestEnsureDefaultPortalStopsAtOnceWhenThePortalFails(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalFails: true}
 	_, err := ensurePortalForTest(t, platform)
 	require.ErrorContains(t, err, "failed to provision")
 }
 
 func TestEnsureDefaultPortalDoesNotWaitForAPortalAConflictLeftNowhere(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalAbsent: true}
 	_, err := ensurePortalForTest(t, platform)
 	require.ErrorContains(t, err, "creating the managed API Portal")
@@ -5197,74 +5442,19 @@ func TestEnsureDefaultPortalDoesNotWaitForAPortalAConflictLeftNowhere(t *testing
 }
 
 func TestEnsureDefaultPortalWaitsForThePortalAConflictPointsAt(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalActiveAt: 1}
 	got, err := ensurePortalForTest(t, platform)
 	require.NoError(t, err)
 	require.Equal(t, "dap-abcde234", got.ID)
 }
 
-func TestStarterPreparesAPortalAndHandsItToTheFinalizer(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	finalizer := NewFinalizer()
-	starter, err := NewStarter(finalizer)
-	require.NoError(t, err)
-
-	require.NoError(t, starter.Start(context.Background(), topo))
-
-	require.Len(t, platform.createdPortals, 1)
-	require.Equal(t, starter.portalName(), platform.createdPortals[0]["handle"])
-	id, created := starter.Portal()
-	require.Equal(t, starter.portalName(), id)
-	require.True(t, created)
-	require.True(t, finalizer.finals.Owns([]string{starter.portalName()}),
-		"the finalizer must recognise the portal the starter created")
-}
-
-func TestStarterLeavesPortalsAloneWhenThePortalRunnerIsNotSelected(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(NewFinalizer())
-	require.NoError(t, err)
-	starter.SelectRunners([]string{"apip-basic", "apip-project"})
-
-	require.NoError(t, starter.Start(context.Background(), topo))
-
-	require.Empty(t, platform.createdPortals, "no selected runner needs a portal")
-	id, created := starter.Portal()
-	require.Empty(t, id)
-	require.False(t, created)
-}
-
-func TestStarterPreparesAPortalWhenThePortalRunnerIsSelected(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(NewFinalizer())
-	require.NoError(t, err)
-	starter.SelectRunners([]string{"apip-basic", portalRunner})
-
-	require.NoError(t, starter.Start(context.Background(), topo))
-
-	require.Len(t, platform.createdPortals, 1)
-}
-
-func TestStarterSkipsThePortalWhenTheOrganisationAlreadyHasOne(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
+func TestStarterUsesThePortalTheOrganisationAlreadyHas(t *testing.T) {
 	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1,
 		portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(NewFinalizer())
-	require.NoError(t, err)
-	starter.SelectRunners([]string{portalRunner})
+	starter := starterAgainst(t, platform)
 
-	require.NoError(t, starter.Start(context.Background(), topo))
+	require.NoError(t, starter.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}))
 
 	require.Empty(t, platform.createdPortals)
 	id, created := starter.Portal()
@@ -5273,7 +5463,7 @@ func TestStarterSkipsThePortalWhenTheOrganisationAlreadyHasOne(t *testing.T) {
 }
 
 func TestStarterPortalHandleIsValid(t *testing.T) {
-	starter, err := NewStarter(nil)
+	starter, err := NewStarter()
 	require.NoError(t, err)
 	handle := starter.portalName()
 	require.GreaterOrEqual(t, len(handle), 3)
@@ -5673,47 +5863,675 @@ func TestRequestPortalUnderDeletedHandleRepeatsARefusalThatMayClear(t *testing.T
 	}
 }
 
-func startStarterAgainst(t *testing.T, platform *starterPlatform) (*Starter, error) {
-	t.Helper()
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(nil)
-	require.NoError(t, err)
-	return starter, starter.Start(context.Background(), topo)
-}
-
 func activeGatewayList() []map[string]any {
 	return []map[string]any{{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true}}
 }
 
-func TestStarterSkipsThePortalRunnerWhenThePortalCannotBePrepared(t *testing.T) {
-	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noPortals: true, portalFails: true}
-	starter, err := startStarterAgainst(t, platform)
-	require.NoError(t, err, "a portal that cannot be built does not fail the run")
-	require.ErrorContains(t, starter.PortalUnavailable(), "failed to provision")
-
-	require.ErrorIs(t, starter.skipScenario("features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
-	require.ErrorIs(t, starter.skipScenario("/work/suites/cloud/features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
-	require.NoError(t, starter.skipScenario("features/apip_basic.feature", "a scenario of another runner"))
-
-	id, _ := starter.Gateway()
-	require.Equal(t, "development-default", id, "the gateway is still prepared for the other runners")
-}
-
-func TestStarterSkipsNothingWhenThePortalIsPrepared(t *testing.T) {
-	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList()}
-	starter, err := startStarterAgainst(t, platform)
+// starterAgainst returns a starter that has been started against the fake organisation.
+func starterAgainst(t *testing.T, platform *starterPlatform) *Starter {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	starter, err := NewStarter()
 	require.NoError(t, err)
-	require.NoError(t, starter.PortalUnavailable())
-	require.NoError(t, starter.skipScenario("features/apip_portal.feature", "a portal scenario"))
+	starter.pollInterval = retry.BaseInterval
+	require.NoError(t, starter.StartAt(context.Background(), platform.api(t).base))
+	return starter
 }
 
-func TestStarterStillFailsTheRunWhenTheGatewayCannotBePrepared(t *testing.T) {
+// The preconditions a scenario of project one's runners, or of project two's, asks of its project.
+var (
+	projectOneNeed = scoped(preProject, projectOne)
+	projectTwoNeed = scoped(preProject, projectTwo)
+	gatewayOne     = scoped(preDefaultGateway, projectOne)
+	pipelineTwo    = scoped(prePipelineProj, projectTwo)
+	chainOfTwo     = scoped(prePipelineChain2, projectTwo)
+	chainOfThree   = scoped(prePipelineChain3, projectTwo)
+)
+
+// chainGateways lists an active regular gateway with an endpoint in each environment.
+func chainGateways(environments ...string) []map[string]any {
+	gateways := make([]map[string]any, 0, len(environments))
+	for _, environment := range environments {
+		gateways = append(gateways, map[string]any{
+			"id": environment + "-gateway", "environment": environment, "status": "ACTIVE", "isActive": true,
+			"endpoints": []any{"https://" + environment + ".gateway.example"},
+		})
+	}
+	return gateways
+}
+
+// promotionChainPaths is a pipeline that leads from the first environment through each next one.
+func promotionChainPaths(environments ...string) []promotionPath {
+	var paths []promotionPath
+	for i := 0; i+1 < len(environments); i++ {
+		paths = append(paths, promotionPath{SourceEnvironment: environments[i], TargetEnvironments: []string{environments[i+1]}})
+	}
+	return paths
+}
+
+func TestNeedsOfStepsNamesWhatEachStepAsksOfTheOrganisation(t *testing.T) {
+	chainOf2 := "I find a promotion chain of 2 environments with an active gateway each in the project's deployment pipeline"
+	chainOf3 := "I find a promotion chain of 3 environments with an active gateway each in the project's deployment pipeline"
+	pipelineOne := scoped(prePipelineProj, projectOne)
+	for name, tc := range map[string]struct {
+		steps   []string
+		project string
+		want    []precondition
+	}{
+		"nothing, as in a sign-in scenario": {[]string{"I obtain an APIP cloud console token", `I send a "GET" request to "x" until status 200`}, projectOne,
+			[]precondition(nil)},
+		"reading the test project": {[]string{"I read the APIP test project"}, projectTwo, []precondition{projectTwoNeed}},
+		"creating an API in the test project": {[]string{"I create a synthetic REST API in the APIP test project with:"}, projectOne,
+			[]precondition{projectOneNeed}},
+		"project and gateway": {[]string{"I find the APIP test project", "I find an active APIP gateway"}, projectOne,
+			[]precondition{projectOneNeed, gatewayOne}},
+		"portal": {[]string{"I find an active managed API Portal"}, projectTwo,
+			[]precondition{preAPIPortal}},
+		"environment to host a managed gateway": {[]string{"I select an existing APIP environment for a managed gateway"}, projectOne,
+			[]precondition{preEnvironment}},
+		"environment to register a self-hosted gateway": {[]string{"I select an existing APIP environment for a self-hosted gateway"}, projectTwo,
+			[]precondition{preEnvironment}},
+		"a second environment": {[]string{"I select an existing APIP environment other than the active gateway's for a managed gateway"}, projectOne,
+			[]precondition{gatewayOne, preSecondEnv}},
+		"the gateway the scenario before built there": {[]string{"I work with synthetic managed APIP gateway 2"}, projectOne,
+			[]precondition{gatewayOne, preSecondEnv}},
+		"the first gateway the scenario before built": {[]string{"I work with synthetic managed APIP gateway 1"}, projectOne,
+			[]precondition{gatewayOne, preSecondEnv}},
+		"the configuration of the gateway the setup scenario built": {[]string{"I work with the configuration of synthetic managed APIP gateway 1"}, projectOne,
+			[]precondition{gatewayOne}},
+		"the pipeline project of project one": {[]string{"I find the pipeline-bound APIP project"}, projectOne,
+			[]precondition{pipelineOne}},
+		"the pipeline project of project two": {[]string{"I find the pipeline-bound APIP project"}, projectTwo,
+			[]precondition{pipelineTwo}},
+		"a chain of 2": {[]string{chainOf2}, projectTwo, []precondition{pipelineTwo, chainOfTwo}},
+		"a chain of 3": {[]string{chainOf3}, projectTwo, []precondition{pipelineTwo, chainOfThree}},
+		"report order, each once": {[]string{"I find an active managed API Portal", "I find an active APIP gateway", "I find an active APIP gateway", "I find the APIP test project"}, projectOne,
+			[]precondition{projectOneNeed, gatewayOne, preAPIPortal}},
+	} {
+		require.Equal(t, tc.want, needsOfSteps(tc.steps, tc.project), name)
+	}
+}
+
+func TestEveryPreconditionIsAskedForByAScenarioOfTheFeatureFiles(t *testing.T) {
+	var mu sync.Mutex
+	needs := map[string][]precondition{}
+	var out bytes.Buffer
+	godog.TestSuite{
+		ScenarioInitializer: func(sc *godog.ScenarioContext) {
+			sc.Before(func(ctx context.Context, scenario *godog.Scenario) (context.Context, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				needs[scenario.Name] = needsOfScenario(scenario)
+				return ctx, godog.ErrSkip
+			})
+		},
+		Options: &godog.Options{Format: "progress", Paths: []string{"../../features"}, NoColors: true, Output: &out},
+	}.Run()
+
+	asked := map[precondition]bool{}
+	var needingNothing int
+	for _, scenarioNeeds := range needs {
+		for _, need := range scenarioNeeds {
+			asked[need] = true
+		}
+		if len(scenarioNeeds) == 0 {
+			needingNothing++
+		}
+	}
+	for _, need := range allPreconditions {
+		if need == scoped(prePipelineChain3, projectOne) {
+			continue // the only scenario of project one that promotes needs a chain of 2
+		}
+		require.True(t, asked[need], "no scenario asks for %s: its step text may have changed", need)
+	}
+	require.Positive(t, needingNothing, "a scenario that uses no project, such as a sign-in one, asks for nothing")
+	for name, scenarioNeeds := range needs {
+		if slices.Contains(scenarioNeeds, projectOneNeed) {
+			require.Equal(t, projectOneNeed, scenarioNeeds[0], "the project is asked for first: "+name)
+		}
+		if slices.Contains(scenarioNeeds, projectTwoNeed) {
+			require.Equal(t, projectTwoNeed, scenarioNeeds[0], "the project is asked for first: "+name)
+		}
+	}
+	require.Equal(t, []precondition{pipelineTwo, chainOfThree},
+		needs["Promotion follows the environment chain of the pipeline in order"])
+	require.Equal(t, []precondition{projectOneNeed, gatewayOne},
+		needs["A REST API can be deployed and invoked through the gateway"])
+	require.Equal(t, []precondition{projectOneNeed, gatewayOne, preSecondEnv},
+		needs["A gateway requested with only a name and an environment is built, connects and reports its version, and the name can be used in another environment"])
+}
+
+func TestPreconditionsNamedFindsEveryPrecondition(t *testing.T) {
+	for _, need := range allPreconditions {
+		got, err := preconditionsNamed(string(need))
+		require.NoError(t, err)
+		require.Equal(t, []precondition{need}, got)
+	}
+	require.Equal(t, []string{"project", "default-gateway", "environment", "second-environment",
+		"pipeline-project", "pipeline-chain-2", "pipeline-chain-3", "api-portal"}, Preconditions())
+	got, err := preconditionsNamed("pipeline-chain-2")
+	require.NoError(t, err)
+	require.Equal(t, []precondition{scoped(prePipelineChain2, projectOne), chainOfTwo}, got, "a project-scoped name stands for every project")
+	_, err = preconditionsNamed("a gateway")
+	require.ErrorContains(t, err, "unknown precondition")
+}
+
+func TestErrorStatusReadsTheStatusOfAnUnexpectedAnswer(t *testing.T) {
+	answer := responseError(&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`{}`)})
+	require.Equal(t, http.StatusNotFound, errorStatus(answer))
+	require.Equal(t, http.StatusNotFound, errorStatus(fmt.Errorf("reading the project: %w", answer)))
+	require.Contains(t, answer.Error(), "unexpected response")
+	require.Zero(t, errorStatus(errors.New("no answer")))
+	require.Zero(t, errorStatus(nil))
+}
+
+func TestStarterBuildsAGatewayAndAPortalWhenAScenarioNeedsThem(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{gatewayOne, preAPIPortal}))
+
+	require.Len(t, platform.created, 1)
+	require.Equal(t, starter.gatewayDisplayName(), platform.created[0]["displayName"])
+	require.Len(t, platform.createdPortals, 1)
+	require.Equal(t, starter.portalName(), platform.createdPortals[0]["handle"])
+	gateway, created := starter.Gateway()
+	require.Equal(t, "development-"+starter.gatewayDisplayName(), gateway)
+	require.True(t, created)
+	portal, created := starter.Portal()
+	require.Equal(t, starter.portalName(), portal)
+	require.True(t, created)
+	require.NoError(t, starter.Failures())
+	require.Empty(t, starter.Report())
+	require.Empty(t, platform.deleted, "what the starter built and made ready stays")
+}
+
+func TestStarterCreatesAProjectTheOrganisationLacks(t *testing.T) {
+	platform := &starterPlatform{noProjectOne: true}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{projectOneNeed}))
+	require.NoError(t, starter.checkScenario(context.Background(), "another", []precondition{projectOneNeed}))
+	require.NoError(t, starter.checkScenario(context.Background(), "a runner of project two", []precondition{projectTwoNeed}))
+
+	require.Equal(t, []string{projectOne}, platform.createdProjects, "only the missing project is created, once")
+	require.NoError(t, starter.Failures())
+	require.Empty(t, starter.Report())
+}
+
+func TestStarterFailsTheRunAndSkipsTheRunnersOfAProjectItCannotCreate(t *testing.T) {
+	for name, status := range map[string]int{
+		"the platform fails":                        http.StatusInternalServerError,
+		"the project is not there after a conflict": http.StatusConflict,
+	} {
+		platform := &starterPlatform{noProjectOne: true, projectCreate: status}
+		starter := starterAgainst(t, platform)
+
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{projectOneNeed}), godog.ErrSkip, name)
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "another", []precondition{projectOneNeed}), godog.ErrSkip, name)
+		require.NoError(t, starter.checkScenario(context.Background(), "a runner of project two", []precondition{projectTwoNeed}),
+			"%s: the runners of the other project are not skipped", name)
+
+		require.ErrorContains(t, starter.Failures(), `creating project "apip-test-project-1"`, name)
+		require.Contains(t, strings.Join(starter.Report(), "\n"), "project@apip-test-project-1 could not be prepared, 2 scenario(s) skipped", name)
+	}
+}
+
+func TestStarterSkipsWithoutFailingWhenTheTokenMayNotCreateAProject(t *testing.T) {
+	platform := &starterPlatform{noProjectOne: true, projectCreate: http.StatusForbidden}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{projectOneNeed}), godog.ErrSkip)
+
+	require.NoError(t, starter.Failures(), "a platform that refuses the token the request leaves the project unavailable")
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "project@apip-test-project-1 is not met, 1 scenario(s) skipped")
+}
+
+func TestStarterChecksAndCreatesTheProjectsFirstAndOnlyThem(t *testing.T) {
+	platform := &starterPlatform{noProjectTwo: true}
+	starter := starterAgainst(t, platform)
+
+	starter.CheckProjects(context.Background())
+
+	require.Equal(t, []string{projectTwo}, platform.createdProjects)
+	require.Empty(t, starter.Report())
+	require.NoError(t, starter.Failures())
+	require.Equal(t, 3, platform.requests, "two reads and the creation of the missing project: nothing else is looked at")
+
+	starter.CheckProjects(context.Background())
+	require.Equal(t, 3, platform.requests, "each project is checked once")
+}
+
+func TestARunnerOfAMissingProjectIsSkippedBeforeAnythingElseIsLookedAt(t *testing.T) {
+	platform := &starterPlatform{noProjectOne: true, projectCreate: http.StatusForbidden, paths: developmentPipeline(), gateways: activeGatewayList()}
+	starter := starterAgainst(t, platform)
+
+	err := starter.checkScenario(context.Background(), "a gateway scenario", []precondition{projectOneNeed, gatewayOne})
+
+	require.ErrorIs(t, err, godog.ErrSkip)
+	require.Zero(t, platform.gatewayLists, "the gateways are not looked at while the project is missing")
+	require.Equal(t, 2, platform.requests, "the project is read and its creation refused: nothing else is looked at")
+}
+
+func TestEachProjectGetsItsOwnDefaultGateway(t *testing.T) {
+	gatewayTwo := scoped(preDefaultGateway, projectTwo)
+	platform := &starterPlatform{noProjectOne: true, projectCreate: http.StatusForbidden,
+		pipelinePaths: developmentPipeline(), gateways: activeGatewayList()}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario of project one", []precondition{gatewayOne}), godog.ErrSkip,
+		"project one is missing")
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario of project two", []precondition{gatewayTwo}),
+		"project two is usable, so its scenarios are not skipped for project one")
+	require.Empty(t, platform.created, "the organisation's gateway is used")
+	id, created := starter.Gateway()
+	require.Equal(t, "development-default", id)
+	require.False(t, created)
+
+	noPipeline := &starterPlatform{gateways: activeGatewayList()}
+	other := starterAgainst(t, noPipeline)
+	require.ErrorIs(t, other.checkScenario(context.Background(), "a scenario of project two", []precondition{gatewayTwo}), godog.ErrSkip,
+		"project two's pipeline has no stage to look for a gateway in")
+	require.ErrorContains(t, other.Failures(), projectTwo)
+}
+
+func TestTheGatewayNeedsProjectOneItsPipelineToo(t *testing.T) {
+	platform := &starterPlatform{noProjectOne: true, projectCreate: http.StatusForbidden, paths: developmentPipeline(), gateways: activeGatewayList()}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a gateway scenario", []precondition{gatewayOne}), godog.ErrSkip)
+	require.NoError(t, starter.Failures())
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "project \"apip-test-project-1\" is not available")
+
+	other := starterAgainst(t, &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), gatewayPipelineName: "default"})
+	require.ErrorIs(t, other.checkScenario(context.Background(), "a gateway scenario", []precondition{gatewayOne}), godog.ErrSkip,
+		"the default pipeline is not used")
+	require.Contains(t, strings.Join(other.Report(), "\n"), `bound to deployment pipeline "default"`)
+}
+
+func TestStarterSkipsScenariosAndFailsTheRunWhenTheGatewaysPipelineCannotBeRead(t *testing.T) {
+	platform := &starterPlatform{noPipelineBinding: true}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{gatewayOne}), godog.ErrSkip)
+
+	require.Error(t, starter.Failures())
+	require.Empty(t, platform.created)
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "default-gateway@apip-test-project-1 could not be prepared")
+}
+
+func TestStarterSkipsWithoutFailingWhenTheTokenMayNotBuildAGateway(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), createAs: http.StatusForbidden}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "gateway scenario", []precondition{gatewayOne}), godog.ErrSkip)
+
+	require.NoError(t, starter.Failures(), "a token that may not build the resource is the organisation's limit, not a failure")
+	require.Len(t, starter.Report(), 1)
+	require.Empty(t, platform.deleted, "nothing was built, so nothing is removed")
+}
+
+func TestStarterFailsAndRemovesAGatewayItCouldNotMakeActive(t *testing.T) {
 	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity"}
-	starter, err := startStarterAgainst(t, platform)
-	require.ErrorContains(t, err, "default gateway")
-	require.NoError(t, starter.PortalUnavailable(), "the portal was never attempted")
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{gatewayOne}), godog.ErrSkip)
+
+	err := starter.Failures()
+	require.ErrorContains(t, err, "default-gateway")
+	require.ErrorContains(t, err, "no capacity")
+	require.ErrorContains(t, err, "was removed")
+	require.Equal(t, []string{"/managed-gateways/development-" + starter.gatewayDisplayName()}, platform.deleted)
+	_, created := starter.Gateway()
+	require.False(t, created, "a gateway that did not become active is not the one the scenarios use")
+}
+
+func TestStarterFailsAndRemovesAPortalItCouldNotMakeActive(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
+	platform := &starterPlatform{noPortals: true, portalFails: true}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}), godog.ErrSkip)
+
+	err := starter.Failures()
+	require.ErrorContains(t, err, "api-portal")
+	require.ErrorContains(t, err, "failed to provision")
+	require.Equal(t, []string{"/managed-api-portals/" + starter.portalName()}, platform.deleted)
+}
+
+func TestStarterDoesNotRemoveAGatewayItDidNotBuild(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity", gateways: []map[string]any{
+		{"id": "development-building", "environment": "development", "status": "PROVISIONING"},
+	}}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{gatewayOne}), godog.ErrSkip)
+
+	require.Error(t, starter.Failures())
+	require.Empty(t, platform.deleted, "a gateway the organisation already had is never removed")
+}
+
+func TestAFailedPreconditionSkipsOnlyTheScenariosThatNeedIt(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity", gateways: nil}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "needs a gateway", []precondition{projectOneNeed, gatewayOne}), godog.ErrSkip)
+	require.NoError(t, starter.checkScenario(context.Background(), "needs a portal", []precondition{preAPIPortal}),
+		"the organisation's portal is untouched by the gateway's failure")
+	require.NoError(t, starter.checkScenario(context.Background(), "needs the project", []precondition{projectOneNeed}))
+}
+
+func TestStarterChecksTheEnvironments(t *testing.T) {
+	t.Run("an organisation that lists none skips and fails the run", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{})
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}), godog.ErrSkip)
+		require.Error(t, starter.Failures(), "an environment the organisation lacks fails the run")
+		require.Contains(t, strings.Join(starter.Report(), "\n"), "environment could not be prepared")
+	})
+	t.Run("the default environment passes", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "development"}}})
+		require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}))
+	})
+	t.Run("an environment named with the suite's prefix passes", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "qa"}, {"name": "apip-test-e1"}}})
+		require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}))
+	})
+	t.Run("an environment whose name leaves no room for the suite's gateway names does not count", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "apip-test-environment"}}})
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}), godog.ErrSkip)
+		require.Error(t, starter.Failures())
+		require.Contains(t, strings.Join(starter.Report(), "\n"), "allows a gateway handle of 13 characters")
+	})
+	t.Run("environments other consoles own are not selected", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "qa"}, {"name": "staging"}}})
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}), godog.ErrSkip)
+		require.Error(t, starter.Failures())
+	})
+}
+
+func TestStarterChecksForASecondEnvironment(t *testing.T) {
+	gateways := chainGateways("development")
+	for name, tc := range map[string]struct {
+		environments []map[string]any
+		met          bool
+	}{
+		"development only": {[]map[string]any{{"name": "development"}}, false},
+		"a production environment does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "production", "isProduction": true}}, false},
+		"an environment an earlier run created does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "syn-env-abcde234-1"}}, false},
+		"an environment other consoles own does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "qa", "isProduction": false}}, false},
+		"an environment with a name too long for gateway names does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "apip-test-environment", "isProduction": false}}, false},
+		"a second non-production environment named with the prefix": {[]map[string]any{
+			{"name": "development"}, {"name": "apip-test-e1", "isProduction": false}}, true},
+	} {
+		starter := starterAgainst(t, &starterPlatform{paths: developmentPipeline(), gateways: gateways, environments: tc.environments})
+		err := starter.checkScenario(context.Background(), "a scenario", []precondition{preSecondEnv})
+		if tc.met {
+			require.NoError(t, err, name)
+			continue
+		}
+		require.ErrorIs(t, err, godog.ErrSkip, name)
+		require.Error(t, starter.Failures(), name)
+	}
+}
+
+func TestASecondEnvironmentNeedsTheDefaultGateway(t *testing.T) {
+	platform := &starterPlatform{noProjectOne: true, projectCreate: http.StatusForbidden, noPipelineBinding: true, environments: []map[string]any{{"name": "development"}, {"name": "apip-test-e1"}}}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preSecondEnv}), godog.ErrSkip)
+	require.NoError(t, starter.Failures())
+}
+
+func TestStarterChecksThePipelineProject(t *testing.T) {
+	chain := promotionChainPaths("development", "apip-test-e1")
+	for name, tc := range map[string]struct {
+		platform *starterPlatform
+		met      bool
+		report   string
+	}{
+		"the project is absent": {&starterPlatform{noProjectTwo: true, projectCreate: http.StatusForbidden}, false, `creating project "apip-test-project-2"`},
+		"its pipeline is another console's": {&starterPlatform{pipelinePaths: chain, pipelineName: "release"}, false,
+			`bound to deployment pipeline "release"`},
+		"the default pipeline is not used": {&starterPlatform{pipelinePaths: chain, pipelineName: "default"}, false,
+			`bound to deployment pipeline "default"`},
+		"its pipeline has no path":     {&starterPlatform{}, false, "has no promotion path"},
+		"its pipeline has paths":       {&starterPlatform{pipelinePaths: chain}, true, ""},
+		"its pipeline is named a test": {&starterPlatform{pipelinePaths: chain, pipelineName: "apip-test-pipeline-9"}, true, ""},
+	} {
+		starter := starterAgainst(t, tc.platform)
+		err := starter.checkScenario(context.Background(), "a scenario", []precondition{pipelineTwo})
+		if tc.met {
+			require.NoError(t, err, name)
+			require.Empty(t, starter.Report(), name)
+			continue
+		}
+		require.ErrorIs(t, err, godog.ErrSkip, name)
+		if name == "the project is absent" {
+			require.NoError(t, starter.Failures(), "%s: a token that may not create the project is not a failure", name)
+		} else {
+			require.Error(t, starter.Failures(), name)
+		}
+		require.Contains(t, strings.Join(starter.Report(), "\n"), tc.report, name)
+	}
+}
+
+func TestTheSuiteSelectsOnlyPrefixedResourcesAndTheDefaultEnvironment(t *testing.T) {
+	for name, tc := range map[string]struct {
+		check func(string) bool
+		given string
+		want  bool
+	}{
+		"the default environment":              {ownedEnvironment, "development", true},
+		"an environment with the prefix":       {ownedEnvironment, "apip-test-environment", true},
+		"the prefix in another case":           {ownedEnvironment, "APIP-TEST-Environment", true},
+		"another console's environment":        {ownedEnvironment, "qa", false},
+		"the prefix without a name":            {ownedEnvironment, "apip-test-", false},
+		"an environment named like a pipeline": {ownedEnvironment, "default", false},
+		"the default pipeline is not used":     {ownedPipeline, "default", false},
+		"a pipeline with the prefix":           {ownedPipeline, "apip-test-pipeline-2", true},
+		"another console's pipeline":           {ownedPipeline, "release", false},
+		"a blank name":                         {ownedPipeline, "  ", false},
+	} {
+		require.Equal(t, tc.want, tc.check(tc.given), name)
+	}
+}
+
+func TestAPipelineListThatCannotBeReadIsAFailureNotAMissingPipeline(t *testing.T) {
+	chain := promotionChainPaths("development", "apip-test-e1")
+	for name, tc := range map[string]struct {
+		platform *starterPlatform
+		failed   bool
+	}{
+		"the list answers 404": {&starterPlatform{pipelinePaths: chain, pipelinesAnswer: http.StatusNotFound}, true},
+		"the list answers 500": {&starterPlatform{pipelinePaths: chain, pipelinesAnswer: http.StatusInternalServerError}, true},
+	} {
+		starter := starterAgainst(t, tc.platform)
+		err := starter.checkScenario(context.Background(), "a scenario", []precondition{pipelineTwo})
+		require.ErrorIs(t, err, godog.ErrSkip, name)
+		if tc.failed {
+			require.Error(t, starter.Failures(), name)
+		} else {
+			require.NoError(t, starter.Failures(), name)
+		}
+	}
+}
+
+func TestAProjectWithoutAPipelineBindingIsMissingNotFailed(t *testing.T) {
+	require.True(t, pipelineMissing(&pipelineBindingMissingError{cause: errors.New("binding is absent")}))
+	require.True(t, pipelineMissing(&pipelineNotListedError{pipeline: "p"}))
+	require.False(t, pipelineMissing(&statusError{status: http.StatusNotFound}), "a 404 that is not the binding route's says nothing about the binding")
+}
+
+func TestAPromotionChainNeedsEveryGatewayItCountsToHaveAnID(t *testing.T) {
+	gateways := chainGateways("development", "apip-test-e1")
+	gateways[1]["id"] = " "
+	platform := &starterPlatform{pipelinePaths: promotionChainPaths("development", "apip-test-e1"), gateways: gateways}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion", []precondition{chainOfTwo}), godog.ErrSkip)
+}
+
+func TestPrepareNeedsStartBeforeItChecksAnything(t *testing.T) {
+	starter, err := NewStarter()
+	require.NoError(t, err)
+
+	require.ErrorContains(t, starter.Prepare(context.Background(), []string{"project"}), "Start must be called")
+	require.ErrorContains(t, starter.Prepare(context.Background(), nil), "Start must be called")
+}
+
+func TestListEnvironmentsReadsEveryPage(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/environments", r.URL.Path)
+		offset := r.URL.Query().Get("offset")
+		page := []map[string]any{{"name": "development"}, {"name": "production", "isProduction": true}}
+		if offset == "2" {
+			page = []map[string]any{{"name": "apip-test-e1"}}
+		}
+		off := 0
+		if offset == "2" {
+			off = 2
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": page,
+			"pagination": map[string]any{"total": 3, "offset": off, "limit": 2}})
+	})
+
+	items, err := steps.listEnvironments(ctx)
+
+	require.NoError(t, err)
+	require.Len(t, items, 3, "an environment on the second page is listed too")
+	require.Equal(t, "apip-test-e1", items[2]["name"])
+}
+
+func TestStarterChecksThePromotionChains(t *testing.T) {
+	platform := &starterPlatform{
+		pipelinePaths: promotionChainPaths("development", "apip-test-qa", "apip-test-production"),
+		gateways:      chainGateways("development", "apip-test-qa"),
+	}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.checkScenario(context.Background(), "a promotion of 2", []precondition{pipelineTwo, chainOfTwo}))
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion of 3", []precondition{pipelineTwo, chainOfThree}), godog.ErrSkip,
+		"production holds no active gateway")
+	require.Error(t, starter.Failures(), "a chain the organisation lacks fails the run")
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "no promotion chain of 3 environments")
+
+	platform.gateways = append(platform.gateways, chainGateways("apip-test-production")...)
+	again := starterAgainst(t, platform)
+	require.NoError(t, again.checkScenario(context.Background(), "a promotion of 3", []precondition{pipelineTwo, chainOfThree}))
+}
+
+func TestAPromotionChainNeedsAnActiveGatewayInEveryEnvironment(t *testing.T) {
+	gateways := chainGateways("development", "apip-test-qa")
+	gateways[1]["isActive"] = false
+	platform := &starterPlatform{pipelinePaths: promotionChainPaths("development", "apip-test-qa"), gateways: gateways}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion", []precondition{chainOfTwo}), godog.ErrSkip)
+}
+
+func TestAPromotionChainNeedsEnvironmentsTheSuiteMayUse(t *testing.T) {
+	platform := &starterPlatform{
+		pipelinePaths: promotionChainPaths("development", "qa"),
+		gateways:      chainGateways("development", "qa"),
+	}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion", []precondition{chainOfTwo}), godog.ErrSkip,
+		"qa has an active gateway but belongs to other consoles")
+	require.Error(t, starter.Failures())
+}
+
+func TestPrepareChecksTheNamedPreconditionsAndReportsFailures(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noProjectTwo: true, projectCreate: http.StatusForbidden}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.Prepare(context.Background(), []string{"default-gateway@apip-test-project-1"}))
+	id, created := starter.Gateway()
+	require.Equal(t, "development-default", id)
+	require.False(t, created)
+	require.Empty(t, starter.Report(), "only the named precondition was checked")
+
+	require.NoError(t, starter.Prepare(context.Background(), []string{"project"}), "an unavailable precondition is reported, not an error")
+	require.Len(t, starter.Report(), 1, "project two is missing; project one is there")
+
+	require.ErrorContains(t, starter.Prepare(context.Background(), []string{"a gateway"}), "unknown precondition")
+}
+
+func TestPrepareReturnsWhatTheStarterFailedToPrepare(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity"}
+	starter := starterAgainst(t, platform)
+
+	err := starter.Prepare(context.Background(), []string{"default-gateway@apip-test-project-1"})
+
+	require.ErrorContains(t, err, "no capacity")
+}
+
+func TestStartedStarterNeedsStartBeforeAPreconditionIsChecked(t *testing.T) {
+	starter, err := NewStarter()
+	require.NoError(t, err)
+	require.ErrorContains(t, starter.require(context.Background(), projectOneNeed), "Start must be called")
+}
+
+func TestCloudSweepsLeaveAProjectOfTheSuiteTheOrganisationDoesNotListAlone(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.lists["/projects"] = []map[string]any{{"id": projectOne}, {"id": "syn-project-abcde234-2"}}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	_, err = sweepLeftovers(context.Background(), base, 5*time.Second)
+
+	require.NoError(t, err, "a project the runners skipped for is not a leftover the finalizer must fail on")
+	require.NotContains(t, stub.listedProjects["/rest-apis"], projectTwo)
+	require.Contains(t, stub.listedProjects["/rest-apis"], projectOne)
+}
+
+func TestCloudSweepsReadTheAPIsOfTheSuiteProjects(t *testing.T) {
+	stub := newLeftoverStub()
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
+
+	require.NoError(t, err)
+	require.Contains(t, stub.listedProjects["/rest-apis"], projectTwo, "the project the scenarios deploy through is read for leftovers")
+	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-9", "the run's API in that project is removed")
+	require.NotContains(t, removed, "/rest-apis/ops-api", "an API the organisation owns stays")
+	require.NotContains(t, removed, "/rest-apis/ops-project-api", "an API the organisation owns in the second project stays too")
+}
+
+func TestCloudSweepsListAProjectOnceWhenTwoRulesSelectIt(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.lists["/projects"] = []map[string]any{
+		{"id": projectOne, "name": "syn-project-abcde234-8"}, {"id": "syn-project-abcde234-2"}, {"id": projectTwo},
+	}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	_, err = sweepLeftovers(context.Background(), base, 5*time.Second)
+
+	require.NoError(t, err)
+	listings := func(id string) int {
+		count := 0
+		for _, project := range stub.listedProjects["/rest-apis"] {
+			if project == id {
+				count++
+			}
+		}
+		return count
+	}
+	require.Positive(t, listings(projectOne))
+	require.Equal(t, listings(projectTwo), listings(projectOne),
+		"a project that two rules select is listed as often as one that a single rule selects")
 }
 
 func TestSaveDefinitionAcceptsOnlyAnswersAContentRefusalCanGive(t *testing.T) {
@@ -5893,4 +6711,2689 @@ func TestRemoveUnregisteredSelfHostedGatewayDeletesItAndReportsWhenItMayRemain(t
 			require.NoError(t, err, "status %d", tc.status)
 		}
 	}
+}
+
+// fakeConsumerAPI is the consumer's part of a portal's REST API; it checks the session and CSRF token.
+type fakeConsumerAPI struct {
+	// offered names the plans each API offers, and planNames each plan's display name.
+	offered   map[string][]string
+	planNames map[string]string
+
+	// refuseCreate, when set, is how the portal answers an application create.
+	refuseCreate int
+	// secretStatus, when set, is the status of every answer that carries a credential.
+	secretStatus int
+	// failPageFrom, when set, fails every list page from that offset with 502.
+	failPageFrom int
+	// failOnce answers each listed call ("METHOD /path") once with its status. With status 0 it
+	// drops the connection before the call takes effect, and with commitThenDrop after it.
+	failOnce map[string]int
+	// failEvery answers each listed call with its status every time.
+	failEvery map[string]int
+	// keyManagers, when set, replaces the portal's key managers.
+	keyManagers []any
+	// request is the call being answered, for the page it asks for.
+	request *http.Request
+
+	apps   map[string]map[string]any
+	subs   map[string]map[string]any
+	keys   map[string]map[string]any
+	oauth2 map[string]map[string]any
+	seq    int
+	calls  []string
+}
+
+// commitThenDrop is a failOnce status that applies the call and then drops the connection, so
+// the caller never sees the answer to a call that took effect.
+const commitThenDrop = -1
+
+// fakePage pages items as the portal does: limit (default 20, at most 100) items from offset.
+func fakePage(r *http.Request, items []any) map[string]any {
+	limit, offset := 20, 0
+	if value, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+		limit = min(max(value, 0), 100)
+	}
+	if value, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
+		offset = max(value, 0)
+	}
+	slices.SortFunc(items, func(a, b any) int {
+		return strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
+	})
+	page := []any{}
+	if offset < len(items) {
+		page = items[offset:min(offset+limit, len(items))]
+	}
+	return map[string]any{"count": len(page), "list": page, "pagination": map[string]any{"limit": limit, "offset": offset, "total": len(items)}}
+}
+
+func (f *fakePortalSite) serveConsumerAPI(w http.ResponseWriter, r *http.Request) {
+	api := &f.consumer
+	api.request = r
+	if api.apps == nil {
+		api.apps, api.subs, api.keys = map[string]map[string]any{}, map[string]map[string]any{}, map[string]map[string]any{}
+	}
+	session := f.sessionOf(r)
+	if !f.sessions[session] {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "Unauthorized"})
+		return
+	}
+	if r.Method != http.MethodGet && r.Header.Get(portalCSRFHeader) != "csrf-"+session {
+		writeJSON(w, http.StatusForbidden, map[string]any{"message": "CSRF token missing or invalid"})
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, portalAPIBasePath)
+	call := r.Method + " " + path
+	api.calls = append(api.calls, call)
+	if status, fail := api.failEvery[call]; fail {
+		writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+		return
+	}
+	if status, fail := api.failOnce[call]; fail && status == commitThenDrop {
+		delete(api.failOnce, call)
+		connection := w
+		w = httptest.NewRecorder()
+		defer func() {
+			if conn, _, err := connection.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+		}()
+	} else if fail {
+		delete(api.failOnce, call)
+		if status == 0 {
+			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+			return
+		}
+		writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+		return
+	}
+	if offset, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && api.failPageFrom > 0 && offset >= api.failPageFrom {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"message": "Bad Gateway"})
+		return
+	}
+	var body map[string]any
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			f.t.Errorf("the portal API request %s does not decode: %v", call, err)
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "Bad Request"})
+			return
+		}
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	switch {
+	case parts[0] == "applications" && len(parts) == 3 && parts[2] == "oauth2-keys" && r.Method == http.MethodGet:
+		list := []any{}
+		for _, key := range api.oauth2 {
+			if key["applicationId"] == parts[1] {
+				list = append(list, map[string]any{"keyId": key["keyId"], "name": key["name"]})
+			}
+		}
+		writeJSON(w, http.StatusOK, fakePage(r, list))
+	case parts[0] == "applications":
+		api.serveApplications(w, r.Method, parts[1:], body)
+	case parts[0] == "subscriptions":
+		api.serveSubscriptions(w, r.Method, parts[1:], body)
+	case parts[0] == "api-keys" && r.Method == http.MethodGet:
+		writeJSON(w, http.StatusOK, api.keyList(func(map[string]any) bool { return true }))
+	case parts[0] == "key-managers" && len(parts) == 2 && parts[1] == "metadata":
+		managers := api.keyManagers
+		if managers == nil {
+			managers = []any{map[string]any{"id": "imported", "keyCreation": "import"}, map[string]any{"id": "thunder", "keyCreation": "register"}}
+		}
+		writeJSON(w, http.StatusOK, fakePage(r, managers))
+	case parts[0] == "oauth2-keys":
+		api.serveOAuth2Keys(w, r.Method, parts[1:], body)
+	case parts[0] == "apis" && len(parts) >= 3 && parts[2] == "api-keys" && api.offered[parts[1]] == nil:
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "API not found"})
+	case parts[0] == "apis" && len(parts) >= 3 && parts[2] == "api-keys":
+		api.serveAPIKeys(w, r.Method, parts[1], parts[3:], body)
+	default:
+		f.t.Errorf("unexpected portal API request %s %s", r.Method, path)
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func (a *fakeConsumerAPI) serveApplications(w http.ResponseWriter, method string, rest []string, body map[string]any) {
+	switch {
+	case len(rest) == 0 && method == http.MethodPost && a.refuseCreate != 0:
+		writeJSON(w, a.refuseCreate, map[string]any{"message": "refused"})
+	case len(rest) == 0 && method == http.MethodPost:
+		id, _ := body["id"].(string)
+		if _, taken := a.apps[id]; taken || id == "" {
+			writeJSON(w, http.StatusConflict, map[string]any{"message": "Application already exists"})
+			return
+		}
+		a.apps[id] = map[string]any{"id": id, "displayName": body["displayName"], "description": body["description"]}
+		writeJSON(w, http.StatusCreated, a.apps[id])
+	case len(rest) == 0 && method == http.MethodGet:
+		list := make([]any, 0, len(a.apps))
+		for _, app := range a.apps {
+			list = append(list, app)
+		}
+		writeJSON(w, http.StatusOK, fakePage(a.request, list))
+	case len(rest) == 2 && rest[1] == "api-keys" && method == http.MethodGet:
+		writeJSON(w, http.StatusOK, a.keyList(func(key map[string]any) bool { return key["appId"] == rest[0] }))
+	case len(rest) == 1:
+		app, known := a.apps[rest[0]]
+		if !known {
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "Application not found"})
+			return
+		}
+		switch method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, app)
+		case http.MethodPut:
+			if _, renamed := body["id"]; renamed {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "an update keeps the handle"})
+				return
+			}
+			app["displayName"], app["description"] = body["displayName"], body["description"]
+			writeJSON(w, http.StatusOK, app)
+		case http.MethodDelete:
+			delete(a.apps, rest[0])
+			w.WriteHeader(http.StatusOK)
+		default:
+			writeMethodNotAllowed(w)
+		}
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+	}
+}
+
+func (a *fakeConsumerAPI) statusOr(status int) int {
+	if a.secretStatus != 0 {
+		return a.secretStatus
+	}
+	return status
+}
+
+func (a *fakeConsumerAPI) offers(api, plan string) bool {
+	return slices.Contains(a.offered[api], plan)
+}
+
+func writeMethodNotAllowed(w http.ResponseWriter) {
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"message": "Method Not Allowed"})
+}
+
+func (a *fakeConsumerAPI) serveSubscriptions(w http.ResponseWriter, method string, rest []string, body map[string]any) {
+	if len(rest) == 0 && method == http.MethodPost {
+		artifact, _ := body["artifactId"].(string)
+		plan, _ := body["subscriptionPlanId"].(string)
+		if !a.offers(artifact, plan) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "Subscription plan not found for this API"})
+			return
+		}
+		for _, sub := range a.subs {
+			if sub["artifactId"] == artifact {
+				writeJSON(w, http.StatusConflict, map[string]any{"message": "A subscription for this API already exists"})
+				return
+			}
+		}
+		a.seq++
+		id := "sub-" + strconv.Itoa(a.seq)
+		a.subs[id] = map[string]any{"subscriptionId": id, "subscriptionToken": "token-" + strconv.Itoa(a.seq), "status": "ACTIVE",
+			"artifactId": artifact, "subscriptionPlanName": a.planNames[plan]}
+		writeJSON(w, http.StatusCreated, a.subs[id])
+		return
+	}
+	if len(rest) == 0 && method == http.MethodGet {
+		artifact := a.request.URL.Query().Get("artifactId")
+		if artifact != "" && a.offered[artifact] == nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "API not found"})
+			return
+		}
+		list := make([]any, 0, len(a.subs))
+		for _, sub := range a.subs {
+			if artifact == "" || sub["artifactId"] == artifact {
+				list = append(list, sub)
+			}
+		}
+		writeJSON(w, http.StatusOK, fakePage(a.request, list))
+		return
+	}
+	if len(rest) == 0 {
+		writeMethodNotAllowed(w)
+		return
+	}
+	sub, known := a.subs[rest[0]]
+	if !known {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Subscription not found"})
+		return
+	}
+	switch {
+	case len(rest) == 1 && method == http.MethodGet:
+		writeJSON(w, http.StatusOK, sub)
+	case len(rest) == 1 && method == http.MethodPut:
+		sub["status"] = body["status"]
+		writeJSON(w, http.StatusOK, sub)
+	case len(rest) == 1 && method == http.MethodDelete:
+		delete(a.subs, rest[0])
+		writeJSON(w, http.StatusOK, map[string]any{"message": "Subscription deleted successfully"})
+	case len(rest) == 2 && method != http.MethodPost:
+		writeMethodNotAllowed(w)
+	case len(rest) == 2 && rest[1] == "change-plan":
+		plan, _ := body["planId"].(string)
+		if !a.offers(sub["artifactId"].(string), plan) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "Subscription plan not found for this API"})
+			return
+		}
+		sub["subscriptionPlanName"] = a.planNames[plan]
+		writeJSON(w, http.StatusOK, sub)
+	case len(rest) == 2 && rest[1] == "regenerate-token":
+		a.seq++
+		sub["subscriptionToken"] = "token-" + strconv.Itoa(a.seq)
+		writeJSON(w, http.StatusOK, sub)
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+	}
+}
+
+func (a *fakeConsumerAPI) keyList(keep func(map[string]any) bool) map[string]any {
+	list := []any{}
+	for _, key := range a.keys {
+		if keep(key) {
+			list = append(list, map[string]any{"id": key["id"], "apiId": key["apiId"], "appId": key["appId"], "status": key["status"]})
+		}
+	}
+	return fakePage(a.request, list)
+}
+
+func (a *fakeConsumerAPI) serveAPIKeys(w http.ResponseWriter, method, apiID string, rest []string, body map[string]any) {
+	if len(rest) == 0 && method == http.MethodGet {
+		writeJSON(w, http.StatusOK, a.keyList(func(key map[string]any) bool { return key["apiId"] == apiID }))
+		return
+	}
+	if len(rest) != 1 || method != http.MethodPost {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	if rest[0] == "generate" {
+		a.seq++
+		id := "key-" + strconv.Itoa(a.seq)
+		a.keys[id] = map[string]any{"id": id, "apiId": apiID, "status": "ACTIVE", "value": "value-" + strconv.Itoa(a.seq)}
+		writeJSON(w, a.statusOr(http.StatusCreated), map[string]any{"id": id, "displayName": body["displayName"], "key": a.keys[id]["value"], "status": "ACTIVE"})
+		return
+	}
+	id, _ := body["keyId"].(string)
+	key, known := a.keys[id]
+	if !known || key["apiId"] != apiID {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "API key not found"})
+		return
+	}
+	switch rest[0] {
+	case "regenerate":
+		a.seq++
+		key["value"] = "value-" + strconv.Itoa(a.seq)
+		writeJSON(w, a.statusOr(http.StatusOK), map[string]any{"id": id, "key": key["value"], "status": key["status"]})
+	case "revoke":
+		if key["status"] == "REVOKED" {
+			writeJSON(w, http.StatusConflict, map[string]any{"message": "API key is already revoked"})
+			return
+		}
+		key["status"] = "REVOKED"
+		w.WriteHeader(http.StatusNoContent)
+	case "associate":
+		key["appId"] = body["appId"]
+		writeJSON(w, http.StatusOK, map[string]any{"message": "API key associated"})
+	case "dissociate":
+		delete(key, "appId")
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+	}
+}
+
+// consumerSteps signs a consumer up on a fake portal whose api-1 offers plan-1 and, as the other
+// plan, plan-2.
+func consumerSteps(t *testing.T) (*fakePortalSite, *Steps, context.Context, *cleanup.Registry) {
+	t.Helper()
+	site := newFakePortalSite(t)
+	site.consumer.offered = map[string][]string{"api-1": {"plan-1", "plan-2"}}
+	site.consumer.planNames = map[string]string{"plan-1": "Synthetic plan-1", "plan-2": "Synthetic plan-2"}
+	steps, ctx := signInSteps(t, site)
+	registry, err := cleanup.Of(ctx)
+	require.NoError(t, err)
+	for key, value := range map[string]string{keyAPIID: "api-1", keyPlanID: "plan-1", keySecondPlanID: "plan-2"} {
+		require.NoError(t, tcontext.Set(ctx, key, value))
+	}
+	require.NoError(t, steps.signUpConsumer(ctx))
+	return site, steps, ctx, registry
+}
+
+func publishedStatusOf(t *testing.T, ctx context.Context) int {
+	t.Helper()
+	resp, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	return resp.StatusCode
+}
+
+// scenarioPending names the pending cleanup registrations other than the runner's sweep.
+func scenarioPending(registry *cleanup.Registry) []string {
+	ids := []string{}
+	for _, resource := range registry.Pending() {
+		if resource.Kind.Name != kindConsumerLeftovers.Name {
+			ids = append(ids, resource.Kind.Name+":"+resource.ID)
+		}
+	}
+	return ids
+}
+
+// calledCollections names the method and first path segment of each call the fake answered.
+func calledCollections(calls []string) []string {
+	collections := []string{}
+	for _, call := range calls {
+		method, path, _ := strings.Cut(call, " ")
+		collection, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+		collections = append(collections, method+" "+collection)
+	}
+	return collections
+}
+
+func TestConsumerCallsNeedASignedInSessionAndRepeatItsCSRFToken(t *testing.T) {
+	site := newFakePortalSite(t)
+	visitorSteps, visitorCtx := signInSteps(t, site)
+	require.ErrorContains(t, visitorSteps.createConsumerApplication(visitorCtx), "opened no managed API Portal",
+		"a consumer call needs the scenario's browser")
+	_, _, err := visitorSteps.openSignIn(visitorCtx)
+	require.NoError(t, err)
+	visitor, err := scenarioBrowser(visitorCtx)
+	require.NoError(t, err)
+	_, err = visitor.apiRequest(visitorCtx, http.MethodPost, "/applications", map[string]any{})
+	require.ErrorIs(t, err, errNoConsumerSession, "a visitor who never signed in has no token to repeat")
+
+	_, _, ctx, _ := consumerSteps(t)
+	browser, err := scenarioBrowser(ctx)
+	require.NoError(t, err)
+	resp, err := browser.apiRequest(ctx, http.MethodGet, "/applications", nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "a read sends no token")
+	browser.jar.SetCookies(browser.portal, []*http.Cookie{{Name: portalCSRFCookie, Value: "forged", Path: "/api-portal"}})
+	resp, err = browser.apiRequest(ctx, http.MethodPost, "/applications", map[string]any{"id": "x"})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "the call repeats the token the browser holds")
+}
+
+func TestSignUpRegistersTheRunnersSweepOfTheConsumersPortal(t *testing.T) {
+	_, _, ctx, registry := consumerSteps(t)
+	username, _, err := consumerCredentials(ctx)
+	require.NoError(t, err)
+	var sweeps []cleanup.Resource
+	for _, resource := range registry.Pending() {
+		if resource.Kind.Name == kindConsumerLeftovers.Name {
+			sweeps = append(sweeps, resource)
+		}
+	}
+	require.Len(t, sweeps, 1)
+	require.Equal(t, username, sweeps[0].ID)
+	require.NoError(t, registry.Sweep(ctx))
+	require.Len(t, registry.Pending(), 1, "the sweep is the runner's, so a scenario's cleanup leaves it")
+}
+
+func TestConsumerApplicationLifecycle(t *testing.T) {
+	_, steps, ctx, registry := consumerSteps(t)
+
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	id, err := requiredValue(ctx, keyConsumerApplicationID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"portal-application:" + id}, scenarioPending(registry))
+	require.Equal(t, http.StatusCreated, publishedStatusOf(t, ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "include", "synthetic application", ""))
+	require.ErrorContains(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""), "still include")
+
+	table := valuesTable(t, []string{"displayName", "Renamed " + id}, []string{"description", "Renamed."})
+	require.NoError(t, steps.updateConsumerApplication(ctx, table))
+	require.Equal(t, http.StatusOK, publishedStatusOf(t, ctx), "an update keeps the handle the application was created with")
+	require.NoError(t, steps.readConsumerApplication(ctx))
+	read, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, read.StatusCode)
+	var answer map[string]any
+	require.NoError(t, json.Unmarshal(read.Body, &answer))
+	require.Equal(t, id, answer["id"])
+	require.Equal(t, "Renamed "+id, answer["displayName"], "the read returns the renamed application")
+	require.ErrorContains(t, steps.updateConsumerApplication(ctx, valuesTable(t, []string{"id", "other"})), `unsupported application field "id"`)
+
+	require.NoError(t, steps.deleteConsumerApplication(ctx))
+	require.Equal(t, http.StatusOK, publishedStatusOf(t, ctx))
+	require.Empty(t, scenarioPending(registry), "an application the scenario deleted is no longer cleanup's")
+	require.NoError(t, steps.readConsumerApplication(ctx))
+	require.Equal(t, http.StatusNotFound, publishedStatusOf(t, ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""))
+}
+
+func TestCreateConsumerApplicationKeepsTheRegistrationOnlyOfWhatThePortalMayHaveStored(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	site.consumer.refuseCreate = http.StatusConflict
+	require.ErrorContains(t, steps.createConsumerApplication(ctx), "409")
+	require.Empty(t, scenarioPending(registry), "a refused create stored nothing")
+
+	site.consumer.refuseCreate = http.StatusBadGateway
+	require.ErrorContains(t, steps.createConsumerApplication(ctx), "502")
+	require.Len(t, scenarioPending(registry), 1, "a server error can follow a stored application, so it stays registered")
+	require.NoError(t, registry.Sweep(ctx), "an application the portal never stored is already gone")
+}
+
+func TestSubscribeConsumerRegistersTheAPIsSubscriptionsBeforeTheCall(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	site.consumer.offered["api-1"] = []string{"plan-1"}
+
+	require.NoError(t, steps.subscribeConsumer(ctx, "the other"), "a refusal is left to the status assertion")
+	require.Equal(t, http.StatusBadRequest, publishedStatusOf(t, ctx))
+	require.Equal(t, []string{"portal-subscriptions:api-1"}, scenarioPending(registry),
+		"the API's subscriptions are registered before the call, so one whose answer is lost is still removed")
+	_, err := requiredValue(ctx, keyConsumerSubscriptionID)
+	require.Error(t, err)
+
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.Equal(t, http.StatusCreated, publishedStatusOf(t, ctx))
+	id, err := requiredValue(ctx, keyConsumerSubscriptionID)
+	require.NoError(t, err)
+	require.NoError(t, steps.assertConsumerListing(ctx, "subscriptions", "include", "synthetic subscription", ""))
+
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.Equal(t, http.StatusConflict, publishedStatusOf(t, ctx))
+	again, err := requiredValue(ctx, keyConsumerSubscriptionID)
+	require.NoError(t, err)
+	require.Equal(t, id, again, "a refused second subscription leaves the first one the scenario's")
+	require.Equal(t, []string{"portal-subscriptions:api-1"}, scenarioPending(registry), "one registration per API")
+
+	require.NoError(t, registry.Sweep(ctx))
+	require.Empty(t, site.consumer.subs)
+}
+
+func TestConsumerSubscriptionChangesPlanStatusAndToken(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	id, err := requiredValue(ctx, keyConsumerSubscriptionID)
+	require.NoError(t, err)
+
+	require.NoError(t, steps.changeConsumerPlan(ctx, "the other"))
+	require.Equal(t, http.StatusOK, publishedStatusOf(t, ctx))
+	require.Equal(t, "Synthetic plan-2", site.consumer.subs[id]["subscriptionPlanName"])
+
+	require.NoError(t, steps.setConsumerSubscriptionStatus(ctx, "INACTIVE"))
+	require.Equal(t, "INACTIVE", site.consumer.subs[id]["status"])
+	require.NoError(t, steps.setConsumerSubscriptionStatus(ctx, "ACTIVE"))
+	require.Equal(t, "ACTIVE", site.consumer.subs[id]["status"])
+
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"))
+	require.ErrorContains(t, steps.assertConsumerSubscriptionToken(ctx, "replaced"), "kept its token")
+	require.NoError(t, steps.regenerateConsumerSubscriptionToken(ctx))
+	err = steps.assertConsumerSubscriptionToken(ctx, "unchanged")
+	require.ErrorContains(t, err, "token changed")
+	require.NotContains(t, err.Error(), "token-", "an error never repeats a token")
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "replaced"))
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"), "the replaced token is the one the subscription keeps")
+
+	require.NoError(t, steps.unsubscribeConsumer(ctx))
+	require.Equal(t, http.StatusOK, publishedStatusOf(t, ctx))
+	require.Equal(t, []string{"portal-subscriptions:api-1"}, scenarioPending(registry),
+		"the scenario may subscribe again, so the API's subscriptions stay registered")
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+	require.Equal(t, http.StatusNotFound, publishedStatusOf(t, ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "subscriptions", "not include", "synthetic subscription", ""))
+	require.NoError(t, registry.Sweep(ctx), "an API with no subscription left is already clean")
+}
+
+func TestConsumerAPIKeyLifecycle(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	app, err := requiredValue(ctx, keyConsumerApplicationID)
+	require.NoError(t, err)
+
+	require.NoError(t, steps.generateConsumerAPIKey(ctx))
+	_, err = httpx.Published(ctx)
+	require.Error(t, err, "the answer that carries the key is never published")
+	id, err := requiredValue(ctx, keyConsumerAPIKeyID)
+	require.NoError(t, err)
+	first, err := requiredValue(ctx, keyAPIKey)
+	require.NoError(t, err)
+	require.Equal(t, site.consumer.keys[id]["value"], first)
+	require.Contains(t, scenarioPending(registry), "portal-api-keys:api-1")
+
+	require.NoError(t, steps.assertConsumerListing(ctx, "API keys for the synthetic REST API", "include", "API key", "ACTIVE"))
+	require.NoError(t, steps.assertConsumerListing(ctx, "API keys", "include", "API key", "ACTIVE"))
+	require.ErrorContains(t, steps.assertConsumerListing(ctx, "API keys", "include", "API key", "REVOKED"), `listed as "ACTIVE"`)
+	require.NoError(t, steps.assertConsumerListing(ctx, "API keys of the synthetic application", "not include", "API key", ""))
+
+	require.NoError(t, steps.changeConsumerAPIKeyApplication(ctx, "associates the API key with"))
+	require.Equal(t, http.StatusOK, publishedStatusOf(t, ctx))
+	require.Equal(t, app, site.consumer.keys[id]["appId"])
+	require.NoError(t, steps.assertConsumerListing(ctx, "API keys of the synthetic application", "include", "API key", "ACTIVE"))
+	require.NoError(t, steps.changeConsumerAPIKeyApplication(ctx, "dissociates the API key from"))
+	require.Equal(t, http.StatusNoContent, publishedStatusOf(t, ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "API keys of the synthetic application", "not include", "API key", ""))
+
+	require.NoError(t, steps.regenerateConsumerAPIKey(ctx))
+	previous, err := requiredValue(ctx, keyPreviousAPIKey)
+	require.NoError(t, err)
+	current, err := requiredValue(ctx, keyAPIKey)
+	require.NoError(t, err)
+	require.Equal(t, first, previous)
+	require.Equal(t, site.consumer.keys[id]["value"], current)
+	require.NotEqual(t, previous, current)
+
+	require.NoError(t, steps.revokeConsumerAPIKey(ctx))
+	require.Equal(t, http.StatusNoContent, publishedStatusOf(t, ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "API keys for the synthetic REST API", "include", "API key", "REVOKED"))
+	require.NoError(t, registry.Sweep(ctx), "a key the scenario revoked needs nothing more")
+}
+
+func TestConsumerCleanupRemovesWhatTheConsumerCreatedInOrder(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.NoError(t, steps.generateConsumerAPIKey(ctx))
+	require.NoError(t, steps.changeConsumerAPIKeyApplication(ctx, "associates the API key with"))
+	// A subscription and a key the portal stored although their answers never arrived.
+	site.consumer.subs["sub-lost"] = map[string]any{"subscriptionId": "sub-lost", "artifactId": "api-1", "status": "ACTIVE"}
+	site.consumer.keys["key-lost"] = map[string]any{"id": "key-lost", "apiId": "api-1", "status": "ACTIVE"}
+	site.consumer.calls = nil
+
+	require.NoError(t, registry.Sweep(ctx))
+	require.Empty(t, scenarioPending(registry))
+	require.Empty(t, site.consumer.subs)
+	require.Empty(t, site.consumer.apps)
+	for _, key := range site.consumer.keys {
+		require.Equal(t, "REVOKED", key["status"])
+	}
+	require.Equal(t, []string{"GET subscriptions", "DELETE subscriptions", "DELETE subscriptions",
+		"GET apis", "POST apis", "POST apis", "DELETE applications"}, calledCollections(site.consumer.calls),
+		"subscriptions and keys go before the application a key can name, and the lost ones go too")
+}
+
+func TestConsumerCleanupSignsTheConsumerInAgainWhenTheSessionEnded(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.NoError(t, steps.generateConsumerAPIKey(ctx))
+	for session := range site.sessions {
+		delete(site.sessions, session)
+	}
+
+	require.NoError(t, registry.Sweep(ctx), "an ended session is replaced, not a cleanup failure")
+	require.Empty(t, site.consumer.subs)
+	require.Empty(t, site.consumer.apps)
+	for _, key := range site.consumer.keys {
+		require.Equal(t, "REVOKED", key["status"])
+	}
+}
+
+func TestConsumerCleanupFailsWhenTheConsumerCannotSignIn(t *testing.T) {
+	site := newFakePortalSite(t)
+	_, ctx := signInSteps(t, site)
+	registry, err := cleanup.Of(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: kindConsumerApplication, ID: "syn-app-1", Actor: consumerActor}))
+	err = registry.Sweep(ctx)
+	require.ErrorContains(t, err, "signing the consumer in to clean up")
+	require.ErrorContains(t, err, "signed up no consumer")
+}
+
+func TestTheRunnersSweepEmptiesTheConsumersPortal(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.NoError(t, steps.generateConsumerAPIKey(ctx))
+	for i := range 150 {
+		id := "syn-app-extra-" + strconv.Itoa(i)
+		site.consumer.apps[id] = map[string]any{"id": id}
+	}
+	// The scenario's cleanup failed, and the runner's last scenario left a visitor's browser.
+	for _, resource := range registry.Pending() {
+		if resource.Kind.Name != kindConsumerLeftovers.Name {
+			registry.Deregister(resource.Kind, resource.ID)
+		}
+	}
+	_, _, err := steps.openSignIn(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, registry.SweepRunner(ctx))
+	require.Empty(t, registry.Pending())
+	require.Empty(t, site.consumer.subs)
+	require.Empty(t, site.consumer.apps, "every page of the consumer's applications is removed")
+	for _, key := range site.consumer.keys {
+		require.Equal(t, "REVOKED", key["status"])
+	}
+}
+
+func TestListingForMatchesTheItemToItsList(t *testing.T) {
+	for list, item := range map[string]string{
+		"applications": "synthetic application", "subscriptions": "synthetic subscription", "API keys": "API key",
+		"API keys for the synthetic REST API": "API key", "API keys of the synthetic application": "API key",
+	} {
+		_, err := listingFor(list, item, "")
+		require.NoError(t, err, list)
+	}
+	_, err := listingFor("applications", "API key", "")
+	require.ErrorContains(t, err, "hold no API key")
+	_, err = listingFor("subscriptions", "synthetic subscription", "ACTIVE")
+	require.ErrorContains(t, err, "only an API key is listed with a status")
+	_, err = listingFor("webhooks", "API key", "")
+	require.ErrorContains(t, err, "unsupported consumer list")
+	_, steps, ctx, _ := consumerSteps(t)
+	require.ErrorContains(t, steps.assertConsumerListing(ctx, "API keys", "not include", "API key", "REVOKED"), "only for an item the list should include")
+}
+
+func TestApplicationBody(t *testing.T) {
+	created, err := applicationBody("syn-app-1", true, nil)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"id": "syn-app-1", "displayName": "Synthetic syn-app-1", "description": consumerResourceDescription}, created)
+	updated, err := applicationBody("syn-app-1", false, map[string]string{"displayName": "Renamed"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"displayName": "Renamed", "description": consumerResourceDescription}, updated)
+	_, err = applicationBody("syn-app-1", false, map[string]string{"owner": "x"})
+	require.ErrorContains(t, err, `unsupported application field "owner"`)
+}
+
+func TestSendWithCredentialSendsEachStoredCredentialAsItShould(t *testing.T) {
+	var got [][2]string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, [2]string{r.Header.Get("Authorization"), r.Header.Get("Subscription-Key")})
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second, InsecureSkipVerify: true}), 0, 0),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+	for key, value := range map[string]string{
+		keyConsumerSubscriptionToken: "token-2", keyPreviousSubscriptionToken: "token-1", keyAccessToken: "aGVhZA.Ym9keQ.c2ln",
+	} {
+		require.NoError(t, tcontext.Set(ctx, key, value))
+	}
+
+	for _, send := range []struct{ header, credential string }{
+		{"Subscription-Key", "subscription token"}, {"Subscription-Key", "previous subscription token"},
+		{"Authorization", "access token"}, {"Authorization", "access token with a forged signature"},
+	} {
+		require.NoError(t, steps.sendWithCredentialUntilStatus(ctx, http.MethodGet, server.URL, send.header, send.credential, http.StatusOK))
+	}
+	require.Equal(t, [][2]string{
+		{"", "token-2"}, {"", "token-1"}, {"Bearer aGVhZA.Ym9keQ.c2ln", ""}, {"Bearer aGVhZA.Ym9keQ.A2ln", ""},
+	}, got, "a subscription token is sent as it is in its own header, an access token as a bearer token, and a forged one with another signature")
+}
+
+func TestForgeSignatureChangesOnlyTheSignature(t *testing.T) {
+	for token, want := range map[string]string{"h.b.sig": "h.b.Aig", "h.b.Asig": "h.b.Bsig"} {
+		forged, err := forgeSignature(token)
+		require.NoError(t, err)
+		require.Equal(t, want, forged)
+	}
+	for _, token := range []string{"", "opaque", "h.b.", "h.b"} {
+		_, err := forgeSignature(token)
+		require.ErrorContains(t, err, "not a signed JWT", token)
+	}
+}
+
+func TestRegeneratingASubscriptionTokenKeepsThePreviousOne(t *testing.T) {
+	_, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	first, err := requiredValue(ctx, keyConsumerSubscriptionToken)
+	require.NoError(t, err)
+	require.NoError(t, steps.regenerateConsumerSubscriptionToken(ctx))
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "replaced"))
+	previous, err := requiredValue(ctx, keyPreviousSubscriptionToken)
+	require.NoError(t, err)
+	current, err := requiredValue(ctx, keyConsumerSubscriptionToken)
+	require.NoError(t, err)
+	require.Equal(t, first, previous)
+	require.NotEqual(t, first, current)
+}
+
+func TestRegisteringKeyManagerPicksOneThatRegistersClients(t *testing.T) {
+	id, err := registeringKeyManager([]map[string]any{
+		{"id": "imported", "keyCreation": "import"}, {"id": "thunder", "keyCreation": "register"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "thunder", id)
+	_, err = registeringKeyManager([]map[string]any{{"id": "imported", "keyCreation": "import"}})
+	require.ErrorContains(t, err, "none of the portal's 1 key managers registers clients")
+}
+
+// serveOAuth2Keys serves the fake portal's OAuth2 keys, registered with its one key manager.
+func (a *fakeConsumerAPI) serveOAuth2Keys(w http.ResponseWriter, method string, rest []string, body map[string]any) {
+	if a.oauth2 == nil {
+		a.oauth2 = map[string]map[string]any{}
+	}
+	switch {
+	case len(rest) == 0 && method == http.MethodPost:
+		properties, _ := body["properties"].(map[string]any)
+		if body["keyManagerId"] != "thunder" || properties["client_name"] == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "keyManagerId and client_name are required"})
+			return
+		}
+		a.seq++
+		id := "oauth-" + strconv.Itoa(a.seq)
+		a.oauth2[id] = map[string]any{"keyId": id, "name": properties["client_name"], "secret": "secret-" + strconv.Itoa(a.seq)}
+		writeJSON(w, a.statusOr(http.StatusCreated), map[string]any{"keyId": id, "name": properties["client_name"],
+			"consumerKey": "client-" + strconv.Itoa(a.seq), "consumerSecret": a.oauth2[id]["secret"]})
+	case len(rest) == 0 && method == http.MethodGet:
+		list := []any{}
+		for _, key := range a.oauth2 {
+			list = append(list, map[string]any{"keyId": key["keyId"], "name": key["name"], "consumerSecret": ""})
+		}
+		writeJSON(w, http.StatusOK, fakePage(a.request, list))
+	case len(rest) == 0:
+		writeMethodNotAllowed(w)
+	default:
+		key, known := a.oauth2[rest[0]]
+		if !known {
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "OAuth2 key not found"})
+			return
+		}
+		switch {
+		case len(rest) == 1 && method == http.MethodDelete:
+			delete(a.oauth2, rest[0])
+			w.WriteHeader(http.StatusNoContent)
+		case len(rest) == 2 && method != http.MethodPost:
+			writeMethodNotAllowed(w)
+		case len(rest) == 2 && rest[1] == "associate":
+			key["applicationId"] = body["applicationId"]
+			writeJSON(w, http.StatusOK, map[string]any{"application": map[string]any{"id": body["applicationId"]}})
+		case len(rest) == 2 && rest[1] == "dissociate":
+			delete(key, "applicationId")
+			w.WriteHeader(http.StatusNoContent)
+		case len(rest) == 2 && rest[1] == "generate-token":
+			if body["consumerSecret"] != key["secret"] {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "The key manager refused these credentials."})
+				return
+			}
+			writeJSON(w, a.statusOr(http.StatusOK), map[string]any{"accessToken": "aGVhZA.Ym9keQ." + rest[0], "tokenType": "Bearer"})
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		}
+	}
+}
+
+func TestConsumerOAuth2KeysIssueATokenAndFollowTheirApplication(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx))
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the answer that carries the client secret is never published")
+	name, err := requiredValue(ctx, keyConsumerOAuth2ClientName)
+	require.NoError(t, err)
+	require.Contains(t, scenarioPending(registry), "portal-oauth2-keys:"+name, "the client is registered for cleanup by its name")
+	id, err := requiredValue(ctx, keyConsumerOAuth2KeyID)
+	require.NoError(t, err)
+	require.NoError(t, steps.assertConsumerListing(ctx, "OAuth2 keys", "include", "OAuth2 keys", ""))
+	require.NoError(t, steps.assertConsumerListing(ctx, "OAuth2 keys of the synthetic application", "not include", "OAuth2 keys", ""))
+
+	require.NoError(t, steps.changeConsumerOAuth2KeysApplication(ctx, "associates the OAuth2 keys with"))
+	require.Equal(t, http.StatusOK, publishedStatusOf(t, ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "OAuth2 keys of the synthetic application", "include", "OAuth2 keys", ""))
+
+	require.NoError(t, steps.generateConsumerAccessToken(ctx))
+	token, err := requiredValue(ctx, keyAccessToken)
+	require.NoError(t, err)
+	require.Equal(t, "aGVhZA.Ym9keQ."+id, token)
+
+	require.NoError(t, steps.changeConsumerOAuth2KeysApplication(ctx, "dissociates the OAuth2 keys from"))
+	require.Equal(t, http.StatusNoContent, publishedStatusOf(t, ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "OAuth2 keys of the synthetic application", "not include", "OAuth2 keys", ""))
+
+	// A client the portal registered although its answer never arrived, under another name.
+	site.consumer.oauth2["oauth-lost"] = map[string]any{"keyId": "oauth-lost", "name": name}
+	site.consumer.oauth2["oauth-other"] = map[string]any{"keyId": "oauth-other", "name": "someone-else"}
+	require.NoError(t, registry.Sweep(ctx))
+	require.Equal(t, []string{"oauth-other"}, slices.Collect(maps.Keys(site.consumer.oauth2)),
+		"cleanup deletes the scenario's clients, the lost one too, and no other")
+}
+
+func TestTheRunnersSweepDeletesTheConsumersOAuth2Keys(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx))
+	for _, resource := range registry.Pending() {
+		if resource.Kind.Name != kindConsumerLeftovers.Name {
+			registry.Deregister(resource.Kind, resource.ID)
+		}
+	}
+	require.NoError(t, registry.SweepRunner(ctx))
+	require.Empty(t, site.consumer.oauth2)
+}
+
+func TestCredentialAnswersWithAnUnexpectedStatusAreReportedWithoutTheirBody(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.generateConsumerAPIKey(ctx))
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx))
+	site.consumer.secretStatus = http.StatusAccepted
+
+	for name, step := range map[string]func(context.Context) error{
+		"generate an API key":      steps.generateConsumerAPIKey,
+		"regenerate the API key":   steps.regenerateConsumerAPIKey,
+		"create OAuth2 keys":       steps.createConsumerOAuth2Keys,
+		"generate an access token": steps.generateConsumerAccessToken,
+	} {
+		err := step(ctx)
+		require.ErrorContains(t, err, "-> 202", name)
+		for _, secret := range []string{"value-", "secret-", "aGVhZA"} {
+			require.NotContains(t, err.Error(), secret, "%s: an error never repeats a credential", name)
+		}
+	}
+}
+
+func TestPublishedSubscriptionAnswersCarryNoToken(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	id, err := requiredValue(ctx, keyConsumerSubscriptionID)
+	require.NoError(t, err)
+	token := site.consumer.subs[id][subscriptionTokenField].(string)
+
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, string(published.Body), token)
+	require.Contains(t, string(published.Body), redactedValue)
+	err = steps.assertCloudResponseStatus(ctx, http.StatusOK)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), token, "a failed status assertion never repeats the token")
+
+	require.NoError(t, steps.assertConsumerListing(ctx, "subscriptions", "include", "synthetic subscription", ""))
+	published, err = httpx.Published(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, string(published.Body), token, "a list's tokens are redacted too")
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"), "the token assertion still sees the token")
+}
+
+func TestRedactSubscriptionTokensLeavesOtherAnswersAlone(t *testing.T) {
+	for _, body := range []string{`not json`, `{"id":"syn-app-1"}`, `[1,2]`} {
+		resp := &httpx.Response{StatusCode: http.StatusOK, Body: []byte(body)}
+		redacted, token := redactSubscriptionTokens(resp)
+		require.Empty(t, token, body)
+		if json.Valid([]byte(body)) {
+			require.JSONEq(t, body, string(redacted.Body))
+		} else {
+			require.Equal(t, body, string(redacted.Body), "an answer that is not JSON is passed through")
+		}
+	}
+}
+
+// fillApplicationsBefore adds n applications that the portal lists before the scenario's, which
+// match it in every field the listing sorts on ahead of the id, and returns the scenario's
+// application.
+func fillApplicationsBefore(t *testing.T, site *fakePortalSite, ctx context.Context, n int) string {
+	t.Helper()
+	id, err := requiredValue(ctx, keyConsumerApplicationID)
+	require.NoError(t, err)
+	target := site.consumer.apps[id]
+	for i := range n {
+		filler := "aaa-app-" + strconv.Itoa(1000+i)
+		site.consumer.apps[filler] = map[string]any{"id": filler, "displayName": target["displayName"], "description": target["description"]}
+	}
+	return id
+}
+
+func TestConsumerListingReadsEveryPage(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	id := fillApplicationsBefore(t, site, ctx, 150)
+	all := make([]any, 0, len(site.consumer.apps))
+	for _, app := range site.consumer.apps {
+		all = append(all, app)
+	}
+	first := fakePage(httptest.NewRequest(http.MethodGet, "/applications?limit=100", nil), all)["list"].([]any)
+	require.NotContains(t, first, site.consumer.apps[id], "the application is past the first page")
+	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "include", "synthetic application", ""),
+		"the application is found on a later page")
+	require.ErrorContains(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""), "still include")
+	require.NoError(t, steps.deleteConsumerApplication(ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""))
+}
+
+func TestSignInFailsWhenThePageItLandsOnFails(t *testing.T) {
+	site := newFakePortalSite(t)
+	steps, ctx := signInSteps(t, site)
+	require.NoError(t, steps.signUpConsumer(ctx))
+	site.landingStatus = http.StatusBadGateway
+	require.ErrorContains(t, steps.signInConsumer(ctx), "lands on answered 502")
+}
+
+func TestTheRunnersSweepRefusesAConsumerItCannotSignInAs(t *testing.T) {
+	_, _, ctx, registry := consumerSteps(t)
+	require.NoError(t, cleanup.RegisterRunner(ctx, cleanup.Resource{Kind: kindConsumerLeftovers, ID: "syn-consumer-earlier", Actor: consumerActor}))
+	err := registry.SweepRunner(ctx)
+	require.ErrorContains(t, err, `consumer "syn-consumer-earlier" were not swept`)
+}
+
+func TestConsumerCleanupSignsInAgainOnAStaleCSRFToken(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	browser, err := scenarioBrowser(ctx)
+	require.NoError(t, err)
+	browser.jar.SetCookies(browser.portal, []*http.Cookie{{Name: portalCSRFCookie, Value: "stale", Path: "/api-portal"}})
+	require.NoError(t, registry.Sweep(ctx))
+	require.Empty(t, site.consumer.apps)
+}
+
+func TestASubscriptionOfAnotherAPIIsNotTheScenarios(t *testing.T) {
+	_, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+
+	require.NoError(t, tcontext.Set(ctx, keyAPIID, "api-2"))
+	require.ErrorContains(t, steps.readConsumerSubscription(ctx), "no subscription to the synthetic REST API api-2")
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"), "a refusal is left to the status assertion")
+	_, err := requiredValue(ctx, keyConsumerSubscriptionToken)
+	require.Error(t, err, "a refused subscribe drops the token of another API's subscription")
+}
+
+func TestConsumerCleanupRemovesWhatItListedBeforeAPageFailed(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	fillApplicationsBefore(t, site, ctx, 150)
+	site.consumer.failPageFrom = listPageSize
+	require.NoError(t, registry.Sweep(ctx), "the scenario's application is deleted by its handle")
+	err := consumerSession{signIn: steps.signInConsumer}.removeApplications(ctx)
+	require.ErrorContains(t, err, "-> 502")
+	require.Len(t, site.consumer.apps, 50, "the first page is removed although the second failed")
+}
+
+func TestConsumerCleanupRepeatsARemovalThatGotNoAnswer(t *testing.T) {
+	for name, status := range map[string]int{
+		"a 502 answer":         http.StatusBadGateway,
+		"a 429 answer":         http.StatusTooManyRequests,
+		"a dropped connection": 0,
+		"a connection dropped after the deletion took effect": commitThenDrop,
+	} {
+		t.Run(name, func(t *testing.T) {
+			site, steps, ctx, registry := consumerSteps(t)
+			require.NoError(t, steps.createConsumerApplication(ctx))
+			require.Len(t, site.consumer.apps, 1)
+			for id := range site.consumer.apps {
+				site.consumer.failOnce = map[string]int{http.MethodDelete + " " + applicationPath(id): status}
+			}
+			site.consumer.calls = nil
+
+			require.NoError(t, registry.Sweep(ctx))
+			require.Empty(t, site.consumer.apps)
+			require.Equal(t, []string{"DELETE applications", "DELETE applications"}, calledCollections(site.consumer.calls))
+		})
+	}
+}
+
+func TestConsumerCleanupReportsARefusedRemovalWithoutRepeatingIt(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	require.Len(t, site.consumer.apps, 1)
+	var id string
+	for id = range site.consumer.apps {
+		site.consumer.failOnce = map[string]int{http.MethodDelete + " " + applicationPath(id): http.StatusConflict}
+	}
+	site.consumer.calls = nil
+
+	require.ErrorContains(t, registry.Sweep(ctx), "-> 409")
+	require.Contains(t, site.consumer.apps, id)
+	require.Equal(t, []string{"DELETE applications"}, calledCollections(site.consumer.calls))
+}
+
+func TestFailedInTransitTellsADroppedRequestFromOneThatCannotBeBuilt(t *testing.T) {
+	_, parseErr := url.Parse("http://[::1")
+	require.Error(t, parseErr)
+	sent := &url.Error{Op: "Delete", URL: "https://portal.example/applications/a", Err: io.ErrUnexpectedEOF}
+
+	require.True(t, failedInTransit(sent))
+	require.True(t, failedInTransit(fmt.Errorf("httpx: DELETE https://portal.example/applications/a: %w", sent)))
+	require.False(t, failedInTransit(parseErr))
+	require.False(t, failedInTransit(errors.New("signed up no consumer")))
+	require.False(t, failedInTransit(nil))
+}
+
+func TestOAuth2KeysAreDeletedByIDWhenTheirClientHasNoName(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx))
+	id, err := requiredValue(ctx, keyConsumerOAuth2KeyID)
+	require.NoError(t, err)
+	require.Contains(t, scenarioPending(registry), "portal-oauth2-key:"+id)
+	site.consumer.oauth2[id]["name"] = ""
+	require.NoError(t, registry.Sweep(ctx))
+	require.Empty(t, site.consumer.oauth2)
+}
+
+func TestCreateConsumerOAuth2KeysReadsEveryPageOfKeyManagers(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	for i := range listPageSize {
+		site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "aaa-" + strconv.Itoa(100+i), "keyCreation": "import"})
+	}
+	site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "thunder", "keyCreation": "register"})
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx), "the key manager that registers clients is past the first page")
+}
+
+func TestTheSubscriptionTokenAssertionReadsOnlyTheLastAnswer(t *testing.T) {
+	_, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"))
+
+	require.NoError(t, steps.publishPortalAnswer(ctx, &httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"status":"UP"}`)}))
+	require.ErrorContains(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"), "not a subscription answer",
+		"an answer published after the subscription read is not compared with its token")
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	require.ErrorContains(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"), "not a subscription answer",
+		"a consumer answer without a token does not carry the earlier one")
+}
+
+func TestControlPlaneHostIsTheConnectEndpointWithoutItsScheme(t *testing.T) {
+	host, err := controlPlaneHost("https://cloud-console-development.gateway.dev.example.test/api-management/connect/")
+	require.NoError(t, err)
+	require.Equal(t, "cloud-console-development.gateway.dev.example.test/api-management/connect", host)
+	for _, endpoint := range []string{
+		"http://cloud-console.example.test/api-management/connect",
+		"https://user:pass@cloud-console.example.test/api-management/connect",
+		"https://cloud-console.example.test/api-management/connect?x=1",
+		"/api-management/connect",
+		"",
+	} {
+		_, err := controlPlaneHost(endpoint)
+		require.Error(t, err, endpoint)
+	}
+}
+
+func TestLocalGatewayEnvVerifiesTheControlPlaneCertificate(t *testing.T) {
+	require.Equal(t, map[string]string{
+		"APIP_GW_CONTROLLER_CONTROLPLANE_HOST":                 "console.example.test/api-management/connect",
+		"APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN":                "registration-token",
+		"APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY": "false",
+	}, localGatewayEnv("console.example.test/api-management/connect", "registration-token"))
+}
+
+func TestParseMintedTokenReturnsTheValueWithoutQuotingTheBody(t *testing.T) {
+	id, token, err := parseMintedToken([]byte(`{"id":"tok-1","token":" secret-value "}`))
+	require.NoError(t, err)
+	require.Equal(t, "tok-1", id)
+	require.Equal(t, "secret-value", token)
+	_, _, err = parseMintedToken([]byte(`{"token":"secret-value"}`))
+	require.ErrorContains(t, err, "no token id")
+	require.NotContains(t, err.Error(), "secret-value")
+}
+
+// fakeStack is a local gateway stack whose stop fails with err.
+type fakeStack struct {
+	stops int
+	err   error
+}
+
+func (f *fakeStack) Stop(context.Context) error {
+	f.stops++
+	return f.err
+}
+
+// runnerWithLocalGateway returns a runner context holding a running local gateway on origin.
+func runnerWithLocalGateway(t *testing.T, runner, suffix, origin string, stack stopper) context.Context {
+	t.Helper()
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal(runner))
+	registry, err := localGatewaysOf(ctx, true)
+	require.NoError(t, err)
+	registry.add(suffix, stack)
+	registry.approve(suffix, origin)
+	return ctx
+}
+
+func TestOnlyTheOriginOfAStartedLocalGatewayIsAnApprovedDataPlaneTarget(t *testing.T) {
+	stack := &fakeStack{}
+	ctx := runnerWithLocalGateway(t, "runner-a", "-shgw-1", "http://localhost:49153", stack)
+
+	target, err := resolveCloudDataPlaneURL(ctx, "http://localhost:49153/api-1/v1/posts/1")
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:49153/api-1/v1/posts/1", target)
+	for _, refused := range []string{
+		"http://localhost:49154/api-1/v1/posts/1",
+		"https://localhost:49153/api-1/v1/posts/1",
+		"http://user@localhost:49153/api-1/v1/posts/1",
+		"http://127.0.0.1:49153/api-1/v1/posts/1",
+	} {
+		_, err := resolveCloudDataPlaneURL(ctx, refused)
+		require.Error(t, err, refused)
+	}
+
+	other := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner-b"))
+	_, err = resolveCloudDataPlaneURL(other, "http://localhost:49153/api-1/v1/posts/1")
+	require.Error(t, err, "another runner's gateway is not approved")
+
+	require.NoError(t, stopLocalGateway(ctx, "-shgw-1"))
+	require.Equal(t, 1, stack.stops)
+	_, err = resolveCloudDataPlaneURL(ctx, "http://localhost:49153/api-1/v1/posts/1")
+	require.Error(t, err, "a stopped gateway's origin is no longer approved")
+}
+
+func TestALocalGatewayThatFailsToStopStaysApproved(t *testing.T) {
+	stack := &fakeStack{err: errors.New("compose down failed")}
+	ctx := runnerWithLocalGateway(t, "runner-a", "-shgw-1", "http://localhost:49153", stack)
+
+	require.ErrorContains(t, stopLocalGateway(ctx, "-shgw-1"), "compose down failed")
+	_, err := resolveCloudDataPlaneURL(ctx, "http://localhost:49153/api-1/v1/posts/1")
+	require.NoError(t, err, "it may still be serving")
+
+	stack.err = nil
+	require.NoError(t, localGatewayDeleter(ctx, cleanup.Resource{Kind: kindLocalGateway, ID: "-shgw-1"}))
+	require.Equal(t, 2, stack.stops, "cleanup stops it again")
+}
+
+func TestSelfHostedGatewayStepsUseTheLocalGatewayAsTheActiveGateway(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{}
+	require.ErrorContains(t, steps.selectActiveGatewayEnvironment(ctx), "find an active APIP gateway first")
+
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keyGatewayID, "managed-gw")
+	local.Set(keyGatewayEnv, "development")
+	local.Set(keyGatewayEndpoint, "https://managed.example.test")
+	require.NoError(t, steps.selectActiveGatewayEnvironment(ctx))
+	environment, err := requiredValue(ctx, keyEnvironmentName)
+	require.NoError(t, err)
+	require.Equal(t, "development", environment)
+
+	local.Set(keySelfHostedGatewayID, "development-syn-shgw-1")
+	require.ErrorContains(t, steps.useLocalGatewayAsActive(ctx), "start a local APIP gateway first")
+	local.Set(keyLocalGatewayEndpoint, "http://localhost:49153")
+	require.NoError(t, steps.useLocalGatewayAsActive(ctx))
+	for key, want := range map[string]string{
+		keyGatewayID: "development-syn-shgw-1", keyGatewayEnv: "development", keyGatewayEndpoint: "http://localhost:49153",
+	} {
+		got, err := requiredValue(ctx, key)
+		require.NoError(t, err, key)
+		require.Equal(t, want, got, key)
+	}
+}
+
+func TestAwaitSelfHostedGatewayStateWaitsForTheReportedState(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	reads := 0
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/self-hosted-gateways/development-syn-shgw-1", r.URL.Path)
+		reads++
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "development-syn-shgw-1", "isActive": reads > 1})
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keySelfHostedGatewayID, "development-syn-shgw-1")
+
+	require.NoError(t, steps.awaitSelfHostedGatewayState(ctx, "active"))
+	require.Equal(t, 2, reads, "the first, inactive answer is not accepted")
+
+	_, err := selfHostedGatewayActive([]byte(`{"id":"development-syn-shgw-1"}`))
+	require.ErrorContains(t, err, "no boolean isActive")
+}
+
+func TestStoppingALocalGatewayThatIsNotRunningSucceeds(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, stopLocalGateway(ctx, "-shgw-unknown"))
+	require.NoError(t, localGatewayDeleter(ctx, cleanup.Resource{Kind: kindLocalGateway, ID: "-shgw-unknown"}))
+	require.Less(t, kindLocalGateway.Order, kindSelfHostedGateway.Order, "the local gateway stops before its registration is deleted")
+	require.Greater(t, kindLocalGateway.Order, cleanup.KindAPI.Order, "the APIs deployed to it are deleted while it still runs")
+}
+
+// pendingOf lists the ids of the resources of a kind that cleanup still holds.
+func pendingOf(registry *cleanup.Registry, kind cleanup.Kind) []string {
+	var ids []string
+	for _, resource := range registry.Pending() {
+		if resource.Kind == kind {
+			ids = append(ids, resource.ID)
+		}
+	}
+	return ids
+}
+
+// formOf reads a multipart request into its text fields and its uploaded files.
+func formOf(r *http.Request) (map[string]string, map[string][]byte, error) {
+	_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, nil, err
+	}
+	reader := multipart.NewReader(r.Body, params["boundary"])
+	fields, files := map[string]string{}, map[string][]byte{}
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			return fields, files, nil
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		content, err := io.ReadAll(part)
+		if err != nil {
+			return nil, nil, err
+		}
+		if part.FileName() != "" {
+			files[part.FormName()] = content
+			continue
+		}
+		fields[part.FormName()] = string(content)
+	}
+}
+
+// handlerForm reads a stub handler's multipart request. A request it cannot read is reported
+// without stopping the test from the handler's goroutine, and answered with 400; ok is false then.
+func handlerForm(t *testing.T, w http.ResponseWriter, r *http.Request) (map[string]string, map[string][]byte, bool) {
+	fields, files, err := formOf(r)
+	if err != nil {
+		t.Errorf("reading the multipart request: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return nil, nil, false
+	}
+	return fields, files, true
+}
+
+func TestWithKindAddsTheKindOnlyForAnotherKind(t *testing.T) {
+	require.Equal(t, "/p", withKind("/p", ""))
+	require.Equal(t, "/p?kind=GraphQLApi", withKind("/p", kindGraphQLAPI))
+	require.Equal(t, "/p?a=1&kind=GraphQLApi", withKind("/p?a=1", kindGraphQLAPI))
+}
+
+func TestAPIRefForSelectsTheGraphQLAPI(t *testing.T) {
+	require.Equal(t, graphQLAPI, apiRefFor(graphQLAPILabel))
+	require.Equal(t, kindGraphQLAPI, graphQLAPI.kind)
+	require.Equal(t, graphQLAPIsCollection, graphQLAPI.collection)
+	require.Empty(t, primaryAPI.kind, "a REST API names no kind")
+	require.Empty(t, versionAPI.builds, "the builds of a new version are not followed")
+	require.NotEqual(t, primaryAPI.builds, graphQLAPI.builds)
+}
+
+func TestSeenBuildsBelongToOneAPIAndAreCountedFromOne(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keyAPIID, "api-1")
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-2"))
+
+	first, err := seenBuild(ctx, primaryAPI, 1)
+	require.NoError(t, err)
+	require.Equal(t, "2026-11-18-1", first)
+	second, err := seenBuild(ctx, primaryAPI, 2)
+	require.NoError(t, err)
+	require.Equal(t, "2026-11-18-2", second)
+	for _, n := range []int{0, 3} {
+		_, err := seenBuild(ctx, primaryAPI, n)
+		require.ErrorContains(t, err, "was not seen")
+	}
+
+	local.Set(keyBuildID, "2026-11-18-2")
+	local.Set(keyAPIID, "api-2")
+	builds, err := seenBuilds(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Empty(t, builds, "another API's builds are not this API's")
+	require.Empty(t, optionalValue(ctx, keyBuildID), "the related build keys are dropped with them")
+
+	local.Set(keyGraphQLAPIID, "gql-1")
+	require.NoError(t, appendBuild(ctx, graphQLAPI, "2026-11-18-1"))
+	builds, err = seenBuilds(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Empty(t, builds, "a GraphQL API's builds are kept apart")
+	builds, err = seenBuilds(ctx, graphQLAPI)
+	require.NoError(t, err)
+	require.Equal(t, []string{"2026-11-18-1"}, builds)
+}
+
+func TestPrepareBuildsPreparesTheNumberAsked(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	prepared := 0
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/projects/default/apis/api-1/builds", r.URL.Path)
+		prepared++
+		writeJSON(w, http.StatusCreated, map[string]string{"buildId": "2026-11-18-" + strconv.Itoa(prepared)})
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyAPIID, "api-1")
+
+	require.NoError(t, steps.prepareBuilds(ctx, "a"))
+	require.Equal(t, 1, prepared)
+	require.NoError(t, steps.prepareBuilds(ctx, "3"))
+	require.Equal(t, 4, prepared)
+	builds, err := seenBuilds(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, []string{"2026-11-18-1", "2026-11-18-2", "2026-11-18-3", "2026-11-18-4"}, builds)
+
+	for _, count := range []string{"0", "-1", "x"} {
+		require.Error(t, steps.prepareBuilds(ctx, count), count)
+	}
+	require.Equal(t, 4, prepared, "a bad count prepares nothing")
+}
+
+// deploymentAnswerStub answers every deployment request with one deployment on gateway gw that
+// runs the build *answered names, and records each request's path, query and body.
+func deploymentAnswerStub(t *testing.T, answered *string, paths, queries *[]string, bodies *[]map[string]any) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		*paths = append(*paths, r.URL.Path)
+		*queries = append(*queries, r.URL.RawQuery)
+		var body map[string]any
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		*bodies = append(*bodies, body)
+		writeJSON(w, http.StatusCreated, map[string]any{"list": []map[string]string{
+			{"gatewayId": "gw", "deploymentId": "dep-" + strconv.Itoa(len(*paths)), "buildId": *answered},
+		}})
+	}
+}
+
+func TestDeployAPIFollowsTheBuildItRendered(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var paths, queries []string
+	var bodies []map[string]any
+	answered := "2026-11-18-1"
+	steps, ctx, local, _ := cloudSteps(t, deploymentAnswerStub(t, &answered, &paths, &queries, &bodies))
+	local.Set(keyProjectID, "default")
+	local.Set(keyGatewayID, "gw")
+	local.Set(keyGatewayEnv, "development")
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyVersionAPIID, "api-2")
+
+	require.NoError(t, steps.deployAPI(ctx, "synthetic REST API"))
+	answered = "2026-11-18-2"
+	require.NoError(t, steps.redeployAPI(ctx))
+	builds, err := seenBuilds(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, []string{"2026-11-18-1", "2026-11-18-2"}, builds)
+	require.Equal(t, "dep-2", optionalValue(ctx, keyDeploymentID))
+	require.NotContains(t, bodies[0], "buildId", "a deployment of the current definition names no build")
+	require.Equal(t, []string{"", ""}, queries, "a REST API is deployed without a kind")
+
+	require.NoError(t, steps.deployAPI(ctx, newVersionAPILabel))
+	require.Equal(t, "/projects/default/apis/api-2/deployments", paths[2])
+	builds, err = seenBuilds(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Len(t, builds, 2, "the new version's build is not taken for the first API's")
+}
+
+func TestDeployBuildNamesTheBuildAndTheKind(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var paths, queries []string
+	var bodies []map[string]any
+	answered := "2026-11-18-1"
+	steps, ctx, local, _ := cloudSteps(t, deploymentAnswerStub(t, &answered, &paths, &queries, &bodies))
+	local.Set(keyProjectID, "default")
+	local.Set(keyGatewayID, "gw")
+	local.Set(keyGatewayEnv, "development")
+	local.Set(keyGraphQLAPIID, "gql-1")
+	require.NoError(t, appendBuild(ctx, graphQLAPI, "2026-11-18-1"))
+
+	require.NoError(t, steps.deployBuild(ctx, 1, graphQLAPILabel))
+	require.Equal(t, "/projects/default/apis/gql-1/deployments", paths[0])
+	require.Equal(t, "kind=GraphQLApi", queries[0])
+	require.Equal(t, "2026-11-18-1", bodies[0]["buildId"])
+	require.Equal(t, "dep-1", optionalValue(ctx, keyGraphQLDeploymentID))
+	builds, err := seenBuilds(ctx, graphQLAPI)
+	require.NoError(t, err)
+	require.Len(t, builds, 1, "deploying a build the scenario saw adds no build")
+
+	answered = "2026-11-18-9"
+	require.ErrorContains(t, steps.deployBuild(ctx, 1, graphQLAPILabel), "runs build")
+	require.ErrorContains(t, steps.deployBuild(ctx, 2, graphQLAPILabel), "was not seen")
+}
+
+func TestUndeployAndTryUndeployAddressTheDeploymentOfTheAPI(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var path string
+	var query url.Values
+	status := http.StatusNoContent
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		path, query = r.URL.Path, r.URL.Query()
+		w.WriteHeader(status)
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyGatewayID, "gw")
+	local.Set(keyGatewayEnv, "development")
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyDeploymentID, "dep-a")
+	local.Set(keyGraphQLAPIID, "gql-1")
+	local.Set(keyGraphQLDeploymentID, "dep-g")
+	local.Set("otherEnvironment", "missing")
+
+	require.NoError(t, steps.undeployAPI(ctx, graphQLAPILabel))
+	require.Equal(t, "/projects/default/apis/gql-1/deployments/dep-g/undeploy", path)
+	require.Equal(t, url.Values{"environment": {"development"}, "gatewayId": {"gw"}, "kind": {kindGraphQLAPI}}, query)
+
+	status = http.StatusBadRequest
+	require.NoError(t, steps.tryUndeployAPI(ctx, "${CTX:otherEnvironment}"), "a refusal is left for the scenario")
+	require.Equal(t, "/projects/default/apis/api-1/deployments/dep-a/undeploy", path)
+	require.Equal(t, url.Values{"environment": {"missing"}, "gatewayId": {"gw"}}, query)
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, published.StatusCode)
+
+	status = http.StatusConflict
+	require.NoError(t, steps.tryUndeployAPI(ctx, ""))
+	require.Equal(t, "development", query.Get("environment"), "the active gateway's environment by default")
+	require.Error(t, steps.undeployAPI(ctx, "synthetic REST API"), "only 204 is a completed undeploy")
+}
+
+func TestDeleteBuildAddressesTheBuildThroughTheWayNamed(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var requests []string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "BUILD_NOT_FOUND"})
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyVersionAPIID, "api-2")
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
+
+	require.NoError(t, steps.deleteBuild(ctx, 1, ""))
+	require.NoError(t, steps.deleteBuild(ctx, 1, throughNewVersion))
+	require.NoError(t, steps.deleteBuild(ctx, 1, asGraphQLAPI))
+	require.Equal(t, []string{
+		"DELETE /projects/default/apis/api-1/builds/2026-11-18-1?",
+		"DELETE /projects/default/apis/api-2/builds/2026-11-18-1?",
+		"DELETE /projects/default/apis/api-1/builds/2026-11-18-1?kind=GraphQLApi",
+	}, requests)
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, published.StatusCode, "the answer is left for the scenario")
+
+	require.ErrorContains(t, steps.deleteBuild(ctx, 1, "sideways"), "unsupported way")
+	require.ErrorContains(t, steps.deleteBuild(ctx, 2, ""), "was not seen")
+	require.Len(t, requests, 3)
+}
+
+func TestBuildPresenceOrderAndIdentifierAssertions(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	listed := []string{"2026-11-18-6", "2026-11-18-5", "2026-11-18-4", "2026-11-18-3", "2026-11-18-1"}
+	var served atomic.Int32
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/projects/default/apis/api-1/builds", r.URL.Path)
+		served.Add(1)
+		items := make([]map[string]string, 0, len(listed))
+		for _, id := range listed {
+			items = append(items, map[string]string{"buildId": id})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": items})
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyAPIID, "api-1")
+	for i := 1; i <= 6; i++ {
+		require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-"+strconv.Itoa(i)))
+	}
+
+	require.NoError(t, steps.assertBuildPresence(ctx, "include", 1))
+	require.NoError(t, steps.assertBuildPresence(ctx, "not include", 2))
+	require.NoError(t, steps.assertBuildsExactly(ctx, "6, 5, 4, 3 and 1"))
+	// Each negative check gets a context of its own and must have read a listing to fail.
+	for name, check := range map[string]func(context.Context) error{
+		"a build that was pruned":      func(ctx context.Context) error { return steps.assertBuildPresence(ctx, "include", 2) },
+		"a build that is still listed": func(ctx context.Context) error { return steps.assertBuildPresence(ctx, "not include", 1) },
+		"another order":                func(ctx context.Context) error { return steps.assertBuildsExactly(ctx, "5, 6, 4, 3 and 1") },
+		"a missing build":              func(ctx context.Context) error { return steps.assertBuildsExactly(ctx, "6, 5, 3 and 1") },
+		"a build too many":             func(ctx context.Context) error { return steps.assertBuildsExactly(ctx, "6, 5, 4, 3, 2 and 1") },
+	} {
+		before := served.Load()
+		short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+		require.Error(t, check(short), name)
+		cancel()
+		require.Greater(t, served.Load(), before, "%s: the check read a listing", name)
+	}
+	require.ErrorContains(t, steps.assertBuildsExactly(ctx, "6, five and 1"), "not a list of build numbers")
+	require.ErrorContains(t, steps.assertBuildsExactly(ctx, "6, 5 and 9"), "was not seen")
+	require.NoError(t, steps.assertBuildsDistinct(ctx))
+
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
+	require.ErrorContains(t, steps.assertBuildsDistinct(ctx), "builds 1 and 7 share the identifier")
+
+	local.Set(keyAPIID, "api-2")
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
+	require.ErrorContains(t, steps.assertBuildsDistinct(ctx), "at least two builds")
+}
+
+func TestSendMalformedRequestSendsABodyThatIsNotJSON(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var path, contentType string
+	var body []byte
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		path, contentType = r.URL.Path, r.Header.Get("Content-Type")
+		body, _ = io.ReadAll(r.Body)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyAPIID, "api-1")
+
+	require.NoError(t, steps.sendMalformedRequest(ctx, "build"))
+	require.Equal(t, "/projects/default/apis/api-1/builds", path)
+	require.Equal(t, "application/json", contentType)
+	require.False(t, json.Valid(body), "the body must not be JSON")
+	require.NoError(t, steps.sendMalformedRequest(ctx, "deployment"))
+	require.Equal(t, "/projects/default/apis/api-1/deployments", path)
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, published.StatusCode)
+}
+
+func TestDocumentFormUploadsFixturesAndGeneratedDocuments(t *testing.T) {
+	body, contentType, err := documentForm([][2]string{
+		{"id", "api-1"}, {"file", specFieldPrefix + "petstore-v1.yaml"}, {"large", generatedSpecFieldPrefix + "2048"},
+	})
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+	request.Header.Set("Content-Type", contentType)
+	fields, files, err := formOf(request)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"id": "api-1"}, fields)
+	fixture, err := specs.Fixture("petstore-v1.yaml")
+	require.NoError(t, err)
+	require.Equal(t, fixture, files["file"])
+	require.Len(t, files["large"], 2048)
+
+	for _, value := range []string{generatedSpecFieldPrefix + "0", generatedSpecFieldPrefix + "x", specFieldPrefix + "missing.yaml"} {
+		_, _, err := documentForm([][2]string{{"file", value}})
+		require.Error(t, err, value)
+	}
+}
+
+// importAnswerStub answers an import with the API the form describes, with server fields added,
+// under answeredID when it is set. It records the form and what cleanup held when it was asked.
+type importAnswerStub struct {
+	t          *testing.T
+	registry   *cleanup.Registry
+	status     int
+	answeredID string
+	fields     map[string]string
+	files      map[string][]byte
+	registered []string
+}
+
+func (s *importAnswerStub) handler(w http.ResponseWriter, r *http.Request) {
+	assert.Equal(s.t, http.MethodPost, r.Method)
+	assert.Equal(s.t, importOpenAPIPath, r.URL.Path)
+	s.registered = pendingOf(s.registry, cleanup.KindAPI)
+	fields, files, ok := handlerForm(s.t, w, r)
+	if !ok {
+		return
+	}
+	s.fields, s.files = fields, files
+	id := s.fields["id"]
+	if s.answeredID != "" {
+		id = s.answeredID
+	}
+	var upstream any
+	_ = json.Unmarshal([]byte(s.fields["upstream"]), &upstream)
+	writeJSON(w, s.status, map[string]any{
+		"id": id, "displayName": s.fields["displayName"], "context": s.fields["context"],
+		"version": s.fields["version"], "projectId": s.fields["projectId"], "upstream": upstream,
+		"operations":      []map[string]any{{"name": "listPets", "request": map[string]string{"method": "GET", "path": "/pets"}}},
+		"lifeCycleStatus": "CREATED", "createdAt": "2026-11-18T00:00:00Z",
+	})
+}
+
+func importSteps(t *testing.T) (*Steps, context.Context, *tcontext.Local, *importAnswerStub) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(backendEnv, "")
+	stub := &importAnswerStub{t: t, status: http.StatusCreated}
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) { stub.handler(w, r) })
+	stub.registry = registry
+	local.Set(keyProjectID, "default")
+	return steps, ctx, local, stub
+}
+
+func TestImportAPIRegistersBeforeTheRequestAndKeepsTheDefinition(t *testing.T) {
+	steps, ctx, _, stub := importSteps(t)
+
+	require.NoError(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	id := optionalValue(ctx, keyAPIID)
+	require.Equal(t, []string{id}, stub.registered, "the API is registered before the import is sent")
+	require.Equal(t, []string{id}, pendingOf(stub.registry, cleanup.KindAPI))
+	fixture, err := specs.Fixture("petstore-v1.yaml")
+	require.NoError(t, err)
+	require.Equal(t, fixture, stub.files["file"])
+	require.Equal(t, "/"+id+"/v1", stub.fields["context"])
+	require.Equal(t, "default", stub.fields["projectId"])
+	require.JSONEq(t, `{"main":{"url":"`+defaultBackend+`"}}`, stub.fields["upstream"])
+
+	definition, err := steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, id, definition["id"])
+	require.Contains(t, definition, "operations")
+	require.NotContains(t, definition, "lifeCycleStatus", "server fields are not part of the definition")
+	require.NotContains(t, definition, "createdAt")
+}
+
+func TestImportAPIKeepsOnlyWhatThePlatformCreated(t *testing.T) {
+	steps, ctx, _, stub := importSteps(t)
+
+	stub.status = http.StatusBadRequest
+	require.Error(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	refused := optionalValue(ctx, keyAPIID)
+	require.Equal(t, []string{refused}, pendingOf(stub.registry, cleanup.KindAPI),
+		"a refused import stays registered, since a refusal can follow a stored API")
+
+	stub.status = http.StatusInternalServerError
+	require.Error(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	require.Len(t, pendingOf(stub.registry, cleanup.KindAPI), 2)
+
+	stub.status, stub.answeredID = http.StatusCreated, "api-renamed"
+	require.NoError(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	require.Equal(t, "api-renamed", optionalValue(ctx, keyAPIID))
+	require.Contains(t, pendingOf(stub.registry, cleanup.KindAPI), "api-renamed")
+	require.Len(t, pendingOf(stub.registry, cleanup.KindAPI), 3, "the id the request named is dropped")
+
+	require.Error(t, steps.importAPI(ctx, "missing.yaml"))
+}
+
+func TestImportNewVersionAndReimportReuseTheFirstAPI(t *testing.T) {
+	steps, ctx, local, stub := importSteps(t)
+	require.NoError(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	first := optionalValue(ctx, keyAPIID)
+	name := stub.fields["displayName"]
+
+	require.NoError(t, steps.importNewAPIVersion(ctx, "2.0.0", "inventory.yaml"))
+	version := optionalValue(ctx, keyVersionAPIID)
+	require.NotEqual(t, first, version)
+	require.Equal(t, name, stub.fields["displayName"], "a new version keeps the display name")
+	require.Equal(t, "2.0.0", stub.fields["version"])
+	require.Equal(t, "/"+version+"/2.0.0", stub.fields["context"])
+
+	require.NoError(t, steps.reimportAPI(ctx, "inventory.yaml"))
+	require.Equal(t, first, stub.fields["id"])
+	require.Equal(t, "/"+first+"/v1", stub.fields["context"])
+	inventory, err := specs.Fixture("inventory.yaml")
+	require.NoError(t, err)
+	require.Equal(t, inventory, stub.files["file"])
+
+	local.Set(keyAPIDefinition, `{"id":"api-1"}`)
+	require.ErrorContains(t, steps.reimportAPI(ctx, "inventory.yaml"), "to import again")
+}
+
+func TestSubmitAPIImportLeavesTheAnswerAndKeepsOnlyWhatWasCreated(t *testing.T) {
+	steps, ctx, local, stub := importSteps(t)
+	local.Set("specURL", "https://specs.example.test/petstore.yaml")
+
+	require.ErrorContains(t, steps.submitAPIImport(ctx, valuesTable(t, []string{"operations", "[]"})), "unsupported import value")
+	require.Nil(t, stub.fields, "an unsupported value sends nothing")
+
+	stub.status = http.StatusBadRequest
+	require.NoError(t, steps.submitAPIImport(ctx, valuesTable(t,
+		[]string{"file", specFieldPrefix + "petstore-v1.yaml"}, []string{"url", "${CTX:specURL}"})))
+	require.Equal(t, "https://specs.example.test/petstore.yaml", stub.fields["url"])
+	require.Contains(t, stub.files, "file")
+	refused := optionalValue(ctx, keyRejectedAPIID)
+	require.Equal(t, []string{refused}, stub.registered, "registered before the request")
+	require.Equal(t, []string{refused}, pendingOf(stub.registry, cleanup.KindAPI), "a refusal can follow a stored API")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, published.StatusCode)
+
+	stub.status = http.StatusCreated
+	require.NoError(t, steps.submitAPIImport(ctx, valuesTable(t, []string{"description", "Neither a file nor a URL"})))
+	require.NotContains(t, stub.fields, "url")
+	require.Empty(t, stub.files)
+	require.ElementsMatch(t, []string{refused, optionalValue(ctx, keyRejectedAPIID)}, pendingOf(stub.registry, cleanup.KindAPI))
+
+	stub.answeredID = "api-renamed"
+	require.NoError(t, steps.submitAPIImport(ctx, valuesTable(t, []string{"file", specFieldPrefix + "petstore-v1.yaml"})))
+	require.Equal(t, "api-renamed", optionalValue(ctx, keyRejectedAPIID), "the API is followed under the id it was created with")
+	require.Contains(t, pendingOf(stub.registry, cleanup.KindAPI), "api-renamed")
+	require.NotContains(t, pendingOf(stub.registry, cleanup.KindAPI), stub.fields["id"])
+	published, err = httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, published.StatusCode, "the import's answer stays published")
+}
+
+func TestValidateSpecFixtureAndItsAssertions(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	invalid, err := specs.Fixture("invalid.yaml")
+	require.NoError(t, err)
+	var uploaded []byte
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, validateOpenAPIPath, r.URL.Path)
+		_, files, ok := handlerForm(t, w, r)
+		if !ok {
+			return
+		}
+		uploaded = files["file"]
+		writeJSON(w, http.StatusOK, map[string]any{"isValid": false, "errors": []map[string]string{{"message": "m"}}, "content": string(invalid)})
+	})
+
+	require.NoError(t, steps.validateSpecFixture(ctx, "invalid.yaml"))
+	require.Equal(t, invalid, uploaded)
+	require.NoError(t, steps.assertValidation(ctx, "list the errors and return the definition"))
+	require.Error(t, steps.assertValidation(ctx, "find no errors"))
+
+	for name, body := range map[string]string{
+		"other content": `{"isValid":false,"errors":[{"message":"m"}],"content":"other"}`,
+		"no content":    `{"isValid":false,"errors":[{"message":"m"}]}`,
+		"no errors":     `{"isValid":false,"errors":[],"content":` + strconv.Quote(string(invalid)) + `}`,
+		"empty message": `{"isValid":false,"errors":[{"message":" "}],"content":` + strconv.Quote(string(invalid)) + `}`,
+		"valid":         `{"isValid":true,"errors":[]}`,
+		"not a result":  `{"errors":[]}`,
+		"not JSON":      `nope`,
+	} {
+		publishedResponse(t, steps, ctx, http.StatusOK, body)
+		require.Error(t, steps.assertValidation(ctx, "list the errors and return the definition"), name)
+	}
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"isValid":true,"errors":[]}`)
+	require.NoError(t, steps.assertValidation(ctx, "find no errors"))
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"isValid":true,"errors":[{"message":"m"}]}`)
+	require.Error(t, steps.assertValidation(ctx, "find no errors"))
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"isValid":true,"errors":[]}`)
+	require.Error(t, steps.assertValidation(ctx, "find no errors"), "only a 200 is a validation result")
+}
+
+// restAPIStub serves one REST API's definition routes from a definition it keeps.
+type restAPIStub struct {
+	t          *testing.T
+	api        map[string]any
+	stored     []byte
+	putStatus  int
+	putBody    map[string]any
+	uploaded   []byte
+	operations []any
+}
+
+func (s *restAPIStub) handler(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/rest-apis/api-1":
+		writeJSON(w, http.StatusOK, s.api)
+	case r.Method == http.MethodPut && r.URL.Path == "/rest-apis/api-1":
+		s.putBody = map[string]any{}
+		if !assert.NoError(s.t, json.NewDecoder(r.Body).Decode(&s.putBody)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, s.putStatus, s.putBody)
+	case r.Method == http.MethodPut && r.URL.Path == "/rest-apis/api-1/openapi":
+		_, files, ok := handlerForm(s.t, w, r)
+		if !ok {
+			return
+		}
+		s.uploaded = files["file"]
+		s.api["operations"] = s.operations
+		writeJSON(w, s.putStatus, map[string]string{"content": string(s.uploaded)})
+	case r.Method == http.MethodGet && r.URL.Path == "/rest-apis/api-1/openapi":
+		if s.stored == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"content": string(s.stored)})
+	case r.Method == http.MethodGet && r.URL.Path == "/rest-apis/rejected":
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+	default:
+		w.WriteHeader(http.StatusTeapot)
+	}
+}
+
+func operationsOf(entries ...[3]any) []any {
+	operations := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		request := map[string]any{"method": entry[1], "path": entry[2]}
+		operations = append(operations, map[string]any{"name": entry[0], "request": request})
+	}
+	return operations
+}
+
+func restAPISteps(t *testing.T) (*Steps, context.Context, *tcontext.Local, *restAPIStub) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := &restAPIStub{t: t, putStatus: http.StatusOK, api: map[string]any{
+		"id": "api-1", "context": "/api-1/v1", "version": "1.0.0", "createdAt": "x",
+		"operations": operationsOf([3]any{"listPets", "GET", "/pets"}, [3]any{"createPet", "POST", "/pets"}),
+	}}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) { stub.handler(w, r) })
+	local.Set(keyAPIID, "api-1")
+	return steps, ctx, local, stub
+}
+
+func TestReplaceDefinitionUploadsTheFixtureAndKeepsTheNewDefinition(t *testing.T) {
+	steps, ctx, _, stub := restAPISteps(t)
+	stub.operations = operationsOf([3]any{"listAnimals", "GET", "/animals"})
+
+	require.NoError(t, steps.replaceDefinition(ctx, "petstore-renamed.yaml"))
+	renamed, err := specs.Fixture("petstore-renamed.yaml")
+	require.NoError(t, err)
+	require.Equal(t, renamed, stub.uploaded)
+	definition, err := steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, stub.operations, definition["operations"], "the definition is read back after the upload")
+	require.NotContains(t, definition, "createdAt")
+
+	stub.putStatus = http.StatusBadRequest
+	require.Error(t, steps.replaceDefinition(ctx, "petstore-v2.yaml"))
+}
+
+func TestAddOperationPolicyGivesOnlyTheNamedOperationTheHeaderPolicy(t *testing.T) {
+	steps, ctx, _, stub := restAPISteps(t)
+	require.NoError(t, steps.refreshDefinition(ctx, primaryAPI))
+
+	require.NoError(t, steps.addOperationPolicy(ctx, "listPets"))
+	operations := stub.putBody["operations"].([]any)
+	listPets := operations[0].(map[string]any)["request"].(map[string]any)
+	require.Len(t, listPets["policies"], 1)
+	policy := listPets["policies"].([]any)[0].(map[string]any)
+	require.Equal(t, headerPolicyName, policy["name"])
+	require.Contains(t, mustJSON(t, policy), operationProbeHeader)
+	require.NotContains(t, operations[1].(map[string]any)["request"], "policies")
+	definition, err := steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Contains(t, mustJSON(t, definition), operationProbeHeader, "the stored definition carries the policy")
+
+	require.ErrorContains(t, steps.addOperationPolicy(ctx, "deletePet"), "no operation named")
+	stub.putStatus = http.StatusBadRequest
+	require.Error(t, steps.addOperationPolicy(ctx, "createPet"))
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	require.NoError(t, err)
+	return string(encoded)
+}
+
+func TestFixtureOperationsListEveryOperationByNameMethodAndPath(t *testing.T) {
+	operations, err := fixtureOperations("petstore-v1.yaml")
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"createPet POST /pets", "getInventory GET /store/inventory", "getPet GET /pets/{petId}", "listPets GET /pets",
+	}, operations)
+	_, err = fixtureOperations("missing.yaml")
+	require.Error(t, err)
+	operations, err = fixtureOperations("empty-paths.yaml")
+	require.NoError(t, err)
+	require.Empty(t, operations, "a document with no paths defines no operations")
+	_, err = fixtureOperations("not-a-spec.txt")
+	require.Error(t, err, "a document that is not YAML defines nothing")
+}
+
+func TestAssertOperationsOfFixtureNeedsExactlyTheFixturesOperations(t *testing.T) {
+	steps, ctx, _, stub := restAPISteps(t)
+	stub.api["operations"] = operationsOf(
+		[3]any{"listPets", "get", "/pets"}, [3]any{"createPet", "POST", "/pets"},
+		[3]any{"getPet", "GET", "/pets/{petId}"}, [3]any{"getInventory", "GET", "/store/inventory"},
+	)
+	require.NoError(t, steps.assertOperationsOfFixture(ctx, "synthetic REST API", "petstore-v1.yaml"))
+	require.Error(t, steps.assertOperationsOfFixture(ctx, "synthetic REST API", "petstore-v2.yaml"))
+
+	stub.api["operations"] = operationsOf([3]any{"listPets", "GET", "/pets"})
+	require.ErrorContains(t, steps.assertOperationsOfFixture(ctx, "synthetic REST API", "petstore-v1.yaml"), "defines")
+}
+
+func TestAssertOperationPolicyReadsTheNamedOperation(t *testing.T) {
+	steps, ctx, _, stub := restAPISteps(t)
+	stub.api["operations"] = []any{
+		map[string]any{"name": "listPets", "request": map[string]any{"method": "GET", "path": "/pets", "policies": []any{headerPolicy()}}},
+		map[string]any{"name": "listAnimals", "request": map[string]any{"method": "GET", "path": "/animals"}},
+	}
+	require.NoError(t, steps.assertOperationPolicy(ctx, "listPets", "keep"))
+	require.Error(t, steps.assertOperationPolicy(ctx, "listPets", "not have"))
+	require.NoError(t, steps.assertOperationPolicy(ctx, "listAnimals", "not have"))
+	require.Error(t, steps.assertOperationPolicy(ctx, "listAnimals", "keep"))
+	require.ErrorContains(t, steps.assertOperationPolicy(ctx, "getPet", "keep"), "no operation named")
+}
+
+func TestStoredDefinitionAndAbsenceAssertions(t *testing.T) {
+	steps, ctx, local, stub := restAPISteps(t)
+	fixture, err := specs.Fixture("petstore-v1.yaml")
+	require.NoError(t, err)
+
+	require.NoError(t, steps.assertNoStoredDefinition(ctx))
+	require.Error(t, steps.assertStoredDefinition(ctx, "synthetic REST API", "petstore-v1.yaml"))
+	stub.stored = fixture
+	require.NoError(t, steps.assertStoredDefinition(ctx, "synthetic REST API", "petstore-v1.yaml"))
+	require.ErrorContains(t, steps.assertStoredDefinition(ctx, "synthetic REST API", "petstore-v2.yaml"), "differs")
+	require.Error(t, steps.assertNoStoredDefinition(ctx))
+
+	local.Set(keyRejectedAPIID, "rejected")
+	require.NoError(t, steps.assertSubmittedAPI(ctx, "not exist"))
+	require.Error(t, steps.assertSubmittedAPI(ctx, "exist"))
+	local.Set(keyRejectedAPIID, "api-1")
+	require.Error(t, steps.assertSubmittedAPI(ctx, "not exist"), "an API that exists is not absent")
+	require.NoError(t, steps.assertSubmittedAPI(ctx, "exist"))
+}
+
+func TestProbeHeaderAssertionsReadTheEcho(t *testing.T) {
+	steps, ctx, _, _ := restAPISteps(t)
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"path":"/pets","headers":{"X-Apip-Operation-Probe":["kept"]}}`)
+	require.NoError(t, steps.assertProbeHeaderEchoed(ctx))
+	require.Error(t, steps.assertProbeHeaderAbsent(ctx))
+
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"path":"/pets","headers":{"X-Apip-Operation-Probe":["other"]}}`)
+	require.Error(t, steps.assertProbeHeaderEchoed(ctx))
+
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"path":"/animals","headers":{"Accept":["*/*"]}}`)
+	require.NoError(t, steps.assertProbeHeaderAbsent(ctx))
+	require.Error(t, steps.assertProbeHeaderEchoed(ctx))
+
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"id":1}`)
+	require.ErrorContains(t, steps.assertProbeHeaderAbsent(ctx), "not an echo", "an answer that is not an echo proves nothing")
+}
+
+func TestReadAPIPublishesTheAPI(t *testing.T) {
+	steps, ctx, local, _ := restAPISteps(t)
+	require.NoError(t, steps.readAPI(ctx))
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Contains(t, published.Text(), `"context":"/api-1/v1"`)
+	local.Set(keyAPIID, "api-missing")
+	require.Error(t, steps.readAPI(ctx))
+}
+
+func TestResponseBodyAssertionChecksAbsenceToo(t *testing.T) {
+	steps, ctx, _, _ := restAPISteps(t)
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"code":"DESTINATION_NOT_ALLOWED"}`)
+	require.NoError(t, steps.assertCloudResponseContains(ctx, "not contain", "169.254"))
+	require.Error(t, steps.assertCloudResponseContains(ctx, "not contain", "DESTINATION"))
+}
+
+func TestNewGraphQLDefinitionUsesTheGraphQLBackend(t *testing.T) {
+	t.Setenv(graphQLBackendEnv, "")
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	_, err := newGraphQLDefinition(ctx, "gql-1")
+	require.Error(t, err, "the project is needed")
+	local.Set(keyProjectID, "default")
+
+	definition, err := newGraphQLDefinition(ctx, "gql-1")
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"main": map[string]string{"url": defaultGraphQLBackend}}, definition["upstream"])
+	require.Equal(t, "/gql-1/v1", definition["context"])
+	require.Equal(t, "inline", definition["schemaSource"])
+	require.Equal(t, graphQLSchema, definition["sdl"])
+
+	t.Setenv(graphQLBackendEnv, "https://graphql.example.test/graphql/")
+	definition, err = newGraphQLDefinition(ctx, "gql-1")
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"main": map[string]string{"url": "https://graphql.example.test/graphql"}}, definition["upstream"])
+	t.Setenv(graphQLBackendEnv, "http://graphql.example.test")
+	_, err = newGraphQLDefinition(ctx, "gql-1")
+	require.Error(t, err, "the backend must be https")
+}
+
+func TestApplyGraphQLOverridesAcceptsOnlyTheAllowedFields(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set("echo", "https://echo.example.test")
+	definition := map[string]any{"sdl": graphQLSchema}
+
+	require.NoError(t, applyGraphQLOverrides(ctx, definition, map[string]string{
+		"policies": `[{"name":"api-key-auth"}]`, "upstream": "${CTX:echo}", "sdl": "type Query { ping: String }",
+	}, map[string]bool{"policies": true, "upstream": true, "sdl": true}))
+	require.Equal(t, []any{map[string]any{"name": "api-key-auth"}}, definition["policies"])
+	require.Equal(t, map[string]any{"main": map[string]string{"url": "https://echo.example.test"}}, definition["upstream"])
+	require.Equal(t, "type Query { ping: String }", definition["sdl"])
+
+	definition = map[string]any{"schemaSource": "inline", "sdl": graphQLSchema}
+	require.NoError(t, applyGraphQLOverrides(ctx, definition, map[string]string{"schemaSource": "url", "sdlUrl": "${CTX:echo}"}, graphQLSubmitKeys))
+	require.NotContains(t, definition, "sdl", "the default inline schema goes with the inline source")
+	definition = map[string]any{"schemaSource": "inline", "sdl": graphQLSchema}
+	require.NoError(t, applyGraphQLOverrides(ctx, definition, map[string]string{"schemaSource": "url", "sdl": "type Query { a: String }"}, graphQLSubmitKeys))
+	require.Equal(t, "type Query { a: String }", definition["sdl"], "a schema the table gives is kept")
+
+	require.ErrorContains(t, applyGraphQLOverrides(ctx, definition, map[string]string{"policies": "[]"}, graphQLUpdateKeys),
+		"unsupported GraphQL API value")
+	require.ErrorContains(t, applyGraphQLOverrides(ctx, definition, map[string]string{"policies": "{"}, graphQLCreateKeys),
+		"not valid JSON")
+}
+
+// graphQLStub serves the GraphQL API routes the steps call and records what they sent.
+type graphQLStub struct {
+	t            *testing.T
+	registry     *cleanup.Registry
+	createStatus int
+	updateStatus int
+	created      map[string]any
+	updated      map[string]any
+	registered   []string
+	sdl          map[string]string
+	validated    map[string]any
+	validation   string
+	keyStatus    int
+	keyRequests  []string
+	apis         map[string]bool
+	// keyAnswer, when set, replaces the answer to a key creation.
+	keyAnswer map[string]string
+	// keyNames are the display names of the keys created, in order.
+	keyNames []string
+}
+
+// metadata reads the metadata part of a GraphQL API form; ok is false once a request it cannot
+// read has been answered.
+func (s *graphQLStub) metadata(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
+	fields, _, ok := handlerForm(s.t, w, r)
+	if !ok {
+		return nil, false
+	}
+	var metadata map[string]any
+	if !assert.NoError(s.t, json.Unmarshal([]byte(fields["metadata"]), &metadata)) {
+		w.WriteHeader(http.StatusBadRequest)
+		return nil, false
+	}
+	return metadata, true
+}
+
+func (s *graphQLStub) handler(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodPost && r.URL.Path == "/graphql-apis":
+		s.registered = pendingOf(s.registry, cleanup.KindGraphQLAPI)
+		created, ok := s.metadata(w, r)
+		if !ok {
+			return
+		}
+		s.created = created
+		writeJSON(w, s.createStatus, s.created)
+	case r.Method == http.MethodPut && r.URL.Path == "/graphql-apis/gql-1":
+		updated, ok := s.metadata(w, r)
+		if !ok {
+			return
+		}
+		s.updated = updated
+		writeJSON(w, s.updateStatus, s.updated)
+	case r.Method == http.MethodPost && r.URL.Path == "/graphql-apis/validate-schema":
+		validated, ok := s.metadata(w, r)
+		if !ok {
+			return
+		}
+		s.validated = validated
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(s.validation))
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/sdl"):
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/graphql-apis/"), "/sdl")
+		if sdl, ok := s.sdl[id]; ok {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(sdl))
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/graphql-apis/"):
+		if id := strings.TrimPrefix(r.URL.Path, "/graphql-apis/"); s.apis[id] {
+			writeJSON(w, http.StatusOK, map[string]string{"id": id})
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+	case strings.HasPrefix(r.URL.Path, "/graphql-apis/gql-1/api-keys"):
+		s.keyRequests = append(s.keyRequests, r.Method+" "+r.URL.Path)
+		if r.Method == http.MethodPost {
+			var body map[string]string
+			if !assert.NoError(s.t, json.NewDecoder(r.Body).Decode(&body)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			s.keyNames = append(s.keyNames, body["displayName"])
+			answer := map[string]string{"status": "success", "apiKey": "key-value", "keyId": "key-1"}
+			if s.keyAnswer != nil {
+				answer = s.keyAnswer
+			}
+			writeJSON(w, s.keyStatus, answer)
+			return
+		}
+		w.WriteHeader(s.keyStatus)
+	default:
+		w.WriteHeader(http.StatusTeapot)
+	}
+}
+
+func graphQLSteps(t *testing.T) (*Steps, context.Context, *tcontext.Local, *graphQLStub) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := &graphQLStub{t: t, createStatus: http.StatusCreated, updateStatus: http.StatusOK, keyStatus: http.StatusCreated, sdl: map[string]string{}, apis: map[string]bool{}}
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) { stub.handler(w, r) })
+	stub.registry = registry
+	local.Set(keyProjectID, "default")
+	return steps, ctx, local, stub
+}
+
+func TestCreateGraphQLAPIRegistersBeforeTheRequestAndKeepsTheMetadata(t *testing.T) {
+	steps, ctx, _, stub := graphQLSteps(t)
+
+	require.NoError(t, steps.createGraphQLAPIWithValues(ctx, valuesTable(t, []string{"policies", `[{"name":"api-key-auth"}]`})))
+	id := optionalValue(ctx, keyGraphQLAPIID)
+	require.Equal(t, []string{id}, stub.registered)
+	require.Equal(t, []any{map[string]any{"name": "api-key-auth"}}, stub.created["policies"])
+	definition, err := steps.storedDefinition(ctx, graphQLAPI)
+	require.NoError(t, err)
+	require.Equal(t, stub.created, definition)
+
+	stub.createStatus = http.StatusBadRequest
+	require.Error(t, steps.createGraphQLAPI(ctx))
+	require.Len(t, pendingOf(stub.registry, cleanup.KindGraphQLAPI), 2, "a refusal can follow a stored API")
+	stub.createStatus = http.StatusInternalServerError
+	require.Error(t, steps.createGraphQLAPI(ctx))
+	require.Len(t, pendingOf(stub.registry, cleanup.KindGraphQLAPI), 3)
+	require.Error(t, steps.createGraphQLAPIWithValues(ctx, valuesTable(t, []string{"upstream", "https://x.example.test"})))
+}
+
+func TestSubmitGraphQLAPILeavesTheAnswer(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set("echo", "https://echo.example.test")
+
+	stub.createStatus = http.StatusBadRequest
+	require.NoError(t, steps.submitGraphQLAPI(ctx, valuesTable(t, []string{"schemaSource", "inline"}, []string{"sdlUrl", "${CTX:echo}"})))
+	require.Equal(t, "https://echo.example.test", stub.created["sdlUrl"])
+	require.Equal(t, graphQLSchema, stub.created["sdl"], "the default inline schema stays, so the fields disagree")
+	refused := optionalValue(ctx, keySubmittedGraphQLID)
+	require.Equal(t, []string{refused}, pendingOf(stub.registry, cleanup.KindGraphQLAPI), "a refusal can follow a stored API")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, published.StatusCode)
+
+	stub.createStatus = http.StatusCreated
+	require.NoError(t, steps.submitGraphQLAPI(ctx, valuesTable(t, []string{"sdl", "type Query {"})))
+	require.ElementsMatch(t, []string{refused, optionalValue(ctx, keySubmittedGraphQLID)}, pendingOf(stub.registry, cleanup.KindGraphQLAPI))
+	require.Error(t, steps.submitGraphQLAPI(ctx, valuesTable(t, []string{"policies", "[]"})))
+}
+
+func TestUpdateGraphQLAPISendsTheStoredMetadataWithTheChanges(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set(keyGraphQLAPIID, "gql-1")
+	local.Set(keyGraphQLDefinition, `{"id":"gql-1","context":"/gql-1/v1","sdl":"type Query { hello: String }","schemaSource":"inline"}`)
+
+	require.NoError(t, steps.updateGraphQLAPI(ctx, valuesTable(t, []string{"upstream", "https://echo.example.test"})))
+	require.Equal(t, "/gql-1/v1", stub.updated["context"])
+	require.Equal(t, map[string]any{"main": map[string]any{"url": "https://echo.example.test"}}, stub.updated["upstream"])
+	definition, err := steps.storedDefinition(ctx, graphQLAPI)
+	require.NoError(t, err)
+	require.Equal(t, "https://echo.example.test", definition["upstream"].(map[string]any)["main"].(map[string]any)["url"])
+
+	require.Error(t, steps.updateGraphQLAPI(ctx, valuesTable(t, []string{"policies", "[]"})))
+	stub.updateStatus = http.StatusBadRequest
+	require.Error(t, steps.updateGraphQLAPI(ctx, valuesTable(t, []string{"sdl", "type Query { ping: String }"})))
+}
+
+func TestGraphQLAnswerSource(t *testing.T) {
+	require.Equal(t, "GraphQL backend", graphQLAnswerSource([]byte(`{"query":"{ hello }"}`), "{ hello }"))
+	require.Equal(t, "GraphQL backend", graphQLAnswerSource([]byte(`{"query":""}`), ""), "an empty query echoed as sent")
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{}`), ""), "an answer without a query is not an echo of one")
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{"method":"POST","path":"/echo","json":{}}`), ""))
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{"query":"{ other }"}`), "{ hello }"))
+	require.Equal(t, "echo backend", graphQLAnswerSource([]byte(`{"method":"POST","path":"/echo","json":{"query":"{ hello }"}}`), "{ hello }"))
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{"method":"POST","path":"/echo","json":{"query":"{ other }"}}`), "{ hello }"),
+		"an echo of another request is not the answer to this one")
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{"method":"POST","path":"/echo"}`), "{ hello }"))
+	require.Equal(t, "", graphQLAnswerSource([]byte(`{"method":"GET","path":"/echo"}`), "{ hello }"))
+	require.Equal(t, "", graphQLAnswerSource([]byte(`not json`), "{ hello }"))
+}
+
+// graphQLDataPlane serves the synthetic GraphQL API's context, answering with what answer returns
+// for each call, and records the requests.
+func graphQLDataPlane(t *testing.T, steps *Steps, local *tcontext.Local, answer func(call int, body []byte) (int, string)) *[]*http.Request {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []*http.Request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		seen = append(seen, r.Clone(context.Background()))
+		call := len(seen)
+		mu.Unlock()
+		status, text := answer(call, body)
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(text))
+	}))
+	t.Cleanup(server.Close)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set(keyGatewayEndpoint, server.URL+"/")
+	local.Set(keyGraphQLDefinition, `{"id":"gql-1","context":"/gql-1/v1"}`)
+	return &seen
+}
+
+func TestSendGraphQLRequestPostsTheQueryToTheAPIContext(t *testing.T) {
+	steps, ctx, local, _ := graphQLSteps(t)
+	var bodies []string
+	seen := graphQLDataPlane(t, steps, local, func(_ int, body []byte) (int, string) {
+		bodies = append(bodies, string(body))
+		return http.StatusOK, string(body)
+	})
+
+	require.NoError(t, steps.sendGraphQLRequest(ctx, "{ hello }", http.StatusOK))
+	require.Equal(t, "/gql-1/v1", (*seen)[0].URL.Path)
+	require.Equal(t, http.MethodPost, (*seen)[0].Method)
+	require.Equal(t, "application/json", (*seen)[0].Header.Get("Content-Type"))
+	require.JSONEq(t, `{"query":"{ hello }"}`, bodies[0])
+	require.NoError(t, steps.assertGraphQLResponseSource(ctx, "GraphQL backend"))
+	require.Error(t, steps.assertGraphQLResponseSource(ctx, "echo backend"))
+
+	require.ErrorContains(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", "API key", http.StatusOK), keyAPIKey)
+	local.Set(keyAPIKey, "key-value")
+	local.Set(keyOtherAPIKey, "other-value")
+	require.Error(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", " ", "API key", http.StatusOK))
+	require.NoError(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", "API key", http.StatusOK))
+	require.Equal(t, "key-value", (*seen)[1].Header.Get("X-API-Key"))
+	require.NoError(t, steps.sendGraphQLRequestWithAPIKey(ctx, "{ hello }", "X-API-Key", "other API key", http.StatusOK))
+	require.Equal(t, "other-value", (*seen)[2].Header.Get("X-API-Key"))
+
+	local.Set(keyGraphQLDefinition, `{"id":"gql-1"}`)
+	require.ErrorContains(t, steps.sendGraphQLRequest(ctx, "{ hello }", http.StatusOK), "no context")
+}
+
+func TestSendGraphQLUntilAnsweredByWaitsForTheNamedBackend(t *testing.T) {
+	steps, ctx, local, _ := graphQLSteps(t)
+	seen := graphQLDataPlane(t, steps, local, func(call int, body []byte) (int, string) {
+		if call <= 2 {
+			return http.StatusOK, string(body)
+		}
+		return http.StatusOK, `{"method":"POST","path":"/echo","json":{"query":"{ hello }"}}`
+	})
+
+	require.NoError(t, steps.sendGraphQLUntilAnsweredBy(ctx, "{ hello }", "echo backend"))
+	require.Len(t, *seen, 3, "the answers of the GraphQL backend are not taken for the echo backend's")
+	require.NoError(t, steps.assertGraphQLResponseSource(ctx, "echo backend"))
+
+	short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	require.Error(t, steps.sendGraphQLUntilAnsweredBy(short, "{ hello }", "GraphQL backend"))
+}
+
+func TestGraphQLSchemaAssertions(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set(keyGraphQLAPIID, "gql-1")
+	local.Set(keySubmittedGraphQLID, "gql-2")
+	stub.sdl["gql-1"] = `{"sdl":"type Query {\n  hello: String\n}"}`
+	stub.sdl["gql-2"] = `{"sdl":""}`
+
+	require.NoError(t, steps.assertGraphQLSchema(ctx, "synthetic", "type Query { hello: String }"))
+	require.Error(t, steps.assertGraphQLSchema(ctx, "synthetic", "type Query { ping: String }"))
+	require.Error(t, steps.assertEmptyGraphQLSchema(ctx, "synthetic"))
+	require.NoError(t, steps.assertEmptyGraphQLSchema(ctx, "submitted"))
+	require.Error(t, steps.assertGraphQLSchema(ctx, "submitted", graphQLSchema))
+
+	stub.sdl["gql-2"] = `{}`
+	require.ErrorContains(t, steps.assertEmptyGraphQLSchema(ctx, "submitted"), "no schema field")
+	delete(stub.sdl, "gql-2")
+	require.Error(t, steps.assertEmptyGraphQLSchema(ctx, "submitted"), "an API that does not exist has no schema to read")
+	require.NoError(t, steps.assertSubmittedGraphQL(ctx, "not exist"))
+	require.Error(t, steps.assertSubmittedGraphQL(ctx, "exist"))
+	stub.apis["gql-2"] = true
+	require.NoError(t, steps.assertSubmittedGraphQL(ctx, "exist"))
+	require.Error(t, steps.assertSubmittedGraphQL(ctx, "not exist"))
+	local.Set(keySubmittedGraphQLID, "")
+	require.Error(t, steps.assertSubmittedGraphQL(ctx, "exist"))
+}
+
+func TestSameSchemaComparesTokens(t *testing.T) {
+	require.True(t, sameSchema("type Query { hello: String }", "type Query {\n  hello: String\n}\n"))
+	require.True(t, sameSchema("type Query { hello: String }", "type Query{hello:String}"))
+	require.True(t, sameSchema("type Query { a: String, b: Int }", "type Query {\n  a: String # first\n  b: Int\n}"),
+		"commas and comments are not tokens")
+	require.False(t, sameSchema("type Query { hello: String }", "type Query { hello: Int }"))
+	require.False(t, sameSchema(`"a  b" type Query { a: String }`, `"a b" type Query { a: String }`),
+		"a string keeps its spacing")
+	require.False(t, sameSchema(`"""a  b""" type Query { a: String }`, `"""a b""" type Query { a: String }`))
+	require.False(t, sameSchema("type Query { a: [Int!]! }", "type Query { a: [Int]! }"))
+}
+
+func TestGraphQLTokensSplitsSDLIntoTokens(t *testing.T) {
+	require.Equal(t, []string{"type", "Query", "{", "a", "(", "n", ":", "Int", "=", "-1.5e+3", ")", ":", "[", "Int", "!", "]", "@", "x", "}"},
+		graphQLTokens("type Query{a(n:Int=-1.5e+3):[Int!] @x}"))
+	require.Equal(t, []string{"fragment", "F", "on", "Q", "{", "...", "G", "}"}, graphQLTokens("fragment F on Q { ...G }"))
+	require.Equal(t, []string{"[", "1", "-2", "]"}, graphQLTokens("[1-2]"), "adjacent signed numbers stay apart")
+	require.True(t, sameSchema("directive @d(a: [Int] = [1,-2]) on FIELD", "directive @d(a: [Int] = [1 -2]) on FIELD"))
+	require.Equal(t, []string{`"""a \""" b"""`, "type"}, graphQLTokens(`"""a \""" b""" type`), "an escaped triple quote does not end a block string")
+	require.Equal(t, []string{`"a \" b"`, "x"}, graphQLTokens(`"a \" b" x`))
+	require.Equal(t, []string{`"open`}, graphQLTokens(`"open`), "an unterminated string ends with the text")
+	require.Empty(t, graphQLTokens(" ,\n# only a comment\n"))
+}
+
+func TestValidateGraphQLSchemaAndItsAssertions(t *testing.T) {
+	steps, ctx, _, stub := graphQLSteps(t)
+	stub.validation = `{"resolved":true,"sdl":"type Query {\n  hello: String\n}"}`
+
+	require.NoError(t, steps.validateGraphQLSchema(ctx, graphQLSchema))
+	require.Equal(t, map[string]any{"schemaSource": "inline", "sdl": graphQLSchema}, stub.validated)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "resolved"))
+	require.Error(t, steps.assertGraphQLValidation(ctx, "not resolved"))
+
+	stub.validation = `{"resolved":false,"sdl":"","sdlErrors":[{"message":"Syntax Error"}]}`
+	require.NoError(t, steps.validateGraphQLSchema(ctx, "type Query {"))
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved"))
+	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"))
+
+	for name, body := range map[string]string{
+		"no errors":    `{"resolved":false,"sdl":""}`,
+		"a null error": `{"resolved":false,"sdl":"","sdlErrors":[null]}`,
+		"no message":   `{"resolved":false,"sdl":"","sdlErrors":[{"message":" "}]}`,
+		"a schema":     `{"resolved":false,"sdl":"type Query { a: String }","sdlErrors":[{}]}`,
+		"not a result": `{"sdl":""}`,
+	} {
+		publishedResponse(t, steps, ctx, http.StatusOK, body)
+		require.Error(t, steps.assertGraphQLValidation(ctx, "not resolved"), name)
+	}
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"type Query { other: String }"}`)
+	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"), "a schema other than the one given")
+}
+
+func TestGraphQLAPIKeyIsKeptOutOfTheAnswerSlotAndRevokedByItsID(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set(keyGraphQLAPIID, "gql-1")
+
+	require.NoError(t, steps.createGraphQLAPIKey(ctx, "an"))
+	require.Equal(t, "key-value", optionalValue(ctx, keyAPIKey))
+	require.Equal(t, "key-1", optionalValue(ctx, keyGraphQLKeyID))
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the answer that carries the key is never published")
+
+	stub.keyStatus = http.StatusNoContent
+	require.NoError(t, steps.revokeGraphQLAPIKey(ctx))
+	require.Equal(t, []string{"POST /graphql-apis/gql-1/api-keys", "DELETE /graphql-apis/gql-1/api-keys/key-1"}, stub.keyRequests)
+
+	stub.keyStatus = http.StatusNotFound
+	require.Error(t, steps.revokeGraphQLAPIKey(ctx))
+	err = steps.createGraphQLAPIKey(ctx, "an")
+	require.ErrorContains(t, err, "unexpected status 404")
+	require.NotContains(t, err.Error(), "key-value", "a refused key request is reported without its body")
+}
+
+func TestKeepReturningForHoldsForTheWholeWindow(t *testing.T) {
+	var mu sync.Mutex
+	calls, changeAt := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		calls++
+		changed := changeAt > 0 && calls >= changeAt
+		mu.Unlock()
+		if changed {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+
+	require.NoError(t, steps.keepReturningFor(ctx, http.MethodGet, server.URL+"/posts/2", http.StatusNotFound, 1))
+	mu.Lock()
+	require.Positive(t, calls, "the window is observed, not assumed")
+	calls, changeAt = 0, 2
+	mu.Unlock()
+	require.ErrorContains(t, steps.keepReturningFor(ctx, http.MethodGet, server.URL+"/posts/2", http.StatusNotFound, 30),
+		"did not keep returning 404")
+	require.ErrorContains(t, steps.keepReturningFor(ctx, http.MethodGet, server.URL, http.StatusNotFound, 0), "too short")
+}
+
+func TestNewVersionAndOperationAssertionsReadThePlatform(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	apis := map[string]map[string]any{
+		"api-1": {"id": "api-1", "displayName": "Pets", "version": "1.0.0", "operations": operationsOf([3]any{"getPostTwo", "GET", "/posts/2"})},
+		"api-2": {"id": "api-2", "displayName": "Pets", "version": "2.0.0"},
+	}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if api, ok := apis[strings.TrimPrefix(r.URL.Path, "/rest-apis/")]; ok {
+			writeJSON(w, http.StatusOK, api)
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+	})
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyVersionAPIID, "api-2")
+	local.Set(keyAPIDefinition, `{"id":"api-1","version":"1.0.0"}`)
+
+	require.NoError(t, steps.assertNewVersionOfTheAPI(ctx, "2.0.0"))
+	for name, version := range map[string]any{"a missing version": nil, "another version": "1.5.0"} {
+		apis["api-1"]["version"] = version
+		require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "2.0.0"), "it was imported with", name)
+	}
+	apis["api-1"]["version"] = "1.0.0"
+	require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "3.0.0"), "has the version")
+	apis["api-2"]["displayName"] = "Other"
+	require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "2.0.0"), "is named")
+	apis["api-2"]["displayName"], apis["api-2"]["version"] = "Pets", "1.0.0"
+	require.ErrorContains(t, steps.assertNewVersionOfTheAPI(ctx, "1.0.0"), "it was imported with",
+		"a new version under the first API's version is not a new version")
+
+	require.NoError(t, steps.assertOperationNamed(ctx, "getPostTwo"))
+	require.ErrorContains(t, steps.assertOperationNamed(ctx, "getPostThree"), "no operation named")
+	local.Set(keyAPIID, "api-missing")
+	require.Error(t, steps.assertOperationNamed(ctx, "getPostTwo"))
+}
+
+func TestReimportStartsAFreshBuildHistory(t *testing.T) {
+	steps, ctx, _, _ := importSteps(t)
+	require.NoError(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
+
+	require.NoError(t, steps.reimportAPI(ctx, "inventory.yaml"))
+	builds, err := seenBuilds(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Empty(t, builds, "the deleted API's builds are not the new API's under the same id")
+}
+
+func TestAssertBuildListedChecksTheBuildTheMetadataWasPreparedWith(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			writeJSON(w, http.StatusCreated, map[string]string{"buildId": "2026-11-18-1"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{
+			{"buildId": "2026-11-18-2"},
+			{"buildId": "2026-11-18-1", "metadata": map[string]any{"commit": "0a1b2c3"}},
+		}})
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyAPIID, "api-1")
+
+	require.NoError(t, steps.prepareBuild(ctx, valuesTable(t, []string{"commit", "0a1b2c3"})))
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-2"), "a deployment renders a later build")
+	require.NoError(t, steps.assertBuildListed(ctx), "the metadata is checked on the build it was prepared with")
+
+	local.Set(keyBuildMetadataOf, "2026-11-18-2")
+	short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	require.Error(t, steps.assertBuildListed(short), "another build does not carry the metadata")
+}
+
+func TestGraphQLAPIKeyIsRegisteredForCleanupUntilItIsRevoked(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set(keyGraphQLAPIID, "gql-1")
+
+	require.NoError(t, steps.createGraphQLAPIKey(ctx, "an"))
+	require.Equal(t, []string{"gql-1/key-1"}, pendingOf(stub.registry, kindGraphQLAPIKey))
+	stub.keyStatus = http.StatusNoContent
+	require.NoError(t, steps.revokeGraphQLAPIKey(ctx))
+	require.Empty(t, pendingOf(stub.registry, kindGraphQLAPIKey), "a revoked key is no longer cleanup's to revoke")
+
+	method, path, settled, err := revokeGraphQLKeyRequest("gql-1/key-1")
+	require.NoError(t, err)
+	require.Equal(t, http.MethodDelete, method)
+	require.Equal(t, "/graphql-apis/gql-1/api-keys/key-1", path)
+	require.True(t, settled(&httpx.Response{StatusCode: http.StatusNoContent}))
+	require.True(t, settled(&httpx.Response{StatusCode: http.StatusNotFound}), "a key the platform no longer has is revoked")
+	require.False(t, settled(&httpx.Response{StatusCode: http.StatusInternalServerError}))
+	for _, id := range []string{"gql-1", "/key-1", "gql-1/", ""} {
+		_, _, _, err := revokeGraphQLKeyRequest(id)
+		require.Error(t, err, id)
+	}
+	require.Less(t, kindGraphQLAPIKey.Order, cleanup.KindGraphQLAPI.Order, "a key is revoked before its API is deleted")
+}
+
+func TestProbeHeaderAbsenceCountsAHeaderWithoutAValue(t *testing.T) {
+	steps, ctx, _, _ := restAPISteps(t)
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"path":"/animals","headers":{"X-Apip-Operation-Probe":null}}`)
+	require.ErrorContains(t, steps.assertProbeHeaderAbsent(ctx), "want none")
+}
+
+func TestAddOperationPolicyKeepsTheOperationsOtherPolicies(t *testing.T) {
+	steps, ctx, _, stub := restAPISteps(t)
+	other := map[string]any{"name": "rate-limit", "version": "v1"}
+	stub.api["operations"] = []any{
+		map[string]any{"name": "listPets", "request": map[string]any{"method": "GET", "path": "/pets", "policies": []any{other}}},
+	}
+	require.NoError(t, steps.refreshDefinition(ctx, primaryAPI))
+
+	require.NoError(t, steps.addOperationPolicy(ctx, "listPets"))
+	policies := stub.putBody["operations"].([]any)[0].(map[string]any)["request"].(map[string]any)["policies"].([]any)
+	require.Len(t, policies, 2, "the probe is added beside the policy the operation had")
+	require.Equal(t, other, policies[0])
+	require.Equal(t, headerPolicyName, policies[1].(map[string]any)["name"])
+
+	stub.api["operations"] = stub.putBody["operations"]
+	require.NoError(t, steps.refreshDefinition(ctx, primaryAPI))
+	require.NoError(t, steps.addOperationPolicy(ctx, "listPets"))
+	require.Len(t, stub.putBody["operations"].([]any)[0].(map[string]any)["request"].(map[string]any)["policies"], 2,
+		"an operation that already has the probe keeps one")
+}
+
+func TestBuildStateAfterAReimportIsTheNewAPIs(t *testing.T) {
+	steps, ctx, local, _ := importSteps(t)
+	require.NoError(t, steps.importAPI(ctx, "petstore-v1.yaml"))
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-1"))
+	local.Set(keyBuildMetadata, `{"commit":"abc"}`)
+	local.Set(keyBuildMetadataOf, "2026-11-18-1")
+
+	require.NoError(t, steps.reimportAPI(ctx, "inventory.yaml"))
+	for _, key := range []string{keyBuildIDs, keyBuildID, keyBuildMetadata, keyBuildMetadataOf} {
+		require.Empty(t, optionalValue(ctx, key), "%s is dropped at the reimport", key)
+	}
+	_, err := latestPreparedBuild(ctx)
+	require.ErrorContains(t, err, "no build has been prepared")
+}
+
+func TestAssertBuildListedChecksThePreparedBuildWithoutMetadata(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	listed := []string{"2026-11-18-2", "2026-11-18-1"}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			writeJSON(w, http.StatusCreated, map[string]string{"buildId": "2026-11-18-1"})
+			return
+		}
+		items := []map[string]any{}
+		for _, id := range listed {
+			items = append(items, map[string]any{"buildId": id})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": items})
+	})
+	local.Set(keyProjectID, "default")
+	local.Set(keyAPIID, "api-1")
+
+	require.NoError(t, steps.prepareBuilds(ctx, "a"))
+	require.NoError(t, appendBuild(ctx, primaryAPI, "2026-11-18-2"), "a deployment renders a later build")
+	require.NoError(t, steps.assertBuildListed(ctx))
+	listed = []string{"2026-11-18-2"}
+	short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	require.Error(t, steps.assertBuildListed(short), "the prepared build is the one checked, not the latest")
+}
+
+func TestKeepReturningForFailsWhenTheGatewayStopsAnswering(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(server.Close)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+
+	require.ErrorContains(t, steps.keepReturningFor(ctx, http.MethodGet, server.URL, http.StatusNotFound, 30), "did not keep returning 404",
+		"a probe that gets no answer fails the window")
+}
+
+func TestCloudSweepsJudgeAProjectScopedItemByItsIDAlone(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.lists["/graphql-apis?projectId="+projectOne] = []map[string]any{
+		{"id": "syn-graphql-abcde234-1"}, {"id": "ops-graphql", "displayName": "Synthetic syn-graphql-abcde234-9"},
+	}
+	stub.lists["/rest-apis?projectId="+projectOne] = append(stub.lists["/rest-apis?projectId="+projectOne],
+		map[string]any{"id": "ops-named-api", "displayName": "Synthetic syn-api-abcde234-7"})
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	_, err = sweepLeftovers(context.Background(), base, 5*time.Second)
+	require.NoError(t, err)
+	require.Contains(t, stub.deleted, "graphql-apis/syn-graphql-abcde234-1")
+	require.NotContains(t, stub.deleted, "graphql-apis/ops-graphql", "a display name with a run's suffix does not make the run its owner")
+	require.NotContains(t, stub.deleted, "rest-apis/ops-named-api")
+}
+
+func TestGraphQLAPIKeyIsRegisteredBeforeItsValueIsRead(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set(keyGraphQLAPIID, "gql-1")
+	stub.keyAnswer = map[string]string{"status": "success", "keyId": "key-1"}
+
+	require.ErrorContains(t, steps.createGraphQLAPIKey(ctx, "an"), "apiKey")
+	require.Equal(t, []string{"gql-1/key-1"}, pendingOf(stub.registry, kindGraphQLAPIKey), "the key is cleaned up though its value never came")
+
+	stub.keyAnswer = map[string]string{"status": "success", "apiKey": "second-value", "keyId": "key-2"}
+	require.NoError(t, steps.createGraphQLAPIKey(ctx, "another"))
+	require.Equal(t, "second-value", optionalValue(ctx, keyOtherAPIKey))
+	require.Equal(t, "key-2", optionalValue(ctx, keyOtherGraphQLKeyID))
+	require.Empty(t, optionalValue(ctx, keyAPIKey), "the other key does not take the first key's place")
+	require.Len(t, stub.keyNames, 2)
+	require.NotEqual(t, stub.keyNames[0], stub.keyNames[1], "each key of an API has a display name of its own")
+
+	for status, ok := range map[int]bool{http.StatusNoContent: true, http.StatusNotFound: true, http.StatusServiceUnavailable: false} {
+		stub.keyStatus = status
+		err := steps.revokeGraphQLKey(ctx, "gql-1", "key-9")
+		if ok {
+			require.NoError(t, err, status)
+			continue
+		}
+		require.ErrorContains(t, err, "unexpected status 503")
+		require.ErrorContains(t, err, "key-9")
+	}
+}
+
+func TestFailedInTransitRetriesOnlyWhatAnotherAttemptCanFix(t *testing.T) {
+	dropped := &url.Error{Op: http.MethodDelete, URL: "https://portal.example/applications/a", Err: io.EOF}
+	require.True(t, failedInTransit(dropped))
+	require.True(t, failedInTransit(fmt.Errorf("httpx: reading the body of DELETE https://portal.example/applications/a: %w", io.ErrUnexpectedEOF)),
+		"an answer whose body was cut off")
+	require.True(t, failedInTransit(fmt.Errorf("read: %w", syscall.ECONNRESET)))
+	for name, cause := range map[string]error{
+		"an unknown authority":       x509.UnknownAuthorityError{},
+		"an invalid certificate":     x509.CertificateInvalidError{Reason: x509.Expired},
+		"another host's certificate": x509.HostnameError{Host: "portal.example"},
+		"a failed verification":      &tls.CertificateVerificationError{Err: errors.New("bad chain")},
+	} {
+		refused := &url.Error{Op: http.MethodDelete, URL: "https://portal.example/applications/a", Err: cause}
+		require.False(t, failedInTransit(refused), name)
+		require.False(t, failedInTransit(fmt.Errorf("httpx: DELETE: %w", refused)), name)
+	}
+	require.False(t, failedInTransit(errors.New("httpx: response body of DELETE https://portal.example/applications/a exceeds the 1048576-byte limit")),
+		"an answer over the size limit is the same the next time")
+}
+
+func TestConsumerCleanupStopsRepeatingARemovalAtItsDeadline(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	id, err := requiredValue(ctx, keyConsumerApplicationID)
+	require.NoError(t, err)
+	site.consumer.failEvery = map[string]int{http.MethodDelete + " " + applicationPath(id): http.StatusBadGateway}
+
+	short, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	err = consumerSession{signIn: steps.signInConsumer}.deleteApplication(short, id)
+	require.ErrorContains(t, err, "last attempt")
+	require.ErrorContains(t, err, "-> 502", "the failure names what the last attempt got")
+}
+
+func TestTheRunnersSweepRunsAgainAfterAFailedSweep(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	site.consumer.failOnce = map[string]int{http.MethodGet + " /applications": http.StatusBadGateway}
+	site.consumer.calls = nil
+
+	require.NoError(t, registry.SweepRunner(ctx), "the second sweep lists and removes what the first could not")
+	require.Empty(t, site.consumer.apps)
+}
+
+func TestTheRunnersSweepReportsWhatStaysAfterItsLastAttempt(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	site.consumer.failEvery = map[string]int{http.MethodGet + " /applications": http.StatusBadGateway}
+	site.consumer.calls = nil
+
+	err := registry.SweepRunner(ctx)
+	require.ErrorContains(t, err, "after 3 sweeps")
+	listings := 0
+	for _, call := range site.consumer.calls {
+		if call == http.MethodGet+" /applications" {
+			listings++
+		}
+	}
+	require.Equal(t, leftoverSweepAttempts, listings, "each sweep lists the applications once")
+	require.Len(t, site.consumer.apps, 1)
 }

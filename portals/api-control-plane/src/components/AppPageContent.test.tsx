@@ -31,7 +31,7 @@ describe('AppPageContent', () => {
     );
 
     const page = screen.getByText('Page body');
-    const footer = screen.getByText(/WSO2 LLC/);
+    const footer = screen.getByText(/Choreo/);
     expect(page.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -57,11 +57,11 @@ describe('AppPageContent', () => {
       <AppPageContent footer={<span>Custom footer</span>}>Page body</AppPageContent>,
     );
     expect(screen.getByText('Custom footer')).toBeInTheDocument();
-    expect(screen.queryByText(/WSO2 LLC/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Choreo/)).not.toBeInTheDocument();
     unmount();
 
     renderWithProviders(<AppPageContent footer={null}>Page body</AppPageContent>);
-    expect(screen.queryByText(/WSO2 LLC/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Choreo/)).not.toBeInTheDocument();
   });
 
   it('shows one footer when page containers are nested', () => {
@@ -72,6 +72,6 @@ describe('AppPageContent', () => {
     );
 
     expect(screen.getByText('Inner page')).toBeInTheDocument();
-    expect(screen.getAllByText(/WSO2 LLC/)).toHaveLength(1);
+    expect(screen.getAllByText(/Choreo/)).toHaveLength(1);
   });
 });

@@ -172,6 +172,7 @@ data:
             httpGet:
               path: /api/admin/v1/health
               port: admin
+          # Readiness probes the health endpoint too, which every controller release serves.
           readinessProbe:
             httpGet:
               path: /api/admin/v1/health

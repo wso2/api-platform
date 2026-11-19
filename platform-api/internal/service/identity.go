@@ -92,6 +92,12 @@ func (s *IdentityService) ToInternalUUIDWithDisplayName(identity, displayName st
 	return mapped, err
 }
 
+// InternalUserIDFor satisfies pdk.Identity: ToInternalUUIDWithDisplayName for a
+// user named outside the request's token.
+func (s *IdentityService) InternalUserIDFor(idpID, displayName string) (string, error) {
+	return s.ToInternalUUIDWithDisplayName(idpID, displayName)
+}
+
 // DisplayIdentity satisfies pdk.Identity: the identity a response shows for an
 // internal user id, resolved as ResolveIdentityField does. An empty id is
 // returned as is, the same as a field with no recorded user.

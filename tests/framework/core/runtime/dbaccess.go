@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver
@@ -86,6 +87,27 @@ func (t *Topology) OpenComponentDB(ctx context.Context, component, embeddedServi
 	default:
 		return nil, nil, fmt.Errorf("runtime: %s has no direct-access driver", store.Type)
 	}
+}
+
+// DatabaseServer returns the block's running server for a database engine, so a step can take
+// it down and bring it back to exercise how components react to a database outage. Every
+// component in the block that uses the engine shares this one server.
+func (t *Topology) DatabaseServer(engine components.DBType) (*Container, error) {
+	if t == nil || t.Storage == nil {
+		return nil, fmt.Errorf("runtime: block has no provisioned storage")
+	}
+	if server, ok := t.Storage.Servers[engine]; ok && server != nil {
+		return server, nil
+	}
+	running := make([]string, 0, len(t.Storage.Servers))
+	for kind, server := range t.Storage.Servers {
+		if server != nil {
+			running = append(running, string(kind))
+		}
+	}
+	sort.Strings(running)
+	return nil, fmt.Errorf("runtime: no %q database server is running in block %q; it runs %v",
+		engine, blockName(t.Block), running)
 }
 
 // postgresDSN builds a driver DSN against the mapped host port. Host-side coordinates, not

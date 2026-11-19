@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -43,10 +44,12 @@ const (
 	identityCallbackPath  = "/oauth2/auth/callback"
 
 	// The actions of the portal's sign-in and registration flows, as the platform defines them:
-	// the primary action submits the prompt's inputs, and the sign-up link moves from the sign-in
-	// prompt to the registration prompt.
-	flowActionSubmit = "action_001"
-	flowActionSignUp = "action_signup"
+	// the primary action submits the prompt's inputs, the sign-up link moves from the sign-in
+	// prompt to the registration prompt, and the continue action leaves the prompt that confirms
+	// a new account and signs the consumer in.
+	flowActionSubmit   = "action_001"
+	flowActionSignUp   = "action_signup"
+	flowActionContinue = "action_continue"
 
 	flowStatusComplete = "COMPLETE"
 	flowStatusError    = "ERROR"
@@ -88,14 +91,22 @@ func newPortalBrowser(client *httpx.Client, portal *url.URL) (*portalBrowser, er
 
 // send makes one request with the cookies for its URL and keeps the cookies the answer sets.
 func (b *portalBrowser) send(ctx context.Context, method, target string, body []byte) (*httpx.Response, error) {
+	return b.sendWith(ctx, method, target, body, nil)
+}
+
+// sendWith is send with extra request headers.
+func (b *portalBrowser) sendWith(ctx context.Context, method, target string, body []byte, extra map[string]string) (*httpx.Response, error) {
 	parsed, err := url.Parse(target)
 	if err != nil {
-		return nil, fmt.Errorf("the sign-in reached a URL that does not parse: %w", err)
+		return nil, fmt.Errorf("the portal request reached a URL that does not parse: %w", err)
 	}
 	if err := requireSecureURL(parsed); err != nil {
-		return nil, fmt.Errorf("the sign-in reached an insecure URL: %w", err)
+		return nil, fmt.Errorf("the portal request reached an insecure URL: %w", err)
 	}
-	headers := map[string]string{}
+	headers := make(map[string]string, len(extra)+2)
+	for name, value := range extra {
+		headers[name] = value
+	}
 	if cookies := b.jar.Cookies(parsed); len(cookies) > 0 {
 		pairs := make([]string, 0, len(cookies))
 		for _, cookie := range cookies {
@@ -275,9 +286,24 @@ type identityFlowStep struct {
 	Assertion      string            `json:"assertion,omitempty"`
 	FailureReason  string            `json:"failureReason,omitempty"`
 	SessionData    []identitySession `json:"sessionData,omitempty"`
+	Data           struct {
+		Actions []struct {
+			Ref string `json:"ref"`
+		} `json:"actions,omitempty"`
+	} `json:"data"`
 
 	// raw is the answer as the identity provider sent it, which holds the prompt's inputs.
 	raw []byte
+}
+
+// offers reports whether the step's prompt offers the action.
+func (s identityFlowStep) offers(action string) bool {
+	for _, offered := range s.Data.Actions {
+		if offered.Ref == action {
+			return true
+		}
+	}
+	return false
 }
 
 // identitySession is an SSO session the flow reports, which the callback carries back.
@@ -286,10 +312,22 @@ type identitySession struct {
 	SessionHandle  string `json:"sessionHandle"`
 }
 
-// flowAction is one action a consumer takes on a flow prompt.
+// flowAction is one action a consumer takes on a flow prompt. An optional action is taken only
+// when the prompt offers it.
 type flowAction struct {
-	action string
-	inputs map[string]string
+	action   string
+	inputs   map[string]string
+	optional bool
+}
+
+// onlyOptional reports whether every action is optional, which is also true of no action.
+func onlyOptional(actions []flowAction) bool {
+	for _, action := range actions {
+		if !action.optional {
+			return false
+		}
+	}
+	return true
 }
 
 // takeFlowAction takes one action on the flow's current prompt. A client error or an ERROR flow
@@ -381,7 +419,10 @@ func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 	// The callback carries every SSO session the flow reported, and an empty list when none.
 	sessions := append([]identitySession{}, step.SessionData...)
 	for i, next := range actions {
-		last := i == len(actions)-1
+		if next.optional && !step.offers(next.action) {
+			continue
+		}
+		last := onlyOptional(actions[i+1:])
 		answer, refusal, err := browser.takeFlowAction(ctx, joinURLPath(base, identityFlowPath), step, next)
 		if err != nil {
 			return err
@@ -424,8 +465,19 @@ func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 			return err
 		}
 	}
-	if _, err := redirectTarget(landed); err != nil {
+	next, err := redirectTarget(landed)
+	if err != nil {
 		return fmt.Errorf("the portal did not take the consumer's sign-in: %w", err)
+	}
+	// The callback's CSRF cookie belongs to the session it replaced; the landing page sets the new one.
+	if sameOrigin(next, browser.portal) {
+		page, err := browser.send(ctx, http.MethodGet, next.String(), nil)
+		if err != nil {
+			return fmt.Errorf("opening the page the sign-in lands on: %w", err)
+		}
+		if page.StatusCode >= http.StatusBadRequest {
+			return fmt.Errorf("the page the sign-in lands on answered %d", page.StatusCode)
+		}
 	}
 	return nil
 }
@@ -474,10 +526,19 @@ func (s *Steps) signUpConsumer(ctx context.Context) error {
 		{action: flowActionSubmit, inputs: map[string]string{
 			"username": username, "password": password, "email": username + "@example.com",
 		}},
+		{action: flowActionContinue, optional: true},
 	}); err != nil {
 		return err
 	}
-	return requireSignInAccepted(ctx)
+	if err := requireSignInAccepted(ctx); err != nil {
+		return err
+	}
+	if err := cleanup.RegisterRunner(ctx, cleanup.Resource{
+		Kind: kindConsumerLeftovers, ID: username, Actor: consumerActor, Description: "the portal items of consumer " + username,
+	}); err != nil {
+		return fmt.Errorf("registering the portal items of consumer %q for cleanup: %w", username, err)
+	}
+	return nil
 }
 
 // signInConsumer signs the runner's consumer in with its username and password.

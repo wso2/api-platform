@@ -25,9 +25,9 @@ import { useEffect } from 'react';
  * kept in step with the `<title>` in `index.html`, which is what the tab shows
  * for the split second before React mounts.
  */
-export const APP_TITLE = 'WSO2 API Platform';
+export const APP_TITLE = 'Choreo API Management';
 
-/** `"APIs | WSO2 API Platform"`, or just the product name for a page with no name of its own. */
+/** `"APIs | Choreo API Management"`, or just the product name for a page with no name of its own. */
 export const formatDocumentTitle = (pageTitle?: string): string =>
   pageTitle ? `${pageTitle} | ${APP_TITLE}` : APP_TITLE;
 

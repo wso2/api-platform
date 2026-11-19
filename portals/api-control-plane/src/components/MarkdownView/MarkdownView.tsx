@@ -349,10 +349,23 @@ export type MarkdownViewProps = {
   source: string;
   /** Rendered when the source has no content. */
   emptyFallback?: ReactNode;
+  /**
+   * Whether images are drawn. Turn it off for text an outsider wrote, such as an imported API
+   * definition: an image makes the reader's browser fetch from a server the author picked.
+   * Its alt text is shown instead.
+   */
+  allowImages?: boolean;
 };
 
-export function MarkdownView({ source, emptyFallback = null }: MarkdownViewProps) {
-  const components = useMarkdownComponents();
+export function MarkdownView({ source, emptyFallback = null, allowImages = true }: MarkdownViewProps) {
+  const allComponents = useMarkdownComponents();
+  const components = useMemo<Components>(
+    () =>
+      allowImages
+        ? allComponents
+        : { ...allComponents, img: ({ alt }) => (alt ? <span>{alt}</span> : null) },
+    [allComponents, allowImages],
+  );
   if (!source.trim()) return <>{emptyFallback}</>;
   return (
     <Box

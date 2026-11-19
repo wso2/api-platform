@@ -46,7 +46,8 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     And the Management Portal confirms a deployment started and stores its name as "live"
     And the deployment status on gateway "it-gateway" becomes "Active"
     And the gateway answers 200 to a "GET" request to "/${CTX:api}/health"
-    When the user clicks "View More" in the Management Portal
+    When the user opens gateway "it-gateway" in the Management Portal
+    And the user clicks "View More" on gateway "it-gateway" in the Management Portal
     Then the Management Portal offers a "Delete ${CTX:first}" button
     And the Management Portal offers no "Delete ${CTX:live}" button
     When the user closes the drawer in the Management Portal
@@ -92,7 +93,8 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
-    When the user clicks "View More" in the Management Portal
+    When the user opens gateway "it-gateway" in the Management Portal
+    And the user clicks "View More" on gateway "it-gateway" in the Management Portal
     And the user clicks "Delete ${CTX:live}" in the Management Portal
     Then the Management Portal confirms deleting deployment "${CTX:live}"
     And the Management Portal offers no "Delete ${CTX:live}" button
@@ -122,7 +124,8 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
       """
       {"query":"{ hello }"}
       """
-    When the user clicks "View More" in the Management Portal
+    When the user opens gateway "it-gateway" in the Management Portal
+    And the user clicks "View More" on gateway "it-gateway" in the Management Portal
     Then the Management Portal offers a "Delete ${CTX:first}" button
     And the Management Portal offers no "Delete ${CTX:live}" button
     When the user closes the drawer in the Management Portal
@@ -180,7 +183,8 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
-    When the user clicks "View More" in the Management Portal
+    When the user opens gateway "it-gateway" in the Management Portal
+    And the user clicks "View More" on gateway "it-gateway" in the Management Portal
     And the user clicks "Delete ${CTX:live}" in the Management Portal
     Then the Management Portal confirms deleting deployment "${CTX:live}"
     And the Management Portal offers no "Delete ${CTX:live}" button

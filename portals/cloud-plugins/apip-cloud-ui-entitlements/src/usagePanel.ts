@@ -129,7 +129,7 @@ const SECTIONS: ReadonlyArray<
         key: 'gateways',
         title: 'Gateways',
         codes: GATEWAY_METRICS,
-        labels: { [GATEWAYS]: 'WSO2 Managed', [HYBRID_GATEWAYS]: 'Self-Hosted' },
+        labels: { [GATEWAYS]: 'Cloud gateway', [HYBRID_GATEWAYS]: 'Self-Hosted' },
       },
       { key: 'portals', codes: INFRASTRUCTURE_METRICS },
     ],
