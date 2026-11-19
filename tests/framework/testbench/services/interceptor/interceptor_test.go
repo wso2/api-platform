@@ -252,6 +252,15 @@ func TestScriptedControlsMatchWithoutRegardToCaseAndPerPhase(t *testing.T) {
 	if rec := post(h, hookPath(phaseResponse), payload(t, phaseResponse, hdr)); rec.Code != 503 || rec.Body.String() != "{}" {
 		t.Fatalf("response phase: got %d %q", rec.Code, rec.Body.String())
 	}
+
+	// A control repeated in two cases is checked only in its own phase.
+	hdr = map[string]string{
+		"X-Testbench-Interceptor-Response-Status": "200",
+		"x-testbench-interceptor-response-status": "503",
+	}
+	if rec := post(h, hookPath(phaseRequest), payload(t, phaseRequest, hdr)); rec.Code != 200 {
+		t.Fatalf("request phase with a repeated response control: got %d %q", rec.Code, rec.Body.String())
+	}
 }
 
 func TestScriptedRejectsBadControls(t *testing.T) {
@@ -262,6 +271,10 @@ func TestScriptedRejectsBadControls(t *testing.T) {
 		"not base64":        {"X-Testbench-Interceptor-Request-Reply": "%%%"},
 		"negative delay":    {"X-Testbench-Interceptor-Request-Delay-Ms": "-5"},
 		"non-numeric delay": {"X-Testbench-Interceptor-Request-Delay-Ms": "soon"},
+		"same control in two cases": {
+			"X-Testbench-Interceptor-Request-Status": "200",
+			"x-testbench-interceptor-request-status": "503",
+		},
 	} {
 		rec := post(h, hookPath(phaseRequest), payload(t, phaseRequest, hdr))
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid interceptor control") {
@@ -300,20 +313,23 @@ func TestScriptedRejectsPayloadsOutsideTheContract(t *testing.T) {
 		ph   phase
 		body string
 	}{
-		"not JSON":                    {phaseRequest, "nope"},
-		"array":                       {phaseRequest, "[]"},
-		"null":                        {phaseRequest, "null"},
-		"trailing data":               {phaseRequest, `{} {}`},
-		"requestHeaders array":        {phaseRequest, `{"requestHeaders":["a"]}`},
-		"requestHeaders number value": {phaseRequest, `{"requestHeaders":{"a":1}}`},
-		"requestBody number":          {phaseRequest, `{"requestBody":5}`},
-		"responseBody object":         {phaseResponse, `{"responseCode":200,"responseBody":{}}`},
-		"responseHeaders string":      {phaseResponse, `{"responseCode":200,"responseHeaders":"a"}`},
-		"invocationContext string":    {phaseRequest, `{"invocationContext":"x"}`},
-		"interceptorContext number":   {phaseResponse, `{"responseCode":200,"interceptorContext":3}`},
-		"responseCode missing":        {phaseResponse, `{"invocationContext":{}}`},
-		"responseCode string":         {phaseResponse, `{"responseCode":"200"}`},
-		"responseCode fraction":       {phaseResponse, `{"responseCode":200.5}`},
+		"not JSON":                       {phaseRequest, "nope"},
+		"array":                          {phaseRequest, "[]"},
+		"null":                           {phaseRequest, "null"},
+		"trailing data":                  {phaseRequest, `{} {}`},
+		"requestHeaders array":           {phaseRequest, `{"requestHeaders":["a"]}`},
+		"requestHeaders number value":    {phaseRequest, `{"requestHeaders":{"a":1}}`},
+		"requestHeaders null member":     {phaseRequest, `{"requestHeaders":{"X-Testbench-Interceptor-Request-Reply":null}}`},
+		"responseHeaders null member":    {phaseResponse, `{"responseCode":200,"responseHeaders":{"a":null}}`},
+		"interceptorContext null member": {phaseRequest, `{"interceptorContext":{"k":null}}`},
+		"requestBody number":             {phaseRequest, `{"requestBody":5}`},
+		"responseBody object":            {phaseResponse, `{"responseCode":200,"responseBody":{}}`},
+		"responseHeaders string":         {phaseResponse, `{"responseCode":200,"responseHeaders":"a"}`},
+		"invocationContext string":       {phaseRequest, `{"invocationContext":"x"}`},
+		"interceptorContext number":      {phaseResponse, `{"responseCode":200,"interceptorContext":3}`},
+		"responseCode missing":           {phaseResponse, `{"invocationContext":{}}`},
+		"responseCode string":            {phaseResponse, `{"responseCode":"200"}`},
+		"responseCode fraction":          {phaseResponse, `{"responseCode":200.5}`},
 	} {
 		rec := post(h, hookPath(tc.ph), tc.body)
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid interceptor payload") {
@@ -324,10 +340,11 @@ func TestScriptedRejectsPayloadsOutsideTheContract(t *testing.T) {
 		ph   phase
 		body string
 	}{
-		"empty object":       {phaseRequest, `{}`},
-		"null fields":        {phaseRequest, `{"requestHeaders":null,"requestBody":null,"invocationContext":null}`},
-		"unknown field":      {phaseRequest, `{"somethingNew":[1,2]}`},
-		"full response call": {phaseResponse, `{"responseCode":201,"requestHeaders":{"a":"b"},"requestBody":"eA==","responseHeaders":{"c":"d"},"responseBody":"eQ==","invocationContext":{"requestId":"r"},"interceptorContext":{"k":"v"}}`},
+		"empty object":         {phaseRequest, `{}`},
+		"null fields":          {phaseRequest, `{"requestHeaders":null,"requestBody":null,"invocationContext":null,"interceptorContext":null}`},
+		"empty string members": {phaseResponse, `{"responseCode":200,"requestHeaders":{"a":""},"responseHeaders":{"b":""},"interceptorContext":{"k":""}}`},
+		"unknown field":        {phaseRequest, `{"somethingNew":[1,2]}`},
+		"full response call":   {phaseResponse, `{"responseCode":201,"requestHeaders":{"a":"b"},"requestBody":"eA==","responseHeaders":{"c":"d"},"responseBody":"eQ==","invocationContext":{"requestId":"r"},"interceptorContext":{"k":"v"}}`},
 	} {
 		if rec := post(h, hookPath(tc.ph), tc.body); rec.Code != http.StatusOK {
 			t.Fatalf("%s: got %d %q", name, rec.Code, rec.Body.String())

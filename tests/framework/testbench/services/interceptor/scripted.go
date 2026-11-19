@@ -153,13 +153,12 @@ func parsePayload(ph phase, raw []byte) (map[string]string, error) {
 		return nil, fmt.Errorf("unexpected data after the JSON object")
 	}
 
-	var headers map[string]string
-	if err := decodeField(fields, "requestHeaders", &headers); err != nil {
+	headers, err := decodeStringMap(fields, "requestHeaders")
+	if err != nil {
 		return nil, err
 	}
 	for _, name := range []string{"responseHeaders", "interceptorContext"} {
-		var m map[string]string
-		if err := decodeField(fields, name, &m); err != nil {
+		if _, err := decodeStringMap(fields, name); err != nil {
 			return nil, err
 		}
 	}
@@ -210,18 +209,42 @@ func decodeField(fields map[string]json.RawMessage, name string, dst any) error 
 	return nil
 }
 
+// decodeStringMap decodes an optional object of strings. A null field counts as absent, but a
+// null member is rejected: encoding/json would otherwise decode it as an empty string.
+func decodeStringMap(fields map[string]json.RawMessage, name string) (map[string]string, error) {
+	var members map[string]*string
+	if err := decodeField(fields, name, &members); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(members))
+	for key, value := range members {
+		if value == nil {
+			return nil, fmt.Errorf("%s has the wrong type: %q is null", name, key)
+		}
+		out[key] = *value
+	}
+	return out, nil
+}
+
 // parseControls reads this phase's control headers. Header names match without regard to
-// case; controls for the other phase are ignored.
+// case, so two names that differ only in case are rejected as a duplicate control; controls
+// for the other phase are ignored.
 func parseControls(ph phase, headers map[string]string, pathReflect bool) (controls, error) {
 	ctl := controls{reply: []byte(defaultReplyBody), status: http.StatusOK, reflect: pathReflect}
 	prefix := controlPrefix + string(ph) + "-"
 	var haveReply, haveStatus bool
+	seen := make(map[string]string, len(headers))
 	for name, value := range headers {
 		lower := strings.ToLower(name)
 		if !strings.HasPrefix(lower, prefix) {
 			continue
 		}
-		switch control := strings.TrimPrefix(lower, prefix); control {
+		control := strings.TrimPrefix(lower, prefix)
+		if other, dup := seen[control]; dup {
+			return controls{}, fmt.Errorf("%s and %s set the same control", other, name)
+		}
+		seen[control] = name
+		switch control {
 		case "reply":
 			decoded, err := base64.StdEncoding.DecodeString(value)
 			if err != nil {
