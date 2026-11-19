@@ -22,6 +22,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 )
 
@@ -87,9 +87,9 @@ func TestGatewayConfigChangeUnsticksPermanentlyFailedGateway(t *testing.T) {
 		namespace = "default"
 	)
 
-	oldHash := auth.CalculateConfigHash("replicaCount: 1\n")
+	oldHash := mustAPIGatewayConfigHash(t, &config.OperatorConfig{}, "replicaCount: 1\n")
 	newValues := "replicaCount: 2\n" // the "fix" the operator applies after the outage clears
-	require.NotEqual(t, oldHash, auth.CalculateConfigHash(newValues))
+	require.NotEqual(t, oldHash, mustAPIGatewayConfigHash(t, &config.OperatorConfig{}, newValues))
 
 	gw := buildPermanentlyFailedGateway(name, namespace, oldHash)
 	cm := &corev1.ConfigMap{
@@ -147,7 +147,7 @@ func TestGatewayNoConfigChangeStaysPermanentlyFailed(t *testing.T) {
 	)
 
 	values := "replicaCount: 1\n"
-	hash := auth.CalculateConfigHash(values)
+	hash := mustAPIGatewayConfigHash(t, &config.OperatorConfig{}, values)
 
 	gw := buildPermanentlyFailedGateway(name, namespace, hash)
 	cm := &corev1.ConfigMap{
@@ -203,7 +203,7 @@ func TestTerminalFailureRecordsAttemptedConfigHash(t *testing.T) {
 	)
 
 	values := "replicaCount: 1\n" // a config that never deploys successfully
-	hash := auth.CalculateConfigHash(values)
+	hash := mustAPIGatewayConfigHash(t, &config.OperatorConfig{}, values)
 
 	// Never successfully deployed: ConfigHash is empty, mid-retry rather than terminal.
 	gw := buildPermanentlyFailedGateway(name, namespace, "")
@@ -267,16 +267,17 @@ func TestTerminalFailureRecordsAttemptedConfigHash(t *testing.T) {
 }
 
 // TestConfigRefRemovalDoesNotLoop covers a gateway whose spec.configRef was removed after a
-// config had been recorded. The current hash is then "", so both the terminal-failure and the
-// success path must overwrite the stale stored hash with "". Otherwise configChanged stays true
-// forever and Case 1 resets the retry budget and redeploys on every reconcile.
+// config had been recorded. The current hash then covers no overlay, so both the terminal-failure
+// and the success path must overwrite the stale stored hash with it. Otherwise configChanged stays
+// true forever and Case 1 resets the retry budget and redeploys on every reconcile.
 func TestConfigRefRemovalDoesNotLoop(t *testing.T) {
 	const (
 		name       = "gw1"
 		namespace  = "default"
 		maxRetries = 3
 	)
-	staleHash := auth.CalculateConfigHash("replicaCount: 1\n")
+	staleHash := mustAPIGatewayConfigHash(t, &config.OperatorConfig{}, "replicaCount: 1\n")
+	noOverlayHash := mustAPIGatewayConfigHash(t, &config.OperatorConfig{}, "")
 
 	setup := func(t *testing.T) (*GatewayReconciler, *apiv1.APIGateway, string, *GatewayTrackingEntry) {
 		scheme := runtime.NewScheme()
@@ -322,12 +323,12 @@ func TestConfigRefRemovalDoesNotLoop(t *testing.T) {
 		r, gw, trackingKey, entry := setup(t)
 
 		_, err := r.handleGatewayDeploymentError(ctx, gw, trackingKey, entry,
-			errors.New("context deadline exceeded"), 0, "")
+			errors.New("context deadline exceeded"), 0, noOverlayHash)
 		require.NoError(t, err)
 
 		failed := &apiv1.APIGateway{}
 		require.NoError(t, r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, failed))
-		require.Empty(t, failed.Status.ConfigHash, "stale hash must be cleared when configRef is removed")
+		require.Equal(t, noOverlayHash, failed.Status.ConfigHash, "stale hash must be replaced when configRef is removed")
 
 		result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}})
 		require.NoError(t, err)
@@ -343,12 +344,12 @@ func TestConfigRefRemovalDoesNotLoop(t *testing.T) {
 		ctx := context.Background()
 		r, gw, trackingKey, entry := setup(t)
 
-		_, err := r.handleGatewayDeploymentSuccess(ctx, gw, trackingKey, entry, 0, "ready", "")
+		_, err := r.handleGatewayDeploymentSuccess(ctx, gw, trackingKey, entry, 0, "ready", noOverlayHash)
 		require.NoError(t, err)
 
 		deployed := &apiv1.APIGateway{}
 		require.NoError(t, r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, deployed))
-		require.Empty(t, deployed.Status.ConfigHash, "stale hash must be cleared when configRef is removed")
+		require.Equal(t, noOverlayHash, deployed.Status.ConfigHash, "stale hash must be replaced when configRef is removed")
 
 		cond := meta.FindStatusCondition(deployed.Status.Conditions, apiv1.GatewayConditionProgrammed)
 		require.NotNil(t, cond)
@@ -371,4 +372,41 @@ func TestConfigRefRemovalDoesNotLoop(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, GatewayTrackingStatusDeployed, after.Status)
 	})
+}
+
+func mustAPIGatewayConfigHash(t *testing.T, cfg *config.OperatorConfig, values string) string {
+	t.Helper()
+	hash, err := apiGatewayConfigHash(cfg, values)
+	require.NoError(t, err)
+	return hash
+}
+
+// TestAPIGatewayConfigHashCoversChartAndBaseValues checks that an operator upgrade that changes
+// the gateway chart version or the base values file changes every APIGateway's config hash, so
+// existing gateways are redeployed with the new chart and defaults instead of keeping a release
+// the operator no longer matches.
+func TestAPIGatewayConfigHashCoversChartAndBaseValues(t *testing.T) {
+	dir := t.TempDir()
+	baseFile := filepath.Join(dir, "values.yaml")
+	require.NoError(t, os.WriteFile(baseFile, []byte("a: 1\n"), 0o600))
+
+	cfg := &config.OperatorConfig{}
+	cfg.Gateway.HelmChartName = "oci://example/gateway"
+	cfg.Gateway.HelmChartVersion = "1.0.0"
+	cfg.Gateway.HelmValuesFilePath = baseFile
+	overlay := "replicaCount: 1\n"
+	base := mustAPIGatewayConfigHash(t, cfg, overlay)
+	require.Equal(t, base, mustAPIGatewayConfigHash(t, cfg, overlay), "hash must be stable")
+
+	bumped := *cfg
+	bumped.Gateway.HelmChartVersion = "1.1.0"
+	require.NotEqual(t, base, mustAPIGatewayConfigHash(t, &bumped, overlay), "chart version change must change the hash")
+
+	require.NoError(t, os.WriteFile(baseFile, []byte("a: 2\n"), 0o600))
+	require.NotEqual(t, base, mustAPIGatewayConfigHash(t, cfg, overlay), "base values change must change the hash")
+
+	missing := *cfg
+	missing.Gateway.HelmValuesFilePath = filepath.Join(dir, "absent.yaml")
+	_, err := apiGatewayConfigHash(&missing, overlay)
+	require.NoError(t, err, "a missing base values file must not fail the hash; the Helm install reports it")
 }

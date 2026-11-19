@@ -177,7 +177,7 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.config.policy_engine.*` – policy engine configuration including xDS client settings and admin API.
 - `gateway.config.api_key` / `gateway.config.subscriptions` – API-key policy tuning (length/algorithm/issuer) and opt-in application-subscription validation.
 - `gateway.<component>.deployment.podSecurityContext` / `securityContext` – pod and container security contexts, rendered as given (empty by default).
-- `openshift.*` – OpenShift support, rendered only when `openshift.enabled=true`: an optional Route to the management API (`openshift.routes.managementApi`, off by default, edge termination). That Route fails at install time while `gateway.config.controller.auth` still has the chart's default `admin` password, or no authentication (no basic auth users and IDP off). The chart does not create Routes for API traffic, because the hostnames the gateway runtime serves come from the virtual hosts configured in `gateway.config.router.vhosts` and in each API definition. Create a Route to the `<release>-gateway-runtime` Service for each hostname you use.
+- `openshift.*` – OpenShift support, rendered only when `openshift.enabled=true`: an optional Route to the management API (`openshift.routes.managementApi`, off by default, edge termination). That Route fails at install time while a basic auth user in `gateway.config.controller.auth` has the password `admin`, or there is no authentication (no basic auth users, no generated or existing admin credential, and IDP off). The chart does not create Routes for API traffic, because the hostnames the gateway runtime serves come from the virtual hosts configured in `gateway.config.router.vhosts` and in each API definition. Create a Route to the `<release>-gateway-runtime` Service for each hostname you use.
 
 Refer to the inline comments inside `values.yaml` for a complete matrix of options and the expected data types for each block.
 
@@ -260,6 +260,95 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
   fields (`host`, `user`, ...) instead of a DSN. The same applies to the `{{ env }}` token.
 - Like the env var, the file is read once at startup: restart the controller after rotating the
   Secret.
+
+### Controller REST API credentials
+
+The controller's REST management API authenticates with basic auth. By default the chart
+**generates** the credential; there is no fixed default password.
+
+- On first install the chart creates the Secret `<fullname>-controller-admin` with a random
+  32-character `password` and its bcrypt hash `password-hash`. On upgrade it reads the existing
+  Secret back (`lookup`), so the credential and every manifest stay the same and nothing restarts.
+- `config.toml` (a ConfigMap) holds only an interpolation token for user `admin`
+  (`password_hashed = true`). The controller resolves it at startup from the env var
+  `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH`, which its Deployment reads from the Secret's
+  `password-hash` key. The plaintext password is never in the ConfigMap or the Deployment.
+- The gateway operator reads `password` from the Secret, which it finds by the release's labels.
+
+Read the password:
+
+```bash
+kubectl get secret <fullname>-controller-admin -n <namespace> \
+  -o jsonpath='{.data.password}' | base64 -d
+```
+
+Values (`gateway.config.controller.auth.basic.*`):
+
+| Value | Default | Meaning |
+|-------|---------|---------|
+| `enabled` | `true` | Basic auth on the REST API. |
+| `generate` | `true` | Generate the `admin` credential when `users` is empty and `existingSecret` is not set. |
+| `existingSecret` | `""` | A Secret you manage in the release namespace, with keys `password` and `password-hash` (bcrypt), used for the `admin` user instead of a generated one. Cannot be combined with `users`. |
+| `users` | `[]` | Explicit users. When set, they replace the `admin` user and nothing is generated. |
+
+**`helm template` and client-side dry runs** have no cluster access, so `lookup` finds nothing and
+every render produces a new password. Tools that render with `helm template` (for example Argo CD)
+would rotate the Secret on every sync, while the controller keeps the hash it started with. For
+those, create the Secret yourself and set `existingSecret`:
+
+```bash
+PASSWORD="$(openssl rand -base64 32)"
+kubectl create secret generic gateway-admin -n <namespace> \
+  --from-literal=password="$PASSWORD" \
+  --from-literal=password-hash="$(htpasswd -nbBC 12 "" "$PASSWORD" | cut -d: -f2)"
+# then: gateway.config.controller.auth.basic.existingSecret=gateway-admin
+```
+
+The generated Secret belongs to the release: `helm uninstall` deletes it, and a new install
+generates a new one. To rotate it, delete the Secret, run `helm upgrade`, and restart the
+controller.
+
+**The chart refuses** settings that would leave the management API open, on every install (not
+only with the OpenShift Route): basic auth with no users, no generated or `existingSecret` admin
+user (for example `generate: false` alone, or `enabled: false`) while IDP auth is off; and any user
+whose plaintext password is `admin`.
+
+**Upgrading from a release that used `admin`/`admin`.** Earlier chart versions configured the user
+`admin` with password `admin` by default. After upgrading with default values, that password no
+longer works; read the generated one with the command above. `--reuse-values` keeps the previously
+rendered `admin`/`admin` user, which the chart now refuses: drop it (`--reset-then-reuse-values`,
+or `--set-json 'gateway.config.controller.auth.basic.users=[]'`; plain `--set` passes `[]` as a string) to use the generated credential, or set
+`users` or `existingSecret` explicitly to keep a credential of your own.
+
+**Explicit users.** Store a hash, not the password, since `config.toml` is rendered into a ConfigMap:
+
+```yaml
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: gateway-admin
+              password: "$2y$12$..."          # bcrypt ($2a$/$2b$/$2y$) or Argon2id ($argon2id$)
+              password_hashed: true
+              roles: ["admin"]
+              # Only when the gateway operator manages this gateway (see below).
+              passwordSecretRef:
+                name: gateway-admin-credential
+                key: password                 # optional, defaults to "password"
+```
+
+The chart fails to render when `password_hashed: true` is set on a value that is neither a bcrypt
+nor an Argon2id hash (an `{{ env }}`/`{{ file }}` token is accepted).
+
+For an operator-managed gateway with explicit users, the operator must send the plaintext
+password, which it cannot recover from a hash. Create a Secret holding it in the gateway's
+namespace and point `passwordSecretRef` at it. `passwordSecretRef` is read only by the operator,
+is never rendered into `config.toml`, and requires `password_hashed: true`. The operator uses the
+first user whose password it can obtain (through `passwordSecretRef`, or a plaintext `password`).
+If there is none, it reports an error instead of falling back to a built-in credential.
 
 ### Raw config passthrough (`gateway.config_toml`)
 

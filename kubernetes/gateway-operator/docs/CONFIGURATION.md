@@ -136,6 +136,46 @@ gateway:
 
 The chart fails to render if `encryptionKeys` is not enabled.
 
+### Gateway-controller REST Credentials
+
+The operator deploys APIs to each gateway through the gateway-controller REST API, using
+HTTP basic auth. It takes the credential from the same Helm values the gateway was installed
+with: `gateway_values.yaml` (the operator's base values), overlaid with the gateway's own values
+ConfigMap (`APIGateway.spec.configRef`, or the Gateway API values ConfigMap).
+
+**Default: a generated credential.** The base values list no users, so the gateway chart
+generates an `admin` user: a random password in the Secret `<fullname>-controller-admin` in the
+gateway's namespace (keys `password` and `password-hash`), kept across upgrades. The controller
+config holds only the bcrypt hash; the operator finds the Secret by the release's labels
+(`app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=controller-admin`) and
+sends `password`. `gateway.config.controller.auth.basic.existingSecret` names a Secret you
+provide instead. This needs a gateway chart version that generates the credential
+(`gateway.helm.chartVersion`); with an older chart, set explicit users. The operator refuses to
+install or upgrade an older chart with values that list no users and leave IDP auth off, because
+that chart would run the management API without authentication.
+
+A gateway's recorded configuration covers the chart name and version and the base values file,
+not only its values ConfigMap. After an operator upgrade that changes any of them, existing
+`APIGateway` releases are upgraded with the new chart and defaults, which creates the generated
+Secret for gateways that were installed with `admin`/`admin`.
+
+```bash
+kubectl get secret <release>-gateway-controller-admin -n <gateway-namespace> \
+  -o jsonpath='{.data.password}' | base64 -d
+```
+
+**Explicit users** (`gateway.config.controller.auth.basic.users`) replace the generated user. The
+operator uses the first user whose password it can obtain:
+
+- a user with `passwordSecretRef`, whose plaintext password is read from that Secret in the
+  **gateway's own namespace** (default key `password`), while the controller config holds only
+  the hash (`password_hashed: true`); or
+- a user with a plaintext `password`.
+
+There is no built-in fallback credential. If basic auth is disabled, the generated Secret does
+not exist, or no listed user has a password the operator can obtain, API deployments to that
+gateway fail with an error that names the reason.
+
 ### Logging Configuration
 
 | Environment Variable | Default | Description |

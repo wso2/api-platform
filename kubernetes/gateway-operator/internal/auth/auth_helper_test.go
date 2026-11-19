@@ -35,7 +35,7 @@ gateway:
 
 	// Verify structure traversal
 	basicAuth := authConfig.Gateway.Config.Controller.Auth.Basic
-	assert.True(t, basicAuth.Enabled)
+	assert.True(t, basicAuth.IsEnabled())
 	assert.Len(t, basicAuth.Users, 1)
 	assert.Equal(t, "admin", basicAuth.Users[0].Username)
 	assert.Equal(t, "password123", basicAuth.Users[0].Password)

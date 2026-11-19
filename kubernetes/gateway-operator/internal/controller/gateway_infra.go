@@ -19,7 +19,11 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -27,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
@@ -45,6 +50,47 @@ func configMapValuesYAML(ctx context.Context, c client.Client, configMapName, na
 		return "", fmt.Errorf("'values.yaml' key in ConfigMap %s/%s is empty", namespace, configMapName)
 	}
 	return valuesYAML, nil
+}
+
+// helmValuesFilePath returns the operator's base gateway Helm values file, or "" when
+// none is configured. Gateways are installed with it as the lowest-priority values
+// layer, so controller credentials are resolved against it too.
+func helmValuesFilePath(cfg *config.OperatorConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Gateway.HelmValuesFilePath
+}
+
+// apiGatewayConfigHash returns the hash recorded in an APIGateway's Status.ConfigHash. It
+// covers everything the Helm install depends on outside the CR spec: the gateway chart
+// name and version, the operator's base values file, and the gateway's own values
+// overlay (empty when it has no ConfigRef). A change to any of them, such as an operator
+// upgrade that ships a new chart version or new base values, redeploys existing gateways,
+// so a release is never left on settings that the operator no longer assumes (for
+// example, which Secret holds the controller admin credential).
+func apiGatewayConfigHash(cfg *config.OperatorConfig, overlayValues string) (string, error) {
+	h := sha256.New()
+	write := func(parts ...string) {
+		for _, p := range parts {
+			h.Write([]byte(p))
+			h.Write([]byte{0})
+		}
+	}
+	if cfg != nil {
+		write("chart", cfg.Gateway.HelmChartName, cfg.Gateway.HelmChartVersion)
+	}
+	if path := helmValuesFilePath(cfg); path != "" {
+		data, err := os.ReadFile(path)
+		switch {
+		case err == nil:
+			write("file", string(data))
+		case !errors.Is(err, os.ErrNotExist):
+			return "", fmt.Errorf("read base Helm values file %s: %w", path, err)
+		}
+	}
+	write("values", overlayValues)
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // discoverControllerService finds the gateway-controller Service for a Helm release.

@@ -82,13 +82,44 @@ gateway:
   config:
     controller:
       auth:
+        # Basic auth of the controller REST management API (the gateway operator uses it too).
+        #
+        # Default: no fixed users. The chart generates an "admin" user with a random password,
+        # stored once in the Secret <fullname>-controller-admin (keys "password" and
+        # "password-hash") and kept across upgrades. config.toml holds only an env token; the
+        # controller reads the bcrypt hash from that Secret, the operator reads the password.
+        # Read it with:
+        #   kubectl get secret <fullname>-controller-admin -n <namespace> \
+        #     -o jsonpath='{.data.password}' | base64 -d
+        #
+        # `helm template` and client-side dry runs cannot see the cluster, so they render a new
+        # password every time. For GitOps tools that render with `helm template`, create the
+        # Secret yourself and set existingSecret.
         basic:
           enabled: true
-          users:
-            - username: "admin"
-              password: "admin"
-              password_hashed: false
-              roles: ["admin"]
+          # Generate the admin credential when users is empty and existingSecret is not set.
+          generate: true
+          # Name of a Secret you manage, in the release namespace, with keys "password" and
+          # "password-hash" (bcrypt, e.g. `htpasswd -nbBC 12 "" '<password>' | cut -d: -f2`).
+          # Used for the "admin" user instead of a generated credential.
+          existingSecret: ""
+          # Explicit users replace the generated/existingSecret admin user entirely.
+          # Store a hash, not the password: config.toml is rendered into a ConfigMap.
+          #   password:        bcrypt ($2a$/$2b$/$2y$) or Argon2id ($argon2id$) hash
+          #   password_hashed: true
+          # When the gateway operator manages this gateway it must send the plaintext, so give
+          # the user a passwordSecretRef to a Secret in the gateway's namespace holding it. Only
+          # the operator reads it; it is not rendered into config.toml. The operator uses the
+          # first user whose password it can obtain (passwordSecretRef or plaintext) and fails,
+          # rather than guessing, if there is none.
+          #   - username: "gateway-admin"
+          #     password: "$2y$12$..."
+          #     password_hashed: true
+          #     roles: ["admin"]
+          #     passwordSecretRef:
+          #       name: gateway-admin-credential
+          #       key: password            # optional, defaults to "password"
+          users: []
         idp:
           enabled: false
           jwks_url: ""

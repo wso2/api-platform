@@ -25,6 +25,13 @@
 #   ENC_KEY_SECRET   name of the AES-256 at-rest encryption key secret (default: gateway-encryption-keys)
 #   GATEWAY_NS       namespace the operator deploys the gateway into, where the key secret is
 #                    created (default: gateway-conformance-infra — the suite's infra namespace)
+#   GATEWAY_CHART_SOURCE
+#                    repo (default): package kubernetes/helm/gateway-helm-chart from this checkout
+#                    and serve it to the operator from an in-cluster OCI registry, so the operator
+#                    and the gateway chart under test come from the same commit.
+#                    published: install the published gateway chart GATEWAY_CHART_VERSION (required;
+#                    it must generate the controller admin credential), from GATEWAY_CHART_NAME
+#                    (default: the operator chart's gateway.helm.chartName).
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
@@ -34,6 +41,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/versions.sh"
 
 OPERATOR_CHART="${OPERATOR_CHART:-${REPO_ROOT}/kubernetes/helm/operator-helm-chart}"
 OPERATOR_NS="${OPERATOR_NS:-gateway-system}"
+GATEWAY_CHART_SOURCE="${GATEWAY_CHART_SOURCE:-repo}"
+CHART_REGISTRY_NS="conformance-chart-registry"
+# Set by publish_repo_gateway_chart to 0.0.0-conformance-<digest of the chart files>, so a chart
+# change produces a new version: the operator's config hash covers the chart version, not the
+# templates, so reusing one version on a rerun would leave gateways on the old chart.
+LOCAL_GATEWAY_CHART_VERSION=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Namespaces the Gateway API conformance suite creates for its fixtures.
@@ -90,6 +103,108 @@ provision_encryption_key() {
   rm -f "${keyfile}"
 }
 
+# Serve the gateway chart of this checkout to the operator from an in-cluster OCI registry
+# (plain HTTP), and set GATEWAY_CHART_ARGS to point the operator at it. The operator and the
+# gateway chart must match: the operator's base gateway values assume the chart features of the
+# same commit (for example the generated controller admin credential).
+GATEWAY_CHART_ARGS=()
+
+# Print the first 12 hex digits of a SHA-256 over the chart's file paths and contents
+# (sha256sum on Linux, shasum on macOS).
+chart_digest() {
+  local sum
+  if command -v sha256sum >/dev/null 2>&1; then sum="sha256sum"; else sum="shasum -a 256"; fi
+  (cd "$1" && find . -type f -print | LC_ALL=C sort | while IFS= read -r f; do
+     printf '%s\n' "$f"; ${sum} < "$f"
+   done) | ${sum} | cut -c1-12
+}
+
+publish_repo_gateway_chart() {
+  echo ">> Serving the repository gateway chart from an in-cluster OCI registry (${CHART_REGISTRY_NS})"
+  kubectl create namespace "${CHART_REGISTRY_NS}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: ${CHART_REGISTRY_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      containers:
+      - name: registry
+        image: registry:2
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: ${CHART_REGISTRY_NS}
+spec:
+  selector:
+    app: registry
+  ports:
+  - port: 5000
+    targetPort: 5000
+EOF
+  kubectl rollout status deployment/registry -n "${CHART_REGISTRY_NS}" --timeout=180s
+
+  local workdir pf_pid pushed="" chart_dir digest
+  chart_dir="${REPO_ROOT}/kubernetes/helm/gateway-helm-chart"
+  digest="$(chart_digest "${chart_dir}")"
+  LOCAL_GATEWAY_CHART_VERSION="0.0.0-conformance-${digest}"
+  echo "   gateway chart version ${LOCAL_GATEWAY_CHART_VERSION}"
+  workdir="$(mktemp -d)"
+  helm package "${REPO_ROOT}/kubernetes/helm/gateway-helm-chart" \
+    --version "${LOCAL_GATEWAY_CHART_VERSION}" --destination "${workdir}" >/dev/null
+  # Let kubectl pick a free local port (":5000") and push only through the port it reports, so a
+  # failed forward can never be mistaken for a push to some other registry on localhost.
+  local local_port=""
+  kubectl port-forward -n "${CHART_REGISTRY_NS}" svc/registry :5000 >"${workdir}/port-forward.log" 2>&1 &
+  pf_pid=$!
+  for _ in $(seq 1 30); do
+    local_port="$(sed -nE 's/^Forwarding from 127\.0\.0\.1:([0-9]+) -> 5000$/\1/p' "${workdir}/port-forward.log" | head -1)"
+    [ -n "${local_port}" ] && break
+    if ! kill -0 "${pf_pid}" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  if [ -n "${local_port}" ]; then
+    for _ in $(seq 1 10); do
+      if helm push "${workdir}/gateway-${LOCAL_GATEWAY_CHART_VERSION}.tgz" "oci://localhost:${local_port}/charts" --plain-http; then
+        pushed=yes
+        break
+      fi
+      sleep 2
+    done
+  else
+    echo "error: kubectl port-forward to the in-cluster registry did not start:" >&2
+    cat "${workdir}/port-forward.log" >&2 || true
+  fi
+  kill "${pf_pid}" >/dev/null 2>&1 || true
+  rm -rf "${workdir}"
+  if [ -z "${pushed}" ]; then
+    echo "error: could not push the gateway chart to the in-cluster registry" >&2
+    exit 1
+  fi
+
+  GATEWAY_CHART_ARGS=(
+    --set "gateway.helm.chartName=oci://registry.${CHART_REGISTRY_NS}.svc.cluster.local:5000/charts/gateway"
+    --set "gateway.helm.chartVersion=${LOCAL_GATEWAY_CHART_VERSION}"
+    --set gateway.helm.plainHTTP=true
+  )
+}
+
 cleanup() {
   echo ">> Cleaning up WSO2 gateway + conformance resources (cluster is preserved)"
 
@@ -110,6 +225,9 @@ cleanup() {
   kubectl delete namespace "${CONFORMANCE_NAMESPACES[@]}" --ignore-not-found --timeout=120s || true
 
   # 4. GatewayClass.
+  echo ">> Deleting the in-cluster gateway chart registry"
+  kubectl delete namespace "${CHART_REGISTRY_NS}" --ignore-not-found --timeout=120s || true
+
   echo ">> Deleting the GatewayClass"
   kubectl delete -f "${SCRIPT_DIR}/manifests/gatewayclass.yaml" --ignore-not-found || true
 
@@ -163,6 +281,29 @@ kubectl wait --namespace cert-manager \
 # Provision the mandatory at-rest encryption key before the gateway is reconciled.
 provision_encryption_key
 
+case "${GATEWAY_CHART_SOURCE}" in
+  repo) publish_repo_gateway_chart ;;
+  published)
+    # The operator chart's default gateway.helm.chartVersion can predate the generated controller
+    # admin credential that its base values rely on; the operator then refuses to install it. So
+    # name a published chart version that has it (or set explicit users through the operator values).
+    if [ -z "${GATEWAY_CHART_VERSION:-}" ]; then
+      echo "error: GATEWAY_CHART_SOURCE=published needs GATEWAY_CHART_VERSION, a published gateway chart" >&2
+      echo "       version that generates the controller admin credential (gateway.config.controller.auth.basic.generate)." >&2
+      exit 2
+    fi
+    echo ">> Using the published gateway chart ${GATEWAY_CHART_NAME:-(operator chart default name)} ${GATEWAY_CHART_VERSION}"
+    GATEWAY_CHART_ARGS=(--set "gateway.helm.chartVersion=${GATEWAY_CHART_VERSION}")
+    if [ -n "${GATEWAY_CHART_NAME:-}" ]; then
+      GATEWAY_CHART_ARGS+=(--set "gateway.helm.chartName=${GATEWAY_CHART_NAME}")
+    fi
+    ;;
+  *)
+    echo "error: GATEWAY_CHART_SOURCE must be repo or published (got '${GATEWAY_CHART_SOURCE}')" >&2
+    exit 2
+    ;;
+esac
+
 echo ">> Installing the gateway operator from ${OPERATOR_CHART}"
 echo "   gateway-controller -> ${GW_VERSION}"
 echo "   gateway-runtime -> ${GW_VERSION}"
@@ -185,6 +326,7 @@ helm upgrade --install gateway-operator "${OPERATOR_CHART}" \
   --set gateway.values.gateway.gatewayRuntime.deployment.securityContext.runAsUser=0 \
   --set reconciliation.maxConcurrentReconciles=15 \
   --set reconciliation.interval=150 \
+  ${GATEWAY_CHART_ARGS[@]+"${GATEWAY_CHART_ARGS[@]}"} \
   --wait
 kubectl rollout status --namespace "${OPERATOR_NS}" deployment --timeout=240s
 

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -741,16 +742,33 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 	registryInstance := registry.GetGatewayRegistry()
 	matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
 
+	// Try every gateway, then report all failures, so the caller keeps the finalizer and
+	// retries instead of forgetting an API that is still deployed. A gateway that no longer
+	// has the API answers 404, which DeleteRestAPI treats as success.
+	//
+	// A gateway whose configuration currently provides no usable controller credential
+	// (ErrNoControllerCredentials) also keeps the finalizer. The operator does not record which
+	// gateways accepted the API, and the API may have been deployed under an earlier credential,
+	// so skipping that gateway could leave the API deployed with nothing tracking it. The
+	// deletion then waits until the gateway's credential is fixed or the gateway no longer
+	// selects this RestApi; the error says so.
+	var deleteErrs []error
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
+			if errors.Is(err, auth.ErrNoControllerCredentials) {
+				err = fmt.Errorf("%w; the API may still be deployed there, so the RestApi is kept until the "+
+					"gateway's controller credential is fixed or the gateway no longer selects it", err)
+			}
 			log.Error("failed to delete API from gateway",
 				slog.Any("error", err),
 				slog.String("api", handle),
 				slog.String("gateway", gateway.Name))
-			// Continue with other gateways even if one fails
+			deleteErrs = append(deleteErrs, fmt.Errorf("%s/%s: %w", gateway.Namespace, gateway.Name, err))
 		}
 	}
-
+	if len(deleteErrs) > 0 {
+		return fmt.Errorf("delete API %q from gateways: %w", handle, errors.Join(deleteErrs...))
+	}
 	return nil
 }
 
@@ -794,29 +812,9 @@ func payloadMetadataForRestAPI(apiConfig *apiv1.RestApi) gatewayclient.RestAPIPa
 
 // addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config
 func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Request, gatewayInfo *registry.GatewayInfo) error {
-	log := r.Logger.With(slog.String("controller", "RestApi"))
-
-	authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gatewayInfo)
+	username, password, err := auth.ResolveControllerCredentials(ctx, r.Client, gatewayInfo, helmValuesFilePath(r.Config))
 	if err != nil {
-		return fmt.Errorf("retrieve auth config for gateway %q: %w", gatewayInfo.Name, err)
-	}
-
-	var username, password string
-	if authConfig != nil {
-		// Try to get credentials from the auth config
-		var ok bool
-		username, password, ok = auth.GetBasicAuthCredentials(authConfig)
-		if !ok {
-			// Auth config exists but no valid basic auth, use default
-			log.Debug("No valid basic auth in config, using default credentials",
-				slog.String("gateway", gatewayInfo.Name))
-			username, password = auth.GetDefaultBasicAuthCredentials()
-		}
-	} else {
-		// No auth config, use default
-		log.Debug("No auth config found, using default credentials",
-			slog.String("gateway", gatewayInfo.Name))
-		username, password = auth.GetDefaultBasicAuthCredentials()
+		return fmt.Errorf("resolve gateway-controller credentials for gateway %q: %w", gatewayInfo.Name, err)
 	}
 
 	// Encode and set the Authorization header

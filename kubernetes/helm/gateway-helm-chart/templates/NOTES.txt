@@ -79,4 +79,30 @@ PVC created: {{ include "gateway-operator.fullname" . }}-controller-data
 {{- end }}
 {{- end }}
 
+{{- $notesBasic := dig "auth" "basic" (dict) (default (dict) .Values.gateway.config.controller) }}
+{{- $notesAdminSecret := include "gateway-operator.controllerAdminSecretName" . }}
+{{- if and .Values.gateway.controller.deployment.enabled $notesAdminSecret }}
+
+Controller REST API credential:
+  User "admin". The password is in the Secret {{ $notesAdminSecret }}{{ if not $notesBasic.existingSecret }} (generated
+  on first install and kept on upgrade){{ end }}. The controller config holds only its bcrypt hash.
+    kubectl get secret {{ $notesAdminSecret }} -n {{ .Release.Namespace }} -o jsonpath='{.data.password}' | base64 -d
+{{- if not $notesBasic.existingSecret }}
+  Upgrading from a release that used admin/admin: that password no longer works. Read the new
+  one with the command above. `helm template` renders a new password on every run; for
+  GitOps rendering, provide gateway.config.controller.auth.basic.existingSecret.
+{{- end }}
+{{- end }}
+{{- if $notesBasic.enabled }}
+{{- range $user := (default (list) $notesBasic.users) }}
+{{- if and (not $user.password_hashed) (eq (toString $user.password) "admin") }}
+
+WARNING: controller REST API user {{ toString $user.username | quote }} has the password "admin".
+  Remove gateway.config.controller.auth.basic.users to use a generated credential, or set a
+  credential of your own, preferably a bcrypt hash with password_hashed: true (plus a
+  passwordSecretRef when the gateway operator manages this gateway).
+{{- end }}
+{{- end }}
+{{- end }}
+
 Documentation: {{ .Chart.Home }}
