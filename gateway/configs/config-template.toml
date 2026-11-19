@@ -117,9 +117,11 @@ allowed_schemes = ["http", "https"]
 
 [controller.admin_server]
 # Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
-# Kept enabled by default because it also serves /health, used by Kubernetes
-# liveness/readiness probes; see admin_server.config_dump below to gate the
-# sensitive /config_dump route specifically.
+# Kept enabled by default because it also serves the health endpoints
+# (/api/admin/v1/health and /ready), which answer while the controller is still
+# starting; the management API serves the same answer at /api/management/v1/health
+# and /ready once startup has finished. See admin_server.config_dump below to gate
+# the sensitive /config_dump route specifically.
 enabled = true
 port = 9092
 allowed_ips = ["*"]
@@ -380,13 +382,14 @@ level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
 # Health check behaviour. Every key is optional; the values shown are the defaults.
-# allowed_clients lists the clients (IP addresses or CIDR ranges) that the admin health
-# endpoints answer. The default, "*", allows every client. To restrict access, list
+# allowed_clients lists the clients (IP addresses or CIDR ranges) that the health
+# endpoints answer, on the admin server (/api/admin/v1/health and /ready) and on the
+# management API (/api/management/v1/health and /ready). The default, "*", allows every client. To restrict access, list
 # addresses or ranges, comma-separated in the environment variable (for example
 # "127.0.0.1,::1,10.0.0.0/8"); any other client then gets 403. Keep the addresses your
 # probes call from. The health endpoints are not covered by admin_server.allowed_ips or
-# admin authentication, so with the default any client that reaches the admin port can
-# see whether the database is up and since when.
+# by authentication, so with the default any client that reaches the admin or management
+# port can see whether the database is up and since when.
 [controller.health]
 allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # cache_ttl     = '{{ env "APIP_GW_CONTROLLER_HEALTH_CACHE_TTL" "3s" }}'    # how long an evaluated health result is reused
