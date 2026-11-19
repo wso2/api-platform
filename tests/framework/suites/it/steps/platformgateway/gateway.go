@@ -1180,6 +1180,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
 	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
+	sc.Step(`^the analytics event for path "([^"]*)" with metadata field "([^"]*)" "([^"]*)" should have metadata fields:$`,
+		g.analyticsEventMetadataFields)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
@@ -2420,6 +2422,44 @@ func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status
 			return analyticsEventMatchesPath(event.Request.URI, resolved) && event.Response.Status == status
 		})
 	return err
+}
+
+// analyticsEventMetadataFields selects the event for path whose metadata field has the value,
+// waiting for it to arrive, and checks the table's further fields (field, value) on that same
+// event. Requests that share a route, such as an MCP proxy's, publish events the "latest event
+// for path" steps cannot tell apart, and they reach the collector in no guaranteed order.
+func (g *Gateway) analyticsEventMetadataFields(ctx context.Context, path, field, want string, table *godog.Table) error {
+	resolvedPath, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	what := fmt.Sprintf("path %q with metadata field %q %q", resolvedPath, field, resolved)
+	event, err := g.latestMatchingAnalyticsEvent(ctx, what, func(event *analyticsEvent) bool {
+		value, ok := traverseJSON(event.Metadata, field)
+		return analyticsEventMatchesPath(event.Request.URI, resolvedPath) && ok && fmt.Sprintf("%v", value) == resolved
+	})
+	if err != nil {
+		return err
+	}
+	for _, row := range table.Rows {
+		name := row.Cells[0].Value
+		expected, err := stepscommon.Expand(ctx, row.Cells[1].Value)
+		if err != nil {
+			return err
+		}
+		value, ok := traverseJSON(event.Metadata, name)
+		if !ok {
+			return fmt.Errorf("analytics event for %s has no metadata field %q", what, name)
+		}
+		if got := fmt.Sprintf("%v", value); got != expected {
+			return fmt.Errorf("analytics event for %s has metadata field %q %q, want %q", what, name, got, expected)
+		}
+	}
+	return nil
 }
 
 // analyticsEventForPath resolves path's placeholders and returns the event latestAnalyticsEvent

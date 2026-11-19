@@ -21,7 +21,9 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,4 +62,26 @@ func TestLaunchStreamsContainerOutputIntoTheBlockLogFile(t *testing.T) {
 	require.NotEmpty(t, data, "the container's own output should have been captured")
 	require.Contains(t, string(data), "[logcapture-probe] ")
 	require.Equal(t, int64(0), writer.Dropped())
+}
+
+// TestStopReportsAContainerThatHadAlreadyExited confirms teardown logs a container that died
+// before it, with its exit code, since a mid-run exit otherwise leaves only connection errors.
+func TestStopReportsAContainerThatHadAlreadyExited(t *testing.T) {
+	ctx := context.Background()
+
+	nw := newTestNetwork(t, ctx, "exited-probe")
+	t.Cleanup(func() { _ = nw.Remove(context.Background()) })
+
+	c, err := Launch(ctx, probeDef("exited-probe"), Options{Network: nw, Replicas: 1})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.Stop(context.Background()) })
+	require.NoError(t, c.Halt(ctx))
+
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	require.NoError(t, c.Stop(ctx))
+	require.Contains(t, logs.String(), `msg="container had exited before teardown" container=exited-probe status=exited exitCode=`)
 }

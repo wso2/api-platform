@@ -387,11 +387,24 @@ func (c *Container) Stop(ctx context.Context) error {
 		return nil
 	}
 	inner := c.container
+	warnIfExited(ctx, c.def.Name, inner)
 	if err := inner.Terminate(ctx); err != nil {
 		return fmt.Errorf("runtime: terminating %s: %w", c.def, err)
 	}
 	c.container = nil
 	return nil
+}
+
+// warnIfExited logs a container that had already stopped when its block tears down, with its
+// exit code and whether it was killed for running out of memory. Without it, a container that
+// died mid-run leaves only connection errors in the scenarios that called it.
+func warnIfExited(ctx context.Context, name string, c testcontainers.Container) {
+	state, err := c.State(ctx)
+	if err != nil || state.Running {
+		return
+	}
+	slog.Warn("container had exited before teardown", "container", name, "status", state.Status,
+		"exitCode", state.ExitCode, "oomKilled", state.OOMKilled, "finishedAt", state.FinishedAt, "error", state.Error)
 }
 
 // Halt stops the container's processes without removing the container, so Resume can start

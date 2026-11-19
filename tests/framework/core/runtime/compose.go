@@ -582,6 +582,13 @@ func (c *ComposeStack) Stop(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
+	if c.stack != nil {
+		for _, svc := range c.services() {
+			if container, err := c.stack.ServiceContainer(ctx, svc); err == nil {
+				warnIfExited(ctx, svc, container)
+			}
+		}
+	}
 	for _, stop := range c.stopLogProducers {
 		_ = stop()
 	}
