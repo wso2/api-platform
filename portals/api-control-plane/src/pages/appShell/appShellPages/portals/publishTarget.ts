@@ -37,6 +37,11 @@ export type PublishTarget = {
   portalsPath: string;
   /** One portal's publish page for this API. */
   publishPath: (apiPortalId: string) => string;
+  /**
+   * The API's Develop › Usage Plans page, where its plans are attached. With one, the publish page
+   * offers the attached plans only.
+   */
+  usagePlansPath?: string;
 };
 
 /** A REST API in console scope. */
@@ -51,6 +56,7 @@ export const restPublishTarget = (
   portalsPath: routes.apiPortals(orgHandle, projectHandler, apiHandle),
   publishPath: (apiPortalId) =>
     routes.apiPortalPublish(orgHandle, projectHandler, apiHandle, apiPortalId),
+  usagePlansPath: routes.apiDevelopUsagePlans(orgHandle, projectHandler, apiHandle),
 });
 
 /** A GraphQL API, from its own route. */
@@ -65,4 +71,5 @@ export const graphqlPublishTarget = (
   portalsPath: routes.graphqlApiPublish(orgHandle, projectHandler, apiHandle),
   publishPath: (apiPortalId) =>
     routes.graphqlApiPortalPublish(orgHandle, projectHandler, apiHandle, apiPortalId),
+  usagePlansPath: routes.graphqlApiDevelopUsagePlans(orgHandle, projectHandler, apiHandle),
 });

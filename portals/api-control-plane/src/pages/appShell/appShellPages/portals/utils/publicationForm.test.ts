@@ -124,6 +124,18 @@ describe('deleted plans', () => {
     expect(resolveDraftFormValues(undefined, publication, undefined).subscriptionPlanIds).toEqual(['gold']);
   });
 
+  it('starts a new listing with the plans attached to the API, but never overrides a saved selection', () => {
+    const api = {
+      description: '',
+      displayName: 'Pizza',
+      subscriptionPlans: [{ id: 'gold' }, { id: 'old', sourceStatus: 'DELETED' as const }],
+      version: 'v1',
+    };
+    expect(resolveDraftFormValues(undefined, undefined, api).subscriptionPlanIds).toEqual(['gold']);
+    const draft = aPublicationDraftDetails({ subscriptionPlans: [] });
+    expect(resolveDraftFormValues(draft, undefined, api).subscriptionPlanIds).toEqual([]);
+  });
+
   it('lists the deleted plans with their stored names', () => {
     const draft = aPublicationDraftDetails({ subscriptionPlans: selections });
 

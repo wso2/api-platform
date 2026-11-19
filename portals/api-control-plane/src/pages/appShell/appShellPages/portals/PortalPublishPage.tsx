@@ -46,6 +46,7 @@ import { LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useCan } from '@/permissions';
 import { parseGraphQLSdl } from '../apis/create/utils/graphqlSchema';
+import { attachedPlanIdsOf } from '../develop/usagePlans/usagePlans';
 import { parseSpecText } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { DocumentsTab } from './components/DocumentsTab';
@@ -226,7 +227,8 @@ const messages = defineMessages({
   apiThumbnailFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.apiThumbnailFailed',
     defaultMessage: 'The API\u2019s thumbnail could not be loaded.',
-    description: 'Shown when the publisher asks for the API\u2019s own thumbnail and reading it failed, so nothing changed.',
+    description:
+      'Shown when the publisher asks for the API\u2019s own thumbnail and reading it failed, so nothing changed.',
   },
 });
 
@@ -418,7 +420,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     setStoredLandingPage(data.seed.landingPage?.inDraft ? data.seed.landingPage.text : undefined);
     setLandingPageFailed(data.seed.landingPageFailed);
     setSaved({
-      definition: { format: data.seed.definition?.format ?? defaultFormat, text: data.seed.definition?.text ?? '' },
+      definition: {
+        format: data.seed.definition?.format ?? defaultFormat,
+        text: data.seed.definition?.text ?? '',
+      },
       landingPage: data.seed.landingPage?.text,
       thumbnail: data.seed.thumbnail?.blob,
       values: data.seed.values,
@@ -442,11 +447,14 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   // The draft offers active plans only, so a plan deleted or deactivated elsewhere is dropped quietly
   // rather than submitted (the server refuses an inactive one).
   // Not while it is being read again (an older cached list may predate a plan activated since), nor when it was cut short.
-  const plansCutShort = plansQuery.isSuccess && plansQuery.data.list.length < plansQuery.data.pagination.total;
+  const plansCutShort =
+    plansQuery.isSuccess && plansQuery.data.list.length < plansQuery.data.pagination.total;
   const activePlanIds = useMemo(
     () =>
       plansQuery.isSuccess && !plansQuery.isFetching && !plansCutShort
-        ? new Set(plansQuery.data.list.filter((plan) => plan.status === 'ACTIVE').map((plan) => plan.id))
+        ? new Set(
+            plansQuery.data.list.filter((plan) => plan.status === 'ACTIVE').map((plan) => plan.id),
+          )
         : undefined,
     [plansCutShort, plansQuery.data, plansQuery.isFetching, plansQuery.isSuccess],
   );
@@ -459,10 +467,14 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   // A document deleted elsewhere is not listed but would still be submitted, so drop it quietly.
   // Read only while a selection is held; the Documentation tab shares this query.
-  const documentsQuery = useAllApiDocuments(apiType, values.docIds.length > 0 ? apiHandler : undefined);
+  const documentsQuery = useAllApiDocuments(
+    apiType,
+    values.docIds.length > 0 ? apiHandler : undefined,
+  );
   // A list cut short can't be trusted to hold every document, nor tell a deleted one from one it never loaded.
   const documentsCutShort =
-    documentsQuery.isSuccess && documentsQuery.data.list.length < documentsQuery.data.pagination.total;
+    documentsQuery.isSuccess &&
+    documentsQuery.data.list.length < documentsQuery.data.pagination.total;
   // Not while it is being read again: an older cached list may predate a document added since.
   const knownDocIds = useMemo(
     () =>
@@ -471,7 +483,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
         : undefined,
     [documentsCutShort, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess],
   );
-  const unknownDocumentSelected = knownDocIds !== undefined && values.docIds.some((id) => !knownDocIds.has(id));
+  const unknownDocumentSelected =
+    knownDocIds !== undefined && values.docIds.some((id) => !knownDocIds.has(id));
   useEffect(() => {
     if (!initialized || !knownDocIds || !unknownDocumentSelected) return;
     dropFromSelection('docIds', (id) => knownDocIds.has(id));
@@ -619,7 +632,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
         body: definitionDocument,
       }),
     );
-    setSaved((current) => ({ ...current, definition: { format: definitionFormat, text: definitionText } }));
+    setSaved((current) => ({
+      ...current,
+      definition: { format: definitionFormat, text: definitionText },
+    }));
     setSpecBaseline({ format: definitionFormat, text: definitionText });
     return true;
   };
@@ -700,7 +716,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   };
   // Offered once something is saved, unless the API turned out to have no thumbnail.
   const offerThumbnailReload =
-    hasSaved && (data.apiThumbnail.isPending || Boolean(data.apiThumbnail.blob) || Boolean(data.apiThumbnail.error));
+    hasSaved &&
+    (data.apiThumbnail.isPending ||
+      Boolean(data.apiThumbnail.blob) ||
+      Boolean(data.apiThumbnail.error));
 
   /** Takes an image as the thumbnail, unless the server would refuse it. */
   const pickThumbnail = (file: Blob) => {
@@ -912,9 +931,13 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       case 'subscriptionPlans':
         return (
           <SubscriptionPlansTab
+            // An API offers the plans attached in its Develop › Usage Plans.
+            attachedPlanIds={target.usagePlansPath ? attachedPlanIdsOf(api) : undefined}
             disabled={busy}
             onChange={handleChange}
+            publishedPlanIds={publishedValues.subscriptionPlanIds}
             savedPlanIds={savedPlanIds}
+            usagePlansPath={target.usagePlansPath}
             values={values}
           />
         );
