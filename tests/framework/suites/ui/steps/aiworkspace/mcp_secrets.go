@@ -324,7 +324,7 @@ func (u *Steps) theSecretHandleIsARandomUUID(ctx context.Context) error {
 	// is a captured-response problem, not a missing secret, and the two need different fixes.
 	handle, ok := t.lastSecretHandle()
 	if !ok {
-		return fmt.Errorf("secret response body carried no id (status %d): %q", call.status, call.response)
+		return fmt.Errorf("secret response body carried no id (status %d): %q", call.Status(), call.Response())
 	}
 	if !secretHandleUUID.MatchString(handle) {
 		return fmt.Errorf("secret handle %q is not a random UUID", handle)
