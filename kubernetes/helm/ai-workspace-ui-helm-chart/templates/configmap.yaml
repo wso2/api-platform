@@ -1,8 +1,10 @@
 {{- $ui := .Values -}}
 {{- $cfg := $ui.config -}}
 {{- $tls := $ui.tls -}}
+{{- $https := eq (include "apip.aiWorkspace.httpsEnabled" .) "true" -}}
+{{- $httpEnabled := eq (include "apip.aiWorkspace.httpEnabled" .) "true" -}}
 {{- $controlPlaneUrl := default (include "apip.platformApi.internalURL" .) $cfg.controlPlane.url -}}
-{{- $domain := default (printf "localhost:%d" (int $ui.containerPort)) $cfg.server.domain -}}
+{{- $domain := default (printf "localhost:%d" (int (ternary $ui.containerPort $cfg.server.http.port $https))) $cfg.server.domain -}}
 {{- if $ui.deployment.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -25,14 +27,16 @@ data:
     domain = {{ $domain | quote }}
 
     [ai_workspace.server.http]
-    enabled = {{ $cfg.server.http.enabled }}
+    enabled = {{ $httpEnabled }}
     port = {{ $cfg.server.http.port | int }}
 
     [ai_workspace.server.https]
-    enabled = true
+    enabled = {{ $https }}
+    {{- if $https }}
     port = {{ $ui.containerPort | int }}
     cert_file = "/etc/ai-workspace/tls/cert.pem"
     key_file = "/etc/ai-workspace/tls/key.pem"
+    {{- end }}
 
     [ai_workspace.logging]
     level = {{ $cfg.logging.level | quote }}
