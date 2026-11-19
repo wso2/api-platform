@@ -97,18 +97,15 @@ func (u *Steps) addFreePlan(ctx context.Context) error {
 	// The plan is registered as soon as the portal answers the create, inside the wait for the
 	// reload, so it is cleaned up even if the toast or the reload then fails.
 	var planID string
-	if _, err := page.ExpectNavigation(func() error {
+	if err := reloadingSave(page, "Plan created.", func() error {
 		created, err := createdBy(page, http.MethodPost, portalPath("/subscription-plans"), "id",
 			func() error { return page.Locator("#cfg-plan-modal-save").Click() })
 		if err != nil {
 			return err
 		}
 		planID = created
-		if err := u.registerCreatedPlan(ctx, page, planID, name); err != nil {
-			return err
-		}
-		return u.expectToast(page, "Plan created.")
-	}, playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		return u.registerCreatedPlan(ctx, page, planID, name)
+	}); err != nil {
 		return fmt.Errorf("saving should say %q and reload the page: %w", "Plan created.", err)
 	}
 	return u.expect.Locator(planRow(page, name)).ToHaveAttribute("id", "cfg-plan-row-"+planID)

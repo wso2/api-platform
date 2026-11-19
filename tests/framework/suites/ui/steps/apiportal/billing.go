@@ -33,6 +33,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 )
@@ -797,15 +798,69 @@ func (u *Steps) saveExpecting(page playwright.Page, save, text string) error {
 // waits until the reloaded page has loaded: its scripts have bound the controls the next action
 // clicks, and what is asserted next is asserted against it, not the page it replaces.
 func (u *Steps) saveAndReload(page playwright.Page, control playwright.Locator, toast string) error {
-	if _, err := page.ExpectNavigation(func() error {
-		if err := control.Click(); err != nil {
-			return err
-		}
-		return u.expectToast(page, toast)
-	}, playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+	if err := reloadingSave(page, toast, func() error { return control.Click() }); err != nil {
 		return fmt.Errorf("saving should say %q and reload the page: %w", toast, err)
 	}
 	return nil
+}
+
+// recordToasts copies each message the page's toast shows into session storage, which outlives
+// the reload, and marks the current document so a reloaded one can be told apart.
+const recordToasts = `() => {
+	sessionStorage.removeItem('uiTestToasts');
+	window.uiTestBeforeReload = true;
+	const message = document.querySelector('#alertToast .alert-toast-message');
+	if (!message) return false;
+	new MutationObserver(() => {
+		const text = message.textContent.trim();
+		if (!text) return;
+		const seen = JSON.parse(sessionStorage.getItem('uiTestToasts') || '[]');
+		seen.push(text);
+		sessionStorage.setItem('uiTestToasts', JSON.stringify(seen));
+	}).observe(message, {childList: true, characterData: true, subtree: true});
+	return true;
+}`
+
+// reloadingSave runs action, which saves something the page confirms in a toast and then reloads
+// for, and waits for both. The page shows the toast for under three seconds before reloading, so
+// the toast is recorded inside the page and the reload is read from the page itself: a test that
+// resumes late, or never sees the load event, cannot miss either.
+func reloadingSave(page playwright.Page, toast string, action func() error) error {
+	installed, err := page.Evaluate(recordToasts)
+	if err != nil {
+		return fmt.Errorf("recording the page's toasts: %w", err)
+	}
+	if ok, _ := installed.(bool); !ok {
+		return fmt.Errorf("the page has no toast to record")
+	}
+	if err := action(); err != nil {
+		return err
+	}
+	ctx := context.Background()
+	var shown string
+	if err := retry.Await(ctx, retry.Options{Fast: true}, func(context.Context) (string, error) {
+		seen, err := page.Evaluate(`() => JSON.parse(sessionStorage.getItem('uiTestToasts') || '[]')`)
+		if err != nil {
+			return "", retry.Transient(fmt.Errorf("reading the recorded toasts: %w", err))
+		}
+		if list, _ := seen.([]any); len(list) > 0 {
+			shown, _ = list[0].(string)
+		}
+		return shown, nil
+	}, func(text string) bool { return text != "" }, "waiting for the toast"); err != nil {
+		return err
+	}
+	if !strings.Contains(shown, toast) {
+		return fmt.Errorf("the page said %q", shown)
+	}
+	return retry.Await(ctx, retry.Options{Fast: true}, func(context.Context) (bool, error) {
+		reloaded, err := page.Evaluate(`() => window.uiTestBeforeReload === undefined && document.readyState === 'complete'`)
+		if err != nil {
+			return false, retry.Transient(fmt.Errorf("reading the page's state: %w", err))
+		}
+		done, _ := reloaded.(bool)
+		return done, nil
+	}, func(done bool) bool { return done }, "waiting for the page to reload")
 }
 
 // openNewPlan opens the plan form with a unique name, and returns the name.
