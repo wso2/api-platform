@@ -2323,32 +2323,41 @@ func (g *Gateway) resetAnalyticsCollector(ctx context.Context) error {
 	}, "resetting the analytics collector")
 }
 
-// analyticsEventCountForPath counts the collector's events for path.
-func (g *Gateway) analyticsEventCountForPath(ctx context.Context, path string) (int, error) {
+// addAnalyticsEventsForPath adds the collector's events for path to seen, keyed by correlation id,
+// or by the whole event when it has none.
+func (g *Gateway) addAnalyticsEventsForPath(ctx context.Context, path string, seen map[string]bool) error {
 	url, err := g.serviceURL(ctx, "analytics", "/test/events")
 	if err != nil {
-		return 0, err
+		return err
 	}
 	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
 		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
 	}, 0, 0)
 	if err != nil {
-		return 0, retry.Transient(err)
+		return retry.Transient(err)
 	}
 	if !resp.Succeeded() {
-		return 0, retry.Transient(fmt.Errorf("analytics events returned %s", resp.Describe()))
+		return retry.Transient(fmt.Errorf("analytics events returned %s", resp.Describe()))
 	}
-	var events []analyticsEvent
-	if err := json.Unmarshal(resp.Body, &events); err != nil {
-		return 0, err
+	var raw []json.RawMessage
+	if err := json.Unmarshal(resp.Body, &raw); err != nil {
+		return err
 	}
-	count := 0
-	for i := range events {
-		if analyticsEventMatchesPath(events[i].Request.URI, path) {
-			count++
+	for _, item := range raw {
+		var event analyticsEvent
+		if err := json.Unmarshal(item, &event); err != nil {
+			return err
 		}
+		if !analyticsEventMatchesPath(event.Request.URI, path) {
+			continue
+		}
+		key, _ := event.Metadata["correlationId"].(string)
+		if key == "" {
+			key = string(item)
+		}
+		seen[key] = true
 	}
-	return count, nil
+	return nil
 }
 
 func (g *Gateway) analyticsEventCount(ctx context.Context) (int, error) {
@@ -2449,8 +2458,16 @@ func (g *Gateway) waitForAnalyticsPathToSettle(ctx context.Context, path string)
 	if isMTLSScenario(ctx) {
 		quiet = mtlsAnalyticsQuietWindow
 	}
+	// The collector keeps a bounded list per block, so other runners' events can evict this
+	// path's: counting the distinct events seen across polls keeps the count from dropping.
+	seen := map[string]bool{}
 	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, quiet,
-		func(ctx context.Context) (int, error) { return g.analyticsEventCountForPath(ctx, resolved) })
+		func(ctx context.Context) (int, error) {
+			if err := g.addAnalyticsEventsForPath(ctx, resolved, seen); err != nil {
+				return 0, err
+			}
+			return len(seen), nil
+		})
 	if err != nil {
 		return err
 	}
