@@ -3,11 +3,11 @@
 The cloud suite runs against a shared, long-lived organisation. Two run-level components keep a
 run honest about it:
 
-- the **starter** (`starter/`, with the checks in `../steps/cloudconsole/starter.go` and
+- the **starter** (`starter/`, with the checks in `../steps/orgsetup/starter.go` and
   `preconditions.go`) checks that the organisation holds what a scenario needs, so a scenario that
   cannot run is **skipped**, and the run is failed when the organisation lacks something the
   suite needs, so a green run never hides a missing environment, pipeline or portal;
-- the **finalizer** (`finalizer/`, with the sweeps in `../steps/cloudconsole/leftovers.go`) removes
+- the **finalizer** (`finalizer/`, with the sweeps in `../steps/orgsetup/leftovers.go`) removes
   the data a run left behind.
 
 `cmd/cloudsetup` runs both by hand, outside a suite run.
@@ -21,7 +21,7 @@ gateway`, `I find an active managed API Portal`, and so on) maps to a **precondi
 met. Each precondition is prepared **once** per run and the answer is shared by every scenario and
 runner after it, so:
 
-- a precondition no scenario of the run needs is never looked at: a run of `apip-basic` alone
+- a precondition no scenario of the run needs is never looked at: a run of `apip-restapi` alone
   checks the default gateway (which reads the pipeline binding of `apip-test-project-1` and lists
   the gateways and pipelines) but not the organisation's portals or other environments, and a
   runner that is commented out or filtered by a tag (`~@known-issue`) asks for nothing;
@@ -37,7 +37,7 @@ named with the prefix `apip-test-`:
 
 | Project | Runners |
 |---|---|
-| `apip-test-project-1` | `apip-basic` (with the GraphQL features), `apip-deploy`, `apip-gateway`, `apip-gateway-config`, `apip-secrets`, `apip-self-hosted-gateway-runtime` |
+| `apip-test-project-1` | `apip-restapi`, `apip-graphql`, `apip-deploy`, `apip-gateway`, `apip-gateway-config`, `apip-secrets`, `apip-self-hosted-gateway-runtime` |
 | `apip-test-project-2` | every other runner: `apip-auth`, `apip-self-hosted-gateway`, `apip-promotion`, `apip-portal` (and `apip-project`) |
 
 A scenario works in the project of its feature file (one feature file is one runner). The default
@@ -66,8 +66,8 @@ run.
 
 | Precondition | Met when | Missing | Scenarios that need it |
 |---|---|---|---|
-| `project@<project>` | `GET /projects/<project>` answers 200, for `apip-test-project-1` and `apip-test-project-2` | **built** by the starter; skipped and the run fails when it cannot be built | the scenarios that read, find or create resources in the project of their runner (basic, deploy, gateway, secrets, portal, project, promotion), as their first check |
-| `default-gateway@<project>` | the deployment pipeline of the project is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in a first stage of it that no suite run created | **built** in the pipeline's first stage (`development` when it is one) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway`, for the project of their runner (basic, deploy, gateway, gateway configuration, secrets, portal) |
+| `project@<project>` | `GET /projects/<project>` answers 200, for `apip-test-project-1` and `apip-test-project-2` | **built** by the starter; skipped and the run fails when it cannot be built | the scenarios that read, find or create resources in the project of their runner (REST API, GraphQL, deploy, gateway, secrets, portal, project, promotion), as their first check |
+| `default-gateway@<project>` | the deployment pipeline of the project is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in a first stage of it that no suite run created | **built** in the pipeline's first stage (`development` when it is one) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway`, for the project of their runner (REST API, GraphQL, deploy, gateway, gateway configuration, secrets, portal) |
 | `environment` | the platform lists an environment the suite may select (see "Which resources the suite selects") | not built: skipped, and the run **fails** | the scenarios that select an existing environment for a managed or self-hosted gateway |
 | `second-environment` | the platform lists a non-production environment the suite may select, besides the default gateway's, that no suite run created | not built: skipped, and the run **fails** | `ID_APIP_GATEWAY_006` and `_007` |
 | `pipeline-project@<project>` | the project is bound to a deployment pipeline named with the prefix `apip-test-` that the platform lists, with at least one promotion path | not built: skipped, and the run **fails** | the scenarios that start with `I find the pipeline-bound APIP project` |

@@ -12,9 +12,11 @@ blocks:
     components:
       - name: cloud-console
     runners:
-      - name: apip-basic
+      - name: apip-restapi
         features:
-          - features/apip_basic.feature
+          - features/apip_restapi.feature
+      - name: apip-graphql
+        features:
           - features/apip_graphql.feature
       - name: apip-project
         tags: "~@known-issue && ~@skip"
