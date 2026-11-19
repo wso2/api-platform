@@ -111,7 +111,12 @@ func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*mo
 	return policies, nil
 }
 
+// ErrCustomPolicyVersionChanged is returned when the policy no longer holds the
+// version an update replaces.
+var ErrCustomPolicyVersionChanged = errors.New("custom policy no longer holds the version being replaced")
+
 // UpdateCustomPolicy updates an existing policy's version and definition identified by (org, name, oldVersion).
+// It returns ErrCustomPolicyVersionChanged when no policy holds oldVersion.
 func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error {
 	now := time.Now().UTC()
 	query := `
@@ -119,11 +124,21 @@ func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVer
 		SET version = ?, display_name = ?, description = ?, policy_definition = ?, updated_by = ?, updated_at = ?
 		WHERE organization_uuid = ? AND name = ? AND version = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query),
+	result, err := r.db.Exec(r.db.Rebind(query),
 		policy.Version, policy.DisplayName, policy.Description, policy.PolicyDefinition, policy.UpdatedBy, now,
 		policy.OrganizationUUID, policy.Name, oldVersion,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrCustomPolicyVersionChanged
+	}
+	return nil
 }
 
 // GetCustomPolicyByUUID retrieves a custom policy by its UUID, scoped to an organization.
