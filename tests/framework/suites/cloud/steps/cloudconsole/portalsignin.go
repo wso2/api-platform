@@ -44,10 +44,12 @@ const (
 	identityCallbackPath  = "/oauth2/auth/callback"
 
 	// The actions of the portal's sign-in and registration flows, as the platform defines them:
-	// the primary action submits the prompt's inputs, and the sign-up link moves from the sign-in
-	// prompt to the registration prompt.
-	flowActionSubmit = "action_001"
-	flowActionSignUp = "action_signup"
+	// the primary action submits the prompt's inputs, the sign-up link moves from the sign-in
+	// prompt to the registration prompt, and the continue action leaves the prompt that confirms
+	// a new account and signs the consumer in.
+	flowActionSubmit   = "action_001"
+	flowActionSignUp   = "action_signup"
+	flowActionContinue = "action_continue"
 
 	flowStatusComplete = "COMPLETE"
 	flowStatusError    = "ERROR"
@@ -284,9 +286,24 @@ type identityFlowStep struct {
 	Assertion      string            `json:"assertion,omitempty"`
 	FailureReason  string            `json:"failureReason,omitempty"`
 	SessionData    []identitySession `json:"sessionData,omitempty"`
+	Data           struct {
+		Actions []struct {
+			Ref string `json:"ref"`
+		} `json:"actions,omitempty"`
+	} `json:"data"`
 
 	// raw is the answer as the identity provider sent it, which holds the prompt's inputs.
 	raw []byte
+}
+
+// offers reports whether the step's prompt offers the action.
+func (s identityFlowStep) offers(action string) bool {
+	for _, offered := range s.Data.Actions {
+		if offered.Ref == action {
+			return true
+		}
+	}
+	return false
 }
 
 // identitySession is an SSO session the flow reports, which the callback carries back.
@@ -295,10 +312,22 @@ type identitySession struct {
 	SessionHandle  string `json:"sessionHandle"`
 }
 
-// flowAction is one action a consumer takes on a flow prompt.
+// flowAction is one action a consumer takes on a flow prompt. An optional action is taken only
+// when the prompt offers it.
 type flowAction struct {
-	action string
-	inputs map[string]string
+	action   string
+	inputs   map[string]string
+	optional bool
+}
+
+// onlyOptional reports whether every action is optional, which is also true of no action.
+func onlyOptional(actions []flowAction) bool {
+	for _, action := range actions {
+		if !action.optional {
+			return false
+		}
+	}
+	return true
 }
 
 // takeFlowAction takes one action on the flow's current prompt. A client error or an ERROR flow
@@ -390,7 +419,10 @@ func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 	// The callback carries every SSO session the flow reported, and an empty list when none.
 	sessions := append([]identitySession{}, step.SessionData...)
 	for i, next := range actions {
-		last := i == len(actions)-1
+		if next.optional && !step.offers(next.action) {
+			continue
+		}
+		last := onlyOptional(actions[i+1:])
 		answer, refusal, err := browser.takeFlowAction(ctx, joinURLPath(base, identityFlowPath), step, next)
 		if err != nil {
 			return err
@@ -494,6 +526,7 @@ func (s *Steps) signUpConsumer(ctx context.Context) error {
 		{action: flowActionSubmit, inputs: map[string]string{
 			"username": username, "password": password, "email": username + "@example.com",
 		}},
+		{action: flowActionContinue, optional: true},
 	}); err != nil {
 		return err
 	}

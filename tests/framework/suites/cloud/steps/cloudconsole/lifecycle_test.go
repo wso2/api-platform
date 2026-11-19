@@ -4659,6 +4659,9 @@ type fakePortalSite struct {
 	// wrongPasswordStatus is how the identity provider answers a wrong password: 200 with an
 	// ERROR flow status, or a client error.
 	wrongPasswordStatus int
+	// accountCreatedActions, when not nil, makes the registration answer with a prompt that
+	// confirms the new account and offers these actions, instead of signing the consumer in.
+	accountCreatedActions []string
 	// clientID and callbackHost let a test break the authorization request the portal sends.
 	clientID     string
 	callbackHost string
@@ -4769,6 +4772,19 @@ func (f *fakePortalSite) serveIdentity(w http.ResponseWriter, r *http.Request) {
 		case body["action"] == flowActionSubmit && inputs["email"] != nil:
 			require.Equal(f.t, "ch-2", body["challengeToken"])
 			f.users[inputs["username"].(string)] = inputs["password"].(string)
+			if f.accountCreatedActions != nil {
+				actions := make([]map[string]string, 0, len(f.accountCreatedActions))
+				for _, ref := range f.accountCreatedActions {
+					actions = append(actions, map[string]string{"ref": ref, "nextNode": "authorization"})
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": "INCOMPLETE", "type": "VIEW",
+					"challengeToken": "ch-3", "data": map[string]any{"actions": actions}})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": flowStatusComplete, "assertion": "the-assertion"})
+		case body["action"] == flowActionContinue:
+			require.Equal(f.t, "ch-3", body["challengeToken"])
+			require.Contains(f.t, f.accountCreatedActions, flowActionContinue, "continue is taken only when the prompt offers it")
 			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": flowStatusComplete, "assertion": "the-assertion"})
 		case body["action"] == flowActionSubmit:
 			require.Equal(f.t, "ch-1", body["challengeToken"])
@@ -4884,6 +4900,45 @@ func TestSignUpThenSignInKeepsTheConsumersSession(t *testing.T) {
 	require.Equal(t, []any{nil, flowActionSubmit}, flowActions(site.flows))
 	require.NoError(t, steps.assertConsumerSignedIn(ctx))
 	require.ErrorContains(t, steps.assertSignInRefused(ctx), "accepted the sign-in")
+}
+
+func TestSignUpContinuesPastThePromptThatConfirmsTheAccount(t *testing.T) {
+	site := newFakePortalSite(t)
+	site.accountCreatedActions = []string{flowActionContinue}
+	steps, ctx := signInSteps(t, site)
+
+	require.NoError(t, steps.signUpConsumer(ctx))
+	require.Equal(t, []any{nil, flowActionSignUp, flowActionSubmit, flowActionContinue}, flowActions(site.flows))
+	require.Nil(t, site.flows[3]["inputs"], "continue submits no inputs")
+	require.NoError(t, steps.assertConsumerSignedIn(ctx))
+
+	site.flows = nil
+	require.NoError(t, steps.signInConsumer(ctx), "the consumer the flow created signs in again")
+	require.Equal(t, []any{nil, flowActionSubmit}, flowActions(site.flows))
+}
+
+func TestSignUpFailsWhenThePromptThatConfirmsTheAccountOffersNoWayOn(t *testing.T) {
+	site := newFakePortalSite(t)
+	site.accountCreatedActions = []string{}
+	steps, ctx := signInSteps(t, site)
+
+	err := steps.signUpConsumer(ctx)
+	require.ErrorContains(t, err, "refused the consumer's sign-in: the flow ended as INCOMPLETE")
+	require.Equal(t, []any{nil, flowActionSignUp, flowActionSubmit}, flowActions(site.flows), "an action the prompt does not offer is not sent")
+}
+
+func TestOnlyOptionalActionsFollow(t *testing.T) {
+	require.True(t, onlyOptional(nil), "no action follows")
+	require.True(t, onlyOptional([]flowAction{{action: flowActionContinue, optional: true}}))
+	require.False(t, onlyOptional([]flowAction{{action: flowActionContinue, optional: true}, {action: flowActionSubmit}}))
+}
+
+func TestFlowStepOffersOnlyTheActionsItsPromptLists(t *testing.T) {
+	var step identityFlowStep
+	require.NoError(t, json.Unmarshal([]byte(`{"flowStatus":"INCOMPLETE","data":{"actions":[{"ref":"action_001","nextNode":"credentials_auth"}]}}`), &step))
+	require.True(t, step.offers(flowActionSubmit))
+	require.False(t, step.offers(flowActionContinue))
+	require.False(t, identityFlowStep{}.offers(flowActionSubmit), "a step without a prompt offers nothing")
 }
 
 func flowActions(flows []map[string]any) []any {
