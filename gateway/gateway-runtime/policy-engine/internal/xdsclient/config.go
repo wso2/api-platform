@@ -40,6 +40,14 @@ type Config struct {
 	// MaxReconnectDelay is the maximum delay between reconnection attempts
 	MaxReconnectDelay time.Duration
 
+	// KeepaliveTime is how long the connection may be idle before the client
+	// sends an HTTP/2 PING to check the server is still there.
+	KeepaliveTime time.Duration
+
+	// KeepaliveTimeout is how long the client waits for the PING ack before
+	// it closes the connection, which ends the stream and triggers a reconnect.
+	KeepaliveTimeout time.Duration
+
 	// TLSEnabled indicates whether to use TLS for the gRPC connection
 	TLSEnabled bool
 
@@ -85,6 +93,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("max reconnect delay must be positive")
 	}
 
+	if c.KeepaliveTime < MinKeepaliveTime {
+		return fmt.Errorf("keepalive time must be at least %s", MinKeepaliveTime)
+	}
+
+	if c.KeepaliveTimeout <= 0 {
+		return fmt.Errorf("keepalive timeout must be positive")
+	}
+
 	if c.TLSEnabled {
 		if c.TLSCertPath == "" {
 			return fmt.Errorf("TLS cert path is required when TLS is enabled")
@@ -111,6 +127,8 @@ func NewDefaultConfig(serverAddress string) *Config {
 		RequestTimeout:        DefaultRequestTimeout,
 		InitialReconnectDelay: DefaultInitialReconnectDelay,
 		MaxReconnectDelay:     DefaultMaxReconnectDelay,
+		KeepaliveTime:         DefaultKeepaliveTime,
+		KeepaliveTimeout:      DefaultKeepaliveTimeout,
 		TLSEnabled:            false,
 	}
 }

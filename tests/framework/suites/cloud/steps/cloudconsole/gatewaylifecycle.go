@@ -63,8 +63,8 @@ var handleBudgetPattern = regexp.MustCompile(`(\d+) characters or fewer`)
 
 // registerManagedGatewayLifecycleSteps binds the steps that create gateways for a runner to share
 // and check what the platform reports about them while they are built, used, and deleted.
-func (s *Steps) registerManagedGatewayLifecycleSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the synthetic environment$`,
+func (s *Steps) registerManagedGatewayLifecycleSteps(sc stepRegistrar) {
+	sc.Step(`^I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the selected environment$`,
 		s.chooseGatewayNameAtLimit)
 	sc.Step(`^I request a synthetic managed APIP gateway that lasts for the runner with:$`, s.requestRunnerManagedGateway)
 	sc.Step(`^the managed gateway request should be accepted$`, s.assertGatewayRequestAccepted)

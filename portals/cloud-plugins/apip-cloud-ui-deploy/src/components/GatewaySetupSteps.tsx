@@ -64,7 +64,15 @@ export type GatewaySetupStepsProps = {
   hasJustRegeneratedToken: boolean;
   isRegeneratingToken: boolean;
   onRegenerateToken: () => void;
+  /** Called after a step's command reaches the clipboard, with the step it belongs to. */
+  onCommandCopied?: (step: SetupCommandStep) => void;
 };
+
+/**
+ * The step a copied setup command belongs to, in the console's feature-usage
+ * terms (`setup_step` of `apip.gateway.gateway-setup-command-copy`).
+ */
+export type SetupCommandStep = 'download' | 'setup' | 'configure' | 'start' | 'install';
 
 const ACCENT = '#f7882f';
 
@@ -95,11 +103,14 @@ export function CommandField({
   value,
   copyValue,
   copyLabel,
+  onCopied,
 }: {
   value: string;
   /** Text placed on the clipboard when copied; defaults to `value`. */
   copyValue?: string;
   copyLabel: string;
+  /** Called once the text is on the clipboard; a write the browser refused is not a copy. */
+  onCopied?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const lines = value.split('\n');
@@ -108,7 +119,8 @@ export function CommandField({
     void navigator.clipboard.writeText(copyValue ?? value).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+      onCopied?.();
+    }, () => undefined); // No clipboard permission: nothing was copied, so nothing to confirm.
   };
 
   return (
@@ -218,17 +230,19 @@ function DownloadStep({
   gatewayVersion,
   gatewayZipName,
   releaseChannel,
+  onCopied,
 }: {
   gatewayVersion: string;
   gatewayZipName: string;
   releaseChannel: string;
+  onCopied?: () => void;
 }) {
   const downloadCommand = `curl -sLO https://github.com/wso2/api-platform/releases/download/${releaseChannel}/${gatewayVersion}/${gatewayZipName}.zip && \\
 unzip ${gatewayZipName}.zip`;
   return (
     <>
       <StepText>Run this command in your terminal to download the gateway:</StepText>
-      <CommandField value={downloadCommand} copyLabel="Download command" />
+      <CommandField value={downloadCommand} copyLabel="Download command" onCopied={onCopied} />
     </>
   );
 }
@@ -275,6 +289,7 @@ export function GatewaySetupStepsV1_2Plus({
   hasJustRegeneratedToken,
   isRegeneratingToken,
   onRegenerateToken,
+  onCommandCopied,
 }: GatewaySetupStepsProps): ReactNode {
   const envFile = 'api-platform.env';
   const setupCommand = `cd ${gatewayFolderName} && ./scripts/setup.sh`;
@@ -288,7 +303,12 @@ ENVFILE`;
   return (
     <Box>
       <Step number={1} title="Download the Gateway">
-        <DownloadStep gatewayVersion={gatewayVersion} gatewayZipName={gatewayZipName} releaseChannel={releaseChannel} />
+        <DownloadStep
+          gatewayVersion={gatewayVersion}
+          gatewayZipName={gatewayZipName}
+          releaseChannel={releaseChannel}
+          onCopied={() => onCommandCopied?.('download')}
+        />
       </Step>
 
       <Step number={2} title="Set up the Gateway">
@@ -296,7 +316,7 @@ ENVFILE`;
           Navigate into the gateway folder and run the setup script. It provisions the listener TLS certificate, the
           AES-256 at-rest encryption key, and the {envFile} file:
         </StepText>
-        <CommandField value={setupCommand} copyLabel="Setup command" />
+        <CommandField value={setupCommand} copyLabel="Setup command" onCopied={() => onCommandCopied?.('setup')} />
       </Step>
 
       <Step number={3} title="Configure the Gateway">
@@ -308,6 +328,7 @@ ENVFILE`;
               value={buildConfigureCommand('<your-gateway-token>')}
               copyValue={buildConfigureCommand(registrationToken)}
               copyLabel="Configure command"
+              onCopied={() => onCommandCopied?.('configure')}
             />
           </>
         ) : (
@@ -317,7 +338,7 @@ ENVFILE`;
 
       <Step number={4} title="Start the Gateway" last>
         <StepText>From the gateway folder, run this command to start the gateway using the {envFile} file:</StepText>
-        <CommandField value={startCommand} copyLabel="Start command" />
+        <CommandField value={startCommand} copyLabel="Start command" onCopied={() => onCommandCopied?.('start')} />
       </Step>
     </Box>
   );
@@ -337,6 +358,7 @@ export function GatewaySetupStepsPreV1_2({
   hasJustRegeneratedToken,
   isRegeneratingToken,
   onRegenerateToken,
+  onCommandCopied,
 }: GatewaySetupStepsProps): ReactNode {
   const envFile = `${gatewayFolderName}/configs/keys.env`;
   const buildConfigureCommand = (token: string) =>
@@ -350,7 +372,12 @@ ENVFILE`;
   return (
     <Box>
       <Step number={1} title="Download the Gateway">
-        <DownloadStep gatewayVersion={gatewayVersion} gatewayZipName={gatewayZipName} releaseChannel={releaseChannel} />
+        <DownloadStep
+          gatewayVersion={gatewayVersion}
+          gatewayZipName={gatewayZipName}
+          releaseChannel={releaseChannel}
+          onCopied={() => onCommandCopied?.('download')}
+        />
       </Step>
 
       <Step number={2} title="Configure the Gateway">
@@ -362,6 +389,7 @@ ENVFILE`;
               value={buildConfigureCommand('<your-gateway-token>')}
               copyValue={buildConfigureCommand(registrationToken)}
               copyLabel="Configure command"
+              onCopied={() => onCommandCopied?.('configure')}
             />
           </>
         ) : (
@@ -371,13 +399,13 @@ ENVFILE`;
 
       <Step number={3} title="Start the Gateway" last>
         <StepText>1. Navigate to the gateway folder.</StepText>
-        <CommandField value={navigateCommand} copyLabel="Navigate command" />
+        <CommandField value={navigateCommand} copyLabel="Navigate command" onCopied={() => onCommandCopied?.('start')} />
         <Box sx={{ mt: 2 }}>
           <StepText>
             2. Run this command to start the gateway using the configs/keys.env file created in Step 2:
           </StepText>
         </Box>
-        <CommandField value={startCommand} copyLabel="Start command" />
+        <CommandField value={startCommand} copyLabel="Start command" onCopied={() => onCommandCopied?.('start')} />
       </Step>
     </Box>
   );
@@ -393,6 +421,8 @@ export type GatewaySetupStepsKubernetesProps = {
   hasJustRegeneratedToken: boolean;
   isRegeneratingToken: boolean;
   onRegenerateToken: () => void;
+  /** Called after the install command reaches the clipboard. */
+  onCommandCopied?: (step: SetupCommandStep) => void;
 };
 
 const HELM_CHART_REF = 'oci://ghcr.io/wso2/api-platform/helm-charts/gateway';
@@ -406,6 +436,7 @@ export function GatewaySetupStepsKubernetes({
   hasJustRegeneratedToken,
   isRegeneratingToken,
   onRegenerateToken,
+  onCommandCopied,
 }: GatewaySetupStepsKubernetesProps): ReactNode {
   const buildInstallCommand = (token: string) =>
     `helm install ${releaseName} ${HELM_CHART_REF} --version ${gatewayVersionHelm} \\
@@ -424,6 +455,7 @@ export function GatewaySetupStepsKubernetes({
               value={buildInstallCommand('your-gateway-token')}
               copyValue={buildInstallCommand(registrationToken)}
               copyLabel="Helm install command"
+              onCopied={() => onCommandCopied?.('install')}
             />
           </>
         ) : (

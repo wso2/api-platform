@@ -23,7 +23,7 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
   I want an API key for an API that I can rotate, link to an application and revoke
   So that a leaked key can be replaced or stopped at once, and keys are never shown again after creation
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API
   # level. Key listings must never carry the key value. Every refusal is paired with the request
   # that succeeds for the owner. A key belongs to the user who generated it, so the administrator is
   # the second user of the ownership scenario.

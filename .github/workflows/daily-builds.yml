@@ -16,6 +16,9 @@
 # under the License.
 # --------------------------------------------------------------------
 
+# Each component is published as one image, tagged latest, that every build replaces. No other tag
+# is pushed, so the registry holds a single image per component instead of one per build.
+
 name: Daily Builds
 
 on:
@@ -33,7 +36,7 @@ on:
           - gateway
           - platform-api
       force:
-        description: 'Rebuild and push the images even if main-<sha> is already published.'
+        description: 'Rebuild and replace latest even if it was already built from the current source.'
         required: false
         default: false
         type: boolean
@@ -64,7 +67,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          # The tip of main when the run starts, so a delayed run never moves latest backwards.
+          # The tip of main when the run starts, so a delayed run never replaces latest with older code.
           ref: main
           fetch-depth: 0
           persist-credentials: false
@@ -88,30 +91,24 @@ jobs:
             echo "::error::no commit found for the gateway paths"
             exit 1
           fi
-          tag="main-${source_sha::7}"
+          # latest is current when every image was built after the newest commit that changed the
+          # gateway. A missing image counts as built at time 0, so it is built.
+          source_time="$(git log -1 --format=%ct "$source_sha")"
           build=false
-          promote=false
           if [[ "${FORCE:-false}" == "true" ]]; then
             build=true
           fi
           for name in gateway-controller gateway-runtime gateway-builder; do
             image="$DOCKER_REGISTRY/$name"
-            if ! tag_digest="$(docker buildx imagetools inspect "$image:$tag" --format '{{.Manifest.Digest}}' 2>/dev/null)"; then
+            built_time="$(docker buildx imagetools inspect "$image:latest" --format '{{json .Image}}' 2>/dev/null \
+              | jq -r '(if has("config") then . else (to_entries[0].value) end | .created // empty) | if . == "" then empty else sub("\\.[0-9]+"; "") | fromdateiso8601 end' 2>/dev/null || true)"
+            if (( ${built_time:-0} <= source_time )); then
               build=true
-              continue
-            fi
-            latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
-            if [[ "$latest_digest" != "$tag_digest" ]]; then
-              promote=true
             fi
           done
-          {
-            echo "tag=$tag"
-            echo "build=$build"
-            echo "promote=$promote"
-          } >> "$GITHUB_OUTPUT"
-          if [[ "$build" == "false" && "$promote" == "false" ]]; then
-            echo "latest is already on $tag for all three images; nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if [[ "$build" == "false" ]]; then
+            echo "latest was built after the newest gateway commit ($source_sha) for all three images; nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Set up Go
@@ -134,17 +131,14 @@ jobs:
           install: true
           driver: docker-container
 
-      # PUSH_LATEST=false: latest moves only after the images are verified.
+      # VERSION=latest pushes each image as <registry>/<image>:latest, replacing the previous one.
+      # PUSH_LATEST=false stops the Makefiles adding the same tag a second time.
       - name: Build and push the multi-arch gateway images
         if: steps.plan.outputs.build == 'true'
-        env:
-          TAG: ${{ steps.plan.outputs.tag }}
-        run: make -C gateway build-and-push-multiarch VERSION="$TAG" DOCKER_REGISTRY="$DOCKER_REGISTRY" PUSH_LATEST=false
+        run: make -C gateway build-and-push-multiarch VERSION=latest DOCKER_REGISTRY="$DOCKER_REGISTRY" PUSH_LATEST=false
 
       - name: Verify the pushed images
-        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
-        env:
-          TAG: ${{ steps.plan.outputs.tag }}
+        if: steps.plan.outputs.build == 'true'
         run: |
           set -euo pipefail
           {
@@ -155,36 +149,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           for name in gateway-controller gateway-runtime gateway-builder; do
             image="$DOCKER_REGISTRY/$name"
-            platforms="$(docker buildx imagetools inspect "$image:$TAG" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')"
+            platforms="$(docker buildx imagetools inspect "$image:latest" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')"
             for platform in linux/amd64 linux/arm64; do
               if [[ " $platforms" != *" $platform "* ]]; then
                 echo "::error::$name is missing $platform (has: $platforms)"
                 exit 1
               fi
             done
-            echo "| \`$image\` | \`$TAG\` | $platforms |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| \`$image\` | \`latest\` | $platforms |" >> "$GITHUB_STEP_SUMMARY"
           done
-
-      - name: Move latest to the verified images
-        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
-        env:
-          TAG: ${{ steps.plan.outputs.tag }}
-        run: |
-          set -euo pipefail
-          for name in gateway-controller gateway-runtime gateway-builder; do
-            image="$DOCKER_REGISTRY/$name"
-            docker buildx imagetools create --tag "$image:latest" "$image:$TAG"
-          done
-          for name in gateway-controller gateway-runtime gateway-builder; do
-            image="$DOCKER_REGISTRY/$name"
-            latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')"
-            tag_digest="$(docker buildx imagetools inspect "$image:$TAG" --format '{{.Manifest.Digest}}')"
-            if [[ "$latest_digest" != "$tag_digest" ]]; then
-              echo "::error::$name: latest ($latest_digest) is not $TAG ($tag_digest)"
-              exit 1
-            fi
-          done
-          echo "latest now points at \`$TAG\` for all three images." >> "$GITHUB_STEP_SUMMARY"
 
   platform-api-image:
     name: Build and push the latest platform-api image
@@ -205,7 +178,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          # The tip of main when the run starts, so a delayed run never moves latest backwards.
+          # The tip of main when the run starts, so a delayed run never replaces latest with older code.
           ref: main
           fetch-depth: 0
           persist-credentials: false
@@ -229,28 +202,22 @@ jobs:
             echo "::error::no commit found for the platform-api paths"
             exit 1
           fi
-          tag="main-${source_sha::7}"
+          # latest is current when the image was built after the newest commit that changed the
+          # Platform API. A missing image counts as built at time 0, so it is built.
+          source_time="$(git log -1 --format=%ct "$source_sha")"
           build=false
-          promote=false
           if [[ "${FORCE:-false}" == "true" ]]; then
             build=true
           fi
           image="$DOCKER_REGISTRY/platform-api"
-          if ! tag_digest="$(docker buildx imagetools inspect "$image:$tag" --format '{{.Manifest.Digest}}' 2>/dev/null)"; then
+          built_time="$(docker buildx imagetools inspect "$image:latest" --format '{{json .Image}}' 2>/dev/null \
+            | jq -r '(if has("config") then . else (to_entries[0].value) end | .created // empty) | if . == "" then empty else sub("\\.[0-9]+"; "") | fromdateiso8601 end' 2>/dev/null || true)"
+          if (( ${built_time:-0} <= source_time )); then
             build=true
-          else
-            latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
-            if [[ "$latest_digest" != "$tag_digest" ]]; then
-              promote=true
-            fi
           fi
-          {
-            echo "tag=$tag"
-            echo "build=$build"
-            echo "promote=$promote"
-          } >> "$GITHUB_OUTPUT"
-          if [[ "$build" == "false" && "$promote" == "false" ]]; then
-            echo "latest is already on $tag for platform-api; nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if [[ "$build" == "false" ]]; then
+            echo "latest was built after the newest platform-api commit ($source_sha); nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Set up QEMU
@@ -266,20 +233,17 @@ jobs:
           install: true
           driver: docker-container
 
+      # VERSION=latest pushes the image as <registry>/platform-api:latest, replacing the previous one.
       - name: Build and push the multi-arch platform-api image
         if: steps.plan.outputs.build == 'true'
-        env:
-          TAG: ${{ steps.plan.outputs.tag }}
-        run: make -C platform-api build-and-push-multiarch VERSION="$TAG" DOCKER_REGISTRY="$DOCKER_REGISTRY"
+        run: make -C platform-api build-and-push-multiarch VERSION=latest DOCKER_REGISTRY="$DOCKER_REGISTRY"
 
       - name: Verify the pushed image
-        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
-        env:
-          TAG: ${{ steps.plan.outputs.tag }}
+        if: steps.plan.outputs.build == 'true'
         run: |
           set -euo pipefail
           image="$DOCKER_REGISTRY/platform-api"
-          platforms="$(docker buildx imagetools inspect "$image:$TAG" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')"
+          platforms="$(docker buildx imagetools inspect "$image:latest" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')"
           for platform in linux/amd64 linux/arm64; do
             if [[ " $platforms" != *" $platform "* ]]; then
               echo "::error::platform-api is missing $platform (has: $platforms)"
@@ -291,21 +255,5 @@ jobs:
             echo
             echo "| Image | Tag | Platforms |"
             echo "| --- | --- | --- |"
-            echo "| \`$image\` | \`$TAG\` | $platforms |"
+            echo "| \`$image\` | \`latest\` | $platforms |"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Move latest to the verified image
-        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
-        env:
-          TAG: ${{ steps.plan.outputs.tag }}
-        run: |
-          set -euo pipefail
-          image="$DOCKER_REGISTRY/platform-api"
-          docker buildx imagetools create --tag "$image:latest" "$image:$TAG"
-          latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')"
-          tag_digest="$(docker buildx imagetools inspect "$image:$TAG" --format '{{.Manifest.Digest}}')"
-          if [[ "$latest_digest" != "$tag_digest" ]]; then
-            echo "::error::platform-api: latest ($latest_digest) is not $TAG ($tag_digest)"
-            exit 1
-          fi
-          echo "latest now points at \`$TAG\` for platform-api." >> "$GITHUB_STEP_SUMMARY"

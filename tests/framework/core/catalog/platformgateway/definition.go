@@ -45,6 +45,9 @@ func PlatformGateway() *components.Definition {
 	env := map[string]string{
 		EnvImagePGController: shared.Image(shared.EnvImageGatewayController, shared.GatewayControllerRunImage()).Ref,
 		EnvImagePGRuntime:    shared.Image(shared.EnvImageGatewayRuntime, shared.GatewayRuntimeRunImage()).Ref,
+		// The controller reads both: the router value shapes the runtime's health routes.
+		envControllerHealthAllowedClients: shared.HealthAllowedClients,
+		envRouterHealthAllowedClients:     shared.HealthAllowedClients,
 	}
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
@@ -204,5 +207,8 @@ func gatewayGeneratedFiles() map[string][]byte {
 		// The testbench Jev service's certificate, which the runtime trusts through
 		// SSL_CERT_DIR so a Jev policy can call the mock over HTTPS.
 		"testbench-ca/jev.pem": shared.JevTLS().CertPEM,
+		// The testbench OIDC identity provider's certificate, trusted the same way so a policy
+		// can fetch the provider's keys over HTTPS without disabling certificate verification.
+		"testbench-ca/oidc.pem": shared.IdentityProviderTLS().CertPEM,
 	}
 }

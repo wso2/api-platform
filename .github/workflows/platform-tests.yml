@@ -22,6 +22,7 @@
 # has passed:
 #   backend change -> backend unit tests -> integration suite (3 Gateway legs)
 #   UI change      -> UI unit tests      -> UI suite
+#   cloud plugins  -> UI unit tests only (the UI suite never loads them)
 #   both           -> both unit jobs in parallel, then both suites
 #   cloud suite    -> compile check and unit tests of tests/framework/suites/cloud
 # A failing unit-test job (cloud suite check included) stops both suites.
@@ -54,6 +55,7 @@ jobs:
       it_label: ${{ steps.blocks.outputs.label || 'all blocks' }}
       it_complete: ${{ steps.blocks.outputs.complete }}
       ui: ${{ steps.filter.outputs.ui }}
+      ui_unit: ${{ steps.filter.outputs.ui_unit }}
       cloud: ${{ steps.filter.outputs.cloud }}
     steps:
       # Depth 2: a pull_request checkout is the merge commit, and its first parent is the base
@@ -73,6 +75,8 @@ jobs:
       # on, and the UI suite itself. A gateway change can break a page without the integration
       # suite noticing. Not portals/cloud-plugins: the portals here only carry an empty slot for
       # it (src/cloud), so the UI suite never runs that code. Not docs (*.md).
+      # ui_unit: everything ui covers, plus portals/cloud-plugins. The plugins carry their own
+      # unit tests, and the UI unit-test job is the only place they run.
       # cloud: the cloud suite and the framework code it builds on. Its scenarios run against a
       # live cloud deployment from apim-saas, not here, so a cloud-suite-only change doesn't run
       # the integration suite.
@@ -85,6 +89,7 @@ jobs:
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
             echo "ui=true" >> "$GITHUB_OUTPUT"
+            echo "ui_unit=true" >> "$GITHUB_OUTPUT"
             echo "cloud=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -106,6 +111,7 @@ jobs:
           backend_files="$(echo "$changed" | grep -vE "$backend_skip" || true)"
           ui_files="$(echo "$changed" | grep -E "$ui_match" \
             | grep -vE '^(portals/cloud-plugins/|tests/framework/suites/(it|cloud)/)|\.md$' || true)"
+          cloud_plugin_files="$(echo "$changed" | grep -E '^portals/cloud-plugins/' | grep -vE '\.md$' || true)"
           cloud_files="$(echo "$changed" | grep -E "$cloud_match" | grep -vE '^tests/framework/suites/(it|ui)/' || true)"
 
           # The integration-block selection below reads the same files.
@@ -113,15 +119,18 @@ jobs:
 
           backend=false
           ui=false
+          ui_unit=false
           cloud=false
           if [ -n "$backend_files" ]; then backend=true; fi
-          if [ -n "$ui_files" ]; then ui=true; fi
+          if [ -n "$ui_files" ]; then ui=true; ui_unit=true; fi
+          if [ -n "$cloud_plugin_files" ]; then ui_unit=true; fi
           if [ -n "$cloud_files" ]; then cloud=true; fi
 
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "ui=$ui" >> "$GITHUB_OUTPUT"
+          echo "ui_unit=$ui_unit" >> "$GITHUB_OUTPUT"
           echo "cloud=$cloud" >> "$GITHUB_OUTPUT"
-          echo "backend=$backend ui=$ui cloud=$cloud"
+          echo "backend=$backend ui=$ui ui_unit=$ui_unit cloud=$cloud"
 
       - name: Set up Go
         if: github.event_name == 'pull_request' && steps.filter.outputs.backend == 'true'
@@ -234,7 +243,7 @@ jobs:
   unit-ui:
     name: Unit tests (UI)
     needs: changes
-    if: needs.changes.outputs.ui == 'true'
+    if: needs.changes.outputs.ui_unit == 'true'
     runs-on: ubuntu-24.04
     env:
       CGO_ENABLED: "1"
@@ -296,6 +305,11 @@ jobs:
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=lcov --test-reporter-destination=unit-test-coverage.info \
             "${test_files[@]}"
+          # node --test writes each SF: path relative to this directory
+          # (src/db/dbSsl.js), which matches no repository file, so Codecov
+          # attaches none of the unit coverage to the api-portal sources.
+          # Make the paths repo-root relative, as the AI Workspace step does.
+          sed -i 's|^SF:|SF:portals/api-portal/|' unit-test-coverage.info
 
       # Prints what the unit run actually produced. The Codecov upload below is
       # continue-on-error, so a report that was never written, or written empty,
@@ -338,6 +352,36 @@ jobs:
       - name: API Control Plane BFF unit tests
         working-directory: portals/api-control-plane/bff
         run: GOWORK=off go test -count=1 ./...
+
+      # The cloud plugins have no node_modules or lockfile of their own: they build and test
+      # against the API Control Plane's dependencies (and, for tsconfig.json, the AI
+      # Workspace's), both installed above. Each plugin is typechecked under every tsconfig it
+      # ships, as its README asks, and its tests run under one shared vitest config. The
+      # apip-cloud-ui aggregator is only tested here: its typecheck pulls in the host portals'
+      # own sources, so the cloud image build is the one place it can be typechecked.
+      - name: Cloud plugins typecheck and unit tests
+        working-directory: portals/cloud-plugins
+        run: |
+          ln -sfn ../api-control-plane/node_modules node_modules
+          failed=()
+          for dir in */; do
+            plugin="${dir%/}"
+            [ -f "$plugin/package.json" ] || continue
+            echo "::group::$plugin"
+            if [ "$plugin" != apip-cloud-ui ]; then
+              for cfg in "$plugin"/tsconfig*.json; do
+                (cd "$plugin" && ../node_modules/.bin/tsc --noEmit -p "$(basename "$cfg")") \
+                  || failed+=("$plugin typecheck ($(basename "$cfg"))")
+              done
+            fi
+            (cd "$plugin" && ../node_modules/.bin/vitest run --config ../vitest.shared.config.ts --passWithNoTests) \
+              || failed+=("$plugin tests")
+            echo "::endgroup::"
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            printf 'Failed: %s\n' "${failed[@]}" >&2
+            exit 1
+          fi
 
       - name: Upload AI Workspace BFF unit coverage to Codecov
         if: always()

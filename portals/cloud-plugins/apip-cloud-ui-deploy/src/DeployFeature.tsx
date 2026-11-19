@@ -20,6 +20,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'reac
 import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import DeployPage from './DeployPage';
 import { createDeployClient, gatewayTypeForKind, takesEndpointUrl, type ArtifactKind } from './deployApi';
+import {
+  API_DEPLOY_CLICK,
+  DEPLOYMENT_UNDEPLOY_CLICK,
+  featureArtifactKind,
+  GATEWAY_REGISTER_CLICK,
+} from './featureUsage';
 import { createManagedGatewaysClient } from './managedGatewaysApi';
 import {
   createSelfHostedGatewaysClient,
@@ -73,7 +79,9 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost } = port;
+  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost, trackFeature } =
+    port;
+  const artifactKind = featureArtifactKind(kind);
   const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
 
@@ -282,6 +290,10 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
+    // A promotion is a deploy to the next environment, so it counts as one too.
+    if (artifactKind) {
+      trackFeature?.(API_DEPLOY_CLICK, { artifact_kind: artifactKind, gateway_type: gatewayType });
+    }
     void runAction(
       () =>
         client.deploy({
@@ -314,6 +326,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     if (busy || provisioning || selfHostedPending || ownership !== 'control-plane') return;
     const scope = scopeRef.current;
     const version = latestVersionFor(gatewayVersions, gatewayType);
+    trackFeature?.(GATEWAY_REGISTER_CLICK, { gateway_hosting: 'self-hosted', gateway_type: gatewayType });
     setBusy(true);
     setSelfHostedPending({ startedAt: Date.now() });
     selfHostedClient
@@ -341,6 +354,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const handleAddCloudGateway = (environment: string) => {
     if (busy || provisioning || selfHostedPending || ownership !== 'control-plane') return;
     const scope = scopeRef.current;
+    trackFeature?.(GATEWAY_REGISTER_CLICK, { gateway_hosting: 'managed', gateway_type: gatewayType });
     setProvisioning({ startedAt: Date.now(), environment });
     gatewaysClient.createDefaultGateway(environment, gatewayType).then(
       ({ id }) => {
@@ -416,6 +430,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const handleStop = (environment: Environment, gatewayId: string) => {
     const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
     if (!client || !gateway?.deploymentId) return;
+    if (artifactKind) trackFeature?.(DEPLOYMENT_UNDEPLOY_CLICK, { artifact_kind: artifactKind });
     void runAction(
       () => client.undeploy(environment.name, gatewayId, gateway.deploymentId!),
       `Stopping ${gateway.name}.`,
@@ -438,6 +453,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       onHasActiveToken={() => selfHostedClient.hasActiveToken(selfHosted.id)}
       onGenerateToken={() => selfHostedClient.generateToken(selfHosted.id)}
       onReconfigureToken={() => selfHostedClient.reconfigureToken(selfHosted.id)}
+      trackFeature={trackFeature}
       onError={(message) => notify(message, 'error')}
       onClose={() => setSelfHosted(null)}
     />

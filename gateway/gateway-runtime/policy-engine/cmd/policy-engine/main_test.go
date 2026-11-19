@@ -36,6 +36,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
@@ -298,6 +299,8 @@ func TestInitializeXDSClient_InvalidConfig(t *testing.T) {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     30 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 			},
 		},
 	}
@@ -309,6 +312,10 @@ func TestInitializeXDSClient_InvalidConfig(t *testing.T) {
 }
 
 func TestInitializeXDSClient_ValidConfig(t *testing.T) {
+	// The started client keeps running after this test and records connection
+	// metrics when its connection attempts fail, so the metrics must exist (as
+	// no-ops while metrics are disabled).
+	metrics.Init()
 	k := kernel.NewKernel()
 	reg := registry.GetRegistry()
 
@@ -319,6 +326,8 @@ func TestInitializeXDSClient_ValidConfig(t *testing.T) {
 				RequestTimeout:        1 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     5 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 				TLS: config.XDSTLSConfig{
 					Enabled: false,
 				},

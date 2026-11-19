@@ -19,8 +19,10 @@
 import { defineMessages, type IntlShape } from 'react-intl';
 
 import { isApiError, type ApiError } from '@/api/core/errors';
-import type { InvokeRestApiOnGatewayResponse } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
-import type { InvokeRestApiOnGatewayVariables } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import type {
+  InvokeApiOnGatewayResponse,
+  InvokeApiOnGatewayVariables,
+} from '@/api/resources/gatewayRelay';
 import type { TestCallMode } from '../../utils/callMode';
 import { splitAgainstBase } from './swaggerRequest';
 
@@ -80,6 +82,12 @@ import { splitAgainstBase } from './swaggerRequest';
  * gateway time separately in `durationMs`, but Swagger overwrites `duration`
  * after the transport returns. The displayed value therefore represents the
  * total time experienced by the user.
+ *
+ * ## GraphQL
+ *
+ * The GraphQL Test console relays through the same operation, naming a
+ * `graphqlApiId`: `createGraphqlRelayFetch` is the `fetch` GraphiQL's fetcher
+ * calls, so GraphiQL still builds the request and reads a real `Response`.
  */
 
 const messages = defineMessages({
@@ -166,13 +174,22 @@ const ERROR_MESSAGES: Record<string, (typeof messages)[keyof typeof messages]> =
   REST_API_INVOKE_TARGET_NOT_ALLOWED: messages.targetNotAllowed,
   REST_API_INVOKE_UPSTREAM_TIMEOUT: messages.upstreamTimeout,
   REST_API_INVOKE_UPSTREAM_UNREACHABLE: messages.unreachable,
+  GRAPHQL_API_NOT_FOUND: messages.apiNotFound,
+  GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED: messages.gatewayNotDeployed,
+  GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT: messages.gatewayNoEndpoint,
+  GRAPHQL_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME: messages.gatewayUnsupportedScheme,
+  GRAPHQL_API_INVOKE_REQUEST_INVALID: messages.invalidRequest,
+  GRAPHQL_API_INVOKE_BUSY: messages.busy,
+  GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED: messages.targetNotAllowed,
+  GRAPHQL_API_INVOKE_UPSTREAM_TIMEOUT: messages.upstreamTimeout,
+  GRAPHQL_API_INVOKE_UPSTREAM_UNREACHABLE: messages.unreachable,
 };
 
 /** One header or query parameter on the wire. A list, because names repeat. */
 type WirePair = { name: string; value: string };
 
 /** What the Platform API returns when the relay reached the gateway. */
-type RelayResult = InvokeRestApiOnGatewayResponse;
+type RelayResult = InvokeApiOnGatewayResponse;
 
 /**
  * Everything the relay needs that changes after mount.
@@ -184,8 +201,8 @@ type RelayResult = InvokeRestApiOnGatewayResponse;
 export type RelayContext = {
   /** Invoke URL of the selected gateway — the base the displayed request uses. */
   baseUrl: string;
-  /** Sends the invoke request: `useInvokeRestApiOnGateway`'s `mutateAsync`. */
-  invoke: (variables: InvokeRestApiOnGatewayVariables) => Promise<InvokeRestApiOnGatewayResponse>;
+  /** Sends the invoke request: `useInvokeApiOnGateway`'s `mutateAsync`. */
+  invoke: (variables: InvokeApiOnGatewayVariables) => Promise<InvokeApiOnGatewayResponse>;
   restApiId: string;
   gatewayId: string;
   intl: IntlShape;
@@ -248,6 +265,14 @@ const relayErrorMessage = (intl: IntlShape, error: ApiError): string => {
   if (error.kind === 'timeout') return intl.formatMessage(messages.upstreamTimeout);
   return localized(intl, error.code);
 };
+
+/** True when a failed invoke call was the user leaving, not a relay failure. */
+const wasAborted = (error: unknown, signal: AbortSignal | null | undefined): boolean =>
+  Boolean(signal?.aborted) || (isApiError(error) && error.kind === 'aborted');
+
+/** The message for an invoke call that failed. */
+const invokeFailureMessage = (intl: IntlShape, error: unknown): string =>
+  isApiError(error) ? relayErrorMessage(intl, error) : intl.formatMessage(messages.unexpected);
 
 /**
  * Decodes a base64 body into bytes without assuming a Node Buffer exists.
@@ -432,14 +457,8 @@ const isRelayResult = (value: unknown): value is RelayResult => {
   );
 };
 
-/**
- * Rebuilds the relayed response into the shape swagger-client expects.
- *
- * `url` is the real gateway URL, so the Request URL the console shows is the
- * one the user thinks they called — not the relay endpoint.
- */
-export const toResponseLike = (result: RelayResult, gatewayUrl: string): ResponseLike => {
-  const { response } = result;
+/** The gateway's response headers, as a `Headers`. */
+const relayedHeaders = ({ response }: RelayResult): Headers => {
   const headers = new Headers();
   response.headers.forEach(({ name, value }) => {
     try {
@@ -449,9 +468,23 @@ export const toResponseLike = (result: RelayResult, gatewayUrl: string): Respons
       // one header beats failing the whole response the user asked to see.
     }
   });
+  return headers;
+};
 
-  const isBase64 = response.bodyEncoding === 'base64';
-  const bytes = isBase64 ? base64ToBytes(response.body) : undefined;
+/** The gateway's response body as bytes when it was relayed as base64. */
+const relayedBytes = ({ response }: RelayResult) =>
+  response.bodyEncoding === 'base64' ? base64ToBytes(response.body) : undefined;
+
+/**
+ * Rebuilds the relayed response into the shape swagger-client expects.
+ *
+ * `url` is the real gateway URL, so the Request URL the console shows is the
+ * one the user thinks they called — not the relay endpoint.
+ */
+export const toResponseLike = (result: RelayResult, gatewayUrl: string): ResponseLike => {
+  const { response } = result;
+  const headers = relayedHeaders(result);
+  const bytes = relayedBytes(result);
 
   return {
     ok: response.status >= 200 && response.status < 300,
@@ -509,7 +542,8 @@ export const createRelayFetch =
     try {
       parsed = await context.invoke({
         body: {
-          restApiId: context.restApiId,
+          apiType: 'rest-api',
+          apiId: context.restApiId,
           gatewayId: context.gatewayId,
           method: request.method ?? 'GET',
           path: split.path,
@@ -523,18 +557,14 @@ export const createRelayFetch =
     } catch (error) {
       // An aborted request is the user navigating away, not a failure worth
       // relabelling — swagger has its own handling for an AbortError.
-      if (request.signal?.aborted || (isApiError(error) && error.kind === 'aborted')) {
+      if (wasAborted(error, request.signal)) {
         throw new DOMException('The request was aborted.', 'AbortError');
       }
       // A failure of the relay, not of the gateway. The two are deliberately
       // distinguishable: a gateway that answered at all comes back as a 200
       // with its own status inside, so "your backend returned 502" and "the
       // control plane could not reach your gateway" never look alike.
-      throw new Error(
-        isApiError(error)
-          ? relayErrorMessage(context.intl, error)
-          : context.intl.formatMessage(messages.unexpected),
-      );
+      throw new Error(invokeFailureMessage(context.intl, error));
     }
     if (!isRelayResult(parsed)) {
       throw new Error(context.intl.formatMessage(messages.unexpected));
@@ -542,49 +572,48 @@ export const createRelayFetch =
     return toResponseLike(parsed, gatewayUrl);
   };
 
-type SwaggerExecute = (request: unknown) => Promise<{ status?: unknown } | undefined>;
-type SwaggerSystem = { fn: { execute: SwaggerExecute } & Record<string, unknown> };
-
-const isAbort = (error: unknown): boolean =>
-  typeof error === 'object' &&
-  error !== null &&
-  (error as { name?: unknown }).name === 'AbortError';
+/** The one piece of swagger-ui's system the outcome is read from. */
+type SwaggerSystem = {
+  specSelectors: {
+    /** The stored response of one operation: an Immutable map, or null before any. */
+    responseFor: (path: unknown, method: unknown) => { get: (key: string) => unknown } | null;
+  };
+};
 
 /** `success` for an HTTP status below 400; anything else, or no status, is a failure. */
 const outcomeOf = (status: unknown): ExecuteOutcome =>
   typeof status === 'number' && status > 0 && status < 400 ? 'success' : 'failure';
 
+const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { then?: unknown }).then === 'function';
+
 /**
- * Wraps the thunk swagger-ui's `executeRequest` returns so the one
- * `fn.execute` call it makes reports its outcome. swagger-client resolves for
- * a 2xx and rejects with the response's `status` for any other, and rejects
- * with no status when nothing came back (a network error, or a relay failure
- * thrown by `createRelayFetch`); swagger-ui then swallows the rejection to
- * show it, which is why the outcome is read here rather than from the action.
+ * Reports the outcome of one Execute once it is over. `oriAction` is
+ * swagger-ui's bound action: calling it dispatches the request at once and
+ * returns the thunk's Promise, which never rejects and resolves to nothing —
+ * swagger-ui stores the result with `setResponse` before it settles. So the
+ * outcome is read from that stored response: `status` for an answer (swagger
+ * spreads the error response's fields in for a non-2xx), none for a network or
+ * relay failure. An aborted request is the user leaving, not a call, and is not
+ * reported.
  */
-const reportingOutcome = (action: unknown, report: (outcome: ExecuteOutcome) => void): unknown => {
-  if (typeof action !== 'function') return action;
-  return (system: SwaggerSystem) => {
-    const { fn } = system;
-    const execute: SwaggerExecute = (request) =>
-      fn.execute.call(fn, request).then(
-        (response) => {
-          report(outcomeOf(response?.status));
-          return response;
-        },
-        (error: unknown) => {
-          if (!isAbort(error)) {
-            const { status, response } = (error ?? {}) as {
-              status?: unknown;
-              response?: { status?: unknown };
-            };
-            report(outcomeOf(status ?? response?.status));
-          }
-          throw error;
-        },
-      );
-    return (action as (system: SwaggerSystem) => unknown)({ ...system, fn: { ...fn, execute } });
-  };
+const reportWhenSettled = (
+  dispatched: unknown,
+  system: SwaggerSystem | undefined,
+  { method, pathName }: Record<string, unknown>,
+  report: (outcome: ExecuteOutcome) => void,
+): void => {
+  if (!isThenable(dispatched)) return;
+  dispatched.then(
+    () => {
+      const response = system?.specSelectors?.responseFor(pathName, method);
+      if (!response || response.get('name') === 'AbortError') return;
+      report(outcomeOf(response.get('status') ?? response.get('statusCode')));
+    },
+    () => undefined,
+  );
 };
 
 /**
@@ -602,7 +631,7 @@ export const testConsoleRelayPlugin = (contextRef: RelayContextRef) => {
       spec: {
         wrapActions: {
           executeRequest:
-            (oriAction: (payload: Record<string, unknown>) => unknown) =>
+            (oriAction: (payload: Record<string, unknown>) => unknown, system?: SwaggerSystem) =>
             (payload: Record<string, unknown>) => {
               // Direct mode is the absence of a transport override, not a
               // second one: leaving `userFetch` off the payload is exactly what
@@ -610,16 +639,107 @@ export const testConsoleRelayPlugin = (contextRef: RelayContextRef) => {
               // calls the gateway itself. Read per dispatch, so flipping the
               // switch takes effect on the next Execute without a remount.
               const { mode } = contextRef.current;
-              const action =
+              const dispatched =
                 mode === 'direct' ? oriAction(payload) : oriAction({ ...payload, userFetch });
               // Both modes pass through here once per Execute, so this is where
               // its outcome is counted, under the mode it was sent with.
-              return reportingOutcome(action, (outcome) =>
+              reportWhenSettled(dispatched, system, payload, (outcome) =>
                 contextRef.current.onExecuted?.(mode, outcome),
               );
+              return dispatched;
             },
         },
       },
     },
   });
 };
+
+/** What the GraphQL relay needs to send a request. */
+export type GraphqlRelayContext = {
+  /** The GraphQL API's invoke URL on the selected gateway, without a query-parameter key. */
+  endpointUrl: string;
+  /** Sends the invoke request: `useInvokeApiOnGateway`'s `mutateAsync`. */
+  invoke: (variables: InvokeApiOnGatewayVariables) => Promise<InvokeApiOnGatewayResponse>;
+  graphqlApiId: string;
+  gatewayId: string;
+  intl: IntlShape;
+};
+
+/** Statuses a `Response` is built without a body for. */
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
+/** The relayed gateway response as a real `Response`, which GraphiQL's fetcher reads. */
+const toFetchResponse = (result: RelayResult): Response => {
+  const { response } = result;
+  const init = { headers: relayedHeaders(result), status: response.status };
+  const body = NULL_BODY_STATUSES.has(response.status)
+    ? null
+    : (relayedBytes(result) ?? response.body);
+  try {
+    return new Response(body, { ...init, statusText: response.statusText });
+  } catch {
+    // A reason phrase the Fetch API refuses; the status alone still says it.
+    return new Response(body, init);
+  }
+};
+
+/** The URL a `fetch` call names, or undefined when it does not parse. */
+const urlOf = (input: RequestInfo | URL): URL | undefined => {
+  try {
+    return new URL(input instanceof Request ? input.url : String(input));
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * The `fetch` GraphiQL's fetcher calls in proxy mode. It relays the POST that
+ * GraphiQL built for the API's invoke URL, with its query string (a
+ * query-parameter key), headers and body, and refuses any other request.
+ */
+export const createGraphqlRelayFetch =
+  (context: GraphqlRelayContext): typeof fetch =>
+  async (input, init) => {
+    const { intl } = context;
+    if (!context.graphqlApiId || !context.gatewayId || !context.endpointUrl) {
+      throw new Error(intl.formatMessage(messages.noTarget));
+    }
+
+    const url = urlOf(input);
+    const endpoint = urlOf(context.endpointUrl);
+    const body = init?.body;
+    if (
+      !url ||
+      !endpoint ||
+      url.origin !== endpoint.origin ||
+      url.pathname !== endpoint.pathname ||
+      (init?.method ?? 'GET').toUpperCase() !== 'POST' ||
+      typeof body !== 'string'
+    ) {
+      throw new Error(intl.formatMessage(messages.invalidRequest));
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = await context.invoke({
+        body: {
+          apiType: 'graphql-api',
+          apiId: context.graphqlApiId,
+          gatewayId: context.gatewayId,
+          query: Array.from(url.searchParams, ([name, value]) => ({ name, value })),
+          headers: Array.from(new Headers(init?.headers), ([name, value]) => ({ name, value })),
+          body,
+        },
+        signal: init?.signal ?? undefined,
+      });
+    } catch (error) {
+      if (wasAborted(error, init?.signal)) {
+        throw new DOMException('The request was aborted.', 'AbortError');
+      }
+      throw new Error(invokeFailureMessage(intl, error));
+    }
+    if (!isRelayResult(parsed)) {
+      throw new Error(intl.formatMessage(messages.unexpected));
+    }
+    return toFetchResponse(parsed);
+  };

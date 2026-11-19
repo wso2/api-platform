@@ -22,7 +22,7 @@ Feature: A view's LLM instructions and AI discovery shape what agents read
   I want to name and describe each view for AI agents, preview the result and switch discovery per view
   So that agents read an accurate llms.txt, and a view I keep from agents exposes nothing to them
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). LLM instructions are a
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml). LLM instructions are a
   # view's settings page data: they are read and written with an administrator's portal session and
   # its CSRF token at /api-portal/{org}/views/{view}/llms-config, and previewed at
   # /api-portal/{org}/views/{view}/llms.txt/preview. Every scenario uses its own views, so no other

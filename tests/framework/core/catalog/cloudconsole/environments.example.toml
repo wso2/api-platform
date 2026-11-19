@@ -7,6 +7,10 @@ cloud_base_domain = "development.example"
 # Gateways outside wso2.com: set CLOUD_IT_DATA_PLANE_DOMAINS to their gateway domains
 # (hosts are <name>.<domain>), comma-separated.
 
+# The promotion scenarios deploy through an existing project that is bound to a deployment
+# pipeline whose environments hold an active gateway each: set CLOUD_IT_PIPELINE_PROJECT to that
+# project's id. Unset, those scenarios are skipped.
+
 # A cloud that runs on the developer's machine. platform_api_endpoint replaces the endpoint
 # derived from cloud_base_domain; plain http is accepted only on a .localhost host. Run the
 # suite with -cloud-env=local and CLOUD_IT_LOCAL_DATA_PLANE=true so the gateway URLs the
@@ -15,3 +19,11 @@ cloud_base_domain = "development.example"
 # [environments.local]
 # cloud_base_domain = "openchoreoapis.localhost"
 # platform_api_endpoint = "http://development-wso2cloud.openchoreoapis.localhost:19080/apip-platform-api-apip-platform-api-endpoint/api/v0.9"
+
+# A cloud whose console is not served at cloud-console-<environment>.gateway.<cloud_base_domain>
+# sets cloud_console_host, as the deployment's cloud_console_httproute_host does. A self-hosted
+# gateway connects to https://<cloud console host>/api-management/connect.
+#
+# [environments.prod]
+# cloud_base_domain = "example.com"
+# cloud_console_host = "console.example.com"

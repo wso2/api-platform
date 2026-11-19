@@ -187,8 +187,13 @@ func TestA2AVersionGuard_RefusalIsSterile(t *testing.T) {
 	require.NoError(t, json.Unmarshal(imm.Body, &body))
 	assert.Equal(t, "Bad Request", body["error"])
 	assert.NotEmpty(t, body["error_id"])
+	// error_id is a random UUID, so its hex digits can spell a short forbidden word such as
+	// the resolver name by chance. Only the fields that carry text are checked.
+	delete(body, "error_id")
+	text, err := json.Marshal(body)
+	require.NoError(t, err)
 	for _, leak := range []string{"9.9", "1.0", agentproto.ResolverName, "version"} {
-		assert.NotContains(t, string(imm.Body), leak,
+		assert.NotContains(t, string(text), leak,
 			"the sterile body must not name %q", leak)
 	}
 }

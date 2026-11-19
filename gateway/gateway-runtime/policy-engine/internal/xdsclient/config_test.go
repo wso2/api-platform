@@ -50,6 +50,8 @@ func TestValidate_ValidConfig(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 		TLSEnabled:            false,
 	}
 
@@ -65,6 +67,8 @@ func TestValidate_EmptyServerAddress(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -80,6 +84,8 @@ func TestValidate_ZeroConnectTimeout(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -95,6 +101,8 @@ func TestValidate_NegativeConnectTimeout(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -110,6 +118,8 @@ func TestValidate_ZeroRequestTimeout(t *testing.T) {
 		RequestTimeout:        0,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -125,6 +135,8 @@ func TestValidate_NegativeRequestTimeout(t *testing.T) {
 		RequestTimeout:        -5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -140,6 +152,8 @@ func TestValidate_ZeroInitialReconnectDelay(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 0,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -155,6 +169,8 @@ func TestValidate_NegativeInitialReconnectDelay(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: -1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -170,6 +186,8 @@ func TestValidate_ZeroMaxReconnectDelay(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     0,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -185,6 +203,8 @@ func TestValidate_NegativeMaxReconnectDelay(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     -60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	err := config.Validate()
@@ -200,6 +220,8 @@ func TestValidate_TLSEnabledWithoutCertPath(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 		TLSEnabled:            true,
 		TLSCertPath:           "",
 		TLSKeyPath:            "/path/to/key.pem",
@@ -219,6 +241,8 @@ func TestValidate_TLSEnabledWithoutKeyPath(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 		TLSEnabled:            true,
 		TLSCertPath:           "/path/to/cert.pem",
 		TLSKeyPath:            "",
@@ -238,6 +262,8 @@ func TestValidate_TLSEnabledWithoutCAPath(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 		TLSEnabled:            true,
 		TLSCertPath:           "/path/to/cert.pem",
 		TLSKeyPath:            "/path/to/key.pem",
@@ -257,6 +283,8 @@ func TestValidate_TLSEnabledWithAllPaths(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 		TLSEnabled:            true,
 		TLSCertPath:           "/path/to/cert.pem",
 		TLSKeyPath:            "/path/to/key.pem",
@@ -276,6 +304,8 @@ func TestValidate_TLSDisabledWithPaths(t *testing.T) {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 		TLSEnabled:            false,
 		TLSCertPath:           "/path/to/cert.pem",
 		TLSKeyPath:            "/path/to/key.pem",

@@ -25,8 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cucumber/godog"
-
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
@@ -75,25 +73,28 @@ func handleDefectNames() string {
 	return strings.Join(names, ", ")
 }
 
-// registerProjectSteps binds the steps that read the default project, probe projects that do not
-// exist, refuse a project, read and change a project's pipeline binding, and probe the quota.
-func (s *Steps) registerProjectSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I read the default APIP project$`, s.readDefaultProject)
+// registerProjectSteps binds the steps that read the scenario's project, probe projects that do not
+// exist, refuse a project, read a project's pipeline binding, and probe the quota.
+func (s *Steps) registerProjectSteps(sc stepRegistrar) {
+	sc.Step(`^I read the APIP test project$`, s.readDefaultProject)
 	sc.Step(`^I read an APIP project that does not exist$`, s.readAbsentProject)
 	sc.Step(`^I create the synthetic APIP project again under the same handle$`, s.createDuplicateProject)
 	sc.Step(`^I request a synthetic APIP project whose handle is "([^"]*)"$`, s.requestProjectWithDefectiveHandle)
 	sc.Step(`^the rejected APIP project should not exist$`, s.assertRejectedProjectAbsent)
 	sc.Step(`^the synthetic APIP project should become active$`, s.awaitProjectActive)
-	sc.Step(`^I bind the synthetic APIP project to the deployment pipeline "([^"]*)"$`, s.bindProjectToPipeline)
-	sc.Step(`^I read the deployment pipeline of the synthetic APIP project$`, s.readProjectPipeline)
-	sc.Step(`^the synthetic APIP project should be bound to the deployment pipeline "([^"]*)"$`, s.assertProjectBoundTo)
+	sc.Step(`^I read the deployment pipeline of the APIP project$`, s.readProjectPipeline)
+	sc.Step(`^the deployment pipeline the APIP project is bound to should be listed by the platform$`, s.assertBoundPipelineListed)
 	sc.Step(`^I create synthetic APIP projects until the organisation refuses one$`, s.createProjectsUntilRefused)
 }
 
-// readDefaultProject reads the organisation's default project directly, which stays correct once
+// readDefaultProject reads the scenario's project directly, which stays correct once
 // the organisation holds more projects than the first page of the list.
 func (s *Steps) readDefaultProject(ctx context.Context) error {
-	_, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/default", nil)
+	project, err := requiredValue(ctx, keyScenarioProject)
+	if err != nil {
+		return fmt.Errorf("the scenario's project is not known: %w", err)
+	}
+	_, err = s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
 	return err
 }
 
@@ -217,58 +218,38 @@ func (s *Steps) awaitProjectActive(ctx context.Context) error {
 		"waiting for project "+id+" to become active")
 }
 
-// bindProjectToPipeline binds the scenario's project to a deployment pipeline and publishes the
-// answer without requiring success.
-func (s *Steps) bindProjectToPipeline(ctx context.Context, pipeline string) error {
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return fmt.Errorf("the scenario has created no synthetic project: %w", err)
-	}
-	pipeline, err = expandCloudValue(ctx, pipeline)
-	if err != nil {
-		return err
-	}
-	_, err = s.doAuthenticated(ctx, http.MethodPut, "/projects/"+url.PathEscape(id)+"/deployment-pipeline",
-		map[string]string{"pipeline": pipeline})
-	return err
-}
-
 // readProjectPipeline reads the deployment pipeline the scenario's project is bound to and
 // publishes the answer.
 func (s *Steps) readProjectPipeline(ctx context.Context) error {
-	_, err := s.fetchProjectPipeline(ctx)
+	id, err := requiredValue(ctx, keyProjectID)
+	if err != nil {
+		return fmt.Errorf("the scenario has no project: %w", err)
+	}
+	_, err = s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(id)+"/deployment-pipeline", nil)
 	return err
 }
 
-func (s *Steps) fetchProjectPipeline(ctx context.Context) (*httpx.Response, error) {
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("the scenario has created no synthetic project: %w", err)
-	}
-	return s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(id)+"/deployment-pipeline", nil)
-}
-
-// assertProjectBoundTo reads the scenario's project binding and checks it names the pipeline.
-func (s *Steps) assertProjectBoundTo(ctx context.Context, want string) error {
-	want, err := expandCloudValue(ctx, want)
+// assertBoundPipelineListed checks that the deployment pipeline the last response names as the
+// project's is one the platform lists. The listing read is not published, so the binding stays the
+// response under assertion.
+func (s *Steps) assertBoundPipelineListed(ctx context.Context) error {
+	resp, err := httpx.Published(ctx)
 	if err != nil {
 		return err
 	}
-	resp, err := s.fetchProjectPipeline(ctx)
+	pipeline, err := stringField(resp, "pipeline")
+	if err != nil {
+		return fmt.Errorf("reading the project's deployment pipeline: %w (%s)", err, resp.Describe())
+	}
+	listed, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/pipelines", nil)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
+	if listed.StatusCode != http.StatusOK {
+		return responseError(listed)
 	}
-	got, err := stringField(resp, "pipeline")
-	if err != nil {
-		return fmt.Errorf("reading the pipeline of the synthetic project: %w (%s)", err, resp.Describe())
-	}
-	if got != want {
-		return fmt.Errorf("the synthetic project is bound to deployment pipeline %q, want %q", got, want)
-	}
-	return nil
+	_, err = listedPipelinePaths(listed, pipeline)
+	return err
 }
 
 // createProjectsUntilRefused creates synthetic projects one after another until the platform

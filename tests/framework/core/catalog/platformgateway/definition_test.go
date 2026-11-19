@@ -249,6 +249,23 @@ func TestComposeRuntimeBoundsItsShutdownDrain(t *testing.T) {
 			"ROUTER_DRAIN_TIME_SECONDS cannot silently reintroduce the mid-drain SIGKILL")
 }
 
+// A policy fetching keys from the testbench OIDC provider over HTTPS must verify the provider's
+// certificate, not skip verification, so the runtime has to trust it: the certificate is staged
+// next to the Jev one and mounted into the directory SSL_CERT_DIR names.
+func TestRuntimeTrustsTheTestbenchOIDCCertificate(t *testing.T) {
+	staged := gatewayGeneratedFiles()
+	require.Equal(t, shared.IdentityProviderTLS().CertPEM, staged["testbench-ca/oidc.pem"],
+		"the staged OIDC certificate must be the one the testbench identity provider serves")
+
+	doc := composeFile(t)
+	runtime := doc["services"].(map[string]any)["gateway-runtime"].(map[string]any)
+	require.Contains(t, runtime["volumes"],
+		"./testbench-ca/oidc.pem:/etc/testbench-ca/oidc.pem:ro",
+		"gateway-runtime does not mount the OIDC certificate into /etc/testbench-ca")
+	require.Contains(t, runtime["environment"], "SSL_CERT_DIR=/etc/ssl/certs:/etc/testbench-ca",
+		"gateway-runtime does not read extra trusted certificates from /etc/testbench-ca")
+}
+
 func TestPlatformGatewayCoverageEnvironmentFollowsRunMode(t *testing.T) {
 	t.Setenv(shared.EnvCoverageMode, "false")
 	require.NotContains(t, PlatformGateway().Compose.Env, "GOCOVERDIR")
@@ -539,7 +556,7 @@ func TestTwoControllerComposeOverride(t *testing.T) {
 	require.Contains(t, xds["ports"], fmt.Sprint(xdsControllerAdminPort))
 	require.Contains(t, xds["env_file"], "api-platform.env", "both controllers must read the same database settings")
 	require.Contains(t, xds["image"], "${"+EnvImagePGController)
-	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/health", xdsControllerAdminPort))
+	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/ready", xdsControllerAdminPort))
 
 	base := composeServiceEnv(t, svcController)
 	replica := composeServiceEnvIn(t, doc, svcXDSController)

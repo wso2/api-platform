@@ -170,3 +170,16 @@ func TestResponsesShowDisplayNameWhileEventsKeepIdpID(t *testing.T) {
 		t.Fatalf("SubForUUID must stay the idp_id: %q, %v", sub, err)
 	}
 }
+
+func TestInternalUserIDFor_MapsTheGivenUser(t *testing.T) {
+	repo := &displayNameRepo{}
+	got, err := NewIdentityService(repo).InternalUserIDFor("sub-1", "Ada Lovelace")
+	if err != nil || got != "uuid-sub-1" || repo.gotName != "Ada Lovelace" {
+		t.Fatalf("got %q, %v, name %q; want uuid-sub-1, no error, the display name", got, err, repo.gotName)
+	}
+
+	repo = &displayNameRepo{saveErr: fmt.Errorf("%w: rejected", repository.ErrDisplayNameNotSaved)}
+	if got, err := NewIdentityService(repo).InternalUserIDFor("sub-1", "Ada"); err != nil || got != "uuid-sub-1" {
+		t.Fatalf("display-name failure: got %q, %v; want the UUID and no error", got, err)
+	}
+}

@@ -146,14 +146,25 @@ func TestCloudSuite(t *testing.T) {
 	}
 
 	finalizer := cloudsteps.NewFinalizer()
-	// The starter hands the finalizer what it created, so the cleanup below removes it.
-	starter, err := cloudsteps.NewStarter(finalizer)
+	// The starter makes sure the organisation holds the projects the runners work in first (creating
+	// one it lacks), and checks the rest of what the organisation holds when a scenario first needs
+	// it, so a run of apip-basic alone checks the gateway (reading its project's pipeline binding to
+	// do so) and never looks at the organisation's portals or other environments.
+	starter, err := cloudsteps.NewStarter()
 	if err != nil {
 		t.Fatalf("creating the cloud run starter: %v", err)
 	}
 	// Cleanup runs after every runner has finished, also when a scenario failed or a runner
-	// panicked, and removes what the per-scenario cleanup left in the shared organisation.
+	// panicked. The starter says which scenarios the organisation could not support and fails the
+	// run for what it tried to prepare and could not; the finalizer removes what the per-scenario
+	// cleanup left in the shared organisation.
 	t.Cleanup(func() {
+		for _, line := range starter.Report() {
+			t.Logf("cloud run starter: %s", line)
+		}
+		if err := starter.Failures(); err != nil {
+			t.Errorf("cloud run starter could not prepare the organisation: %v", err)
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		removed, err := finalizer.Finalize(ctx)
@@ -188,6 +199,7 @@ func TestCloudSuite(t *testing.T) {
 			funnel := httpx.NewFunnel(client, 3, 2*time.Second)
 			return func(sc *godog.ScenarioContext) {
 				finalizer.Register(sc, topo, funnel)
+				starter.Register(sc)
 			}, nil
 		},
 		CleanupDeleters: func(reg *cleanup.Registry, topo *frameworkruntime.Topology) {

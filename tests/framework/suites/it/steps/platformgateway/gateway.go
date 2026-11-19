@@ -1196,6 +1196,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsAIContextField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
 		g.analyticsCompanyID)
+	sc.Step(`^the analytics event for the logged request should have user id "([^"]*)"$`, g.analyticsUserID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
 	sc.Step(`^the lazy resources should contain template "([^"]*)" of type "([^"]*)"$`, g.lazyTemplatePresent)
 	sc.Step(`^the lazy resources should not contain template "([^"]*)"$`, g.lazyTemplateAbsent)
@@ -1269,6 +1270,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 
 	g.registerTimeoutSteps(sc)
 	g.registerAuditSteps(sc)
+	g.registerConfigSteps(sc)
 }
 
 const elapsedTolerance = 0.05
@@ -2641,6 +2643,29 @@ func metadataFieldAwait(event *analyticsEvent, field string, absent bool, want s
 	default:
 		return fmt.Errorf("the latest analytics event has metadata field %q %q, want %q", field, got, want)
 	}
+}
+
+// analyticsUserID checks the user id of the analytics event for the request whose access log line
+// a step matched last: the subject of its authenticated AuthContext, or "anonymous" when it has
+// none. The correlation id singles out that request among others for the same API.
+func (g *Gateway) analyticsUserID(ctx context.Context, want string) error {
+	correlationID, err := stepscommon.Expand(ctx, "${CTX:"+keyLoggedCorrelationID+"}")
+	if err != nil {
+		return fmt.Errorf("no access log line matched before this step: %w", err)
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	event, err := g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("correlation id %q", correlationID),
+		func(event *analyticsEvent) bool { return event.Metadata["correlationId"] == correlationID })
+	if err != nil {
+		return err
+	}
+	if event.UserID != resolved {
+		return fmt.Errorf("analytics event for correlation id %q has user id %q, want %q", correlationID, event.UserID, resolved)
+	}
+	return nil
 }
 
 // companyIDAssert checks an event's company id: "have" a given one, or "not have" one at all.

@@ -22,7 +22,7 @@ Feature: GraphQL, SOAP, WebSocket and WebSub APIs are managed through the API Po
   I want every API type the portal supports to be created, updated and deleted with its own definition
   So that developers find each API with the right type and contract
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level:
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level:
   # the /api-portal/api/v0.9/apis endpoints. REST APIs are covered in rest_apis.feature. Every API is
   # rendered from resources/templates/api-portal-api.yaml with its type set in the values table; the
   # portal reports the stored type (GRAPHQL, SOAP, WS, WebSubApi), which the scenarios assert exactly.

@@ -50,6 +50,12 @@ type EnvironmentEntry struct {
 	// the one derived from CloudBaseDomain. It exists for a cloud that runs on the developer's
 	// machine, whose gateway is plain HTTP on a .localhost host and a port.
 	PlatformAPIEndpoint string
+
+	// CloudConsoleHost, when set, is the cloud console's public host instead of the one derived
+	// from CloudBaseDomain (cloud-console-<environment>.gateway.<domain>). It matches the
+	// deployment's cloud_console_httproute_host, which an environment whose console is served
+	// on another host sets.
+	CloudConsoleHost string
 }
 
 // LoadEnvironmentConfig loads and validates an environment mapping from TOML.
@@ -101,6 +107,16 @@ func LoadEnvironmentConfig(path string) (EnvironmentConfig, error) {
 			}
 			resolved.PlatformAPIEndpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 		}
+		if rawHost, present := entry["cloud_console_host"]; present {
+			host, ok := rawHost.(string)
+			if !ok {
+				return EnvironmentConfig{}, fmt.Errorf("cloud-console: environment %q in %q: cloud_console_host must be a string", name, path)
+			}
+			if err := validateHost("cloud_console_host", host); err != nil {
+				return EnvironmentConfig{}, fmt.Errorf("cloud-console: environment %q in %q: %w", name, path, err)
+			}
+			resolved.CloudConsoleHost = strings.TrimSpace(host)
+		}
 		config.Environments[name] = resolved
 	}
 	return config, nil
@@ -143,13 +159,18 @@ func validateEnvironmentName(environment string) error {
 }
 
 func validateDomain(domain string) error {
-	domain = strings.TrimSpace(domain)
-	parsed, err := url.Parse("https://" + domain)
-	if err != nil || parsed.Host != domain || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Port() != "" {
-		return fmt.Errorf("cloud_base_domain %q must be a host name without scheme or path", domain)
+	return validateHost("cloud_base_domain", domain)
+}
+
+// validateHost accepts a bare host name: no scheme, path, port or credentials.
+func validateHost(field, host string) error {
+	host = strings.TrimSpace(host)
+	parsed, err := url.Parse("https://" + host)
+	if err != nil || host == "" || parsed.Host != host || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Port() != "" {
+		return fmt.Errorf("%s %q must be a host name without scheme or path", field, host)
 	}
-	if parsed.User != nil || strings.Contains(domain, "@") {
-		return fmt.Errorf("cloud_base_domain %q must not contain credentials", domain)
+	if parsed.User != nil || strings.Contains(host, "@") {
+		return fmt.Errorf("%s %q must not contain credentials", field, host)
 	}
 	return nil
 }
@@ -190,6 +211,16 @@ func isLocalhostName(host string) bool {
 	return host == "localhost" || strings.HasSuffix(host, ".localhost")
 }
 
+// PlatformAPIEndpoint returns the apip-platform-api endpoint of a configured cloud environment, for a
+// caller that needs the organisation before the suite's topology is booted.
+func PlatformAPIEndpoint(repoRoot, environment string) (string, error) {
+	endpoints, err := resolveEndpoints(repoRoot, map[string]string{EnvironmentParameter: environment})
+	if err != nil {
+		return "", err
+	}
+	return endpoints[EndpointAPIPPlatformAPI], nil
+}
+
 func resolveEndpoints(repoRoot string, parameters map[string]string) (map[string]string, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return nil, fmt.Errorf("repository root is required")
@@ -213,8 +244,13 @@ func resolveEndpoints(repoRoot string, parameters map[string]string) (map[string
 	if platformAPI == "" {
 		platformAPI = "https://" + environment + "-wso2cloud.gateway." + entry.CloudBaseDomain + "/apip-platform-api-apip-platform-api-endpoint/api/v0.9"
 	}
+	consoleHost := entry.CloudConsoleHost
+	if consoleHost == "" {
+		consoleHost = "cloud-console-" + environment + ".gateway." + entry.CloudBaseDomain
+	}
 	endpoints := map[string]string{
-		EndpointAPIPPlatformAPI: platformAPI,
+		EndpointAPIPPlatformAPI:     platformAPI,
+		EndpointGatewayControlPlane: "https://" + consoleHost + gatewayConnectPath,
 	}
 	for name, endpoint := range endpoints {
 		parsed, parseErr := url.Parse(endpoint)
