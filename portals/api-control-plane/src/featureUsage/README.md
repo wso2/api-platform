@@ -445,7 +445,8 @@ documentation links, and the test key minted automatically on page load.
 Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
 `page.graphqlApiDeploy`). They report the same features through the host port's
 `trackFeature(code, dimensions)` (`useTrackFeatureByName`, built into the port in
-`AppLayout`), which drops any code or value the taxonomy doesn't list:
+`AppLayout`), which drops any code or value the taxonomy doesn't list. The
+cloud-only Portals page (managed API Portals) reports its own features the same way:
 
 | Cloud page                              | Reports                                                                                                  |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -454,6 +455,8 @@ Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
 | Gateway overview                        | `gateway-setup-command-copy` (`install_method`, `setup_step`), `gateway-token-regenerate-click`          |
 | Deploy: Deploy or promote, Stop         | `api-deploy-click` (no `gateway_hosting`), `deployment-undeploy-click`                                   |
 | Deploy: add a gateway, its setup drawer | `gateway-register-click`, `gateway-setup-command-copy` (`quick-start`), `gateway-token-regenerate-click` |
+| Portals: open the add form              | `portal-add-open` (`entry_point`: `portals-list` or `portals-empty-state`)                               |
+| Portals: Add Portal                     | `portal-create-click` (`self_signup`)                                                                    |
 
 The cloud pages have no redeploy, restore, deployment delete or deployment
 history, and their gateway Policies tab shows no policies yet, so

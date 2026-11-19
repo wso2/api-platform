@@ -15,6 +15,7 @@ import { permissionsOf, PORTAL_OPERATIONS } from './permissions';
 import ManagedPortalCreate from './ManagedPortalCreate';
 import ManagedPortalEdit from './ManagedPortalEdit';
 import ManagedPortalsList from './ManagedPortalsList';
+import { PORTAL_ADD_OPEN } from './featureUsage';
 import { PortalFeatureProvider } from './portContext';
 import { createRealPortalPort, resolveApiBase } from './realPort';
 
@@ -102,7 +103,12 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
           canCreate={canCreate}
           canUpdate={canUpdate}
           canDelete={canDelete}
-          onCreate={() => setView({ kind: 'create' })}
+          onCreate={(entryPoint) => {
+            // The first step of the add-portal funnel; Add Portal on the form
+            // (PORTAL_CREATE_CLICK) is the last.
+            port.trackFeature?.(PORTAL_ADD_OPEN, { entry_point: entryPoint });
+            setView({ kind: 'create' });
+          }}
           onEdit={(portal) => setView({ kind: 'edit', portalId: portal.id })}
         />
       )}

@@ -27,7 +27,9 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 
+import { PORTAL_CREATE_CLICK } from './featureUsage';
 import { useManagedPortalList, useOrgEnvironments } from './hooks';
+import { usePortalFeature } from './portContext';
 import { portalHandleFromName, validatePortalName } from './utils/name';
 import { SELF_SIGNUP_HINT } from './utils/selfSignup';
 
@@ -41,6 +43,7 @@ export type ManagedPortalCreateProps = {
  * edit forms share visual conventions across cloud plugins.
  */
 export default function ManagedPortalCreate({ onCancel, onCreated }: ManagedPortalCreateProps) {
+  const { host } = usePortalFeature();
   const { portals, create } = useManagedPortalList();
   const { environments, isLoading: envsLoading, error: envsError } = useOrgEnvironments();
   // Single-env orgs and env-load failures leave the picker out of the form; the server picks the
@@ -79,6 +82,9 @@ export default function ManagedPortalCreate({ onCancel, onCreated }: ManagedPort
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    // The click that commits the form, after client-side validation and before
+    // the request: whether the server accepts it is Platform API's to report.
+    host.trackFeature?.(PORTAL_CREATE_CLICK, { self_signup: selfSignup ? 'yes' : 'no' });
     setSubmitting(true);
     try {
       await create({

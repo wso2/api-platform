@@ -3988,6 +3988,71 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       },
     },
     {
+      code: 'apip.developer-portal.portal-add-open',
+      name: 'Portal Add Form Open',
+      description:
+        'Open the form that adds an API Portal to the organization, from the portals list or its empty state. Emitted by the console.',
+      category: 'developer-portal',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.developer-portal.portal-add-open',
+        event_category: 'discovery',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'entry_point',
+            type: 'enum',
+            values: ['portals-list', 'portals-empty-state'],
+            required: true,
+            description:
+              "Where the form was opened from: the list's Add button, or the empty list's Create button.",
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Portal Add Form Open' }],
+      },
+    },
+    {
+      code: 'apip.developer-portal.portal-create-click',
+      name: 'Portal Create Click',
+      description:
+        'Submit the form that adds an API Portal to the organization. Emitted by the console.',
+      category: 'developer-portal',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.developer-portal.portal-create-click',
+        event_category: 'adoption',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'self_signup',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: 'Whether the portal lets developers sign up by themselves.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Portal Create Click' }],
+      },
+    },
+    {
       code: 'apip.key-management.third-party-km',
       name: 'Key Manager Integration',
       description:
@@ -5843,6 +5908,22 @@ export const CONSOLE_FEATURES = {
     tier: 'core',
     eventCategory: 'engagement',
     dimensions: { api_type: { required: false, values: ['rest-api', 'graphql-api', 'mcp-proxy'] } },
+  },
+  'apip.developer-portal.portal-add-open': {
+    name: 'Portal Add Form Open',
+    category: 'developer-portal',
+    tier: 'core',
+    eventCategory: 'discovery',
+    dimensions: {
+      entry_point: { required: true, values: ['portals-list', 'portals-empty-state'] },
+    },
+  },
+  'apip.developer-portal.portal-create-click': {
+    name: 'Portal Create Click',
+    category: 'developer-portal',
+    tier: 'core',
+    eventCategory: 'adoption',
+    dimensions: { self_signup: { required: true, values: ['yes', 'no'] } },
   },
   'apip.monetization.subscription-plan-create-click': {
     name: 'Subscription Plan Creation Click',
