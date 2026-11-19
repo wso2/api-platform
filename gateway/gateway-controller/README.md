@@ -339,9 +339,12 @@ answer without credentials, from the same evaluation, so they always agree:
 # Admin server
 GET http://localhost:9092/api/admin/v1/health        # liveness
 GET http://localhost:9092/api/admin/v1/ready         # readiness
-# Management API (port 9093 instead when [controller.server.tls] is enabled)
+# Management API, TLS disabled
 GET http://localhost:9090/api/management/v1/health   # liveness
 GET http://localhost:9090/api/management/v1/ready    # readiness
+# Management API, [controller.server.tls] enabled (replaces the plaintext listener)
+GET https://localhost:9093/api/management/v1/health  # liveness
+GET https://localhost:9093/api/management/v1/ready   # readiness
 ```
 
 The admin server answers from the moment the controller starts, with `503` and a `starting` reason
