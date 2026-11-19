@@ -31,6 +31,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -84,6 +85,10 @@ type ComposeStack struct {
 	// stopLogProducers stops each service's attached log producer, populated only when
 	// the block is capturing container output.
 	stopLogProducers []func() error
+
+	// stopped holds the services StopService stopped on purpose, such as coverage collection
+	// before teardown, so teardown reports only services that exited on their own.
+	stopped sync.Map
 }
 
 // LaunchCompose starts a compose-backed component and presents it as one instance.
@@ -584,6 +589,9 @@ func (c *ComposeStack) Stop(ctx context.Context) error {
 	}
 	if c.stack != nil {
 		for _, svc := range c.services() {
+			if _, deliberate := c.stopped.Load(svc); deliberate {
+				continue
+			}
 			if container, err := c.stack.ServiceContainer(ctx, svc); err == nil {
 				warnIfExited(ctx, svc, container)
 			}
@@ -746,6 +754,7 @@ func (c *ComposeStack) StopService(ctx context.Context, service string) error {
 	if err := container.Stop(ctx, &timeout); err != nil {
 		return fmt.Errorf("runtime: stopping service %q: %w", service, err)
 	}
+	c.stopped.Store(service, true)
 	return nil
 }
 
@@ -758,6 +767,7 @@ func (c *ComposeStack) StartService(ctx context.Context, service string) error {
 	if err := container.Start(ctx); err != nil {
 		return fmt.Errorf("runtime: starting service %q: %w", service, err)
 	}
+	c.stopped.Delete(service)
 	return c.RefreshPorts(ctx)
 }
 

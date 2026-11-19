@@ -75,7 +75,8 @@ func TestStopReportsAContainerThatHadAlreadyExited(t *testing.T) {
 	c, err := Launch(ctx, probeDef("exited-probe"), Options{Network: nw, Replicas: 1})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.Stop(context.Background()) })
-	require.NoError(t, c.Halt(ctx))
+	// Stopped behind the framework's back, as a crash would, not through Halt.
+	require.NoError(t, c.container.Stop(ctx, nil))
 
 	var logs bytes.Buffer
 	previous := slog.Default()
@@ -84,4 +85,26 @@ func TestStopReportsAContainerThatHadAlreadyExited(t *testing.T) {
 
 	require.NoError(t, c.Stop(ctx))
 	require.Contains(t, logs.String(), `msg="container had exited before teardown" container=exited-probe status=exited exitCode=`)
+}
+
+// TestStopDoesNotReportAHaltedContainer confirms a container the framework stopped on purpose
+// is not reported as having exited on its own.
+func TestStopDoesNotReportAHaltedContainer(t *testing.T) {
+	ctx := context.Background()
+
+	nw := newTestNetwork(t, ctx, "halted-probe")
+	t.Cleanup(func() { _ = nw.Remove(context.Background()) })
+
+	c, err := Launch(ctx, probeDef("halted-probe"), Options{Network: nw, Replicas: 1})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.Stop(context.Background()) })
+	require.NoError(t, c.Halt(ctx))
+
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	require.NoError(t, c.Stop(ctx))
+	require.NotContains(t, logs.String(), "container had exited before teardown")
 }

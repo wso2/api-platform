@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -116,6 +117,9 @@ type Container struct {
 	Instance  *components.Instance
 	container testcontainers.Container
 	def       *components.Definition
+	// halted is set while Halt has stopped the container on purpose, so teardown does not
+	// report it as having exited on its own.
+	halted atomic.Bool
 }
 
 // Launch starts one instance and waits for its container-level readiness strategy.
@@ -387,7 +391,9 @@ func (c *Container) Stop(ctx context.Context) error {
 		return nil
 	}
 	inner := c.container
-	warnIfExited(ctx, c.def.Name, inner)
+	if !c.halted.Load() {
+		warnIfExited(ctx, c.def.Name, inner)
+	}
 	if err := inner.Terminate(ctx); err != nil {
 		return fmt.Errorf("runtime: terminating %s: %w", c.def, err)
 	}
@@ -417,6 +423,7 @@ func (c *Container) Halt(ctx context.Context) error {
 	if err := c.container.Stop(ctx, nil); err != nil {
 		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
 	}
+	c.halted.Store(true)
 	return nil
 }
 
@@ -429,6 +436,7 @@ func (c *Container) Resume(ctx context.Context) error {
 	if err := c.container.Start(ctx); err != nil {
 		return fmt.Errorf("runtime: resuming %s: %w", c.def, err)
 	}
+	c.halted.Store(false)
 	if c.Instance == nil || c.def == nil {
 		return nil
 	}
