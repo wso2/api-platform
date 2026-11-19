@@ -317,7 +317,7 @@ whose plaintext password is `admin`.
 `admin` with password `admin` by default. After upgrading with default values, that password no
 longer works; read the generated one with the command above. `--reuse-values` keeps the previously
 rendered `admin`/`admin` user, which the chart now refuses: drop it (`--reset-then-reuse-values`,
-or set `gateway.config.controller.auth.basic.users=[]`) to use the generated credential, or set
+or `--set-json 'gateway.config.controller.auth.basic.users=[]'`; plain `--set` passes `[]` as a string) to use the generated credential, or set
 `users` or `existingSecret` explicitly to keep a credential of your own.
 
 **Explicit users.** Store a hash, not the password, since `config.toml` is rendered into a ConfigMap:

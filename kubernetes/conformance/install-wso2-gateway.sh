@@ -43,7 +43,10 @@ OPERATOR_CHART="${OPERATOR_CHART:-${REPO_ROOT}/kubernetes/helm/operator-helm-cha
 OPERATOR_NS="${OPERATOR_NS:-gateway-system}"
 GATEWAY_CHART_SOURCE="${GATEWAY_CHART_SOURCE:-repo}"
 CHART_REGISTRY_NS="conformance-chart-registry"
-LOCAL_GATEWAY_CHART_VERSION="0.0.0-conformance"
+# Set by publish_repo_gateway_chart to 0.0.0-conformance-<digest of the chart files>, so a chart
+# change produces a new version: the operator's config hash covers the chart version, not the
+# templates, so reusing one version on a rerun would leave gateways on the old chart.
+LOCAL_GATEWAY_CHART_VERSION=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Namespaces the Gateway API conformance suite creates for its fixtures.
@@ -105,6 +108,17 @@ provision_encryption_key() {
 # gateway chart must match: the operator's base gateway values assume the chart features of the
 # same commit (for example the generated controller admin credential).
 GATEWAY_CHART_ARGS=()
+
+# Print the first 12 hex digits of a SHA-256 over the chart's file paths and contents
+# (sha256sum on Linux, shasum on macOS).
+chart_digest() {
+  local sum
+  if command -v sha256sum >/dev/null 2>&1; then sum="sha256sum"; else sum="shasum -a 256"; fi
+  (cd "$1" && find . -type f -print | LC_ALL=C sort | while IFS= read -r f; do
+     printf '%s\n' "$f"; ${sum} < "$f"
+   done) | ${sum} | cut -c1-12
+}
+
 publish_repo_gateway_chart() {
   echo ">> Serving the repository gateway chart from an in-cluster OCI registry (${CHART_REGISTRY_NS})"
   kubectl create namespace "${CHART_REGISTRY_NS}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -144,7 +158,11 @@ spec:
 EOF
   kubectl rollout status deployment/registry -n "${CHART_REGISTRY_NS}" --timeout=180s
 
-  local workdir pf_pid pushed=""
+  local workdir pf_pid pushed="" chart_dir digest
+  chart_dir="${REPO_ROOT}/kubernetes/helm/gateway-helm-chart"
+  digest="$(chart_digest "${chart_dir}")"
+  LOCAL_GATEWAY_CHART_VERSION="0.0.0-conformance-${digest}"
+  echo "   gateway chart version ${LOCAL_GATEWAY_CHART_VERSION}"
   workdir="$(mktemp -d)"
   helm package "${REPO_ROOT}/kubernetes/helm/gateway-helm-chart" \
     --version "${LOCAL_GATEWAY_CHART_VERSION}" --destination "${workdir}" >/dev/null

@@ -25,7 +25,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
@@ -110,10 +110,12 @@ func TestRestAPIDeletionKeepsFinalizerWhenGatewayCleanupFails(t *testing.T) {
 	require.True(t, tracked, "tracker entry must stay while the API may still be deployed")
 }
 
-// TestRestAPIDeletionSkipsGatewayWithoutUsableCredential covers a matching gateway whose
-// configuration provides no controller credential (here: basic auth off and IDP only). The
-// operator could not have deployed the API there, so the deletion must not stall on it.
-func TestRestAPIDeletionSkipsGatewayWithoutUsableCredential(t *testing.T) {
+// TestRestAPIDeletionKeepsFinalizerWhenGatewayHasNoUsableCredential covers a matching gateway
+// whose configuration currently provides no controller credential (here: basic auth off and
+// IDP only). The API may have been deployed there under an earlier credential, and the operator
+// does not record which gateways accepted it, so the deletion must wait rather than drop the
+// finalizer and leave the API deployed untracked.
+func TestRestAPIDeletionKeepsFinalizerWhenGatewayHasNoUsableCredential(t *testing.T) {
 	ctx := context.Background()
 	r, c, key := deletingRestAPIFixture(t, "idp-only-gw", "idp-team", `gateway:
   config:
@@ -128,12 +130,13 @@ func TestRestAPIDeletionSkipsGatewayWithoutUsableCredential(t *testing.T) {
 	current := &apiv1.RestApi{}
 	require.NoError(t, c.Get(ctx, key, current))
 	_, err := r.reconcileAPIDeletion(ctx, current)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.ErrorIs(t, err, auth.ErrNoControllerCredentials)
+	require.Contains(t, err.Error(), "may still be deployed")
 
 	after := &apiv1.RestApi{}
-	err = c.Get(ctx, key, after)
-	require.True(t, apierrors.IsNotFound(err) || !controllerutil.ContainsFinalizer(after, apiFinalizerName),
-		"finalizer must be removed when no matching gateway can hold the API (get error: %v)", err)
+	require.NoError(t, c.Get(ctx, key, after))
+	require.True(t, controllerutil.ContainsFinalizer(after, apiFinalizerName), "finalizer must stay while the API may still be deployed")
 	_, tracked := r.apiTracker.Get(key.String())
-	require.False(t, tracked)
+	require.True(t, tracked)
 }
