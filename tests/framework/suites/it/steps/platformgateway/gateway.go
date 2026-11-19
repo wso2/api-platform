@@ -1180,6 +1180,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
 	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
+	sc.Step(`^I wait for an analytics event for path "([^"]*)" with metadata field "([^"]*)" with value "([^"]*)"$`,
+		g.waitForAnalyticsMetadata)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
@@ -2418,6 +2420,28 @@ func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status
 	_, err = g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("path %q with response status %d", resolved, status),
 		func(event *analyticsEvent) bool {
 			return analyticsEventMatchesPath(event.Request.URI, resolved) && event.Response.Status == status
+		})
+	return err
+}
+
+// waitForAnalyticsMetadata waits until the collector holds an event for path whose metadata
+// field has the value. Requests that share a route, such as an MCP proxy's, publish events the
+// "latest event for path" steps cannot tell apart, so a scenario waits for its own call's event
+// before asserting on the latest one.
+func (g *Gateway) waitForAnalyticsMetadata(ctx context.Context, path, field, want string) error {
+	resolvedPath, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	_, err = g.latestMatchingAnalyticsEvent(ctx,
+		fmt.Sprintf("path %q with metadata field %q %q", resolvedPath, field, resolved),
+		func(event *analyticsEvent) bool {
+			value, ok := traverseJSON(event.Metadata, field)
+			return analyticsEventMatchesPath(event.Request.URI, resolvedPath) && ok && fmt.Sprintf("%v", value) == resolved
 		})
 	return err
 }

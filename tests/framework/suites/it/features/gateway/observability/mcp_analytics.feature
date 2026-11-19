@@ -65,6 +65,7 @@ Feature: Analytics published for MCP proxies
     # tools/call and the initialize that preceded it share a route, so the properties are what
     # tell the two events apart.
     Then the analytics collector should have received at least 1 event
+    And I wait for an analytics event for path "${CTX:mcpContext}/mcp" with metadata field "mcpAnalytics.jsonRpcMethod" with value "tools/call"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.jsonRpcMethod" with value "tools/call"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.capabilityName" with value "add"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.capability" with value "TOOL"
@@ -110,6 +111,7 @@ Feature: Analytics published for MCP proxies
     Then the response should be successful
 
     Then the analytics collector should have received at least 1 event
+    And I wait for an analytics event for path "${CTX:mcpContext}/mcp" with metadata field "mcpAnalytics.jsonRpcMethod" with value "tools/call"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.jsonRpcMethod" with value "tools/call"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.capabilityName" with value "add"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.capability" with value "TOOL"
@@ -146,6 +148,7 @@ Feature: Analytics published for MCP proxies
       """
 
     Then the analytics collector should have received at least 1 event
+    And I wait for an analytics event for path "${CTX:mcpContext}/mcp" with metadata field "mcpAnalytics.jsonRpcMethod" with value "resources/read"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.jsonRpcMethod" with value "resources/read"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.capability" with value "RESOURCE"
     And the latest analytics event for path "${CTX:mcpContext}/mcp" should have metadata field "mcpAnalytics.resourceUri" with value "file:///absent.txt"
