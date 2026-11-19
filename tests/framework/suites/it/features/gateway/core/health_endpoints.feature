@@ -94,6 +94,9 @@ Feature: Gateway liveness and readiness endpoints
     Then the response status code should be 401
     When I send a "GET" request to the gateway controller management API health path "/api/management/v1/ready"
     Then the response status code should be 200
+    Given I authenticate using basic auth as "admin"
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis"
+    Then the response should be successful
 
   @HEALTH-036
   Scenario Outline: The management API has no unprefixed <path> health path
