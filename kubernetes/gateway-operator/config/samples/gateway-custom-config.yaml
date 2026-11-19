@@ -167,16 +167,16 @@ data:
           mountPath: /app/data/aesgcm-keys
         deployment:
           extraEnvFrom: []
-          # Admin API is served under /api/admin/v1 (bare /health is the deprecated alias).
+          # The probes call the controller's management API health endpoints; the gateway chart
+          # fills in the port and scheme ("rest" over HTTP, or "rest-tls" over HTTPS with
+          # gateway.config.controller.server.tls). They need a gateway chart and a controller
+          # image that serve them; with older ones, use path /api/admin/v1/health with port: admin.
           livenessProbe:
             httpGet:
-              path: /api/admin/v1/health
-              port: admin
-          # Readiness probes the health endpoint too, which every controller release serves.
+              path: /api/management/v1/health
           readinessProbe:
             httpGet:
-              path: /api/admin/v1/health
-              port: admin
+              path: /api/management/v1/ready
 
       # Unified gateway-runtime (Envoy + policy-engine) (recommended for operator deploys)
       gatewayRuntime:
