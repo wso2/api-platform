@@ -51,8 +51,6 @@ blocks:
         features:
           - features/apip_portal.feature
 
-  # Runs self-hosted gateway containers against the cloud control plane; requires Docker and
-  # gateway images. Kept separate from the Docker-less apip-cloud job.
   - name: apip-cloud-self-hosted
     parallel: 1
     components:

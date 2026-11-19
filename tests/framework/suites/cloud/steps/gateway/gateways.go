@@ -34,8 +34,9 @@ import (
 	"github.com/wso2/api-platform/tests/framework/suites/cloud/steps/cloudbase"
 )
 
-// gatewayStatuses are the statuses a managed gateway reports.
-var gatewayStatuses = map[string]bool{"PROVISIONING": true, "FAILED": true, "ACTIVE": true, "DISCONNECTED": true}
+// gatewayStatuses are the statuses a managed gateway reports. A gateway that is being deleted
+// stays in the listing as DELETING until the platform has removed it.
+var gatewayStatuses = map[string]bool{"PROVISIONING": true, "FAILED": true, "ACTIVE": true, "DISCONNECTED": true, "DELETING": true}
 
 // gatewayKinds are the functionality types a managed gateway can have.
 var gatewayKinds = []string{cloudbase.RegularGatewayKind, "ai", "event"}
@@ -67,7 +68,7 @@ func validateGatewayListing(items []map[string]any) error {
 		}
 		status, _ := item["status"].(string)
 		if !gatewayStatuses[status] {
-			return fmt.Errorf("managed gateway %q reports status %q, want one of PROVISIONING, FAILED, ACTIVE, DISCONNECTED (the listing gives it as %v)", id, status, item)
+			return fmt.Errorf("managed gateway %q reports status %q, want one of PROVISIONING, FAILED, ACTIVE, DISCONNECTED, DELETING (the listing gives it as %v)", id, status, item)
 		}
 		reason, _ := item["statusReason"].(string)
 		if status == "FAILED" && reason == "" {
@@ -77,7 +78,7 @@ func validateGatewayListing(items []map[string]any) error {
 			return fmt.Errorf("managed gateway %q reports status reason %q while %s", id, reason, status)
 		}
 		active, _ := item["isActive"].(bool)
-		if active && status != "ACTIVE" && status != "FAILED" {
+		if active && status != "ACTIVE" && status != "FAILED" && status != "DELETING" {
 			return fmt.Errorf("managed gateway %q is connected but reports %s", id, status)
 		}
 		if status == "ACTIVE" && !active {

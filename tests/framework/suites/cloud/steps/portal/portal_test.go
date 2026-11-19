@@ -2581,3 +2581,60 @@ func cloudSteps(t *testing.T, handler http.HandlerFunc) (*Steps, context.Context
 	base, ctx, local, registry := cloudbase.CloudSteps(t, handler)
 	return &Steps{Steps: base}, ctx, local, registry
 }
+
+func TestAPublicationActionIsSentAgainWhileThePlatformCannotReachThePortal(t *testing.T) {
+	previousInterval, previousTimeout := publicationRetryInterval, publicationRetryTimeout
+	publicationRetryInterval, publicationRetryTimeout = retry.BaseInterval, 300*time.Millisecond
+	t.Cleanup(func() { publicationRetryInterval, publicationRetryTimeout = previousInterval, previousTimeout })
+
+	for name, tc := range map[string]struct {
+		answers      []int
+		code         string
+		wantStatus   int
+		wantRequests int
+	}{
+		"an unreachable portal is asked again until it answers": {[]int{503, 503, 201}, portalUnavailableCode, http.StatusCreated, 3},
+		"a refusal is published at once, not asked again":       {[]int{409}, "PUBLICATION_STATE_CONFLICT", http.StatusConflict, 1},
+		"another unavailable answer is not asked again":         {[]int{503}, "SOMETHING_ELSE", http.StatusServiceUnavailable, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(cloudbase.CloudConsoleAccessTokenEnv, "console-token")
+			requests := 0
+			steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+				status := tc.answers[min(requests, len(tc.answers)-1)]
+				requests++
+				body := map[string]string{"code": tc.code}
+				if status == http.StatusCreated {
+					body = map[string]string{"status": "published"}
+				}
+				cloudbase.WriteJSON(w, status, body)
+			})
+			local.Set(keyAPIPortalID, "portal-1")
+			local.Set(cloudbase.KeyAPIID, "api-1")
+
+			require.NoError(t, steps.publicationAction(ctx, "publish", "synthetic REST API"))
+			published, err := httpx.Published(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, published.StatusCode)
+			require.Equal(t, tc.wantRequests, requests)
+		})
+	}
+}
+
+func TestAPublicationActionStopsAskingWhenThePortalStaysUnreachable(t *testing.T) {
+	previousInterval, previousTimeout := publicationRetryInterval, publicationRetryTimeout
+	publicationRetryInterval, publicationRetryTimeout = retry.BaseInterval, 200*time.Millisecond
+	t.Cleanup(func() { publicationRetryInterval, publicationRetryTimeout = previousInterval, previousTimeout })
+	if testing.Short() {
+		t.Skip("waits out the retry package's minimum deadline of a minute")
+	}
+	t.Setenv(cloudbase.CloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		cloudbase.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"code": portalUnavailableCode})
+	})
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(cloudbase.KeyAPIID, "api-1")
+
+	require.NoError(t, steps.publicationAction(ctx, "publish", "synthetic REST API"), "the answer is left for the scenario to assert")
+	require.ErrorContains(t, steps.AssertCloudResponseStatus(ctx, http.StatusCreated), "503")
+}

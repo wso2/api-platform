@@ -118,6 +118,7 @@ func TestValidateGatewayListing(t *testing.T) {
 		listedManagedGateway("dev-new", "dev", "PROVISIONING", false),
 		listedManagedGateway("dev-built", "dev", "DISCONNECTED", false),
 	}
+	good = append(good, listedManagedGateway("dev-going", "dev", "DELETING", true))
 	good[1]["endpoints"] = []any{"https://gw.example.com"}
 	good[1]["functionalityType"] = "ai"
 	require.NoError(t, validateGatewayListing(good))

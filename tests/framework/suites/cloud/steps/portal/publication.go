@@ -36,6 +36,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/suites/cloud/steps/cloudbase"
 )
@@ -545,6 +546,49 @@ func thumbnailFormOf(content []byte) ([]byte, string, error) {
 	return body.Bytes(), form.FormDataContentType(), nil
 }
 
+// portalUnavailableCode is the code the platform answers with when it cannot reach the API Portal
+// at that moment; the answer itself asks the caller to try again.
+const portalUnavailableCode = "PUBLICATION_PORTAL_UNAVAILABLE"
+
+// publicationRetryInterval is the pause before a publication action is sent again after the
+// platform could not reach the API Portal, and publicationRetryTimeout how long that is retried.
+var (
+	publicationRetryInterval = 5 * time.Second
+	publicationRetryTimeout  = 2 * time.Minute
+)
+
+// sendPublicationAction sends a publication action and sends it again while the platform answers
+// that it cannot reach the API Portal. Any other answer, including a refusal a scenario expects, is
+// returned and published at once. When the portal stays unreachable the last answer is published
+// for the scenario to assert.
+func (s *Steps) sendPublicationAction(ctx context.Context, target cloudbase.PublicationTarget, action string) (*httpx.Response, error) {
+	var last *httpx.Response
+	err := retry.Await(ctx, retry.Options{Timeout: publicationRetryTimeout, Interval: publicationRetryInterval},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, err := s.DoAuthenticated(ctx, http.MethodPost, target.Path("/"+action), nil)
+			if err != nil {
+				return nil, err
+			}
+			last = resp
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool { return resp != nil && !portalUnavailable(resp) },
+		"waiting for the platform to reach the API Portal")
+	if err != nil && last != nil && portalUnavailable(last) {
+		return last, nil
+	}
+	return last, err
+}
+
+// portalUnavailable reports whether the platform could not reach the API Portal for the request.
+func portalUnavailable(resp *httpx.Response) bool {
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		return false
+	}
+	code, err := cloudbase.StringField(resp, "code")
+	return err == nil && code == portalUnavailableCode
+}
+
 // publicationAction publishes, deprecates or unpublishes and leaves the answer for the scenario
 // to assert. The unpublish that removes a listing is registered before a publish is sent, since a
 // publish can fail after the portal accepted it.
@@ -561,7 +605,7 @@ func (s *Steps) publicationAction(ctx context.Context, action, subject string) e
 			return fmt.Errorf("registering the publication of %q for cleanup: %w", target.API, err)
 		}
 	}
-	resp, err := s.DoAuthenticated(ctx, http.MethodPost, target.Path("/"+action), nil)
+	resp, err := s.sendPublicationAction(ctx, target, action)
 	if err != nil {
 		return err
 	}
