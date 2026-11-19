@@ -50,7 +50,7 @@ RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
 # CGO is disabled, cross-compilation introduces no additional runtime
 # dependencies. This approach is consistent with the platform-api and gateway
 # images.
-FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS bff
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS bff
 ARG TARGETOS
 ARG TARGETARCH
 # Off by default; the test framework turns it on to collect BFF coverage.

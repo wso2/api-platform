@@ -136,7 +136,7 @@ jobs:
         if: github.event_name == 'pull_request' && steps.filter.outputs.backend == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
 
       # The blocks the integration suite runs: the blocks of the changed features and block
@@ -167,7 +167,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
 
       - name: Ensure C compiler is available
@@ -256,7 +256,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up Node.js
@@ -435,7 +435,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
 
       # Built the way apim-saas's e2e image builds it (test/e2e/Dockerfile).
@@ -487,7 +487,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
 
       - name: Ensure C compiler is available
@@ -623,7 +623,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
 
       # The coverage report merges Node/V8 and browser coverage with npm and node.

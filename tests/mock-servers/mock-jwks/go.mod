@@ -1,6 +1,6 @@
 module mock-jwks
 
-go 1.26.10
+go 1.26.11
 
 require github.com/go-jose/go-jose/v4 v4.0.4
 
