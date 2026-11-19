@@ -18,7 +18,7 @@
 
 module github.com/wso2/api-platform/event-gateway/it
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/cucumber/godog v0.16.0

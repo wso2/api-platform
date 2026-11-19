@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/event-gateway/gateway-controller
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/envoyproxy/go-control-plane v0.14.0
