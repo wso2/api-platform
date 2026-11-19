@@ -17,7 +17,9 @@
  */
 
 import { Box } from '@wso2/oxygen-ui';
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
+
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 
 // Artwork colours, fixed on purpose: the theme has no indigo, and its primary
 // is a redder orange than the mark this drawing belongs to.
@@ -95,6 +97,47 @@ const rightSpecks = specks('right');
  * it sits on, light or dark.
  */
 export function ConvergingStrandsIllustration() {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const reducedMotion = usePrefersReducedMotion();
+
+  // The drawing leans a little toward the pointer: it publishes where the
+  // pointer is, relative to the drawing, as --px and --py (-1 to 1), and each
+  // layer moves by its own share of that, so the layers read as having depth.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || reducedMotion) return undefined;
+    let frame = 0;
+    const lean = (x: number, y: number) => {
+      svg.style.setProperty('--px', x.toFixed(3));
+      svg.style.setProperty('--py', y.toFixed(3));
+    };
+    const onMove = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') return;
+      if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const box = svg.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) return;
+        const clamp = (value: number) => Math.max(-1, Math.min(1, value));
+        lean(
+          clamp((event.clientX - (box.left + box.width / 2)) / box.width),
+          clamp((event.clientY - (box.top + box.height / 2)) / box.height),
+        );
+      });
+    };
+    const onLeave = () => {
+      cancelAnimationFrame(frame);
+      lean(0, 0);
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    document.documentElement.addEventListener('pointerleave', onLeave);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('pointermove', onMove);
+      document.documentElement.removeEventListener('pointerleave', onLeave);
+    };
+  }, [reducedMotion]);
+
   // Gradient ids are document-wide: two drawings on a page must not share them.
   const uid = useId().replace(/:/g, '');
   const leftId = `strands-left-${uid}`;
@@ -105,6 +148,7 @@ export function ConvergingStrandsIllustration() {
       aria-hidden="true"
       component="svg"
       preserveAspectRatio="xMidYMid meet"
+      ref={svgRef}
       sx={{
         display: 'block',
         height: 'auto',
@@ -120,6 +164,23 @@ export function ConvergingStrandsIllustration() {
         '& .stop-right': { stopColor: ORANGE },
         '& .stop-right-bright': { stopColor: ORANGE_BRIGHT },
         '& .stop-glow': { stopColor: ORANGE },
+        // Each layer takes its own share of the lean; further layers move less.
+        '& .layer': { transition: 'transform 300ms ease-out' },
+        '& .layer-glow': {
+          transform: 'translate(calc(var(--px, 0) * 18px), calc(var(--py, 0) * 12px))',
+        },
+        '& .layer-left': {
+          transform: 'translate(calc(var(--px, 0) * 3px), calc(var(--py, 0) * 3px))',
+        },
+        '& .layer-right': {
+          transform: 'translate(calc(var(--px, 0) * 5px), calc(var(--py, 0) * 4px))',
+        },
+        '& .layer-specks': {
+          transform: 'translate(calc(var(--px, 0) * 10px), calc(var(--py, 0) * 8px))',
+        },
+        '& .layer-core': {
+          transform: 'translate(calc(var(--px, 0) * 7px), calc(var(--py, 0) * 6px))',
+        },
       }}
       viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
     >
@@ -153,35 +214,45 @@ export function ConvergingStrandsIllustration() {
           <stop className="stop-glow" offset="1" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <ellipse cx={CENTER_X} cy={CENTER_Y} fill={`url(#${glowId})`} rx={150} ry={110} />
-      {strands.map((index) => (
-        <path className="strand strand-left" d={strandPath(index, 'left')} key={`l${index}`} />
-      ))}
-      {strands.map((index) => (
-        <path className="strand strand-right" d={strandPath(index, 'right')} key={`r${index}`} />
-      ))}
-      {leftSpecks.map((speck, index) => (
-        <circle
-          className="fill-left"
-          cx={speck.x}
-          cy={speck.y}
-          fillOpacity={speck.opacity}
-          key={`ls${index}`}
-          r={speck.radius}
-        />
-      ))}
-      {rightSpecks.map((speck, index) => (
-        <circle
-          className="fill-right"
-          cx={speck.x}
-          cy={speck.y}
-          fillOpacity={speck.opacity}
-          key={`rs${index}`}
-          r={speck.radius}
-        />
-      ))}
-      <circle className="fill-left" cx={CENTER_X - 4} cy={CENTER_Y} r={2} />
-      <circle className="fill-right" cx={CENTER_X + 4} cy={CENTER_Y} r={2.5} />
+      <g className="layer layer-glow">
+        <ellipse cx={CENTER_X} cy={CENTER_Y} fill={`url(#${glowId})`} rx={150} ry={110} />
+      </g>
+      <g className="layer layer-left">
+        {strands.map((index) => (
+          <path className="strand strand-left" d={strandPath(index, 'left')} key={`l${index}`} />
+        ))}
+      </g>
+      <g className="layer layer-right">
+        {strands.map((index) => (
+          <path className="strand strand-right" d={strandPath(index, 'right')} key={`r${index}`} />
+        ))}
+      </g>
+      <g className="layer layer-specks">
+        {leftSpecks.map((speck, index) => (
+          <circle
+            className="fill-left"
+            cx={speck.x}
+            cy={speck.y}
+            fillOpacity={speck.opacity}
+            key={`ls${index}`}
+            r={speck.radius}
+          />
+        ))}
+        {rightSpecks.map((speck, index) => (
+          <circle
+            className="fill-right"
+            cx={speck.x}
+            cy={speck.y}
+            fillOpacity={speck.opacity}
+            key={`rs${index}`}
+            r={speck.radius}
+          />
+        ))}
+      </g>
+      <g className="layer layer-core">
+        <circle className="fill-left" cx={CENTER_X - 4} cy={CENTER_Y} r={2} />
+        <circle className="fill-right" cx={CENTER_X + 4} cy={CENTER_Y} r={2.5} />
+      </g>
     </Box>
   );
 }

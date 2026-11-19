@@ -27,6 +27,7 @@ import { makeAuthState } from '@/test/mockAuthState';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
 
+import { OrganizationLandingPage } from './OrganizationLandingPage';
 import { OrganizationRedirectPage } from './SystemPages';
 
 const STORAGE_KEY = 'oxygen-ui:header-breadcrumbs';
@@ -60,6 +61,7 @@ function renderLanding() {
         }
       >
         <Route element={<OrganizationRedirectPage />} path={routes.organizations} />
+        <Route element={<OrganizationLandingPage />} path={routes.organizationLanding()} />
         <Route element={<ProjectProbe />} path={routes.projectHome()} />
         <Route element={<OrganizationProbe />} path={routes.organizationHome()} />
       </Route>
@@ -170,5 +172,20 @@ describe('OrganizationRedirectPage — where users land', () => {
 
     expect(await screen.findByText('project-home org-a/retail')).toBeInTheDocument();
     expect(exchangeOrgToken).not.toHaveBeenCalled();
+  });
+
+  it("follows a remembered organization the Platform API's first page does not list", async () => {
+    // Only org-a is on the list the Platform API returned; the identity
+    // provider's own membership still names org-b.
+    server.use(
+      collection('/organizations', [anOrganization({ id: 'org-a', displayName: 'Org A' })]),
+      collection('/projects', [aProject({ id: 'retail' })]),
+      resource('/projects/:projectId', aProject({ id: 'retail' })),
+    );
+    remember('org-b', 'billing');
+    vi.stubGlobal('location', { ...window.location, replace: vi.fn() });
+    renderLanding();
+
+    await vi.waitFor(() => expect(exchangeOrgToken).toHaveBeenCalledWith('org-b'));
   });
 });

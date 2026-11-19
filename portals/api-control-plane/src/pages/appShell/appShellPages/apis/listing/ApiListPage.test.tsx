@@ -684,4 +684,14 @@ describe('ApiList — first-run replacement', () => {
 
     expect(onFirstRunChange).toHaveBeenLastCalledWith(false);
   });
+
+  it('does not report the replacement while an error is shown in its place', async () => {
+    server.use(failure('get', '/rest-apis', 500, 'INTERNAL_ERROR'), collection('/graphql-apis', []));
+    const onFirstRunChange = vi.fn();
+    renderWithFirstRun({ onFirstRunChange, renderFirstRun: () => <div>welcome</div> });
+
+    expect(await screen.findByText('Unable to load APIs')).toBeInTheDocument();
+    expect(screen.queryByText('welcome')).not.toBeInTheDocument();
+    expect(onFirstRunChange).not.toHaveBeenCalledWith(true);
+  });
 });

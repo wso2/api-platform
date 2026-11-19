@@ -21,6 +21,8 @@ import { ArrowLeftRight, Globe, Plug, RadioTower, Share2 } from '@wso2/oxygen-ui
 import { useEffect, useState, type ReactElement } from 'react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
+
 import { API_TYPES } from '../../apis/create/uiConfig';
 
 const ROW_HEIGHT_REM = 2;
@@ -63,23 +65,6 @@ const TYPE_ROWS: Record<string, { icon: ReactElement; message: keyof typeof mess
   websub: { icon: <RadioTower size={18} />, message: 'websub' },
   grpc: { icon: <Plug size={18} />, message: 'grpc' },
 };
-
-function usePrefersReducedMotion(): boolean {
-  const query = '(prefers-reduced-motion: reduce)';
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(query).matches
-      : false,
-  );
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return undefined;
-    const media = window.matchMedia(query);
-    const onChange = () => setReduced(media.matches);
-    media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-  return reduced;
-}
 
 /**
  * "Supports" followed by the API types of the create wizard's catalog,

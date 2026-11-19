@@ -22,8 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
-import { useProjects } from '@/api/resources/projects';
-import { latestProjectId, readStoredScope } from '@/navigation/landing';
+import { readStoredScope } from '@/navigation/landing';
 import { AppPageContent } from '@/components/AppPageContent';
 import { AppPage } from '@/components/AppPage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -140,9 +139,6 @@ const notFoundMessages = defineMessages({
 /** How long to keep waiting for a first organization to appear, and how often to look. */
 const PROVISIONING_ATTEMPTS = 20;
 const PROVISIONING_INTERVAL_MS = 3000;
-// Projects read to pick where to land: enough that "the latest" and "still there"
-// are answered from the whole list for any ordinary organization.
-const LANDING_PROJECT_LIMIT = 100;
 
 export function OrganizationRedirectPage() {
   return (
@@ -154,7 +150,7 @@ export function OrganizationRedirectPage() {
 
 function OrganizationRedirect() {
   const intl = useIntl();
-  const { canSwitchOrganization, user } = useAuth();
+  const { canSwitchOrganization, organizations: memberships, user } = useAuth();
   const location = useLocation();
   // Organizations the session was refused are never picked again.
   const rejected = (location.state as OrganizationPickerState | null)?.rejectedOrganizations ?? [];
@@ -177,48 +173,34 @@ function OrganizationRedirect() {
   const [attempt, setAttempt] = useState(0);
   const { refetch } = organizationsQuery;
 
-  // Users land on a project's home: the one the header last remembered when it
-  // is still there, else the organization's most recently changed project.
+  // Users land on a project's home, which the organization's landing step picks
+  // once the session is in the organization. The organization is the one the
+  // header last remembered where the session can move between organizations and
+  // the identity provider lists it for this user (its full membership, not a
+  // page of the Platform API's list); else the one in hand.
   const stored = useMemo(readStoredScope, []);
   const landingOrg = sessionLanding ?? organization?.id;
-  const projectsQuery = useProjects({ limit: LANDING_PROJECT_LIMIT }, { orgId: landingOrg });
-  // A remembered organization other than the one in hand is only honoured where
-  // the session can move between organizations, and only if it is one of theirs.
-  const storedElsewhere =
+  const remembersElsewhere =
     stored !== null &&
     canSwitchOrganization &&
     stored.organization !== landingOrg &&
-    Boolean(organizations?.some((item) => item.id === stored.organization));
-  const waitingForList =
+    !rejected.includes(stored.organization);
+  const waitingForMemberships = remembersElsewhere && memberships === undefined;
+  const rememberedOrganization =
     stored !== null &&
-    canSwitchOrganization &&
-    stored.organization !== landingOrg &&
-    organizationsQuery.isPending;
+    !rejected.includes(stored.organization) &&
+    (stored.organization === landingOrg ||
+      (remembersElsewhere && memberships?.some((item) => item.handle === stored.organization)))
+      ? stored.organization
+      : undefined;
 
   const landOn = (orgHandle: string, state?: OrganizationPickerState) => {
-    if (waitingForList || (projectsQuery.isPending && !projectsQuery.error)) {
+    if (waitingForMemberships) {
       return <LoadingState label={intl.formatMessage(organizationRedirectMessages.loading)} />;
     }
-    if (storedElsewhere && stored) {
-      return (
-        <Navigate
-          to={routes.projectHome(stored.organization, stored.project)}
-          replace
-          state={state}
-        />
-      );
-    }
-    const projects = projectsQuery.data?.list ?? [];
-    const remembered =
-      stored?.organization === orgHandle && projects.some((item) => item.id === stored.project)
-        ? stored.project
-        : undefined;
-    const projectId = remembered ?? latestProjectId(projects);
     return (
       <Navigate
-        to={
-          projectId ? routes.projectHome(orgHandle, projectId) : routes.organizationHome(orgHandle)
-        }
+        to={routes.organizationLanding(rememberedOrganization ?? orgHandle)}
         replace
         state={state}
       />

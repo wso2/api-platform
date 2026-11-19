@@ -275,8 +275,9 @@ export function ApiList({
   // Show the create prompt only for an empty project, not an empty search.
   const isFirstRun = total === 0 && !isSearching;
 
-  // Not while loading: an unloaded list is not an empty one.
-  const showingFirstRun = !isPending && isFirstRun && renderFirstRun !== undefined;
+  // Not while loading (an unloaded list is not an empty one), and not while an
+  // error is shown in its place: neither displays the replacement.
+  const showingFirstRun = !isPending && !error && isFirstRun && renderFirstRun !== undefined;
   useEffect(() => {
     onFirstRunChange?.(showingFirstRun);
   }, [onFirstRunChange, showingFirstRun]);

@@ -37,6 +37,7 @@ import { useGateways } from '@/api/resources/gateways';
 import { ConvergingStrandsIllustration } from '@/components/illustrations/ConvergingStrandsIllustration';
 import { useGreetingName } from '@/hooks/useGreetingName';
 import type { LimitedComponent } from '@/hooks/useResourceLimits';
+import { Can } from '@/permissions/Can';
 import { CanCreate } from '@/permissions/CanCreate';
 import { routes } from '@/routes/paths';
 import { ProjectHeaderActions } from './ProjectMetadata';
@@ -119,6 +120,11 @@ const messages = defineMessages({
 
 type SideCardProps = {
   action: ReactNode;
+  /**
+   * Whether the action creates something. Only creating counts against the
+   * organization's limit; opening what exists must stay available at the limit.
+   */
+  creates: boolean;
   /** The operation (and quota) the action is gated on, exactly as the organization overview gates its cards. */
   component?: LimitedComponent;
   operationId: string;
@@ -132,6 +138,7 @@ type SideCardProps = {
 function SideCard({
   action,
   chip,
+  creates,
   component,
   description,
   icon,
@@ -139,6 +146,17 @@ function SideCard({
   operationId,
   title,
 }: SideCardProps) {
+  const actionButton = (
+    <ButtonBase
+      onClick={onAction}
+      sx={{ alignSelf: 'flex-start', color: 'primary.main', gap: 0.5, mt: 2 }}
+    >
+      <Typography sx={{ fontWeight: 600 }} variant="body2">
+        {action}
+      </Typography>
+      <ArrowRight size={16} />
+    </ButtonBase>
+  );
   return (
     <Card
       sx={{ display: 'flex', flex: 1, flexDirection: 'column', justifyContent: 'center', p: 2 }}
@@ -165,17 +183,15 @@ function SideCard({
           {description}
         </Typography>
       </Stack>
-      <CanCreate component={component} denied="hide" do={operationId}>
-        <ButtonBase
-          onClick={onAction}
-          sx={{ alignSelf: 'flex-start', color: 'primary.main', gap: 0.5, mt: 2 }}
-        >
-          <Typography sx={{ fontWeight: 600 }} variant="body2">
-            {action}
-          </Typography>
-          <ArrowRight size={16} />
-        </ButtonBase>
-      </CanCreate>
+      {creates ? (
+        <CanCreate component={component} denied="hide" do={operationId}>
+          {actionButton}
+        </CanCreate>
+      ) : (
+        <Can denied="hide" do={operationId}>
+          {actionButton}
+        </Can>
+      )}
     </Card>
   );
 }
@@ -328,6 +344,7 @@ export function ProjectWelcome({
                   {...(manageGateways ? messages.gatewayManage : messages.gatewayConnect)}
                 />
               }
+              creates={!manageGateways}
               chip={
                 hasGateways
                   ? intl.formatMessage(messages.gatewayCount, { count: gatewayCount })
@@ -345,6 +362,7 @@ export function ProjectWelcome({
                   {...(managePortals ? messages.portalManage : messages.portalCreate)}
                 />
               }
+              creates={!managePortals}
               chip={
                 hasPortals
                   ? intl.formatMessage(messages.portalCount, { count: portalCount })

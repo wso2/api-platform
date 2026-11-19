@@ -16,11 +16,17 @@
  * under the License.
  */
 
+import { useEffect, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { NO_RESOURCE_LIMITS, PortProvider, type CloudHostPort } from '@/hostPort';
+import {
+  ResourceLimitsProvider,
+  useResourceLimits,
+  type ResourceLimitSet,
+} from '@/hooks/useResourceLimits';
 import { aGateway, collection } from '@/test/msw';
 import { makeAuthState } from '@/test/mockAuthState';
 import { makeConsoleScope } from '@/test/mockScope';
@@ -57,20 +63,40 @@ const serveCounts = (gateways: number, portals: number) =>
     ),
   );
 
+/** Supplies limits the way a cloud plugin would. */
+function SupplyLimits({ limits, children }: { limits: ResourceLimitSet; children: ReactNode }) {
+  const { setResourceLimits } = useResourceLimits();
+  useEffect(() => {
+    setResourceLimits(limits);
+    // One push is enough, as in the real gate's first supply.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <>{children}</>;
+}
+
 function renderWelcome(
-  options: { onCreateApi?: () => void; scopes?: string[]; enforce?: boolean } = {},
+  options: {
+    onCreateApi?: () => void;
+    scopes?: string[];
+    enforce?: boolean;
+    limits?: ResourceLimitSet;
+  } = {},
 ) {
   return renderWithProviders(
-    <PortProvider value={port}>
-      <ApiScopeProvider orgId={ORG}>
-        <ProjectWelcome
-          onCreateApi={options.onCreateApi ?? (() => {})}
-          orgDisplayName="Acme"
-          orgHandle={ORG}
-          projectName="Retail"
-        />
-      </ApiScopeProvider>
-    </PortProvider>,
+    <ResourceLimitsProvider>
+      <SupplyLimits limits={options.limits ?? {}}>
+        <PortProvider value={port}>
+          <ApiScopeProvider orgId={ORG}>
+            <ProjectWelcome
+              onCreateApi={options.onCreateApi ?? (() => {})}
+              orgDisplayName="Acme"
+              orgHandle={ORG}
+              projectName="Retail"
+            />
+          </ApiScopeProvider>
+        </PortProvider>
+      </SupplyLimits>
+    </ResourceLimitsProvider>,
     {
       route: `/organizations/${ORG}/projects/retail`,
       scope: makeConsoleScope(),
@@ -154,5 +180,21 @@ describe('ProjectWelcome', () => {
       expect(screen.queryByRole('button', { name: /Connect a gateway/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Create a portal/ })).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('ProjectWelcome — an organization at its portal limit', () => {
+  it('still opens the portals it has, but cannot create another', async () => {
+    serveCounts(0, 1);
+    renderWelcome({ limits: { portals: { max: 1, used: 1 } } });
+
+    expect(await screen.findByRole('button', { name: /Manage portals/ })).toBeEnabled();
+  });
+
+  it('disables creating the first portal when the limit allows none', async () => {
+    serveCounts(0, 0);
+    renderWelcome({ limits: { portals: { max: 0, used: 0 } } });
+
+    expect(await screen.findByRole('button', { name: /Create a portal/ })).toBeDisabled();
   });
 });

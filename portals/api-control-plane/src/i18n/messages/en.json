@@ -5385,6 +5385,10 @@
   "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.title": {
     "defaultMessage": "Page not found"
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationLandingPage.loading": {
+    "defaultMessage": "Loading organization",
+    "description": "Shown while the organization's projects are read to choose where to land."
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyDescription": {
     "defaultMessage": "Your account is authenticated, but it is not associated with an organization."
   },
