@@ -64,8 +64,8 @@
 //	unavailable-      503, every time
 //	slow-             tokens after three seconds, or nothing if the caller gives up first
 //
-// Every request is logged with the status it was answered with, or 0 when the caller left before
-// the answer, as a slow- request does when its caller gives up.
+// Every request is logged with the status it was answered with. A slow- request is logged with 0
+// while it waits, and keeps 0 if its caller gives up before the answer.
 //
 // The managed identity endpoint stands in for the one Azure Container Apps (and App Service) runs
 // beside an app with a managed identity. The runtime's IDENTITY_ENDPOINT is

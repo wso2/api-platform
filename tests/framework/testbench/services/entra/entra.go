@@ -93,8 +93,9 @@ type Request struct {
 	Resource       string `json:"resource,omitempty"`
 	APIVersion     string `json:"apiVersion,omitempty"`
 	IdentityHeader string `json:"identityHeader,omitempty"`
-	// Status is the HTTP status the service answered the request with, or 0 when the caller left
-	// before the answer was sent.
+	// Status is the HTTP status the service answered the request with. It is 0 while a slow-
+	// tenant's request waits for its answer, and stays 0 when the caller leaves before the answer
+	// is sent.
 	Status int `json:"status"`
 }
 
@@ -198,8 +199,9 @@ type admission struct {
 // admit records a token request under key. A malformed request is answered with rejected, its
 // status; a well-formed one, whose rejected is 0, gets the status decide picks for its position
 // among the partition's well-formed requests, so a malformed request never uses up a one-time
-// answer. It reports false when the partition budget is exhausted.
-func (s *Service) admit(key string, req Request, rejected int, decide func(eligible int) int) (admission, bool) {
+// answer. A well-formed pending request, one whose answer waits, is logged with status 0 until
+// settle records its answer. It reports false when the partition budget is exhausted.
+func (s *Service) admit(key string, req Request, rejected int, pending bool, decide func(eligible int) int) (admission, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.partitions[key]
@@ -215,11 +217,14 @@ func (s *Service) admit(key string, req Request, rejected int, decide func(eligi
 	if rejected == 0 {
 		p.eligible++
 		a.eligible = p.eligible
-		req.Status = decide(p.eligible)
+		a.status = decide(p.eligible)
+		if !pending {
+			req.Status = a.status
+		}
 	} else {
+		a.status = rejected
 		req.Status = rejected
 	}
-	a.status = req.Status
 	if len(p.requests) < maxRetainedRequests {
 		a.index = len(p.requests)
 		p.requests = append(p.requests, req)
@@ -227,16 +232,16 @@ func (s *Service) admit(key string, req Request, rejected int, decide func(eligi
 	return a, true
 }
 
-// abandon records that the caller of an admitted request left before it was answered: the
-// request keeps its place in the log and count, with status 0.
-func (s *Service) abandon(key string, a admission) {
+// settle records the answer of an admitted pending request. It runs before the answer is sent,
+// so a caller that has the answer never reads the request as unanswered.
+func (s *Service) settle(key string, a admission) {
 	if a.index < 0 {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if p := s.partitions[key]; p != nil {
-		p.requests[a.index].Status = 0
+		p.requests[a.index].Status = a.status
 	}
 }
 

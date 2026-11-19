@@ -411,6 +411,8 @@ func TestSlowWaitsAndStopsWhenCancelled(t *testing.T) {
 	start := time.Now()
 	issued(t, requestToken(t, svc, PrefixSlow+"x", validForm(foundryScope)))
 	require.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
+	require.Equal(t, http.StatusOK, recorded(t, svc, PrefixSlow+"x").Requests[0].Status,
+		"an answered slow request is recorded with its status")
 
 	svc = newWithSlowDelay(time.Hour)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -429,6 +431,8 @@ func TestSlowWaitsAndStopsWhenCancelled(t *testing.T) {
 		func(context.Context) (int, error) { return recorded(t, svc, PrefixSlow+"y").Count, nil },
 		func(count int) bool { return count == 1 },
 		"waiting for the slow token request to be admitted"))
+	require.Equal(t, 0, recorded(t, svc, PrefixSlow+"y").Requests[0].Status,
+		"a slow request is recorded with status 0 until it is answered")
 	cancel()
 	select {
 	case <-done:

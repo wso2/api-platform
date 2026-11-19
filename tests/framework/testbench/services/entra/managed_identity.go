@@ -94,7 +94,7 @@ func (s *Service) identityToken(block string, w http.ResponseWriter, r *http.Req
 		rejected = rejection.status
 	}
 
-	a, admitted := s.admit(identityLogKey(block, cmp.Or(req.ClientID, SystemAssigned)), req, rejected, func(eligible int) int {
+	a, admitted := s.admit(identityLogKey(block, cmp.Or(req.ClientID, SystemAssigned)), req, rejected, false, func(eligible int) int {
 		return identityOutcome(req.Resource, eligible)
 	})
 	if !admitted {
