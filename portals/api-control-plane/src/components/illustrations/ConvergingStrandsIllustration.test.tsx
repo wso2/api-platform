@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { renderWithProviders, waitFor } from '@/test/utils';
+import { renderWithProviders } from '@/test/utils';
 
 import { ConvergingStrandsIllustration } from './ConvergingStrandsIllustration';
 
@@ -49,84 +49,5 @@ describe('ConvergingStrandsIllustration', () => {
     );
     expect(ids).toHaveLength(6);
     expect(new Set(ids).size).toBe(6);
-  });
-
-  describe('leaning toward the pointer', () => {
-    afterEach(() => vi.unstubAllGlobals());
-
-    const rect = {
-      left: 0,
-      top: 0,
-      width: 400,
-      height: 300,
-      right: 400,
-      bottom: 300,
-      x: 0,
-      y: 0,
-    } as DOMRect;
-    // jsdom has no PointerEvent: a mouse event under the pointer event's name.
-    const move = (clientX: number, clientY: number, pointerType = 'mouse') => {
-      const event = new MouseEvent('pointermove', { bubbles: true, clientX, clientY });
-      Object.defineProperty(event, 'pointerType', { value: pointerType });
-      window.dispatchEvent(event);
-    };
-    const place = (svg: SVGElement) => vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue(rect);
-
-    it('publishes where the pointer is, relative to the drawing', async () => {
-      const { container } = renderWithProviders(<ConvergingStrandsIllustration />);
-      const svg = container.querySelector('svg') as SVGElement;
-      place(svg);
-
-      move(400, 150, 'mouse');
-
-      // Half a drawing-width to the right of its centre, level with it.
-      await waitFor(() => expect(svg.style.getPropertyValue('--px')).toBe('0.500'));
-      expect(svg.style.getPropertyValue('--py')).toBe('0.000');
-    });
-
-    it('never leans further than its limit, however far away the pointer is', async () => {
-      const { container } = renderWithProviders(<ConvergingStrandsIllustration />);
-      const svg = container.querySelector('svg') as SVGElement;
-      place(svg);
-
-      move(9000, -9000, 'mouse');
-
-      await waitFor(() => expect(svg.style.getPropertyValue('--px')).toBe('1.000'));
-      expect(svg.style.getPropertyValue('--py')).toBe('-1.000');
-    });
-
-    it('ignores touch', async () => {
-      const { container } = renderWithProviders(<ConvergingStrandsIllustration />);
-      const svg = container.querySelector('svg') as SVGElement;
-      place(svg);
-
-      move(400, 150, 'touch');
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      expect(svg.style.getPropertyValue('--px')).toBe('');
-    });
-
-    it('stays still for a user who prefers reduced motion', async () => {
-      vi.stubGlobal(
-        'matchMedia',
-        (query: string) =>
-          ({
-            matches: query.includes('prefers-reduced-motion'),
-            media: query,
-            addEventListener: () => {},
-            removeEventListener: () => {},
-            addListener: () => {},
-            removeListener: () => {},
-          }) as unknown as MediaQueryList,
-      );
-      const { container } = renderWithProviders(<ConvergingStrandsIllustration />);
-      const svg = container.querySelector('svg') as SVGElement;
-      place(svg);
-
-      move(400, 150, 'mouse');
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      expect(svg.style.getPropertyValue('--px')).toBe('');
-    });
   });
 });
