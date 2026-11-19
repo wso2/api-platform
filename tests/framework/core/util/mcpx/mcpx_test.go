@@ -77,16 +77,21 @@ func newDiscoverServer(t *testing.T) *httptest.Server {
 // server that predates MCP 2026-07-28 does, so a client has to fall back to initialize.
 func newLegacyServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return newDiscoverRefusingServer(t, `{"code":-32601,"message":"Method not found"}`)
+	return newDiscoverRefusingServer(t, `{"code":-32601,"message":"Method not found"}`, 0)
 }
 
 // newDiscoverRefusingServer answers server/discover with the given JSON-RPC error and serves
-// every other request with a stateful SDK server.
-func newDiscoverRefusingServer(t *testing.T, discoverError string) *httptest.Server {
+// every other request with a stateful SDK server. A non-zero deleteStatus answers every session
+// DELETE with that status instead.
+func newDiscoverRefusingServer(t *testing.T, discoverError string, deleteStatus int) *httptest.Server {
 	t.Helper()
 	server := newToolServer()
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
 	return startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete && deleteStatus != 0 {
+			w.WriteHeader(deleteStatus)
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -172,7 +177,7 @@ func TestConnectFallsBackToInitializeWhenServerDiscoverIsRefused(t *testing.T) {
 }
 
 func TestConnectFallsBackToInitializeOnAnyOtherServerDiscoverError(t *testing.T) {
-	server := newDiscoverRefusingServer(t, `{"code":-32603,"message":"Internal error"}`)
+	server := newDiscoverRefusingServer(t, `{"code":-32603,"message":"Internal error"}`, 0)
 	session := connect(t, server.URL+"/mcp", Options{})
 	require.Equal(t, []string{"server/discover", "initialize", "notifications/initialized"}, session.Handshake())
 	require.Equal(t, "2025-11-25", session.ProtocolVersion())
@@ -360,6 +365,77 @@ func TestNilAndClosedSessionsAreSafe(t *testing.T) {
 	session := connect(t, newLegacyServer(t).URL+"/mcp", Options{})
 	require.NoError(t, session.Close())
 	require.NoError(t, session.Close())
+}
+
+func TestConnectReleasesTheSessionWhenInitializeAnswersAnUnsupportedVersion(t *testing.T) {
+	var mu sync.Mutex
+	var deleted []string
+	server := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			mu.Lock()
+			deleted = append(deleted, r.Header.Get("Mcp-Session-Id"))
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var envelope struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		_ = json.Unmarshal(body, &envelope)
+		w.Header().Set("Content-Type", "application/json")
+		switch envelope.Method {
+		case "server/discover":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(envelope.ID) +
+				`,"error":{"code":-32601,"message":"Method not found"}}`))
+		case "initialize":
+			w.Header().Set("Mcp-Session-Id", "session-1")
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(envelope.ID) + `,"result":{` +
+				`"protocolVersion":"1999-01-01","capabilities":{},"serverInfo":{"name":"old","version":"1"}}}`))
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+
+	session, err := Connect(context.Background(), server.URL+"/mcp", Options{})
+	require.Nil(t, session)
+	require.ErrorContains(t, err, "1999-01-01")
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"session-1"}, deleted, "the session the server issued was not deleted")
+}
+
+func TestCloseReportsARefusedSessionDeletion(t *testing.T) {
+	session, err := Connect(context.Background(),
+		newDiscoverRefusingServer(t, `{"code":-32601,"message":"Method not found"}`, http.StatusInternalServerError).URL+"/mcp",
+		Options{})
+	require.NoError(t, err)
+	require.NotEmpty(t, session.ID())
+
+	require.ErrorContains(t, session.Close(), "HTTP 500")
+	require.ErrorContains(t, session.Close(), "HTTP 500", "a later Close must report the same failure")
+}
+
+func TestCloseAcceptsAnAlreadyDeletedSession(t *testing.T) {
+	session, err := Connect(context.Background(),
+		newDiscoverRefusingServer(t, `{"code":-32601,"message":"Method not found"}`, http.StatusNotFound).URL+"/mcp",
+		Options{})
+	require.NoError(t, err)
+	require.NoError(t, session.Close())
+}
+
+func TestDeletionOutcome(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusNoContent, http.StatusNotFound} {
+		outcome := &deletionOutcome{}
+		outcome.observe(status)
+		require.NoError(t, outcome.failure(), "HTTP %d", status)
+	}
+	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden, http.StatusInternalServerError} {
+		outcome := &deletionOutcome{}
+		outcome.observe(status)
+		require.ErrorContains(t, outcome.failure(), fmt.Sprintf("HTTP %d", status))
+	}
 }
 
 func TestZeroValueSessionIsSafe(t *testing.T) {

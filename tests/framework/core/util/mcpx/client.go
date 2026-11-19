@@ -79,9 +79,11 @@ type Session struct {
 	sdk         *mcp.ClientSession
 	handshake   []string
 	callTimeout time.Duration
+	deletion    *deletionOutcome
 
-	mu     sync.Mutex
-	closed bool
+	mu       sync.Mutex
+	closed   bool
+	closeErr error
 }
 
 // Connect opens a session to the MCP endpoint at rawURL with one attempt; a caller waiting for an
@@ -103,12 +105,14 @@ func Connect(ctx context.Context, rawURL string, opts Options) (*Session, error)
 	}
 
 	sent := &sentMethods{}
-	transport := &mcp.StreamableClientTransport{
+	deletion := &deletionOutcome{}
+	transport := &ownedTransport{Transport: &mcp.StreamableClientTransport{
 		Endpoint: endpoint,
 		HTTPClient: &http.Client{
 			Timeout: timeout,
 			Transport: &requestDecorator{
-				base: http.DefaultTransport, headers: cloneHeaders(opts.Headers), host: opts.Host, sent: sent,
+				base: http.DefaultTransport, headers: cloneHeaders(opts.Headers), host: opts.Host,
+				sent: sent, deletion: deletion,
 			},
 			// A redirect is returned to the SDK as the answer, never followed: the decorator
 			// would otherwise put the caller's headers back on a request to another host after
@@ -117,15 +121,70 @@ func Connect(ctx context.Context, rawURL string, opts Options) (*Session, error)
 		},
 		MaxRetries:           -1,
 		DisableStandaloneSSE: true,
-	}
+	}}
 	connectCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := mcp.NewClient(&mcp.Implementation{Name: clientName, Version: "1.0.0"}, nil)
 	sdk, err := client.Connect(connectCtx, transport, nil)
 	if err != nil {
-		return nil, fmt.Errorf("mcpx: connecting to %s: %w", endpoint, err)
+		connectErr := fmt.Errorf("mcpx: connecting to %s: %w", endpoint, err)
+		if releaseErr := transport.release(deletion); releaseErr != nil {
+			return nil, errors.Join(connectErr, releaseErr)
+		}
+		return nil, connectErr
 	}
-	return &Session{sdk: sdk, handshake: sent.list(), callTimeout: timeout}, nil
+	return &Session{sdk: sdk, handshake: sent.list(), callTimeout: timeout, deletion: deletion}, nil
+}
+
+// ownedTransport keeps the connection the SDK transport creates. The SDK does not close it on
+// every failed Connect (a server that answers initialize with an unsupported protocol version
+// leaves it open), so Connect closes it itself and the server's session is deleted.
+type ownedTransport struct {
+	mcp.Transport
+	conn mcp.Connection
+}
+
+// Connect opens the underlying connection and keeps a handle to it.
+func (t *ownedTransport) Connect(ctx context.Context) (mcp.Connection, error) {
+	conn, err := t.Transport.Connect(ctx)
+	t.conn = conn
+	return conn, err
+}
+
+// release closes the kept connection, which deletes a session the server issued. Closing a
+// connection the SDK already closed does nothing.
+func (t *ownedTransport) release(deletion *deletionOutcome) error {
+	if t.conn == nil {
+		return nil
+	}
+	if err := t.conn.Close(); err != nil {
+		return fmt.Errorf("mcpx: releasing the failed connection: %w", err)
+	}
+	return deletion.failure()
+}
+
+// deletionOutcome records a session DELETE the server did not accept. The SDK closes the
+// response without reading its status, so a refused deletion would otherwise look successful.
+type deletionOutcome struct {
+	mu  sync.Mutex
+	err error
+}
+
+// observe records the answer to a DELETE: 2xx deletes the session and 404 means it was already
+// gone; any other status leaves the session on the server.
+func (d *deletionOutcome) observe(status int) {
+	if (status >= 200 && status < 300) || status == http.StatusNotFound {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.err = fmt.Errorf("mcpx: the server refused to delete the session: HTTP %d", status)
+}
+
+func (d *deletionOutcome) failure() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.err
 }
 
 // parseEndpoint accepts only an absolute http or https URL.
@@ -221,20 +280,25 @@ func (s *Session) CallTool(ctx context.Context, name string, arguments map[strin
 	return ToolResult{Text: strings.Join(texts, "\n"), IsError: result.IsError}, nil
 }
 
-// Close ends the session; a server that keeps sessions is told with a DELETE. Closing a nil or
-// closed session, or one Connect did not create, does nothing.
+// Close ends the session; a server that keeps sessions is told with a DELETE. It returns an error
+// when the DELETE fails or the server answers it with a status other than 2xx or 404, since the
+// session then stays on the server; later calls return the same error. Closing a nil session, or
+// one Connect did not create, does nothing.
 func (s *Session) Close() error {
 	if !s.connected() {
 		return nil
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
-		s.mu.Unlock()
-		return nil
+		return s.closeErr
 	}
 	s.closed = true
-	s.mu.Unlock()
-	return s.sdk.Close()
+	s.closeErr = s.sdk.Close()
+	if s.closeErr == nil && s.deletion != nil {
+		s.closeErr = s.deletion.failure()
+	}
+	return s.closeErr
 }
 
 func (s *Session) isClosed() bool {
@@ -262,12 +326,13 @@ func (m *sentMethods) list() []string {
 }
 
 // requestDecorator puts the caller's headers and Host on every request the SDK sends, keeping any
-// header the SDK set, and records the request's JSON-RPC method.
+// header the SDK set. It records each request's JSON-RPC method and the answer to a session DELETE.
 type requestDecorator struct {
-	base    http.RoundTripper
-	headers map[string]string
-	host    string
-	sent    *sentMethods
+	base     http.RoundTripper
+	headers  map[string]string
+	host     string
+	sent     *sentMethods
+	deletion *deletionOutcome
 }
 
 // RoundTrip sends a decorated copy of the request; a RoundTripper must not change the request it
@@ -285,7 +350,11 @@ func (d *requestDecorator) RoundTrip(req *http.Request) (*http.Response, error) 
 	if method := jsonRPCMethod(req); method != "" {
 		d.sent.add(method)
 	}
-	return d.base.RoundTrip(out)
+	resp, err := d.base.RoundTrip(out)
+	if err == nil && req.Method == http.MethodDelete && d.deletion != nil {
+		d.deletion.observe(resp.StatusCode)
+	}
+	return resp, err
 }
 
 // jsonRPCMethod reads the method of a request's JSON-RPC body from a fresh copy of the body, so
