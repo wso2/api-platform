@@ -64,9 +64,11 @@ func (c recordedCall) await() *callResult {
 	}
 	select {
 	case <-c.result.done:
+		return c.result
 	case <-time.After(responseFetchTimeout):
+		// The fetch may still be writing c.result, so hand back nothing rather than share it.
+		return &callResult{}
 	}
-	return c.result
 }
 
 // Status is the call's HTTP status, or 0 if its response could not be read.

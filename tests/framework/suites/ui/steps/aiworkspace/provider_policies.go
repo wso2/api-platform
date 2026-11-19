@@ -161,9 +161,20 @@ func (u *Steps) setsRateLimit(ctx context.Context, section, criteria, quota, dur
 			return fmt.Errorf("enabling the %s %s limit: %w", section, criteria, err)
 		}
 	}
-	// An enabled row is open: it opens when enabled and when the tab loads, and closes only on
-	// its chevron. So the fields need no expanding, and Fill waits while the row animates open.
+	// Enabling a row opens it, but a row loaded already enabled can start closed. The switch
+	// and the row's open state change in one render, so once the switch shows checked the row
+	// is either opening (its fields visible) or closed (hidden); only a closed row is opened.
+	if err := u.expect.Locator(toggle).ToBeChecked(); err != nil {
+		return fmt.Errorf("enabling the %s %s limit: %w", section, criteria, err)
+	}
 	inputs := row.Locator(`input:not([type="checkbox"]):not([aria-hidden="true"])`)
+	if open, err := inputs.First().IsVisible(); err != nil {
+		return fmt.Errorf("finding the %s %s limit's fields: %w", section, criteria, err)
+	} else if !open {
+		if err := header.Locator("button").Click(); err != nil {
+			return fmt.Errorf("expanding the %s %s limit: %w", section, criteria, err)
+		}
+	}
 	if err := inputs.Nth(0).Fill(quota); err != nil {
 		return fmt.Errorf("setting the %s %s quota: %w", section, criteria, err)
 	}
