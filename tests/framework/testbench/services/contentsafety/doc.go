@@ -21,7 +21,11 @@
 // The text:analyze route answers like Azure for the requests the azure-content-safety-content-
 // moderation policy sends, and rejects what Azure rejects:
 //
-//   - a missing or wrong Ocp-Apim-Subscription-Key header (SubscriptionKey) → 401;
+//   - a request without a valid credential → 401. A valid credential is the Ocp-Apim-Subscription-Key
+//     header (SubscriptionKey), or an Authorization: Bearer token the testbench Entra mock issued for
+//     Azure AI services (audience https://cognitiveservices.azure.com), as Azure accepts a Microsoft
+//     Entra ID token in place of the key. A bearer token is judged on its own: a token for another
+//     audience, or one the Entra mock did not issue, is rejected even with the key;
 //   - an api-version other than APIVersion, text longer than MaxTextLength characters, an unknown
 //     outputType, or an unknown or repeated category → 400 with Azure's error code
 //     InvalidRequestBody.

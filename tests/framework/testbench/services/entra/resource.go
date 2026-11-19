@@ -54,7 +54,7 @@ func resource(audience string) func(string, http.ResponseWriter, *http.Request) 
 		valid := false
 		if hasBearer {
 			w.Header().Set(HeaderToken, token)
-			if claims, valid = parseToken(token); valid {
+			if claims, valid = ParseToken(token); valid {
 				w.Header().Set(HeaderTenant, claims.Tid)
 				w.Header().Set(HeaderAudience, claims.Aud)
 				w.Header().Set(HeaderAppID, claims.AppID)

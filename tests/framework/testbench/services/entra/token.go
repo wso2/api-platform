@@ -270,8 +270,8 @@ func newGUID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-// parseToken decodes a token the service issued.
-func parseToken(token string) (Claims, bool) {
+// ParseToken decodes a token the service issued, reporting false for any other string.
+func ParseToken(token string) (Claims, bool) {
 	var c Claims
 	encoded, ok := strings.CutPrefix(token, TokenPrefix)
 	if !ok {
