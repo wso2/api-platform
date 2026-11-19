@@ -41,10 +41,11 @@ named with the prefix `apip-test-`:
 | `apip-test-project-2` | every other runner: `apip-auth`, `apip-self-hosted-gateway`, `apip-promotion`, `apip-portal` (and `apip-project`) |
 
 A scenario works in the project of its feature file (one feature file is one runner). The default
-gateway of a project is built in the first stage of that project's pipeline, and the scenarios that
-deploy along a pipeline (`ID_APIP_DEPLOY_011`; the promotion scenarios) use the pipeline of the
-project of their runner, so `apip-test-project-1` needs a promotion chain of 2 environments and
-`apip-test-project-2` one of 3.
+gateway of a project is in a first stage of that project's pipeline, an environment no promotion
+path targets, because the platform accepts a deployment to a later stage only by promotion. The
+scenarios that deploy along a pipeline (`ID_APIP_DEPLOY_011`; the promotion scenarios) use the
+pipeline of the project of their runner, so `apip-test-project-1` needs a promotion chain of 2
+environments and `apip-test-project-2` one of 3.
 
 Before any runner starts, the starter makes sure the organisation holds both projects. A project
 it lacks is **created** by the starter (`POST /projects` with the handle `apip-test-project-N`) and
@@ -66,7 +67,7 @@ run.
 | Precondition | Met when | Missing | Scenarios that need it |
 |---|---|---|---|
 | `project@<project>` | `GET /projects/<project>` answers 200, for `apip-test-project-1` and `apip-test-project-2` | **built** by the starter; skipped and the run fails when it cannot be built | the scenarios that read, find or create resources in the project of their runner (basic, deploy, gateway, secrets, portal, project, promotion), as their first check |
-| `default-gateway@<project>` | the deployment pipeline of the project is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in it that no suite run created | **built** in the pipeline's first stage (`development` when the pipeline reaches it) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway`, for the project of their runner (basic, deploy, gateway, gateway configuration, secrets, portal) |
+| `default-gateway@<project>` | the deployment pipeline of the project is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in a first stage of it that no suite run created | **built** in the pipeline's first stage (`development` when it is one) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway`, for the project of their runner (basic, deploy, gateway, gateway configuration, secrets, portal) |
 | `environment` | the platform lists an environment the suite may select (see "Which resources the suite selects") | not built: skipped, and the run **fails** | the scenarios that select an existing environment for a managed or self-hosted gateway |
 | `second-environment` | the platform lists a non-production environment the suite may select, besides the default gateway's, that no suite run created | not built: skipped, and the run **fails** | `ID_APIP_GATEWAY_006` and `_007` |
 | `pipeline-project@<project>` | the project is bound to a deployment pipeline named with the prefix `apip-test-` that the platform lists, with at least one promotion path | not built: skipped, and the run **fails** | the scenarios that start with `I find the pipeline-bound APIP project` |
@@ -130,7 +131,7 @@ Read those lines before trusting a green run: a skip is not a pass.
 | Setting | Meaning |
 |---|---|
 | `CLOUD_CONSOLE_ACCESS_TOKEN` | the console token that decides the organisation (required, never printed) |
-| `CLOUD_GATEWAY_ID` | pins the gateway the scenarios deploy to; the starter never builds a pinned one |
+| `CLOUD_GATEWAY_ID` | pins the gateway the scenarios deploy to, which must be in a first stage of the project's pipeline; the starter never builds a pinned one |
 
 ## What the finalizer removes
 

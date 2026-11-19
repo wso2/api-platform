@@ -697,29 +697,29 @@ func (s *Steps) stages(ctx context.Context) ([]map[string]any, error) {
 	return listItems(resp)
 }
 
-// pipelineEnvironments reads the environments of the deployment pipeline a project is bound to.
-func (s *Steps) pipelineEnvironments(ctx context.Context) (map[string]bool, error) {
+// pipelinePaths reads the promotion paths of the deployment pipeline the scenario's project is
+// bound to.
+func (s *Steps) pipelinePaths(ctx context.Context) ([]promotionPath, error) {
 	projectID, err := requiredValue(ctx, keyProjectID)
 	if err != nil {
 		return nil, err
 	}
-	return pipelineEnvironmentsOf(ctx, projectID, func(ctx context.Context, path string) (*httpx.Response, error) {
+	return pipelinePathsOf(ctx, projectID, func(ctx context.Context, path string) (*httpx.Response, error) {
 		return s.doAuthenticatedRaw(ctx, http.MethodGet, path, nil)
 	})
 }
 
-// pipelineGetter reads a path of the platform's API.
-type pipelineGetter func(ctx context.Context, path string) (*httpx.Response, error)
-
-// pipelineEnvironmentsOf reads the environments of the deployment pipeline a project is bound to
-// through get.
-func pipelineEnvironmentsOf(ctx context.Context, projectID string, get pipelineGetter) (map[string]bool, error) {
-	paths, err := pipelinePathsOf(ctx, projectID, get)
+// pipelineEnvironments reads the environments of the deployment pipeline a project is bound to.
+func (s *Steps) pipelineEnvironments(ctx context.Context) (map[string]bool, error) {
+	paths, err := s.pipelinePaths(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return environmentsOf(paths), nil
 }
+
+// pipelineGetter reads a path of the platform's API.
+type pipelineGetter func(ctx context.Context, path string) (*httpx.Response, error)
 
 // environmentsOf collects the environments a pipeline's promotion paths reach.
 func environmentsOf(paths []promotionPath) map[string]bool {
@@ -731,6 +731,25 @@ func environmentsOf(paths []promotionPath) map[string]bool {
 		}
 	}
 	return environments
+}
+
+// entryEnvironmentsOf collects the entry environments of a pipeline: the sources no promotion path
+// targets. They are the only environments the platform accepts a deployment to without a
+// promotion.
+func entryEnvironmentsOf(paths []promotionPath) map[string]bool {
+	targets := map[string]bool{}
+	for _, path := range paths {
+		for _, target := range path.TargetEnvironments {
+			targets[target] = true
+		}
+	}
+	entries := map[string]bool{}
+	for _, path := range paths {
+		if path.SourceEnvironment != "" && !targets[path.SourceEnvironment] {
+			entries[path.SourceEnvironment] = true
+		}
+	}
+	return entries
 }
 
 // promotionPath is one step of a deployment pipeline: where a build is promoted from and to.
