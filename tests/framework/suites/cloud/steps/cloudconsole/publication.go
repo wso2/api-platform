@@ -86,7 +86,7 @@ func (s *Steps) publicationStepDefinitions() []stepDefinition {
 		{`^I create another synthetic subscription plan$`, s.createSecondPlan},
 		{`^I deactivate the synthetic subscription plan$`, s.deactivatePlan},
 		{`^I try to delete the synthetic subscription plan$`, s.tryDeletePlan},
-		{`^I create a synthetic GraphQL API in the default project$`, s.createGraphQLAPI},
+		{`^I create a synthetic GraphQL API in the APIP test project$`, s.createGraphQLAPI},
 		{`^I create a synthetic document for the synthetic REST API$`, s.createDocument},
 		{`^I save a publication draft of the ` + subjectPattern + `$`, s.saveDraft},
 		{`^I save a publication draft of the ` + subjectPattern + ` with:$`, s.saveDraftWith},

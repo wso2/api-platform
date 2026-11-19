@@ -211,6 +211,16 @@ func isLocalhostName(host string) bool {
 	return host == "localhost" || strings.HasSuffix(host, ".localhost")
 }
 
+// PlatformAPIEndpoint returns the apip-platform-api endpoint of a configured cloud environment, for a
+// caller that needs the organisation before the suite's topology is booted.
+func PlatformAPIEndpoint(repoRoot, environment string) (string, error) {
+	endpoints, err := resolveEndpoints(repoRoot, map[string]string{EnvironmentParameter: environment})
+	if err != nil {
+		return "", err
+	}
+	return endpoints[EndpointAPIPPlatformAPI], nil
+}
+
 func resolveEndpoints(repoRoot string, parameters map[string]string) (map[string]string, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return nil, fmt.Errorf("repository root is required")

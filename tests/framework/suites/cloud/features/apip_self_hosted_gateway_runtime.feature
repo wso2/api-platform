@@ -25,7 +25,7 @@ Feature: APIP cloud self-hosted gateway connected to the cloud control plane
   @ID_APIP_SELF_HOSTED_GATEWAY_003
   Scenario: A local gateway connects with its registration token and serves the API deployed to it
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     And I select the active APIP gateway's environment for a self-hosted gateway
     When I create a synthetic self-hosted APIP gateway
@@ -33,7 +33,7 @@ Feature: APIP cloud self-hosted gateway connected to the cloud control plane
     When I start a local APIP gateway connected to the cloud control plane with a new registration token
     Then the self-hosted APIP gateway should become active
     When I use the local self-hosted APIP gateway as the active gateway
-    And I create a synthetic REST API in the default project
+    And I create a synthetic REST API in the APIP test project
     And I request a deployment of the synthetic REST API with:
       | environment | ${CTX:cloudGatewayEnvironment} |
       | gatewayId   | ${CTX:cloudGatewayID}          |

@@ -23,9 +23,9 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_001 @TC_APIP_API_002 @TC_APIP_API_003 @TC_APIP_API_004 @TC_APIP_API_005 @TC_APIP_API_006 @TC_APIP_API_007 @TC_APIP_API_008 @ID_APIP_BASIC_001
   Scenario: A REST API can be deployed and invoked through the gateway
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project
+    When I create a synthetic REST API in the APIP test project
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
@@ -36,8 +36,8 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_009 @ID_APIP_BASIC_002
   Scenario: Creating an API whose name and version are already in use is rejected
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
-    When I create a synthetic REST API in the default project
+    And I find the APIP test project
+    When I create a synthetic REST API in the APIP test project
     And I submit a synthetic REST API creation request with:
       | displayName | Synthetic ${CTX:cloudAPIID} |
       | version     | 1.0.0                       |
@@ -46,7 +46,7 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_010 @ID_APIP_BASIC_003
   Scenario Outline: Creating an API with an invalid context or version is rejected
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     When I submit a synthetic REST API creation request with:
       | <field> | <value> |
     Then the cloud API response status code should be 400
@@ -61,9 +61,9 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_011 @ID_APIP_BASIC_004
   Scenario: An API deployed with security enabled refuses an unauthenticated call
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project with:
+    When I create a synthetic REST API in the APIP test project with:
       | policies | [{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}] |
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
@@ -72,9 +72,9 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_012 @ID_APIP_BASIC_005
   Scenario: An API deployed with security enabled accepts a valid API key
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project with:
+    When I create a synthetic REST API in the APIP test project with:
       | policies | [{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}] |
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
@@ -85,9 +85,9 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_013 @ID_APIP_BASIC_006
   Scenario: A request to a path the API does not expose is answered with not found by the gateway
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project
+    When I create a synthetic REST API in the APIP test project
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
@@ -96,9 +96,9 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_014 @ID_APIP_BASIC_007
   Scenario: A new version of an API routes independently of the previous version
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project with:
+    When I create a synthetic REST API in the APIP test project with:
       | operations | [{"name":"getPostOne","request":{"method":"GET","path":"/posts/1"}}] |
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
@@ -115,9 +115,9 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_015 @ID_APIP_BASIC_008
   Scenario: Undeploying an API stops the gateway serving it
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project
+    When I create a synthetic REST API in the APIP test project
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
@@ -128,9 +128,9 @@ Feature: APIP cloud REST API lifecycle
   @TC_APIP_API_016 @ID_APIP_BASIC_009
   Scenario: Redeploying an API serves the updated definition without interrupting traffic
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project
+    When I create a synthetic REST API in the APIP test project
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
@@ -144,7 +144,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_010
   Scenario: An API imported from an OpenAPI file has the definition's operations and stored definition, and the gateway serves them
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
     Then the synthetic REST API should have the operations of the spec fixture "petstore-v1.yaml"
@@ -158,7 +158,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_011
   Scenario: A second version imported under the same name keeps its own operations and definition
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
     And I import a new version "2.0.0" of the synthetic REST API from the spec fixture "inventory.yaml"
     Then the new API version should have the synthetic REST API's display name and the version "2.0.0"
@@ -170,7 +170,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_012
   Scenario: Deleting an imported API removes its definition, and the same API can be imported again with another definition
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
     Then the stored definition of the synthetic REST API should be the spec fixture "petstore-v1.yaml"
     When I delete the synthetic REST API
@@ -183,7 +183,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_013 @type:negative
   Scenario: Importing with both a file and a URL, or with neither, is refused and creates nothing
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And an echo backend is available for deployment overrides
     When I submit a synthetic REST API import with:
       | file | @spec:petstore-v1.yaml       |
@@ -204,7 +204,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_014 @type:negative
   Scenario Outline: Importing a file that is not a usable OpenAPI 3.x definition is refused with its reason and creates nothing
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     When I submit a synthetic REST API import with:
       | file | @spec:<fixture> |
     Then the cloud API response status code should be 400
@@ -225,7 +225,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_015 @type:boundary
   Scenario: A definition over the size limit is refused as too large and creates nothing
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     When I submit a synthetic REST API import with:
       | file | @generated-spec:5242881 |
     Then the cloud API response status code should be 413
@@ -239,7 +239,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_016 @type:negative
   Scenario: Importing from the cloud metadata address or a file URL is refused and creates nothing
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And an echo backend is available for deployment overrides
     When I submit a synthetic REST API import with:
       | url | http://169.254.169.254/latest/meta-data/ |
@@ -266,7 +266,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_017
   Scenario: A new definition adds and removes operations, an operation it keeps keeps its policy, and a redeploy serves the result
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
     And I add a header policy to the "listPets" operation of the synthetic REST API
@@ -290,7 +290,7 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_018
   Scenario: A definition that renames an operation's path gives the renamed operation no policy, and it is served without it
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
     And I add a header policy to the "listPets" operation of the synthetic REST API
@@ -318,9 +318,9 @@ Feature: APIP cloud REST API lifecycle
   @ID_APIP_BASIC_020
   Scenario: A changed context and version are kept, and a redeploy serves the API at the new context and no longer at the old one
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
-    When I create a synthetic REST API in the default project
+    When I create a synthetic REST API in the APIP test project
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200

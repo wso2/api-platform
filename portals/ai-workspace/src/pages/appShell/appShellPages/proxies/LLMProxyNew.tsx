@@ -37,6 +37,7 @@ import {
   PageContent,
   PageTitle,
   Select,
+  Skeleton,
   Stack,
   TextField,
   Tooltip,
@@ -230,8 +231,12 @@ function LLMProxyNewContent({
     error: templatesError,
   } = useProviderTemplates();
 
-  const { provider: selectedProvider, isLoading: isSelectedProviderLoading } =
-    useLLMProvider();
+  const {
+    provider: selectedProvider,
+    isLoading: isSelectedProviderLoading,
+    error: selectedProviderError,
+    refetch: refetchSelectedProvider,
+  } = useLLMProvider();
   const {
     currentProject,
     currentOrganization,
@@ -338,6 +343,18 @@ function LLMProxyNewContent({
   const [openProviderDetail, setOpenProviderDetail] =
     useState<LLMProvider | null>(null);
   const [isOpenProviderLoading, setIsOpenProviderLoading] = useState(false);
+  /**
+   * Why the open provider could not be read, when it could not be.
+   *
+   * Held apart from the detail itself: a read that failed and a read still in
+   * flight both leave no detail behind, and only one of them is worth waiting
+   * for.
+   */
+  const [openProviderError, setOpenProviderError] = useState<Error | null>(
+    null
+  );
+  /** Retried on demand, so a failed read is not the end of the form. */
+  const [openProviderReloadToken, setOpenProviderReloadToken] = useState(0);
   /** Which provider a generated key is being minted for. */
   const [apiKeyTarget, setApiKeyTarget] = useState<string>(PRIMARY_TARGET);
   /** Which provider the transformer drawer is acting on: the primary, or a draft key. */
@@ -760,6 +777,7 @@ function LLMProxyNewContent({
     // Dropped before the fetch, for the same reason the panel does: a detail
     // held over from the previous provider answers for the wrong one.
     setOpenProviderDetail(null);
+    setOpenProviderError(null);
     setIsOpenProviderLoading(true);
     getLLMProvider(
       openProviderId,
@@ -777,6 +795,9 @@ function LLMProxyNewContent({
         }
         logger.error('Failed to load the selected provider:', error);
         setOpenProviderDetail(null);
+        setOpenProviderError(
+          error instanceof Error ? error : new Error('Failed to load provider')
+        );
       })
       .finally(() => {
         if (!abandoned) {
@@ -786,7 +807,7 @@ function LLMProxyNewContent({
     return () => {
       abandoned = true;
     };
-  }, [openDraft?.providerId, currentOrganization?.uuid]);
+  }, [openDraft?.providerId, currentOrganization?.uuid, openProviderReloadToken]);
 
   /**
    * Opens the primary for editing, remembering what it was.
@@ -867,6 +888,30 @@ function LLMProxyNewContent({
   const selectedProviderRequiresApiKey = Boolean(
     providerDetail?.security?.enabled && providerDetail.security.apiKey?.enabled
   );
+
+  /**
+   * Whether this provider's own detail is still being read.
+   *
+   * What translates for a provider is decided from the list, but whether it
+   * authenticates with a key is declared on the provider itself and takes a
+   * second read. Drawn as they arrive, the transformer settles first and the
+   * credential field drops in after it, which reads as the form changing shape
+   * under the pointer. Both stand in until the answer is in hand.
+   *
+   * Measured by identity - the detail in hand answers for the provider that is
+   * selected - rather than by a loading flag, which is false in the commit
+   * between the list arriving and the second request starting.
+   *
+   * Nothing is pending where nothing is selected: an organization holding no
+   * providers never selects one, and the sections stay out as they always did.
+   *
+   * A read that failed is not pending. Left as pending it would stand in
+   * forever, and a placeholder that never resolves says a request is coming
+   * back when none is.
+   */
+  const isPrimaryDetailPending =
+    !selectedProviderError &&
+    (isProvidersLoading || (Boolean(formState.providerId) && !providerDetail));
   /**
    * Whether the provider whose form is open authenticates with a key at all. A
    * provider that does not gets no key field: an input nothing is done with
@@ -876,6 +921,22 @@ function LLMProxyNewContent({
     openProviderDetail?.security?.enabled &&
     openProviderDetail.security.apiKey?.enabled
   );
+  /** The same wait, for the provider whose own form is open. */
+  const isOpenDetailPending = Boolean(
+    !openProviderError &&
+      openDraft?.providerId &&
+      openProviderDetail?.id !== openDraft.providerId
+  );
+  /**
+   * Whether the open provider has been read at all.
+   *
+   * What the form writes back - whether a key is needed, and the header it goes
+   * in - is taken from this detail, so committing without it records a provider
+   * as needing no credential on no evidence. A failed read is not a licence to
+   * save; it is a reason to try again.
+   */
+  const isOpenProviderRead =
+    openProviderDetail?.id === openDraft?.providerId;
   const openProviderApiKeyName = resolveApiKeyAuthDisplay(
     openProviderDetail?.security,
     openProviderDetail?.globalPolicies
@@ -884,6 +945,58 @@ function LLMProxyNewContent({
     providerDetail?.security,
     providerDetail?.globalPolicies
   ).headerName;
+
+  /**
+   * What stands in for the transformer section while the provider is read.
+   *
+   * Sized to the caption and the bordered card it replaces, so the form does
+   * not change height when the answer arrives.
+   */
+  const renderTransformerSkeleton = () => (
+    <Stack spacing={0.5} data-cyid="transformer-status-skeleton">
+      <Skeleton variant="text" width={72} height={18} />
+      <Skeleton variant="rounded" height={56} />
+    </Stack>
+  );
+
+  /**
+   * What the sections become when the provider could not be read.
+   *
+   * States the consequence rather than the fault. What translates for the
+   * provider is still known - that comes from the list - so the credential is
+   * what is actually lost, and saying so is what tells the reader why the field
+   * is absent and the form will not commit.
+   */
+  const renderProviderDetailError = (onRetry: () => void) => (
+    <Alert
+      severity="warning"
+      data-cyid="provider-detail-error"
+      action={
+        <Button color="inherit" size="small" onClick={onRetry}>
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.detail.retry"
+            defaultMessage="Retry"
+          />
+        </Button>
+      }
+    >
+      <FormattedMessage
+        id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.detail.error"
+        defaultMessage="Could not load this provider's configuration, so its credential cannot be set."
+      />
+    </Alert>
+  );
+
+  /** What stands in for the credential section, sized to a label and a field. */
+  const renderApiKeySkeleton = () => (
+    <Stack spacing={1} data-cyid="api-key-skeleton">
+      <Skeleton variant="text" width={80} height={22} />
+      <Stack spacing={0.5}>
+        <Skeleton variant="text" width={148} height={18} />
+        <Skeleton variant="rounded" height={40} />
+      </Stack>
+    </Stack>
+  );
   const projectSlug = getProjectSlug(effectiveProject);
   const generatedProxyId = toProxyId(formState.name);
   const computedContext = projectSlug
@@ -924,7 +1037,11 @@ function LLMProxyNewContent({
     if (!formState.name.trim()) return 'Enter a name for the proxy.';
     if (!formState.providerId) return 'Select an LLM provider.';
     if (!effectiveProject?.id) return 'Select a project.';
-    if (!providerDetail) return 'Loading the selected provider details.';
+    if (!providerDetail) {
+      return selectedProviderError
+        ? 'Could not load the selected provider. Retry before creating.'
+        : 'Loading the selected provider details.';
+    }
     if (!isSelectedProviderApiKeyReady) {
       return canGenerateProviderApiKey
         ? 'This provider requires an API key. Generate one or enter it manually.'
@@ -1391,34 +1508,42 @@ function LLMProxyNewContent({
             </Select>
           </FormControl>
 
-          <TransformerStatusCard
-            resolution={resolutionForProvider(
-              draft.providerId,
-              draft.transformer,
-              draft.transformerCleared
+          {openProviderError &&
+            renderProviderDetailError(() =>
+              setOpenProviderReloadToken((token) => token + 1)
             )}
-            transformer={draft.transformer}
-            onConfigure={() => setTransformerTarget(draft.key)}
-            onRemove={() =>
-              updateOpenDraft((prev) => ({
-                ...prev,
-                transformer: null,
-                transformerCleared: true,
-              }))
-            }
-            // Building a proxy, not reviewing one: a provider that needs no
-            // translator has nothing to decide here, so the section is left
-            // out rather than stating an absence.
-            hideWhenNotNeeded
-            data-cyid={`${cyPrefix}-provider-transformer-status`}
-          />
+          {isOpenDetailPending && renderTransformerSkeleton()}
+          {!isOpenDetailPending && (
+            <TransformerStatusCard
+              resolution={resolutionForProvider(
+                draft.providerId,
+                draft.transformer,
+                draft.transformerCleared
+              )}
+              transformer={draft.transformer}
+              onConfigure={() => setTransformerTarget(draft.key)}
+              onRemove={() =>
+                updateOpenDraft((prev) => ({
+                  ...prev,
+                  transformer: null,
+                  transformerCleared: true,
+                }))
+              }
+              // Building a proxy, not reviewing one: a provider that needs no
+              // translator has nothing to decide here, so the section is left
+              // out rather than stating an absence.
+              hideWhenNotNeeded
+              data-cyid={`${cyPrefix}-provider-transformer-status`}
+            />
+          )}
 
           {/*
             Only for a provider that authenticates with a key. One
             that does not gets no field at all, rather than an input
             that reads as a step still to be completed.
           */}
-          {openProviderRequiresApiKey && (
+          {isOpenDetailPending && renderApiKeySkeleton()}
+          {!isOpenDetailPending && openProviderRequiresApiKey && (
             <>
               <Divider />
 
@@ -1563,9 +1688,15 @@ function LLMProxyNewContent({
             </Button>
             <Button
               variant="contained"
-              // Not while the provider is still being read: whether it takes a
-              // key, and which header the key goes in, are unknown until then.
-              disabled={!draft.providerId || isOpenProviderLoading}
+              // Not until the provider has been read: whether it takes a key,
+              // and which header the key goes in, are unknown until then - and
+              // a read that failed leaves them just as unknown as one still in
+              // flight.
+              disabled={
+                !draft.providerId ||
+                isOpenProviderLoading ||
+                !isOpenProviderRead
+              }
               onClick={
                 isAdding
                   ? () => {
@@ -1669,23 +1800,31 @@ function LLMProxyNewContent({
         </Select>
       </FormControl>
 
-      <TransformerStatusCard
-        resolution={resolutionForProvider(
-          formState.providerId,
-          primaryTransformer,
-          primaryTransformerCleared
-        )}
-        transformer={primaryTransformer}
-        onConfigure={() => setTransformerTarget(PRIMARY_TARGET)}
-        onRemove={() => {
-          setPrimaryTransformer(null);
-          setPrimaryTransformerCleared(true);
-        }}
-        hideWhenNotNeeded
-        data-cyid="primary-transformer-status"
-      />
+      {selectedProviderError &&
+        renderProviderDetailError(() => {
+          void refetchSelectedProvider();
+        })}
+      {isPrimaryDetailPending && renderTransformerSkeleton()}
+      {!isPrimaryDetailPending && (
+        <TransformerStatusCard
+          resolution={resolutionForProvider(
+            formState.providerId,
+            primaryTransformer,
+            primaryTransformerCleared
+          )}
+          transformer={primaryTransformer}
+          onConfigure={() => setTransformerTarget(PRIMARY_TARGET)}
+          onRemove={() => {
+            setPrimaryTransformer(null);
+            setPrimaryTransformerCleared(true);
+          }}
+          hideWhenNotNeeded
+          data-cyid="primary-transformer-status"
+        />
+      )}
 
-      {selectedProviderRequiresApiKey && (
+      {isPrimaryDetailPending && renderApiKeySkeleton()}
+      {!isPrimaryDetailPending && selectedProviderRequiresApiKey && (
         <Stack spacing={1}>
           <Typography variant="body2" sx={{ fontWeight: '600' }}>
             <FormattedMessage

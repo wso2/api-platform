@@ -48,27 +48,28 @@ func (s *Steps) obtainToken(ctx context.Context) error {
 	return nil
 }
 
-// defaultProjectID is the project every organization is given at onboarding, and
-// the one the REST API scenarios deploy into.
-const defaultProjectID = "default"
-
-// findDefaultProject asks for the project by id rather than scanning the list.
+// findTestProject finds the project the scenario's feature file works in, asking for it by id
+// rather than scanning the list.
 //
 // /projects is paginated and answers with 20 of them by default, so on an
-// organization with more projects than that the default is simply on a later
+// organization with more projects than that the project is simply on a later
 // page. Scanning the first page reported it missing and sent the reader looking
 // for a broken organization: one real organization held 213 projects, with the
 // default among them the whole time.
-func (s *Steps) findDefaultProject(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+defaultProjectID, nil)
+func (s *Steps) findTestProject(ctx context.Context) error {
+	project, err := requiredValue(ctx, keyScenarioProject)
+	if err != nil {
+		return fmt.Errorf("the scenario's project is not known: %w", err)
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
 	if err != nil {
 		return err
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return tcontext.Set(ctx, keyProjectID, defaultProjectID)
+		return tcontext.Set(ctx, keyProjectID, project)
 	case http.StatusNotFound:
-		return fmt.Errorf("the organization has no %q project", defaultProjectID)
+		return fmt.Errorf("the organization has no %q project", project)
 	default:
 		return responseError(resp)
 	}
@@ -80,9 +81,9 @@ func (s *Steps) findDefaultProject(ctx context.Context) error {
 // reading the generic endpoint would skip it.
 //
 // Only a regular gateway that the platform accepts a deployment to is chosen: one whose
-// environment is in the deployment pipeline of the project the scenario found, that no suite run
-// created for itself, and, when CLOUD_GATEWAY_ID names one, only that gateway, whatever its name
-// looks like.
+// environment is an entry environment of the deployment pipeline of the project the scenario
+// found, that no suite run created for itself, and, when CLOUD_GATEWAY_ID names one, only that
+// gateway, whatever its name looks like.
 func (s *Steps) findActiveGateway(ctx context.Context) error {
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways?functionalityType="+url.QueryEscape(regularGatewayKind), nil)
 	if err != nil {
@@ -97,11 +98,11 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	}
 	filters := gatewayFilters(strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)))
 	if projectID, resolveErr := tcontext.ResolveString(ctx, keyProjectID); resolveErr == nil && strings.TrimSpace(projectID) != "" {
-		environments, err := s.pipelineEnvironments(ctx)
+		paths, err := s.pipelinePaths(ctx)
 		if err != nil {
 			return fmt.Errorf("reading the environments of the project's deployment pipeline: %w", err)
 		}
-		filters = append(filters, inPipelineEnvironments(environments))
+		filters = append(filters, inEntryEnvironments(paths))
 	}
 	choice, err := s.chooseActiveGateway(ctx, items, "APIP gateway", filters...)
 	if err != nil {
@@ -205,14 +206,19 @@ func pinnedGateway(id string) gatewayFilter {
 	}
 }
 
-// inPipelineEnvironments rejects a gateway whose environment is not one the project's deployment
-// pipeline reaches, because the platform refuses a deployment to it.
-func inPipelineEnvironments(environments map[string]bool) gatewayFilter {
+// inEntryEnvironments rejects a gateway whose environment is not an entry environment of the
+// project's deployment pipeline, because the platform refuses a deployment to it: an environment
+// outside the pipeline is never deployed to, and a promotion target only through a promotion.
+func inEntryEnvironments(paths []promotionPath) gatewayFilter {
+	environments, entries := environmentsOf(paths), entryEnvironmentsOf(paths)
 	return func(item map[string]any) string {
 		environment, _ := item["environment"].(string)
 		environment = strings.TrimSpace(environment)
-		if !environments[environment] {
+		switch {
+		case !environments[environment]:
 			return fmt.Sprintf("environment %q is not in the project's deployment pipeline", environment)
+		case !entries[environment]:
+			return fmt.Sprintf("environment %q is a promotion target of the project's deployment pipeline", environment)
 		}
 		return ""
 	}

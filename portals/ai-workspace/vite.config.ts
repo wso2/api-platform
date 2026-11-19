@@ -232,8 +232,33 @@ export default defineConfig({
         'src/utils/proxyProviders.ts',
         'src/utils/transformerResolution.ts',
         'src/utils/apiKeyNaming.ts',
+        // The screens multi-provider routing added. Each decides something a
+        // screenshot cannot check — which provider is primary, what a row
+        // reports about its translator, which entry an edit lands on — so they
+        // are asserted here rather than only driven through the browser.
+        'src/Components/Transformer/**/*.tsx',
+        'src/Components/InboundInterface/**/*.tsx',
+        'src/hooks/useTransformerPolicies.ts',
+        'src/pages/appShell/appShellPages/proxies/LLMProxyProviderTab.tsx',
+        // The proxy screens this feature reworked. Listed by name rather than
+        // by directory: the rest of the folder is the browser suite's ground,
+        // and sweeping it in here would report thousands of lines this suite
+        // never exercises as though nobody had tested them.
+        'src/pages/appShell/appShellPages/proxies/LLMProxyNew.tsx',
+        'src/pages/appShell/appShellPages/proxies/LLMProxyOverview.tsx',
+        'src/pages/appShell/appShellPages/proxies/LLMProxiesList.tsx',
       ],
-      exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts', '**/index.ts'],
+      exclude: [
+        '**/*.test.{ts,tsx}',
+        '**/*.d.ts',
+        '**/index.ts',
+        // Long-form forms whose behaviour is the browser's: field-by-field
+        // entry, drawer transitions, and the save round-trip. The Cypress suite
+        // covers these end to end, and a jsdom re-run of the same ground would
+        // report coverage without adding a check.
+        'src/Components/Transformer/ProviderSettingsDrawer.tsx',
+        'src/Components/Transformer/TransformerDrawer.tsx',
+      ],
     },
   },
 })
