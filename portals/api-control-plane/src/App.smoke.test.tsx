@@ -55,7 +55,7 @@ describe('App smoke (mock mode, authenticated)', () => {
     });
 
     // The AppLayout shell (footer) renders…
-    expect(await screen.findByText(/WSO2 LLC/)).toBeInTheDocument();
+    expect(await screen.findByText(/Choreo/)).toBeInTheDocument();
     // …and the org's data has flowed through the real ConsoleScopeProvider.
     expect(
       (await screen.findAllByText(/API Platform Demo/)).length

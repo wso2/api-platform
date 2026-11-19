@@ -17,7 +17,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
-import { Alert, Box, CircularProgress, PageContent, PageTitle } from '@wso2/oxygen-ui';
+import { Alert, Box, PageContent, PageTitle } from '@wso2/oxygen-ui';
+import { ChoreoLoader } from './components/ChoreoLoader';
 import GatewayForm from './GatewayForm';
 import GatewayOverview from './components/GatewayOverview';
 import GatewaysList from './GatewaysList';
@@ -161,7 +162,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
         setEnvironments(environmentResult.value);
         if (!silent && (managedResult.status === 'rejected' || selfHostedResult.status === 'rejected')) {
           notify(
-            `${managedResult.status === 'rejected' ? 'WSO2 managed' : 'Self-hosted'} gateways could not be loaded.`,
+            `${managedResult.status === 'rejected' ? 'Cloud' : 'Self-hosted'} gateways could not be loaded.`,
             'warning'
           );
         }
@@ -342,9 +343,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
 
   if (loading) {
     return (
-      <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 8, width: '100%' }}>
-        <CircularProgress />
-      </Box>
+      <ChoreoLoader />
     );
   }
 
