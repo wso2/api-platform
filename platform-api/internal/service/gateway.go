@@ -455,6 +455,9 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 					WithLogMessage(fmt.Sprintf("custom policy '%s' moved off version '%s' before it could be replaced with '%s'",
 						policyName, sameMajorVersionedPolicy.Version, version))
 			}
+			if errors.Is(err, repository.ErrCustomPolicyTextTooLong) {
+				return nil, policyTextTooLong(policyName, version, err)
+			}
 			s.slogger.Error("failed to update custom policy", slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("old_version", sameMajorVersionedPolicy.Version), slog.String("new_version", version))
 			return nil, fmt.Errorf("failed to update custom policy: %w", err)
 		}
@@ -473,6 +476,9 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		}
 		policy.UUID = policyID
 		if err := s.customPolicyRepo.InsertCustomPolicy(policy); err != nil {
+			if errors.Is(err, repository.ErrCustomPolicyTextTooLong) {
+				return nil, policyTextTooLong(policyName, version, err)
+			}
 			return nil, fmt.Errorf("failed to insert custom policy: %w", err)
 		}
 		s.slogger.Info("Custom policy created",
@@ -541,6 +547,16 @@ func checkSyncedPolicyText(p *GatewayPolicyDefinition) error {
 		}
 	}
 	return nil
+}
+
+// policyTextTooLong refuses a policy whose text the database found too long for its
+// column, which checkSyncedPolicyText cannot always foresee: SQL Server can limit a
+// VARCHAR column in bytes, depending on its collation.
+func policyTextTooLong(name, version string, cause error) error {
+	return apperror.ValidationFailed.Wrap(cause, fmt.Sprintf(
+		"The text of policy '%s' version '%s' is longer than its custom policy record holds. "+
+			"Shorten its name, display name or description in the policy definition on the gateway, then sync again.",
+		name, version))
 }
 
 // resolveCustomPolicyIdentity replaces the internal platform UUIDs held in a
