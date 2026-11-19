@@ -2004,17 +2004,34 @@ func TestFindActiveGatewayChoosesARegularGatewayOfThePipelineThatNoRunCreated(t 
 	require.Equal(t, []string{"functionalityType=regular"}, queries, "the platform is asked for regular gateways only")
 }
 
+func TestFindActiveGatewayPassesOverAGatewayOfAPromotionTarget(t *testing.T) {
+	steps, ctx := gatewayChoiceStub(t, []map[string]any{
+		listedGateway("stage-default", "staging", nil),
+		listedGateway("dev-default", "development", nil),
+	}, nil)
+
+	require.NoError(t, steps.findActiveGateway(ctx))
+	id, err := tcontext.ResolveString(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "dev-default", id, "the platform accepts a deployment to the entry environment only")
+	env, err := tcontext.ResolveString(ctx, keyGatewayEnv)
+	require.NoError(t, err)
+	require.Equal(t, "development", env)
+}
+
 func TestFindActiveGatewayNamesWhyEveryGatewayWasRejected(t *testing.T) {
 	steps, ctx := gatewayChoiceStub(t, []map[string]any{
 		listedGateway("prod-default", "production", nil),
+		listedGateway("stage-default", "staging", nil),
 		listedGateway("dev-ai", "development", map[string]any{"functionalityType": "ai"}),
 		listedGateway("dev-sgw", "development", map[string]any{"displayName": "sgw-abcdefg2-1"}),
 		listedGateway("", "development", nil),
 	}, nil)
 
 	err := steps.findActiveGateway(ctx)
-	require.ErrorContains(t, err, "no usable APIP gateway among 4 listed")
+	require.ErrorContains(t, err, "no usable APIP gateway among 5 listed")
 	require.ErrorContains(t, err, `prod-default: environment "production" is not in the project's deployment pipeline`)
+	require.ErrorContains(t, err, `stage-default: environment "staging" is a promotion target of the project's deployment pipeline`)
 	require.ErrorContains(t, err, `dev-ai: functionality type "ai"`)
 	require.ErrorContains(t, err, "dev-sgw: a synthetic gateway of a suite run")
 }
@@ -3437,6 +3454,42 @@ func TestEnsureDefaultGatewayNeverCreatesTheGatewayAPinNames(t *testing.T) {
 	require.Equal(t, gatewayOutcome{ID: "wanted", Environment: "development"}, outcome)
 }
 
+func TestEnsureDefaultGatewayUsesOnlyAGatewayOfAnEntryEnvironment(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	paths := []promotionPath{{SourceEnvironment: "development", TargetEnvironments: []string{"apip-test-e1"}}}
+	targetGateway := map[string]any{"id": "apip-test-e1-default", "environment": "apip-test-e1", "status": "ACTIVE", "isActive": true}
+
+	platform := &starterPlatform{paths: paths, gateways: []map[string]any{
+		targetGateway,
+		{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true},
+	}}
+	outcome, err := ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, gatewayOutcome{ID: "development-default", Environment: "development"}, outcome,
+		"a gateway of a promotion target is passed over even when it is listed first")
+	require.Empty(t, platform.created)
+
+	platform = &starterPlatform{paths: paths, activeAt: 2, gateways: []map[string]any{targetGateway}}
+	outcome, err = ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, gatewayOutcome{ID: "development-" + testDefaultGateway, Environment: "development", Created: true}, outcome,
+		"with no gateway in the entry environment, one is created there")
+}
+
+func TestEnsureDefaultGatewayRefusesAPinnedGatewayOfAPromotionTarget(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "apip-test-e1-default")
+	platform := &starterPlatform{
+		paths: []promotionPath{{SourceEnvironment: "development", TargetEnvironments: []string{"apip-test-e1"}}},
+		gateways: []map[string]any{
+			{"id": "apip-test-e1-default", "environment": "apip-test-e1", "status": "ACTIVE", "isActive": true},
+		},
+	}
+	_, err := ensureForTest(t, platform)
+	require.ErrorContains(t, err, "not an active regular gateway in an entry environment")
+	require.NotErrorIs(t, err, errUnavailable, "a pinned gateway the platform cannot deploy to fails the run")
+	require.Empty(t, platform.created)
+}
+
 func TestEnsureDefaultGatewayNeedsAPipeline(t *testing.T) {
 	t.Setenv(cloudGatewayPinEnv, "")
 	platform := &starterPlatform{}
@@ -3453,7 +3506,15 @@ func TestDefaultGatewayEnvironmentPrefersDevelopmentThenTheFirstStage(t *testing
 	}{
 		"development is reached": {developmentPipeline(), "development", false},
 		"development is a target": {[]promotionPath{{SourceEnvironment: "dev-a", TargetEnvironments: []string{"development"}}},
-			"development", false},
+			"dev-a", false},
+		"development is between two stages": {[]promotionPath{
+			{SourceEnvironment: "build", TargetEnvironments: []string{"development"}},
+			{SourceEnvironment: "development", TargetEnvironments: []string{"prod"}},
+		}, "build", false},
+		"development is one of several entries": {[]promotionPath{
+			{SourceEnvironment: "alpha", TargetEnvironments: []string{"prod"}},
+			{SourceEnvironment: "development", TargetEnvironments: []string{"prod"}},
+		}, "development", false},
 		"the first stage in name order": {[]promotionPath{
 			{SourceEnvironment: "zeta", TargetEnvironments: []string{"prod"}},
 			{SourceEnvironment: "alpha", TargetEnvironments: []string{"prod"}},

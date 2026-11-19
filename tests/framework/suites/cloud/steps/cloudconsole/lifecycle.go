@@ -81,9 +81,9 @@ func (s *Steps) findTestProject(ctx context.Context) error {
 // reading the generic endpoint would skip it.
 //
 // Only a regular gateway that the platform accepts a deployment to is chosen: one whose
-// environment is in the deployment pipeline of the project the scenario found, that no suite run
-// created for itself, and, when CLOUD_GATEWAY_ID names one, only that gateway, whatever its name
-// looks like.
+// environment is an entry environment of the deployment pipeline of the project the scenario
+// found, that no suite run created for itself, and, when CLOUD_GATEWAY_ID names one, only that
+// gateway, whatever its name looks like.
 func (s *Steps) findActiveGateway(ctx context.Context) error {
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways?functionalityType="+url.QueryEscape(regularGatewayKind), nil)
 	if err != nil {
@@ -98,11 +98,11 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	}
 	filters := gatewayFilters(strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)))
 	if projectID, resolveErr := tcontext.ResolveString(ctx, keyProjectID); resolveErr == nil && strings.TrimSpace(projectID) != "" {
-		environments, err := s.pipelineEnvironments(ctx)
+		paths, err := s.pipelinePaths(ctx)
 		if err != nil {
 			return fmt.Errorf("reading the environments of the project's deployment pipeline: %w", err)
 		}
-		filters = append(filters, inPipelineEnvironments(environments))
+		filters = append(filters, inEntryEnvironments(paths))
 	}
 	choice, err := s.chooseActiveGateway(ctx, items, "APIP gateway", filters...)
 	if err != nil {
@@ -206,14 +206,19 @@ func pinnedGateway(id string) gatewayFilter {
 	}
 }
 
-// inPipelineEnvironments rejects a gateway whose environment is not one the project's deployment
-// pipeline reaches, because the platform refuses a deployment to it.
-func inPipelineEnvironments(environments map[string]bool) gatewayFilter {
+// inEntryEnvironments rejects a gateway whose environment is not an entry environment of the
+// project's deployment pipeline, because the platform refuses a deployment to it: an environment
+// outside the pipeline is never deployed to, and a promotion target only through a promotion.
+func inEntryEnvironments(paths []promotionPath) gatewayFilter {
+	environments, entries := environmentsOf(paths), entryEnvironmentsOf(paths)
 	return func(item map[string]any) string {
 		environment, _ := item["environment"].(string)
 		environment = strings.TrimSpace(environment)
-		if !environments[environment] {
+		switch {
+		case !environments[environment]:
 			return fmt.Sprintf("environment %q is not in the project's deployment pipeline", environment)
+		case !entries[environment]:
+			return fmt.Sprintf("environment %q is a promotion target of the project's deployment pipeline", environment)
 		}
 		return ""
 	}

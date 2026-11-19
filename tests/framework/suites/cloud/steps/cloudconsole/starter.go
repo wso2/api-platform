@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -59,7 +58,7 @@ func isStarterGateway(names []string) bool {
 }
 
 // preferredGatewayEnvironment is the environment the starter creates the default gateway in when
-// the deployment pipeline of the project reaches it.
+// it is an entry environment of the deployment pipeline of the project.
 const preferredGatewayEnvironment = "development"
 
 // gatewayReadyTimeout bounds how long the starter waits for a gateway it created, or one that is
@@ -469,8 +468,9 @@ func (p organisationAPI) get(ctx context.Context, path string) (*httpx.Response,
 	return p.do(ctx, http.MethodGet, path, nil)
 }
 
-// ensureDefaultGateway leaves the organisation with a regular gateway that is active and that the
-// deployment pipeline of the project accepts a deployment to. A gateway that is still being
+// ensureDefaultGateway leaves the organisation with a regular gateway that is active and in an entry
+// environment of the deployment pipeline of the project, the only kind of environment the platform
+// accepts a deployment to without a promotion. A gateway that is still being
 // built is waited for rather than duplicated; only when none exists is one created. The outcome
 // names a gateway the starter created even when it did not become active, so the caller can remove
 // it. An error that matches errUnavailable means the organisation lacks something the starter
@@ -487,10 +487,8 @@ func ensureDefaultGateway(ctx context.Context, platform organisationAPI, display
 		return gatewayOutcome{}, fmt.Errorf("project %q is bound to deployment pipeline %q, which is not named with the prefix %q",
 			project, pipeline, testResourcePrefix)
 	}
-	environments := environmentsOf(paths)
-
 	pin := strings.TrimSpace(os.Getenv(cloudGatewayPinEnv))
-	filters := append(gatewayFilters(pin), inPipelineEnvironments(environments))
+	filters := append(gatewayFilters(pin), inEntryEnvironments(paths))
 	items, err := listCollectionQuery(ctx, platform.client, platform.base, platform.token, "/managed-gateways",
 		url.Values{"functionalityType": {regularGatewayKind}})
 	if err != nil {
@@ -517,7 +515,7 @@ func ensureDefaultGateway(ctx context.Context, platform organisationAPI, display
 		return building[0], awaitGatewayActive(ctx, platform, building[0].ID)
 	}
 	if pin != "" {
-		return gatewayOutcome{}, fmt.Errorf("%s names gateway %q, which is not an active regular gateway in the deployment pipeline of project %q", cloudGatewayPinEnv, pin, project)
+		return gatewayOutcome{}, fmt.Errorf("%s names gateway %q, which is not an active regular gateway in an entry environment of the deployment pipeline of project %q", cloudGatewayPinEnv, pin, project)
 	}
 
 	environment, err := defaultGatewayEnvironment(paths)
@@ -543,28 +541,17 @@ func rejectedByAny(item map[string]any, filters []gatewayFilter) string {
 }
 
 // defaultGatewayEnvironment picks the environment the default gateway is created in: the
-// preferred one when the pipeline reaches it, otherwise the first stage of the pipeline.
+// preferred one when it is an entry environment of the pipeline, otherwise the first entry
+// environment in name order.
 func defaultGatewayEnvironment(paths []promotionPath) (string, error) {
-	if environmentsOf(paths)[preferredGatewayEnvironment] {
+	entries := entryEnvironmentsOf(paths)
+	if entries[preferredGatewayEnvironment] {
 		return preferredGatewayEnvironment, nil
 	}
-	targets := map[string]bool{}
-	for _, path := range paths {
-		for _, target := range path.TargetEnvironments {
-			targets[target] = true
-		}
-	}
-	var stages []string
-	for _, path := range paths {
-		if path.SourceEnvironment != "" && !targets[path.SourceEnvironment] && !slices.Contains(stages, path.SourceEnvironment) {
-			stages = append(stages, path.SourceEnvironment)
-		}
-	}
-	if len(stages) == 0 {
+	if len(entries) == 0 {
 		return "", errors.New("the deployment pipeline has no environment to create a gateway in")
 	}
-	slices.Sort(stages)
-	return stages[0], nil
+	return sortedKeys(entries)[0], nil
 }
 
 // createDefaultGateway asks the platform for the default gateway and returns the id it answered
