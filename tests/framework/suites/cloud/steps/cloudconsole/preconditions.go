@@ -56,7 +56,8 @@ var preconditionOrder = []precondition{
 	prePipelineProj, prePipelineChain2, prePipelineChain3, preAPIPortal,
 }
 
-// allPreconditions lists every precondition, a project-scoped one once for each project.
+// allPreconditions lists every precondition, a project-scoped one once for each project that has a
+// scenario asking for it.
 var allPreconditions = func() []precondition {
 	var all []precondition
 	for _, base := range preconditionOrder {
@@ -65,6 +66,9 @@ var allPreconditions = func() []precondition {
 			continue
 		}
 		for _, project := range suiteProjects {
+			if base == prePipelineChain3 && project == projectOne {
+				continue // no scenario of project one promotes through three environments
+			}
 			all = append(all, scoped(base, project))
 		}
 	}
@@ -93,7 +97,9 @@ func preconditionsNamed(name string) ([]precondition, error) {
 	if slices.Contains(projectScoped, precondition(name)) {
 		var needs []precondition
 		for _, project := range suiteProjects {
-			needs = append(needs, scoped(precondition(name), project))
+			if need := scoped(precondition(name), project); slices.Contains(allPreconditions, need) {
+				needs = append(needs, need)
+			}
 		}
 		return needs, nil
 	}

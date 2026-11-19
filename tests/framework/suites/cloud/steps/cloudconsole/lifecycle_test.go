@@ -2004,6 +2004,58 @@ func TestFindActiveGatewayChoosesARegularGatewayOfThePipelineThatNoRunCreated(t 
 	require.Equal(t, []string{"functionalityType=regular"}, queries, "the platform is asked for regular gateways only")
 }
 
+func TestPipelineProjectIsTheFoundProjectElseTheOneOfTheFeatureFile(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.Empty(t, pipelineProjectOf(ctx))
+
+	require.NoError(t, tcontext.Set(ctx, keyScenarioProject, projectTwo))
+	require.Equal(t, projectTwo, pipelineProjectOf(ctx), "a scenario that never found a project follows its feature file's project")
+
+	require.NoError(t, tcontext.Set(ctx, keyProjectID, "syn-project-abcde234-1"))
+	require.Equal(t, "syn-project-abcde234-1", pipelineProjectOf(ctx), "a project the scenario found or created wins")
+}
+
+func TestUsableEnvironmentPrefersAStageTheProjectDeploysToDirectly(t *testing.T) {
+	items := []map[string]any{{"name": "apip-test-e1"}, {"name": "development"}, {"name": "qa"}}
+	fits := func(string) bool { return true }
+
+	got, err := usableEnvironmentPreferring(items, map[string]bool{"development": true}, fits)
+	require.NoError(t, err)
+	require.Equal(t, "development", got, "the preferred environment wins over an earlier one")
+
+	got, err = usableEnvironmentPreferring(items, map[string]bool{"development": true}, func(name string) bool { return name != "development" })
+	require.NoError(t, err)
+	require.Equal(t, "apip-test-e1", got, "a preferred environment that does not fit is passed over")
+
+	got, err = usableEnvironmentPreferring(items, nil, fits)
+	require.NoError(t, err)
+	require.Equal(t, "apip-test-e1", got, "with no preference the first usable one is chosen")
+}
+
+func TestEntryEnvironmentsOfAPipelineAreTheStagesNoPathTargets(t *testing.T) {
+	require.Equal(t, map[string]bool{"development": true}, entryEnvironmentsOf(promotionChainPaths("development", "apip-test-e1", "apip-test-e2")))
+	require.Equal(t, map[string]bool{"alpha": true, "beta": true}, entryEnvironmentsOf([]promotionPath{
+		{SourceEnvironment: "alpha", TargetEnvironments: []string{"prod"}},
+		{SourceEnvironment: "beta", TargetEnvironments: []string{"prod"}},
+	}))
+	require.Empty(t, entryEnvironmentsOf(nil))
+}
+
+func TestTheDefaultGatewayIsInAStageTheProjectDeploysToDirectly(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{
+		paths:    promotionChainPaths("development", "apip-test-e1"),
+		gateways: chainGateways("apip-test-e1", "development"),
+	}
+
+	outcome, err := ensureForTest(t, platform)
+
+	require.NoError(t, err)
+	require.Equal(t, "development-gateway", outcome.ID, "a gateway in a promotion target is listed first and passed over")
+	require.Equal(t, "development", outcome.Environment)
+	require.Empty(t, platform.created)
+}
+
 func TestFindActiveGatewayPassesOverAGatewayOfAPromotionTarget(t *testing.T) {
 	steps, ctx := gatewayChoiceStub(t, []map[string]any{
 		listedGateway("stage-default", "staging", nil),

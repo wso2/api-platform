@@ -97,7 +97,7 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
 	filters := gatewayFilters(strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)))
-	if projectID, resolveErr := tcontext.ResolveString(ctx, keyProjectID); resolveErr == nil && strings.TrimSpace(projectID) != "" {
+	if pipelineProjectOf(ctx) != "" {
 		paths, err := s.pipelinePaths(ctx)
 		if err != nil {
 			return fmt.Errorf("reading the environments of the project's deployment pipeline: %w", err)
@@ -597,7 +597,18 @@ func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	name, err := usableEnvironment(items, hostsSuiteGateways(ctx, s.rawDo))
+	fits := hostsSuiteGateways(ctx, s.rawDo)
+	// The scenarios deploy to the gateway they build there, which the platform allows only in a stage
+	// the project's pipeline deploys to directly, so such an environment is chosen when there is one.
+	var entries map[string]bool
+	if pipelineProjectOf(ctx) != "" {
+		paths, err := s.pipelinePaths(ctx)
+		if err != nil {
+			return fmt.Errorf("reading the environments of the project's deployment pipeline: %w", err)
+		}
+		entries = entryEnvironmentsOf(paths)
+	}
+	name, err := usableEnvironmentPreferring(items, entries, fits)
 	if err != nil {
 		return err
 	}
@@ -656,6 +667,19 @@ func usableEnvironment(items []map[string]any, fits func(string) bool) (string, 
 	}
 	return "", fmt.Errorf("APIP environment list contains no environment named %q or starting with %q that allows a gateway handle of %d characters",
 		defaultEnvironmentName, testResourcePrefix, minGatewayHandleBudget)
+}
+
+// usableEnvironmentPreferring is usableEnvironment that takes the first usable environment among
+// the preferred ones when there is one.
+func usableEnvironmentPreferring(items []map[string]any, preferred map[string]bool, fits func(string) bool) (string, error) {
+	if len(preferred) > 0 {
+		if name, err := usableEnvironment(items, func(environment string) bool {
+			return preferred[environment] && fits(environment)
+		}); err == nil {
+			return name, nil
+		}
+	}
+	return usableEnvironment(items, fits)
 }
 
 // otherEnvironment returns the first listed non-production environment besides the active one that

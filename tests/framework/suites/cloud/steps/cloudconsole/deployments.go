@@ -19,6 +19,7 @@ package cloudconsole
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -700,9 +701,9 @@ func (s *Steps) stages(ctx context.Context) ([]map[string]any, error) {
 // pipelinePaths reads the promotion paths of the deployment pipeline the scenario's project is
 // bound to.
 func (s *Steps) pipelinePaths(ctx context.Context) ([]promotionPath, error) {
-	projectID, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return nil, err
+	projectID := pipelineProjectOf(ctx)
+	if projectID == "" {
+		return nil, errors.New("the scenario's project is not known")
 	}
 	return pipelinePathsOf(ctx, projectID, func(ctx context.Context, path string) (*httpx.Response, error) {
 		return s.doAuthenticatedRaw(ctx, http.MethodGet, path, nil)
@@ -750,6 +751,15 @@ func entryEnvironmentsOf(paths []promotionPath) map[string]bool {
 		}
 	}
 	return entries
+}
+
+// pipelineProjectOf returns the project whose deployment pipeline a gateway choice follows: the
+// project the scenario found or created, else the project of its feature file.
+func pipelineProjectOf(ctx context.Context) string {
+	if project := strings.TrimSpace(optionalValue(ctx, keyProjectID)); project != "" {
+		return project
+	}
+	return strings.TrimSpace(optionalValue(ctx, keyScenarioProject))
 }
 
 // promotionPath is one step of a deployment pipeline: where a build is promoted from and to.
