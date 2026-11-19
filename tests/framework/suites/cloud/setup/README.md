@@ -176,11 +176,13 @@ with a suffix of **this run**:
 |---|---|
 | portal publications | the publications of the run's APIs, from every active portal |
 | managed API Portals | only a portal a scenario built for itself (`syn-portal-`) |
-| REST APIs and GraphQL APIs | the run's APIs, in `apip-test-project-1`, `apip-test-project-2` and the projects the run created |
+| REST APIs and GraphQL APIs | the run's APIs, in `apip-test-project-1` and `apip-test-project-2` |
 | subscription plans | the plans the run created (`syn-plan-`) |
-| secrets, self-hosted gateways, managed gateways, projects | the run's entries |
+| secrets, self-hosted gateways, managed gateways | the run's entries |
 
-Whatever the finalizer removes is a leak the per-scenario cleanup missed and is logged as one.
+Whatever the finalizer removes is a leak the per-scenario cleanup missed and is logged as one. No
+scenario creates a project and nothing in the suite deletes one: the scenarios that create a project
+are tagged `@skip`.
 
 The finalizer **never** deletes:
 

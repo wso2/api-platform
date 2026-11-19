@@ -319,9 +319,6 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(cleanup.KindAPI, cloudDeleter(topo, client, "/rest-apis")); err != nil {
 		return err
 	}
-	if err := reg.RegisterDeleter(cleanup.KindProject, projectDeleter(topo, client)); err != nil {
-		return err
-	}
 	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection)); err != nil {
 		return err
 	}

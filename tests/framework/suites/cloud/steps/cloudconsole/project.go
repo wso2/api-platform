@@ -37,10 +37,6 @@ const (
 	// keyRejectedProjectID names the project whose creation the scenario expects to be refused.
 	keyRejectedProjectID = "cloudRejectedProjectID"
 
-	// maxQuotaProbeProjects bounds how many projects the quota probe creates before it concludes
-	// the organisation has no project quota worth probing.
-	maxQuotaProbeProjects = 50
-
 	// handleLengthBeyondStorage is a handle length past the 40 characters the project record
 	// stores and short of the 63 the handle rules allow.
 	handleLengthBeyondStorage = 45
@@ -74,7 +70,7 @@ func handleDefectNames() string {
 }
 
 // registerProjectSteps binds the steps that read the scenario's project, probe projects that do not
-// exist, refuse a project, read a project's pipeline binding, and probe the quota.
+// exist, refuse a project, and read a project's pipeline binding.
 func (s *Steps) registerProjectSteps(sc stepRegistrar) {
 	sc.Step(`^I read the APIP test project$`, s.readDefaultProject)
 	sc.Step(`^I read an APIP project that does not exist$`, s.readAbsentProject)
@@ -84,7 +80,6 @@ func (s *Steps) registerProjectSteps(sc stepRegistrar) {
 	sc.Step(`^the synthetic APIP project should become active$`, s.awaitProjectActive)
 	sc.Step(`^I read the deployment pipeline of the APIP project$`, s.readProjectPipeline)
 	sc.Step(`^the deployment pipeline the APIP project is bound to should be listed by the platform$`, s.assertBoundPipelineListed)
-	sc.Step(`^I create synthetic APIP projects until the organisation refuses one$`, s.createProjectsUntilRefused)
 }
 
 // readDefaultProject reads the scenario's project directly, which stays correct once
@@ -250,25 +245,4 @@ func (s *Steps) assertBoundPipelineListed(ctx context.Context) error {
 	}
 	_, err = listedPipelinePaths(listed, pipeline)
 	return err
-}
-
-// createProjectsUntilRefused creates synthetic projects one after another until the platform
-// refuses one, and keeps that refusal as the published response. Every project is registered for
-// cleanup before it is requested. The probe stops at maxQuotaProbeProjects, which means the
-// organisation has no project quota to probe.
-func (s *Steps) createProjectsUntilRefused(ctx context.Context) error {
-	for created := 0; created < maxQuotaProbeProjects; created++ {
-		id, resp, err := s.requestProjectOf(ctx, cleanup.KindProject)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusCreated {
-			return tcontext.Set(ctx, keyRejectedProjectID, id)
-		}
-		if err := s.keepCreatedProject(ctx, cleanup.KindProject, id, resp); err != nil {
-			return err
-		}
-	}
-	return fmt.Errorf("the organisation accepted %d projects and refused none: it has no project quota within reach, "+
-		"so the probe needs an organisation with a known quota", maxQuotaProbeProjects)
 }

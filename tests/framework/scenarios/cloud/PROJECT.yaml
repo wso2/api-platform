@@ -23,6 +23,11 @@
 #   exempt       the layer deliberately does not test the ID, for `reason`
 #   planned      not automated in this layer yet
 # Refs are feature paths relative to tests/framework plus the exact scenario name.
+#
+# The suite works in the two projects the organisation already holds, apip-test-project-1 and
+# apip-test-project-2. No running scenario creates or deletes a project, and neither does the
+# finalizer. The scenarios that create one are written and tagged @skip, and their entries read
+# `planned`.
 code: PROJECT
 title: APIP Cloud Project Lifecycle
 scenarios:
@@ -30,72 +35,62 @@ scenarios:
     title: "The default project of the organisation is resolved and active."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "The test project of the suite is resolved and active"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_002
     title: "A project can be created and retrieved by handle."
     priority: P0
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      # Written and tagged @skip: the suite works in the two projects the organisation holds and creates or deletes none.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "A project can be created and retrieved by handle"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_003
     title: "A project whose handle is already in use is rejected."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      # Written and tagged @skip: the suite works in the two projects the organisation holds and creates or deletes none.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "A project whose handle is already in use is rejected"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_004
     title: "A project whose handle breaks the naming rules is rejected and leaves nothing behind."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      # Written and tagged @skip: the suite works in the two projects the organisation holds and creates or deletes none.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "A project whose handle breaks the naming rules is rejected and leaves nothing behind"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_006
     title: "Reading a project that does not exist returns not found."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "Reading a project that does not exist returns not found"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_008
     title: "A new project is active without any manual intervention."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      # Written and tagged @skip: the suite works in the two projects the organisation holds and creates or deletes none.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "A new project is active without any manual intervention"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_009
     title: "A project is bound to a deployment pipeline and the binding is readable."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "The deployment pipeline a project is bound to is readable and listed"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_010
     title: "Binding a project to a deployment pipeline that does not exist is refused."
     priority: P1
@@ -106,9 +101,8 @@ scenarios:
     title: "A project that was never bound explicitly reads back the default pipeline."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      # Written and tagged @skip: the suite works in the two projects the organisation holds and creates or deletes none.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_project.feature
           scenario: "A project that was never bound explicitly reads back the default pipeline"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."

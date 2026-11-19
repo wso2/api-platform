@@ -458,13 +458,15 @@ func TestAssertAPIResponseMatchesRequestedPost(t *testing.T) {
 	require.ErrorContains(t, steps.assertAPIResponse(ctx, 1), "contain post 1")
 }
 
+// platformAPIRoute is where the control-plane gateway publishes the APIP platform API.
+const platformAPIRoute = "/apip-platform-api-apip-platform-api-endpoint/api/v0.9"
+
 // cloudAPIStub serves handler as the organization's platform API endpoint.
 func cloudAPIStub(t *testing.T, handler http.HandlerFunc) *frameworkruntime.Topology {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The cloud API's project route is served next to the platform API's; the handler sees
-		// both as plain collection paths.
-		r.URL.Path = strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, platformAPIRoute), coreAPIRoute)
+		// The handler sees the platform API's routes as plain collection paths.
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, platformAPIRoute)
 		handler(w, r)
 	}))
 	t.Cleanup(server.Close)
@@ -1467,38 +1469,6 @@ func TestProjectPipelineReadSteps(t *testing.T) {
 	}
 }
 
-func TestCreateProjectsUntilRefusedStopsAtTheFirstRefusal(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	created := 0
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]string
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		if created == 3 {
-			writeJSON(w, http.StatusPaymentRequired, map[string]string{"code": "quota_exceeded"})
-			return
-		}
-		created++
-		writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-	})
-	require.NoError(t, steps.createProjectsUntilRefused(ctx))
-	require.Len(t, registry.Pending(), 4, "every project asked for is registered, the refused one included")
-	published, err := httpx.Published(ctx)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusPaymentRequired, published.StatusCode)
-	require.NotEmpty(t, optionalValue(ctx, keyRejectedProjectID))
-}
-
-func TestCreateProjectsUntilRefusedGivesUpWhereThereIsNoQuota(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]string
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-	})
-	require.ErrorContains(t, steps.createProjectsUntilRefused(ctx), "refused none")
-	require.Len(t, registry.Pending(), maxQuotaProbeProjects)
-}
-
 // leftoverStub serves per-collection lists and records the deletions it was asked for.
 type leftoverStub struct {
 	mu      sync.Mutex
@@ -1618,9 +1588,11 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"self-hosted-gateways/development-syn-shgw-abcde234-1",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
-		"projects/syn-project-abcde234-2",
-	}, stub.deleted[:13])
-	require.Len(t, removed, 13)
+	}, stub.deleted[:12])
+	require.Len(t, removed, 12)
+	for _, id := range stub.deleted {
+		require.NotContains(t, id, "projects/syn-project", "the finalizer never deletes a project")
+	}
 	for _, collection := range projectScopedCollections {
 		listed := slices.Clone(stub.listedProjects[collection])
 		slices.Sort(listed)
@@ -1809,7 +1781,7 @@ func TestCloudSweepsCarryOnPastAListingThatFails(t *testing.T) {
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
 	require.ErrorContains(t, err, "listing /secrets")
 	require.Contains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1")
-	require.Contains(t, removed, "/projects/syn-project-abcde234-2")
+	require.NotContains(t, removed, "/projects/syn-project-abcde234-2")
 }
 
 func TestCloudSweepsSkipACollectionThePlatformDoesNotServe(t *testing.T) {
@@ -1821,7 +1793,7 @@ func TestCloudSweepsSkipACollectionThePlatformDoesNotServe(t *testing.T) {
 
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
 	require.NoError(t, err, "a route the platform does not serve holds no leftovers")
-	require.Contains(t, removed, "/projects/syn-project-abcde234-2")
+	require.NotContains(t, removed, "/projects/syn-project-abcde234-2")
 	require.NotContains(t, removed, "/self-hosted-gateways/development-syn-shgw-abcde234-1")
 }
 
@@ -4230,70 +4202,6 @@ func TestJudgeRoundAcceptsWritesAndConflictsAndFlagsEverythingElse(t *testing.T)
 
 func TestADeploymentGetsAtLeastTenMinutesToBecomeDeployed(t *testing.T) {
 	require.GreaterOrEqual(t, deployedTimeout, 10*time.Minute)
-}
-
-func TestCoreProjectsBaseReplacesThePlatformAPIRoute(t *testing.T) {
-	base, err := coreProjectsBase("http://dev.localhost:19080" + platformAPIRoute + "/")
-	require.NoError(t, err)
-	require.Equal(t, "http://dev.localhost:19080"+coreAPIRoute, base)
-
-	_, err = coreProjectsBase("http://dev.localhost:19080/some/other/route")
-	require.Error(t, err)
-}
-
-func TestDeleteProjectThroughCloudAPIRetriesATransientAnswer(t *testing.T) {
-	previous := projectDeleteInterval
-	projectDeleteInterval = 10 * time.Millisecond
-	t.Cleanup(func() { projectDeleteInterval = previous })
-
-	for _, transient := range []int{http.StatusServiceUnavailable, http.StatusRequestTimeout, http.StatusTooManyRequests} {
-		requests := 0
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			requests++
-			if requests == 1 {
-				w.WriteHeader(transient)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
-		}))
-
-		client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second, MaxRetries: -1})
-		err := deleteProjectThroughCloudAPI(context.Background(), client, server.URL+platformAPIRoute, "console-token", "syn-project-1", projectDeleteTimeout)
-		server.Close()
-
-		require.NoError(t, err, "status %d is retried until the delete is accepted", transient)
-		require.Equal(t, 2, requests, "status %d sends a second DELETE", transient)
-	}
-}
-
-func TestDeleteProjectThroughCloudAPIReturnsAnUnderivableRoute(t *testing.T) {
-	client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
-	err := deleteProjectThroughCloudAPI(context.Background(), client, "http://dev.localhost:19080/some/other/route", "console-token", "syn-project-1", projectDeleteTimeout)
-	require.ErrorContains(t, err, "syn-project-1")
-}
-
-func TestDeleteProjectThroughCloudAPISendsOneRequestAndReportsARefusal(t *testing.T) {
-	for _, status := range []int{http.StatusNoContent, http.StatusNotFound, http.StatusForbidden} {
-		var requests []string
-		var authorization string
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			requests = append(requests, r.Method+" "+r.URL.Path)
-			authorization = r.Header.Get("Authorization")
-			w.WriteHeader(status)
-		}))
-
-		client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
-		err := deleteProjectThroughCloudAPI(context.Background(), client, server.URL+platformAPIRoute, "console-token", "syn-project-1", projectDeleteTimeout)
-		server.Close()
-
-		if status == http.StatusForbidden {
-			require.ErrorContains(t, err, "syn-project-1", "a refusal is returned so cleanup reports the leak")
-		} else {
-			require.NoError(t, err, "status %d", status)
-		}
-		require.Equal(t, []string{"DELETE " + coreAPIRoute + "/projects/syn-project-1"}, requests, "status %d", status)
-		require.Equal(t, "Bearer console-token", authorization)
-	}
 }
 
 // fastPortalPolls lowers the portal poll interval to the retry floor for one test.
