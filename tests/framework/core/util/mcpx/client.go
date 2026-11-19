@@ -43,10 +43,22 @@ const clientName = "apip-test-framework"
 // ErrSessionClosed is returned by a call on a session that has been closed.
 var ErrSessionClosed = errors.New("mcpx: session is closed")
 
+// ErrNotConnected is returned by a call on a nil Session or one that Connect did not create.
+var ErrNotConnected = errors.New("mcpx: session is not connected")
+
+// protocolHeaders are the headers the SDK chooses. Options.Headers must not name them: a value
+// set by the caller would reach requests the SDK has not set it on yet, such as a stale
+// Mcp-Session-Id on the first initialize.
+var protocolHeaders = []string{
+	"Accept", "Content-Type", "Last-Event-Id", "Mcp-Method", "Mcp-Name", "Mcp-Protocol-Version", "Mcp-Session-Id",
+}
+
 // Options say what each request carries besides the protocol's own headers, and how long a
 // call may take.
 type Options struct {
-	// Headers are added to every request, except a header the SDK sets itself.
+	// Headers are added to every request. They must not name a protocol header (Accept,
+	// Content-Type, Last-Event-Id, Mcp-Method, Mcp-Name, Mcp-Protocol-Version or
+	// Mcp-Session-Id); Connect refuses those, because the SDK chooses them.
 	Headers map[string]string
 	// Host, when not empty, replaces the Host of every request.
 	Host string
@@ -86,6 +98,9 @@ func Connect(ctx context.Context, rawURL string, opts Options) (*Session, error)
 	if timeout == 0 {
 		timeout = DefaultCallTimeout
 	}
+	if err := validateHeaders(opts.Headers); err != nil {
+		return nil, err
+	}
 
 	sent := &sentMethods{}
 	transport := &mcp.StreamableClientTransport{
@@ -95,6 +110,10 @@ func Connect(ctx context.Context, rawURL string, opts Options) (*Session, error)
 			Transport: &requestDecorator{
 				base: http.DefaultTransport, headers: cloneHeaders(opts.Headers), host: opts.Host, sent: sent,
 			},
+			// A redirect is returned to the SDK as the answer, never followed: the decorator
+			// would otherwise put the caller's headers back on a request to another host after
+			// the client had removed them.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 		MaxRetries:           -1,
 		DisableStandaloneSSE: true,
@@ -125,9 +144,26 @@ func parseEndpoint(rawURL string) (string, error) {
 	return trimmed, nil
 }
 
+// validateHeaders refuses an empty header name and any protocol header.
+func validateHeaders(headers map[string]string) error {
+	for name := range headers {
+		canonical := http.CanonicalHeaderKey(strings.TrimSpace(name))
+		if canonical == "" {
+			return errors.New("mcpx: header name must not be empty")
+		}
+		if slices.Contains(protocolHeaders, canonical) {
+			return fmt.Errorf("mcpx: header %q is chosen by the MCP SDK and cannot be set in Options.Headers", name)
+		}
+	}
+	return nil
+}
+
+// connected reports whether the session holds an SDK session; a nil or zero-value Session does not.
+func (s *Session) connected() bool { return s != nil && s.sdk != nil }
+
 // Handshake returns the JSON-RPC methods the client sent while it connected, in order.
 func (s *Session) Handshake() []string {
-	if s == nil {
+	if !s.connected() {
 		return nil
 	}
 	return slices.Clone(s.handshake)
@@ -135,7 +171,7 @@ func (s *Session) Handshake() []string {
 
 // ProtocolVersion returns the protocol version the handshake agreed on.
 func (s *Session) ProtocolVersion() string {
-	if s == nil {
+	if !s.connected() {
 		return ""
 	}
 	if result := s.sdk.InitializeResult(); result != nil {
@@ -146,25 +182,29 @@ func (s *Session) ProtocolVersion() string {
 
 // ID returns the Mcp-Session-Id the server issued, or "" from a server that keeps no session.
 func (s *Session) ID() string {
-	if s == nil {
+	if !s.connected() {
 		return ""
 	}
 	return s.sdk.ID()
 }
 
-// CallTool calls the named tool. A transport or JSON-RPC failure is returned as the error; a
-// tool that ran but failed is reported in ToolResult.IsError. The SDK ends a session whose
-// request was refused with a non-success HTTP status, so a caller expecting a refusal opens a
-// new session for the next call.
+// CallTool calls the named tool. Nil arguments are sent as an empty object, since MCP defines
+// arguments as an object. A transport or JSON-RPC failure is returned as the error; a tool that
+// ran but failed is reported in ToolResult.IsError. The SDK ends a session whose request was
+// refused with a non-success HTTP status, so a caller expecting a refusal opens a new session for
+// the next call.
 func (s *Session) CallTool(ctx context.Context, name string, arguments map[string]any) (ToolResult, error) {
-	if s == nil {
-		return ToolResult{}, errors.New("mcpx: session is nil")
+	if !s.connected() {
+		return ToolResult{}, ErrNotConnected
 	}
 	if strings.TrimSpace(name) == "" {
 		return ToolResult{}, errors.New("mcpx: tool name is required")
 	}
 	if s.isClosed() {
 		return ToolResult{}, ErrSessionClosed
+	}
+	if arguments == nil {
+		arguments = map[string]any{}
 	}
 	callCtx, cancel := context.WithTimeout(ctx, s.callTimeout)
 	defer cancel()
@@ -182,9 +222,9 @@ func (s *Session) CallTool(ctx context.Context, name string, arguments map[strin
 }
 
 // Close ends the session; a server that keeps sessions is told with a DELETE. Closing a nil or
-// closed session does nothing.
+// closed session, or one Connect did not create, does nothing.
 func (s *Session) Close() error {
-	if s == nil {
+	if !s.connected() {
 		return nil
 	}
 	s.mu.Lock()

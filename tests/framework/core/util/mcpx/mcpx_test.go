@@ -73,9 +73,16 @@ func newDiscoverServer(t *testing.T) *httptest.Server {
 		&mcp.StreamableHTTPOptions{Stateless: true}))
 }
 
-// newLegacyServer refuses server/discover and issues session ids, as a server that predates MCP
-// 2026-07-28 does, so a client has to fall back to initialize.
+// newLegacyServer refuses server/discover with "Method not found" and issues session ids, as a
+// server that predates MCP 2026-07-28 does, so a client has to fall back to initialize.
 func newLegacyServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return newDiscoverRefusingServer(t, `{"code":-32601,"message":"Method not found"}`)
+}
+
+// newDiscoverRefusingServer answers server/discover with the given JSON-RPC error and serves
+// every other request with a stateful SDK server.
+func newDiscoverRefusingServer(t *testing.T, discoverError string) *httptest.Server {
 	t.Helper()
 	server := newToolServer()
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
@@ -93,7 +100,7 @@ func newLegacyServer(t *testing.T) *httptest.Server {
 		if json.Unmarshal(body, &envelope) == nil && envelope.Method == "server/discover" {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(envelope.ID) +
-				`,"error":{"code":-32601,"message":"Method not found"}}`))
+				`,"error":` + discoverError + `}`))
 			return
 		}
 		handler.ServeHTTP(w, r)
@@ -111,7 +118,11 @@ func connect(t *testing.T, endpoint string, opts Options) *Session {
 	t.Helper()
 	session, err := Connect(context.Background(), endpoint, opts)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = session.Close() })
+	t.Cleanup(func() {
+		if err := session.Close(); err != nil {
+			t.Errorf("closing the session to %s (id %q): %v", endpoint, session.ID(), err)
+		}
+	})
 	return session
 }
 
@@ -131,6 +142,14 @@ func TestConnectValidatesItsInputs(t *testing.T) {
 		{name: "malformed endpoint", endpoint: "http://exa mple.test/mcp", want: "endpoint URL"},
 		{name: "negative timeout", endpoint: "http://example.test/mcp", opts: Options{CallTimeout: -time.Second},
 			want: "must not be negative"},
+		{name: "empty header name", endpoint: "http://example.test/mcp",
+			opts: Options{Headers: map[string]string{" ": "x"}}, want: "header name must not be empty"},
+		{name: "session id header", endpoint: "http://example.test/mcp",
+			opts: Options{Headers: map[string]string{"mcp-session-id": "stale"}}, want: "chosen by the MCP SDK"},
+		{name: "content type header", endpoint: "http://example.test/mcp",
+			opts: Options{Headers: map[string]string{"Content-Type": "text/plain"}}, want: "chosen by the MCP SDK"},
+		{name: "protocol version header", endpoint: "http://example.test/mcp",
+			opts: Options{Headers: map[string]string{"MCP-Protocol-Version": "2025-06-18"}}, want: "chosen by the MCP SDK"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			session, err := Connect(context.Background(), tc.endpoint, tc.opts)
@@ -152,6 +171,13 @@ func TestConnectFallsBackToInitializeWhenServerDiscoverIsRefused(t *testing.T) {
 	require.Equal(t, ToolResult{Text: "The sum of 1 and 2 is 3."}, result)
 }
 
+func TestConnectFallsBackToInitializeOnAnyOtherServerDiscoverError(t *testing.T) {
+	server := newDiscoverRefusingServer(t, `{"code":-32603,"message":"Internal error"}`)
+	session := connect(t, server.URL+"/mcp", Options{})
+	require.Equal(t, []string{"server/discover", "initialize", "notifications/initialized"}, session.Handshake())
+	require.Equal(t, "2025-11-25", session.ProtocolVersion())
+}
+
 func TestConnectUsesServerDiscoverWhenTheServerAnswersIt(t *testing.T) {
 	session := connect(t, newDiscoverServer(t).URL+"/mcp", Options{})
 
@@ -171,6 +197,28 @@ func TestConnectReportsARefusedEndpoint(t *testing.T) {
 	require.ErrorContains(t, err, "mcpx: connecting to "+server.URL+"/mcp")
 }
 
+func TestConnectDoesNotFollowRedirects(t *testing.T) {
+	var reached sync.Mutex
+	elsewhere := 0
+	other := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Lock()
+		elsewhere++
+		reached.Unlock()
+		http.Error(w, "should not be reached", http.StatusTeapot)
+	}))
+	redirecting := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/mcp", http.StatusTemporaryRedirect)
+	}))
+
+	session, err := Connect(context.Background(), redirecting.URL+"/mcp",
+		Options{Headers: map[string]string{"Authorization": "Bearer secret"}})
+	require.Nil(t, session)
+	require.ErrorContains(t, err, "mcpx: connecting to")
+	reached.Lock()
+	defer reached.Unlock()
+	require.Zero(t, elsewhere, "the client followed a redirect to another host")
+}
+
 func TestHandshakeIsACopy(t *testing.T) {
 	session := connect(t, newDiscoverServer(t).URL+"/mcp", Options{})
 	handshake := session.Handshake()
@@ -178,15 +226,19 @@ func TestHandshakeIsACopy(t *testing.T) {
 	require.Equal(t, []string{"server/discover"}, session.Handshake())
 }
 
-func TestRequestsCarryTheCallerHeadersButKeepTheProtocolHeaders(t *testing.T) {
-	type seenRequest struct {
-		header       http.Header
-		host, method string
-	}
-	upstream := newDiscoverServer(t)
+// recordedRequest is what a recording proxy saw of one request.
+type recordedRequest struct {
+	header       http.Header
+	host, method string
+	body         []byte
+}
+
+// newRecordingProxy forwards every request to upstream and keeps a copy of each.
+func newRecordingProxy(t *testing.T, upstream string) (*httptest.Server, func() []recordedRequest) {
+	t.Helper()
 	var mu sync.Mutex
-	var seen []seenRequest
-	recorder := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var seen []recordedRequest
+	proxy := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		var envelope struct {
@@ -194,33 +246,59 @@ func TestRequestsCarryTheCallerHeadersButKeepTheProtocolHeaders(t *testing.T) {
 		}
 		_ = json.Unmarshal(body, &envelope)
 		mu.Lock()
-		seen = append(seen, seenRequest{header: r.Header.Clone(), host: r.Host, method: envelope.Method})
+		seen = append(seen, recordedRequest{header: r.Header.Clone(), host: r.Host, method: envelope.Method, body: body})
 		mu.Unlock()
-		forward(w, r, upstream.URL)
+		forward(w, r, upstream)
 	}))
+	return proxy, func() []recordedRequest {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]recordedRequest(nil), seen...)
+	}
+}
 
-	headers := map[string]string{"Authorization": "Basic YWRtaW46YWRtaW4=", "Content-Type": "text/plain"}
-	session := connect(t, recorder.URL+"/mcp", Options{Headers: headers, Host: "mcp.example.test"})
+func TestRequestsCarryTheCallerHeadersButKeepTheProtocolHeaders(t *testing.T) {
+	proxy, seen := newRecordingProxy(t, newDiscoverServer(t).URL)
+
+	headers := map[string]string{"Authorization": "Basic YWRtaW46YWRtaW4="}
+	session := connect(t, proxy.URL+"/mcp", Options{Headers: headers, Host: "mcp.example.test"})
 	headers["Authorization"] = "changed after Connect"
 	_, err := session.CallTool(context.Background(), "add", addArguments())
 	require.NoError(t, err)
 
-	mu.Lock()
-	defer mu.Unlock()
-	require.Len(t, seen, 2)
-	require.Equal(t, "server/discover", seen[0].method)
-	require.Equal(t, "tools/call", seen[1].method)
-	for _, req := range seen {
+	requests := seen()
+	require.Len(t, requests, 2)
+	require.Equal(t, "server/discover", requests[0].method)
+	require.Equal(t, "tools/call", requests[1].method)
+	for _, req := range requests {
 		require.Equal(t, "Basic YWRtaW46YWRtaW4=", req.header.Get("Authorization"))
 		require.Equal(t, "application/json", req.header.Get("Content-Type"))
 		require.Equal(t, "mcp.example.test", req.host)
 	}
 }
 
+func TestCallToolSendsAnEmptyArgumentsObjectForNilArguments(t *testing.T) {
+	proxy, seen := newRecordingProxy(t, newDiscoverServer(t).URL)
+	session := connect(t, proxy.URL+"/mcp", Options{})
+
+	_, err := session.CallTool(context.Background(), "fail", nil)
+	require.NoError(t, err)
+
+	requests := seen()
+	require.Equal(t, "tools/call", requests[len(requests)-1].method)
+	var call struct {
+		Params struct {
+			Arguments json.RawMessage `json:"arguments"`
+		} `json:"params"`
+	}
+	require.NoError(t, json.Unmarshal(requests[len(requests)-1].body, &call))
+	require.JSONEq(t, `{}`, string(call.Params.Arguments))
+}
+
 func TestCallToolValidatesItsInputs(t *testing.T) {
 	var nilSession *Session
 	_, err := nilSession.CallTool(context.Background(), "add", addArguments())
-	require.ErrorContains(t, err, "session is nil")
+	require.ErrorIs(t, err, ErrNotConnected)
 
 	session := connect(t, newDiscoverServer(t).URL+"/mcp", Options{})
 	_, err = session.CallTool(context.Background(), " ", addArguments())
@@ -282,6 +360,16 @@ func TestNilAndClosedSessionsAreSafe(t *testing.T) {
 	session := connect(t, newLegacyServer(t).URL+"/mcp", Options{})
 	require.NoError(t, session.Close())
 	require.NoError(t, session.Close())
+}
+
+func TestZeroValueSessionIsSafe(t *testing.T) {
+	var session Session
+	require.Nil(t, session.Handshake())
+	require.Empty(t, session.ProtocolVersion())
+	require.Empty(t, session.ID())
+	require.NoError(t, session.Close())
+	_, err := session.CallTool(context.Background(), "add", addArguments())
+	require.ErrorIs(t, err, ErrNotConnected)
 }
 
 func TestJSONRPCMethod(t *testing.T) {

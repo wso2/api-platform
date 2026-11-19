@@ -27,13 +27,17 @@
 // contradicts the body, belong on the ordinary HTTP funnel instead.
 //
 // The SDK chooses the handshake from the server's answer, and a caller cannot pin it. It first
-// sends server/discover (MCP 2026-07-28) and falls back to initialize (2025-11-25) only when the
-// server answers "Method not found". A Session therefore records the JSON-RPC methods the client
-// sent while it connected, so a caller can assert which handshake took place.
+// sends server/discover (MCP 2026-07-28). When the server answers it, there is no initialize.
+// When the server refuses it with any error other than an unsupported protocol version that
+// names a version both sides speak (for example "Method not found" from a server that predates
+// 2026-07-28), the SDK falls back to initialize (2025-11-25). A Session therefore records the
+// JSON-RPC methods the client sent while it connected, so a caller can assert which handshake
+// took place.
 //
-// Every request carries the caller's headers and Host override, except where the SDK sets a
-// header itself: the protocol headers (Content-Type, Accept, Mcp-Protocol-Version,
-// Mcp-Session-Id and the like) are the SDK's to choose. The SDK's own reconnection retries and
-// its standalone event stream are disabled, so every answer a caller sees is the answer to one
-// of its own requests.
+// Every request carries the caller's headers and Host override. The protocol headers
+// (Content-Type, Accept, Mcp-Protocol-Version, Mcp-Session-Id and the like) are the SDK's to
+// choose, so Connect refuses them in Options.Headers. Redirects are returned as answers, never
+// followed, so the caller's headers never reach another host. The SDK's own reconnection retries
+// and its standalone event stream are disabled, so every answer a caller sees is the answer to
+// one of its own requests.
 package mcpx
