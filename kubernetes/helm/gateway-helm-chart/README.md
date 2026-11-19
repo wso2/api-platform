@@ -308,10 +308,17 @@ The generated Secret belongs to the release: `helm uninstall` deletes it, and a 
 generates a new one. To rotate it, delete the Secret, run `helm upgrade`, and restart the
 controller.
 
+**The chart refuses** settings that would leave the management API open, on every install (not
+only with the OpenShift Route): basic auth with no users, no generated or `existingSecret` admin
+user (for example `generate: false` alone, or `enabled: false`) while IDP auth is off; and any user
+whose plaintext password is `admin`.
+
 **Upgrading from a release that used `admin`/`admin`.** Earlier chart versions configured the user
 `admin` with password `admin` by default. After upgrading with default values, that password no
-longer works; read the generated one with the command above. To keep a credential of your own,
-set `users` or `existingSecret` explicitly (`--reuse-values` keeps a previously rendered user list).
+longer works; read the generated one with the command above. `--reuse-values` keeps the previously
+rendered `admin`/`admin` user, which the chart now refuses: drop it (`--reset-then-reuse-values`,
+or set `gateway.config.controller.auth.basic.users=[]`) to use the generated credential, or set
+`users` or `existingSecret` explicitly to keep a credential of your own.
 
 **Explicit users.** Store a hash, not the password, since `config.toml` is rendered into a ConfigMap:
 

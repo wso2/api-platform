@@ -5,6 +5,7 @@
 {{- $pg := $gc.storage.postgres -}}
 {{- $db := default (dict) $gc.storage.database -}}
 {{- $dbOpts := default (dict) $db.options -}}
+{{- include "gateway-operator.validateControllerAuth" . -}}
 {{- if $gc.storage.sqlserver -}}
 {{- fail "gateway.config.controller.storage.sqlserver has been removed — move these settings to gateway.config.controller.storage.database (encrypt/trust_server_certificate now live under storage.database.options)." -}}
 {{- end -}}

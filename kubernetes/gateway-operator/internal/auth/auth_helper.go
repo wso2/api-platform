@@ -179,7 +179,8 @@ func ResolveControllerCredentials(ctx context.Context, k8sClient client.Reader, 
 // password from basic.existingSecret, or from the Secret the chart generated for the
 // release (found by its labels). Otherwise it is the first listed user whose password
 // the operator can send: one with a passwordSecretRef (read from that Secret in
-// namespace), or one with a plaintext password. Users with only a hashed password, or
+// namespace), or one with a plaintext password. A passwordSecretRef that cannot be read
+// does not stop the search; its error is returned only if no later user is usable. Users with only a hashed password, or
 // with a config interpolation token as their password, are skipped, because the
 // operator cannot recover the plaintext from them. nil settings mean the chart defaults.
 func ResolveBasicAuthCredentials(ctx context.Context, k8sClient client.Reader, namespace, releaseName string, settings *AuthSettings) (username, password string, err error) {
@@ -194,17 +195,21 @@ func ResolveBasicAuthCredentials(ctx context.Context, k8sClient client.Reader, n
 		return resolveAdminSecret(ctx, k8sClient, namespace, releaseName, basic)
 	}
 	var skipped []string
+	var lookupErrs []error
 	for _, user := range settings.Basic.Users {
 		if user.Username == "" {
 			continue
 		}
 		if ref := user.PasswordSecretRef; ref != nil && ref.Name != "" {
 			if k8sClient == nil {
-				return "", "", fmt.Errorf("read password of gateway-controller user %q: no Kubernetes client", user.Username)
+				lookupErrs = append(lookupErrs, fmt.Errorf("read password of gateway-controller user %q: no Kubernetes client", user.Username))
+				continue
 			}
 			password, err := readSecretKey(ctx, k8sClient, namespace, ref)
 			if err != nil {
-				return "", "", fmt.Errorf("read password of gateway-controller user %q: %w", user.Username, err)
+				// Try the next user; report this failure only if no user is usable.
+				lookupErrs = append(lookupErrs, fmt.Errorf("read password of gateway-controller user %q: %w", user.Username, err))
+				continue
 			}
 			return user.Username, password, nil
 		}
@@ -218,6 +223,15 @@ func ResolveBasicAuthCredentials(ctx context.Context, k8sClient client.Reader, n
 		default:
 			return user.Username, user.Password, nil
 		}
+	}
+	if len(lookupErrs) > 0 {
+		// A passwordSecretRef could not be read (missing Secret, RBAC, API error). Return those
+		// errors rather than ErrNoControllerCredentials: they are usually transient, unlike a
+		// configuration that lists no usable user.
+		if len(skipped) > 0 {
+			lookupErrs = append(lookupErrs, fmt.Errorf("other users skipped: %s", strings.Join(skipped, "; ")))
+		}
+		return "", "", errors.Join(lookupErrs...)
 	}
 	if len(skipped) == 0 {
 		return "", "", fmt.Errorf("%w: no basic auth user has a username", ErrNoControllerCredentials)

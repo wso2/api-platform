@@ -284,3 +284,30 @@ generate (default true), the chart renders <fullname>-controller-admin.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Refuse controller REST API auth settings that leave the management API open, for every install:
+- no credential at all: basic auth has no users and no generated or existingSecret admin user (for
+  example generate: false with nothing else, or basic auth disabled), and IDP auth is off. The
+  controller would then accept every request.
+- a basic auth user with the plaintext password "admin".
+Renders nothing; call it for its fail side effect.
+*/}}
+{{- define "gateway-operator.validateControllerAuth" -}}
+{{- if .Values.gateway.controller.deployment.enabled -}}
+{{- $auth := default (dict) .Values.gateway.config.controller.auth -}}
+{{- $basic := default (dict) $auth.basic -}}
+{{- $basicUsers := list -}}
+{{- if dig "enabled" true $basic -}}
+{{- $basicUsers = default (list) $basic.users -}}
+{{- end -}}
+{{- if not (or $basicUsers (include "gateway-operator.controllerAdminSecretName" .) (dig "idp" "enabled" false $auth)) -}}
+{{- fail "gateway.config.controller.auth: the management API would accept every request, because basic auth has no users (generate is false and existingSecret is not set, or basic auth is disabled) and IDP auth is off. Keep basic.generate: true, set basic.existingSecret or basic.users, or enable idp." -}}
+{{- end -}}
+{{- range $user := $basicUsers -}}
+{{- if and (not $user.password_hashed) (eq (toString $user.password) "admin") -}}
+{{- fail (printf "gateway.config.controller.auth.basic.users: user %q has the password \"admin\". Remove the user to use the generated admin credential, or set a bcrypt hash with password_hashed: true." (toString $user.username)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

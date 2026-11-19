@@ -97,6 +97,13 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - update
   - watch
+{{- /*
+Secrets: the operator reads them (get/list/watch) for secret references and the gateway-controller
+admin credential. create/update/patch/delete are used by Helm: it stores each gateway release as a
+Secret (sh.helm.release.v1.<release>.v<N>), and the gateway chart renders the Secret
+<fullname>-controller-admin, which Helm patches on upgrade (its chart-version label changes).
+Keep patch: without it the second gateway chart upgrade fails.
+*/}}
 - apiGroups:
   - ""
   resources:

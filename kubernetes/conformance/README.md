@@ -78,6 +78,12 @@ encryption key Secret in the `gateway-conformance-infra` namespace and enables
 gateway-controller fails to start without its key and the chart refuses to render
 without it. Override the secret name or target namespace with `ENC_KEY_SECRET` / `GATEWAY_NS`.
 
+The gateway chart the operator installs is packaged from this checkout
+(`kubernetes/helm/gateway-helm-chart`) and served from an in-cluster OCI registry in the
+`conformance-chart-registry` namespace, so the operator and the chart under test come from the
+same commit. Set `GATEWAY_CHART_SOURCE=published` to use the chart named by the operator chart's
+`gateway.helm.chartName` / `gateway.helm.chartVersion` instead.
+
 ### 5. Run the conformance suite
 
 ```sh

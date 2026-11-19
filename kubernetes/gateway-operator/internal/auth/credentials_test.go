@@ -1,18 +1,19 @@
 /*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 
 package auth
 
@@ -140,6 +141,42 @@ func TestResolveBasicAuthCredentials(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "plain", u)
 		assert.Equal(t, "pw", p)
+	})
+
+	t.Run("unreadable Secret of the first user falls through to a later user", func(t *testing.T) {
+		c := newFakeClient(t, passwordSecret(testNamespace, "second", DefaultPasswordSecretKey, "from-second"))
+		u, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(
+			AuthUser{Username: "first", Password: testHash, PasswordHashed: true, PasswordSecretRef: &SecretKeyRef{Name: "missing"}},
+			AuthUser{Username: "second", Password: testHash, PasswordHashed: true, PasswordSecretRef: &SecretKeyRef{Name: "second"}},
+		))
+		require.NoError(t, err)
+		assert.Equal(t, "second", u)
+		assert.Equal(t, "from-second", p)
+	})
+
+	t.Run("unreadable Secret falls through to a later plaintext user", func(t *testing.T) {
+		c := newFakeClient(t)
+		u, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(
+			AuthUser{Username: "first", Password: testHash, PasswordHashed: true, PasswordSecretRef: &SecretKeyRef{Name: "missing"}},
+			AuthUser{Username: "plain", Password: "pw"},
+		))
+		require.NoError(t, err)
+		assert.Equal(t, "plain", u)
+		assert.Equal(t, "pw", p)
+	})
+
+	t.Run("Secret lookup failures are reported when no user is usable", func(t *testing.T) {
+		c := newFakeClient(t)
+		_, _, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(
+			AuthUser{Username: "first", Password: testHash, PasswordHashed: true, PasswordSecretRef: &SecretKeyRef{Name: "missing-1"}},
+			AuthUser{Username: "hashed", Password: testHash, PasswordHashed: true},
+			AuthUser{Username: "third", Password: testHash, PasswordHashed: true, PasswordSecretRef: &SecretKeyRef{Name: "missing-2"}},
+		))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrNoControllerCredentials)
+		assert.Contains(t, err.Error(), "gw-ns/missing-1")
+		assert.Contains(t, err.Error(), "gw-ns/missing-2")
+		assert.Contains(t, err.Error(), `user "hashed" has a hashed password`)
 	})
 
 	t.Run("no users: the chart's generated admin Secret", func(t *testing.T) {

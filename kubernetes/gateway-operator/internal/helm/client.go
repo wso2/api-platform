@@ -227,6 +227,9 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 	if err != nil {
 		return fmt.Errorf("failed to parse values: %w", err)
 	}
+	if err := checkControllerAuthSupported(chart, values); err != nil {
+		return err
+	}
 
 	// Install the chart
 	release, err := client.Run(chart, values)
@@ -292,6 +295,9 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 	values, err := c.parseValues(opts)
 	if err != nil {
 		return fmt.Errorf("failed to parse values: %w", err)
+	}
+	if err := checkControllerAuthSupported(chart, values); err != nil {
+		return err
 	}
 
 	// Upgrade the chart

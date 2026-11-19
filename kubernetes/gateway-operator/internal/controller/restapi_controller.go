@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -741,16 +742,22 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 	registryInstance := registry.GetGatewayRegistry()
 	matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
 
+	// Try every gateway, then report all failures, so the caller keeps the finalizer and
+	// retries instead of forgetting an API that is still deployed. A gateway that no longer
+	// has the API answers 404, which DeleteRestAPI treats as success.
+	var deleteErrs []error
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
 			log.Error("failed to delete API from gateway",
 				slog.Any("error", err),
 				slog.String("api", handle),
 				slog.String("gateway", gateway.Name))
-			// Continue with other gateways even if one fails
+			deleteErrs = append(deleteErrs, fmt.Errorf("%s/%s: %w", gateway.Namespace, gateway.Name, err))
 		}
 	}
-
+	if len(deleteErrs) > 0 {
+		return fmt.Errorf("delete API %q from gateways: %w", handle, errors.Join(deleteErrs...))
+	}
 	return nil
 }
 

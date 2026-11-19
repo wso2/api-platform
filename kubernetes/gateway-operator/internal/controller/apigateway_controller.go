@@ -46,7 +46,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helmgateway"
@@ -208,8 +207,8 @@ func (r *GatewayReconciler) decideAndProcess(
 ) (ctrl.Result, error) {
 	log := r.Logger.With(slog.String("controller", "APIGateway"), slog.String("name", gatewayConfig.Name))
 
-	// Calculate current config hash
-	currentConfigHash := ""
+	// Calculate current config hash: chart, operator base values and the ConfigRef overlay.
+	overlayValues := ""
 	if gatewayConfig.Spec.ConfigRef != nil {
 		values, err := configMapValuesYAML(ctx, r.Client, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
 		if err != nil {
@@ -219,7 +218,11 @@ func (r *GatewayReconciler) decideAndProcess(
 			// For now, let's treat it as error so we can retry
 			return ctrl.Result{}, fmt.Errorf("failed to get config map values: %w", err)
 		}
-		currentConfigHash = auth.CalculateConfigHash(values)
+		overlayValues = values
+	}
+	currentConfigHash, err := apiGatewayConfigHash(r.Config, overlayValues)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Check if config has changed
@@ -650,9 +653,9 @@ func (r *GatewayReconciler) calculateBackoff(retryCount int) time.Duration {
 }
 
 // updateGatewayProgrammedCondition updates the Programmed condition and related status fields.
-// A nil configHash leaves Status.ConfigHash untouched; a non-nil one is written as-is, including
-// the empty string, so removing spec.configRef clears the stored hash instead of leaving a stale
-// value that makes every later reconcile look like a config change.
+// A nil configHash leaves Status.ConfigHash untouched; a non-nil one is written as-is, so a
+// changed configuration (including removing spec.configRef) replaces the stored hash instead of
+// leaving a stale value that makes every later reconcile look like a config change.
 func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context, gatewayConfig *apiv1.APIGateway, cond metav1.Condition, selectedCount *int, configHash *string) error {
 	// Re-fetch to get latest version
 	latest := &apiv1.APIGateway{}

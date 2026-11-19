@@ -70,6 +70,17 @@ func adminValues(auth map[string]interface{}) map[string]interface{} {
 // renders as `helm template` does, where lookup finds nothing.
 func renderAdmin(t *testing.T, overrides map[string]interface{}, cluster []runtime.Object) map[string]string {
 	t.Helper()
+	rendered, err := renderAdminErr(t, overrides, cluster)
+	if err != nil {
+		t.Fatalf("render chart: %v", err)
+	}
+	return rendered
+}
+
+// renderAdminErr is renderAdmin, returning the render error (a template fail) instead of
+// failing the test.
+func renderAdminErr(t *testing.T, overrides map[string]interface{}, cluster []runtime.Object) (map[string]string, error) {
+	t.Helper()
 	chrt, err := loader.Load(gatewayHelmChartPath)
 	if err != nil {
 		t.Fatalf("load chart: %v", err)
@@ -84,17 +95,11 @@ func renderAdmin(t *testing.T, overrides map[string]interface{}, cluster []runti
 	if err != nil {
 		t.Fatalf("build render values: %v", err)
 	}
-	var rendered map[string]string
 	if cluster == nil {
-		rendered, err = engine.Render(chrt, renderValues)
-	} else {
-		client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), cluster...)
-		rendered, err = engine.RenderWithClientProvider(chrt, renderValues, secretsProvider{client})
+		return engine.Render(chrt, renderValues)
 	}
-	if err != nil {
-		t.Fatalf("render chart: %v", err)
-	}
-	return rendered
+	client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), cluster...)
+	return engine.RenderWithClientProvider(chrt, renderValues, secretsProvider{client})
 }
 
 type renderedSecret struct {
@@ -276,5 +281,68 @@ func TestOperatorChartValues_GenerateTheControllerAdminCredential(t *testing.T) 
 	adminSecret(t, rendered)
 	if strings.Contains(rendered[adminConfigFile], `password = "admin"`) {
 		t.Error("operator base values still configure admin/admin")
+	}
+}
+
+// commonLabels must not move the admin Secret away from the instance label the operator
+// selects it by.
+func TestGatewayChartPinsTheControllerAdminSecretInstanceLabel(t *testing.T) {
+	values := adminValues(nil)
+	values["commonLabels"] = map[string]interface{}{"app.kubernetes.io/instance": "something-else", "team": "a"}
+	secret := adminSecret(t, renderAdmin(t, values, nil))
+	if got := secret.Metadata.Labels["app.kubernetes.io/instance"]; got != adminRelease {
+		t.Errorf("instance label = %q, want %q", got, adminRelease)
+	}
+	if got := secret.Metadata.Labels["team"]; got != "a" {
+		t.Errorf("commonLabels not applied: team = %q", got)
+	}
+}
+
+// The chart refuses, for every install, auth settings that leave the management API open
+// or that keep the password "admin".
+func TestGatewayChartRefusesUnauthenticatedOrDefaultPasswordControllerAuth(t *testing.T) {
+	cases := map[string]struct {
+		auth    map[string]interface{}
+		wantErr string
+	}{
+		"generate false without users or existingSecret": {
+			auth:    map[string]interface{}{"basic": map[string]interface{}{"enabled": true, "generate": false, "users": []interface{}{}}},
+			wantErr: "would accept every request",
+		},
+		"basic auth disabled and IDP off": {
+			auth:    map[string]interface{}{"basic": map[string]interface{}{"enabled": false}},
+			wantErr: "would accept every request",
+		},
+		"plaintext password admin": {
+			auth: map[string]interface{}{"basic": map[string]interface{}{"users": []interface{}{
+				map[string]interface{}{"username": "ops", "password": "admin", "password_hashed": false, "roles": []interface{}{"admin"}},
+			}}},
+			wantErr: `user "ops" has the password "admin"`,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := renderAdminErr(t, adminValues(tc.auth), nil)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("render error = %v, want it to contain %q", err, tc.wantErr)
+			}
+		})
+	}
+
+	allowed := map[string]map[string]interface{}{
+		"generate false with IDP auth": {
+			"basic": map[string]interface{}{"enabled": true, "generate": false, "users": []interface{}{}},
+			"idp":   map[string]interface{}{"enabled": true, "jwks_url": "https://idp.example/jwks", "issuer": "https://idp.example", "roles_claim": "scope"},
+		},
+		"generate false with existingSecret": {
+			"basic": map[string]interface{}{"enabled": true, "generate": false, "existingSecret": "my-admin", "users": []interface{}{}},
+		},
+	}
+	for name, auth := range allowed {
+		t.Run(name, func(t *testing.T) {
+			if _, err := renderAdminErr(t, adminValues(auth), nil); err != nil {
+				t.Fatalf("render error = %v, want none", err)
+			}
+		})
 	}
 }

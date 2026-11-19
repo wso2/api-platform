@@ -150,7 +150,14 @@ config holds only the bcrypt hash; the operator finds the Secret by the release'
 (`app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=controller-admin`) and
 sends `password`. `gateway.config.controller.auth.basic.existingSecret` names a Secret you
 provide instead. This needs a gateway chart version that generates the credential
-(`gateway.helm.chartVersion`); with an older chart, set explicit users.
+(`gateway.helm.chartVersion`); with an older chart, set explicit users. The operator refuses to
+install or upgrade an older chart with values that list no users and leave IDP auth off, because
+that chart would run the management API without authentication.
+
+A gateway's recorded configuration covers the chart name and version and the base values file,
+not only its values ConfigMap. After an operator upgrade that changes any of them, existing
+`APIGateway` releases are upgraded with the new chart and defaults, which creates the generated
+Secret for gateways that were installed with `admin`/`admin`.
 
 ```bash
 kubectl get secret <release>-gateway-controller-admin -n <gateway-namespace> \

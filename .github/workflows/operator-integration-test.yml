@@ -329,17 +329,11 @@ jobs:
                       # Local basic authentication configuration
                       basic:
                         enabled: true
-                      # Local users
-                        users:
-                          # Example user entries:
-                          # - username: "user1"
-                          #   password: "$argon2id.."   # encrypted hash or plain string depending on implementation
-                          #   password_hashed: true
-                          #   roles: ["developer", "viewer"]
-                        - username: "admin"
-                          password: "admin"
-                          password_hashed: false
-                          roles: ["admin"]
+                        # No users: the gateway chart generates the admin credential in the
+                        # Secret <fullname>-controller-admin, which the operator and the
+                        # management API pre-check below read. Listing users here would
+                        # replace it.
+                        users: []
                     # Server configuration
                     server:
                       # REST API port for gateway management
