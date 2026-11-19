@@ -227,8 +227,8 @@ func (s *Steps) listCustomPolicies(ctx context.Context) ([]map[string]any, error
 }
 
 // customPolicyPage reads one page of the organisation's custom policies. A response without a
-// "list" field, or with a null entry in it, is an error, not an empty page: absence is only ever
-// read from a list the platform returned. The platform answers an organisation that holds none with
+// "list" field, or with an entry that is null or has no name, is an error, not an empty page:
+// absence is only ever read from a list the platform returned, by name. The platform answers an organisation that holds none with
 // "list": null, which is an empty page.
 func customPolicyPage(body []byte) ([]map[string]any, error) {
 	var envelope map[string]json.RawMessage
@@ -246,6 +246,9 @@ func customPolicyPage(body []byte) ([]map[string]any, error) {
 	for i, item := range items {
 		if item == nil {
 			return nil, fmt.Errorf("the organisation's custom policies list has a null entry at %d", i)
+		}
+		if name, _ := item["name"].(string); name == "" {
+			return nil, fmt.Errorf("the organisation's custom policies list has an entry without a name at %d: %v", i, item)
 		}
 	}
 	return items, nil

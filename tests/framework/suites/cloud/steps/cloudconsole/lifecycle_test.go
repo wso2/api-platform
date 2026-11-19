@@ -8036,6 +8036,10 @@ func TestCustomPolicyListsAreReadOnlyFromAListThePlatformReturned(t *testing.T) 
 	require.ErrorContains(t, err, "decoding")
 	_, err = customPolicyPage([]byte(`{"list":[{"name":"ops-policy"},null]}`))
 	require.ErrorContains(t, err, "null entry at 1")
+	_, err = customPolicyPage([]byte(`{"list":[{"name":"ops-policy"},{"uuid":"policy-2","version":"v1.0.0"}]}`))
+	require.ErrorContains(t, err, "entry without a name at 1", "a row the absence check cannot read by name is rejected")
+	_, err = customPolicyPage([]byte(`{"list":[{"name":""}]}`))
+	require.ErrorContains(t, err, "entry without a name at 0")
 }
 
 func TestAssertCustomPolicyListedWithoutReadsBothFromOneList(t *testing.T) {
