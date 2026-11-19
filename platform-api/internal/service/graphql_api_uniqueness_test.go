@@ -89,6 +89,13 @@ func TestGraphQLCreate_DuplicateHandle_KeepsItsOwnMessage(t *testing.T) {
 	if got, want := graphQLConflictMessage(t, err), graphQLAPIIDExistsMessage; got != want {
 		t.Errorf("message = %q, want %q", got, want)
 	}
+	// Pinned to the id field, so the create form shows it on the identifier (#4139).
+	var appErr *apperror.Error
+	errors.As(err, &appErr)
+	want := []apperror.FieldError{{Field: "id", Message: graphQLAPIIDExistsMessage}}
+	if len(appErr.FieldErrors) != 1 || appErr.FieldErrors[0] != want[0] {
+		t.Errorf("field errors = %+v, want %+v", appErr.FieldErrors, want)
+	}
 }
 
 func TestGraphQLCreate_AvailableNameAndVersion_Creates(t *testing.T) {

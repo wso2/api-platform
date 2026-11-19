@@ -36,7 +36,6 @@ import {
   type CreateGraphQLApiBody,
   type GraphQLApi,
   type GraphQLApiDetail,
-  type GraphQLApiListResponse,
   type ListGraphQLApisQuery,
   type UpdateGraphQLApiBody,
   type ValidateGraphQLSchemaBody,
@@ -306,36 +305,23 @@ export const useValidateGraphQLSchema = () => {
 };
 
 /**
- * How many ids are inspected before deciding a handle is free. The filter
- * below is a *substring* match, so this bounds the superstring case
- * ("orders-api" also matching "orders-api-v2"), not the number of APIs in the
- * project — see `useRestApiIdAvailability`, which this mirrors exactly.
- */
-const AVAILABILITY_PROBE_LIMIT = 100;
-
-/**
- * Whether `candidateId` is still free as a GraphQL API handle in the active
- * project. `data === true` means free, `false` means taken, `undefined` means
- * not answered yet (no scope, blank candidate, still loading, or failed).
+ * Whether `candidateId` is still free as a GraphQL API handle in the
+ * organization. `data === true` means free, `false` means taken, `undefined`
+ * means not answered yet (no scope, blank candidate, still loading, or failed).
+ * Mirrors `useRestApiIdAvailability`.
  *
  * Debounce the candidate at the call site (`useDebouncedValue`): this hook
  * issues a request for every distinct value it is handed.
  */
 export const useGraphQLApiIdAvailability = (
   candidateId: string | undefined,
-  overrides: { orgId?: string; projectId?: string } = {},
+  overrides: { orgId?: string } = {},
 ) => {
-  const { org, projectId } = useApiScope(overrides);
+  const { org } = useApiScope(overrides);
   const candidate = candidateId?.trim().toLowerCase() ?? '';
 
   return useQuery({
-    ...graphQLApiQueries.list(org!, {
-      projectId: projectId!,
-      query: candidate,
-      limit: AVAILABILITY_PROBE_LIMIT,
-    }),
-    enabled: Boolean(org && projectId && candidate),
-    select: (data: GraphQLApiListResponse) =>
-      !(data.list ?? []).some((api) => api.id?.toLowerCase() === candidate),
+    ...graphQLApiQueries.availability(org!, candidate),
+    enabled: Boolean(org && candidate),
   });
 };
