@@ -63,8 +63,14 @@ const SettingsSection: FC<SettingsSectionProps> = ({ title, description, childre
 );
 
 /** A cell in a section: half a row, or the whole row when `wide`. */
-export const SettingsCell: FC<{ wide?: boolean; children: ReactNode }> = ({ wide, children }) => (
-  <Grid size={{ xs: 12, sm: wide ? 12 : 6 }}>{children}</Grid>
+export const SettingsCell: FC<{ wide?: boolean; id?: string; children: ReactNode }> = ({
+  wide,
+  id,
+  children,
+}) => (
+  <Grid id={id} size={{ xs: 12, sm: wide ? 12 : 6 }}>
+    {children}
+  </Grid>
 );
 
 export default SettingsSection;
