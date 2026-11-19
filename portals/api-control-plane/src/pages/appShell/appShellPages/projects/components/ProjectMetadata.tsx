@@ -92,6 +92,16 @@ function ProjectHeaderExtensionActions({
   );
 }
 
+/**
+ * The project heading's cloud actions (Settings, in the cloud console) on
+ * their own, for a view that replaces the heading but keeps those actions.
+ * Renders nothing in a standalone console, which registers none.
+ */
+export function ProjectHeaderActions() {
+  const entries = useSlot<ApiControlPlaneHeaderAction>(PROJECT_HEADER_ACTIONS_SLOT);
+  return entries.length > 0 ? <ProjectHeaderExtensionActions entries={entries} /> : null;
+}
+
 export function ProjectMetadata({ project }: ProjectMetadataProps) {
   const intl = useIntl();
   // Cloud-only entries; empty in a standalone console, which registers none.

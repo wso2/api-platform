@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { AppShell, Header } from '@wso2/oxygen-ui';
+import { AppShell, Header, readHeaderBreadcrumbsState } from '@wso2/oxygen-ui';
 import { useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -512,5 +512,51 @@ describe('HeaderScopeSwitchers — clicking a name in the trail', () => {
     await user.click(screen.getByRole('button', { name: anOrganization().displayName!, hidden: true }));
 
     expect(screen.queryByText(new RegExp(`projects/${PROJECT_ID}`))).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * The selection is kept where every app using Oxygen's header reads it, so the
+ * next visit starts where the user left off.
+ */
+describe('HeaderScopeSwitchers — remembering where the user is', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    vi.mocked(useAllRestApis).mockReturnValue(restApisResult(REST_API_LIST));
+    vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult(GRAPHQL_API_LIST));
+  });
+
+  it('stores the organization and project in scope', () => {
+    renderWithProviders(
+      <Header>
+        <HeaderScopeSwitchers />
+      </Header>,
+      { scope: scopeAtProject() },
+    );
+
+    expect(readHeaderBreadcrumbsState()?.value).toEqual({
+      organization: ORG,
+      project: PROJECT_ID,
+    });
+  });
+
+  it('keeps the last project while the user is on an organization-level page', () => {
+    window.localStorage.setItem(
+      'oxygen-ui:header-breadcrumbs',
+      JSON.stringify({ version: 1, value: { organization: ORG, project: 'earlier' }, updatedAt: 1 }),
+    );
+
+    renderWithProviders(
+      <Header>
+        <HeaderScopeSwitchers />
+      </Header>,
+      { scope: makeConsoleScope({ params: { orgHandle: ORG }, project: undefined, projects: [PROJECT] }) },
+    );
+
+    expect(readHeaderBreadcrumbsState()?.value).toEqual({
+      organization: ORG,
+      project: 'earlier',
+    });
   });
 });

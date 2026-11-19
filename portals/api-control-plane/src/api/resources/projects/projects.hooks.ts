@@ -79,6 +79,19 @@ export const useProjects = (
   });
 };
 
+/**
+ * Every project in the active organization, not one page of them. Runs only
+ * once the organization is known.
+ */
+export const useAllProjects = (overrides: { orgId?: string } = {}) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...projectQueries.allPages(org!),
+    enabled: Boolean(org),
+  });
+};
+
 /** A single project by handle. */
 export const useProject = (
   projectId: string | undefined,
