@@ -18,6 +18,7 @@ package cloudconsole
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -358,7 +359,7 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(kindSelfHostedGateway, cloudDeleter(topo, client, selfHostedGatewaysPath)); err != nil {
 		return err
 	}
-	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, managedGatewaysCollection))
+	return reg.RegisterDeleter(cleanup.KindGateway, gatewayDeleter(topo, client))
 }
 
 // cloudRequestDeleter sends the request toRequest builds from a resource id, and accepts the
@@ -409,6 +410,57 @@ func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collect
 	}
 }
 
+// gatewayDeleteTimeout bounds how long a gateway's deletion is retried while the platform refuses it
+// because the gateway is still being built or changed.
+const gatewayDeleteTimeout = 5 * time.Minute
+
+// gatewayDeleteInterval is how often a refused gateway deletion is asked again.
+const gatewayDeleteInterval = 10 * time.Second
+
+// gatewayStillChanging reports whether err is the platform refusing to delete a gateway for now: it
+// answers 409 with the code "conflict" while the gateway is being built, and that changes once it
+// is. Any other refusal, such as a default gateway that others depend on, does not change by waiting.
+func gatewayStillChanging(err error) bool {
+	var answer *statusError
+	return errors.As(err, &answer) && answer.status == http.StatusConflict && answer.code == "conflict"
+}
+
+// gatewayDeleter deletes a managed gateway the run created and asks again while the platform says
+// the gateway is still changing state, since a gateway a scenario asked for just before it ended may
+// not be deletable yet.
+func gatewayDeleter(topo *frameworkruntime.Topology, client *httpx.Client) cleanup.Deleter {
+	return func(ctx context.Context, resource cleanup.Resource) error {
+		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+		if err != nil {
+			return err
+		}
+		bearer, err := bearerToken(ctx)
+		if err != nil {
+			return err
+		}
+		return deleteGatewayWhenItCanBe(ctx, client, base, bearer, resource.ID, gatewayDeleteTimeout, gatewayDeleteInterval)
+	}
+}
+
+// deleteGatewayWhenItCanBe deletes a managed gateway, asking again every interval, for up to
+// timeout, while the platform refuses because the gateway is still changing state.
+func deleteGatewayWhenItCanBe(ctx context.Context, client *httpx.Client, base, bearer, id string, timeout, interval time.Duration) error {
+	return retry.Await(ctx, retry.Options{Timeout: timeout, Interval: interval},
+		func(ctx context.Context) (bool, error) {
+			err := deleteCloudResource(ctx, client, base, bearer, managedGatewaysCollection, id)
+			switch {
+			case err == nil:
+				return true, nil
+			case gatewayStillChanging(err):
+				return false, retry.Transient(err)
+			default:
+				return false, err
+			}
+		},
+		func(deleted bool) bool { return deleted },
+		"deleting managed gateway "+id)
+}
+
 // deleteCloudResource deletes one resource from a collection and treats an absent one as deleted.
 func deleteCloudResource(ctx context.Context, client *httpx.Client, base, bearer, collection, id string) error {
 	resp, err := client.Do(ctx, httpx.Request{
@@ -445,13 +497,19 @@ func responseError(resp *httpx.Response) error {
 	if resp == nil {
 		return errors.New("cloud-console: no response")
 	}
-	return &statusError{status: resp.StatusCode, message: "cloud-console: unexpected response: " + resp.Describe()}
+	var body struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(resp.Body, &body)
+	return &statusError{status: resp.StatusCode, code: body.Code, message: "cloud-console: unexpected response: " + resp.Describe()}
 }
 
 // statusError is an answer a caller did not expect. It keeps the status, so a caller can tell a
 // resource that is absent from one the token may not touch.
 type statusError struct {
-	status  int
+	status int
+	// code is the error code the platform's answer carries, when it carries one.
+	code    string
 	message string
 }
 

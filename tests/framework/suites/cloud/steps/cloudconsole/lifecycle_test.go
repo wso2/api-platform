@@ -3846,6 +3846,45 @@ func TestScenarioGatewayRequestAnsweredWithAnErrorIsNoLongerRegistered(t *testin
 	require.Empty(t, syntheticGatewayIDs(ctx))
 }
 
+func TestAGatewayDeletionIsAskedAgainWhileTheGatewayIsStillChanging(t *testing.T) {
+	var calls atomic.Int32
+	var refusals atomic.Int32
+	refusals.Store(2)
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		if calls.Add(1) <= refusals.Load() {
+			writeJSON(w, http.StatusConflict, map[string]string{"code": "conflict", "message": "The request conflicts with the current state of the gateway."})
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
+
+	require.NoError(t, deleteGatewayWhenItCanBe(context.Background(), client, base, "console-token", "development-sg-abcde234-1", 10*time.Second, 5*time.Millisecond))
+	require.EqualValues(t, 3, calls.Load(), "the deletion is asked again until the platform accepts it")
+
+	// A refusal that waiting does not change is returned at once.
+	calls.Store(0)
+	permanent := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusConflict, map[string]string{"code": "gateway_is_default", "message": "The default gateway cannot be deleted."})
+	})
+	permanentBase, err := permanent.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	err = deleteGatewayWhenItCanBe(context.Background(), client, permanentBase, "console-token", "development-default", 10*time.Second, 5*time.Millisecond)
+	require.ErrorContains(t, err, "gateway_is_default")
+	require.EqualValues(t, 1, calls.Load())
+
+	// A gateway that keeps refusing is given up on at the timeout.
+	calls.Store(0)
+	refusals.Store(1 << 20)
+	err = deleteGatewayWhenItCanBe(context.Background(), client, base, "console-token", "development-sg-abcde234-2", 200*time.Millisecond, 20*time.Millisecond)
+	require.Error(t, err)
+	require.Greater(t, calls.Load(), int32(1))
+}
+
 func TestAScenarioGatewayTheProductBuiltAnywayIsNotNumberedForTheRunner(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
