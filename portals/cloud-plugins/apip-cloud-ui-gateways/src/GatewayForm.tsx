@@ -100,8 +100,8 @@ const HOSTING_OPTIONS: {
   {
     value: 'managed',
     icon: Cloud,
-    title: 'WSO2 managed API gateway (cloud)',
-    description: 'WSO2 runs, scales, and upgrades the API gateway for you. No infrastructure to maintain.',
+    title: 'Cloud gateway',
+    description: 'Choreo runs, scales, and upgrades the API gateway for you. No infrastructure to maintain.',
   },
   {
     value: 'self-hosted',
@@ -318,7 +318,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                         Compare hosting options
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        See how WSO2 managed and self-hosted API gateways differ.
+                        See how cloud and self-hosted API gateways differ.
                       </Typography>
                     </Box>
                     <IconButton onClick={() => setShowCompare(false)} aria-label="Close">

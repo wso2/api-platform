@@ -582,8 +582,8 @@ const GatewaysList: FC<GatewaysListProps> = ({
             <Box sx={{ display: 'flex', '& > button + button': { ml: '-1px' } }}>
               <HostingTab
                 icon={<Cloud size={20} />}
-                title="WSO2 managed API gateways"
-                description="Hosted and operated by WSO2 in the cloud."
+                title="Cloud gateways"
+                description="Hosted and operated by Choreo in the cloud."
                 active={managedSummary.active}
                 inactive={managedSummary.inactive}
                 selected={activeHosting === 'managed'}

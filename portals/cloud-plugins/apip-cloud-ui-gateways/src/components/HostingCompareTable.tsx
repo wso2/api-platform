@@ -44,14 +44,14 @@ type CompareContent = {
 
 const CONTENT: Record<GatewayHosting, CompareContent> = {
   managed: {
-    tabLabel: 'WSO2 managed',
+    tabLabel: 'Cloud gateway',
     tabIcon: Cloud,
-    gatewayLabel: 'WSO2 cloud',
+    gatewayLabel: 'Choreo cloud',
     backendIcons: [Cloud, Cloud, Cloud],
     summary:
-      'Get APIs live instantly on fully managed cloud infrastructure. WSO2 runs, scales, and upgrades the API gateway.',
+      'Get APIs live instantly on fully managed cloud infrastructure. Choreo runs, scales, and upgrades the API gateway.',
     setupTime: 'Instant',
-    trafficVia: 'WSO2 cloud',
+    trafficVia: 'Choreo cloud',
     bestFor: 'Fast start, POCs',
   },
   'self-hosted': {

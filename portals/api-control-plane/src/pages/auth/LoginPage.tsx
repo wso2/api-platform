@@ -66,14 +66,14 @@ import { ServerErrorPage } from '../appShell/appShellPages/system/SystemPages';
 const messages = defineMessages({
   brandLockup: {
     id: 'apiControlPlane.pages.auth.LoginPage.brandLockup',
-    defaultMessage: '<brand>WSO2</brand> API Platform',
+    defaultMessage: '<brand>Choreo</brand> API Management',
     description:
-      'Compact brand lockup shown above the sign-in card on narrow screens. WSO2 is the company name and stays as-is; the brand tag only styles it.',
+      'Compact brand lockup shown above the sign-in card on narrow screens. Choreo is the brand name and stays as-is; the brand tag only styles it.',
   },
   brandName: {
     id: 'apiControlPlane.pages.auth.LoginPage.brandName',
-    defaultMessage: 'WSO2',
-    description: 'Company name in the brand lockup. Do not translate.',
+    defaultMessage: 'Choreo',
+    description: 'Brand name in the brand lockup. Do not translate.',
   },
   browserUnsupported: {
     id: 'apiControlPlane.pages.auth.LoginPage.browserUnsupported',
@@ -168,9 +168,9 @@ const messages = defineMessages({
   },
   productName: {
     id: 'apiControlPlane.pages.auth.LoginPage.productName',
-    defaultMessage: '<emphasis>API</emphasis> Platform',
+    defaultMessage: '<emphasis>API</emphasis> Management',
     description:
-      'Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight.',
+      'Product name under the Choreo wordmark. The emphasis tag marks the part set in the stronger weight.',
   },
   sessionExpired: {
     id: 'apiControlPlane.pages.auth.LoginPage.sessionExpired',

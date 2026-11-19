@@ -1367,8 +1367,8 @@
     "description": "Plural noun for gateways, used inside the limit-reached sentence."
   },
   "apiControlPlane.hooks.useResourceLimits.componentManagedGateways": {
-    "defaultMessage": "WSO2-managed gateways",
-    "description": "Plural noun for WSO2-managed gateways, used inside the limit-reached sentence."
+    "defaultMessage": "cloud gateways",
+    "description": "Plural noun for cloud gateways, used inside the limit-reached sentence."
   },
   "apiControlPlane.hooks.useResourceLimits.componentPortals": {
     "defaultMessage": "portals",
@@ -3783,7 +3783,7 @@
     "defaultMessage": "Create an API Proxy"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide": {
-    "defaultMessage": "Get Started with the WSO2 API Platform"
+    "defaultMessage": "Get Started with the Choreo API Management"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedRestFromScratch": {
     "defaultMessage": "Create a REST API Proxy from Scratch"
@@ -5426,12 +5426,12 @@
     "description": "Accessible label for the toggle between the two views."
   },
   "apiControlPlane.pages.auth.LoginPage.brandLockup": {
-    "defaultMessage": "<brand>WSO2</brand> API Platform",
-    "description": "Compact brand lockup shown above the sign-in card on narrow screens. WSO2 is the company name and stays as-is; the brand tag only styles it."
+    "defaultMessage": "<brand>Choreo</brand> API Management",
+    "description": "Compact brand lockup shown above the sign-in card on narrow screens. Choreo is the brand name and stays as-is; the brand tag only styles it."
   },
   "apiControlPlane.pages.auth.LoginPage.brandName": {
-    "defaultMessage": "WSO2",
-    "description": "Company name in the brand lockup. Do not translate."
+    "defaultMessage": "Choreo",
+    "description": "Brand name in the brand lockup. Do not translate."
   },
   "apiControlPlane.pages.auth.LoginPage.browserUnsupported": {
     "defaultMessage": "This console is optimized for Google Chrome and Mozilla Firefox."
@@ -5496,8 +5496,8 @@
     "defaultMessage": "Privacy policy"
   },
   "apiControlPlane.pages.auth.LoginPage.productName": {
-    "defaultMessage": "<emphasis>API</emphasis> Platform",
-    "description": "Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight."
+    "defaultMessage": "<emphasis>API</emphasis> Management",
+    "description": "Product name under the Choreo wordmark. The emphasis tag marks the part set in the stronger weight."
   },
   "apiControlPlane.pages.auth.LoginPage.redirecting": {
     "defaultMessage": "Signing you in",
@@ -6338,8 +6338,8 @@
     "description": "Chip for a gateway serving ordinary HTTP API traffic."
   },
   "gatewayCard.mode.managed": {
-    "defaultMessage": "WSO2-managed",
-    "description": "Chip for a gateway WSO2 runs on the customer’s behalf."
+    "defaultMessage": "Cloud gateway",
+    "description": "Chip for a cloud gateway, one the platform runs on the customer’s behalf."
   },
   "gatewayCard.mode.selfHosted": {
     "defaultMessage": "Self-hosted",
@@ -6859,7 +6859,7 @@
     "defaultMessage": "Total gateways"
   },
   "gateways.subtitle": {
-    "defaultMessage": "Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients."
+    "defaultMessage": "Provision and manage self-hosted or cloud gateways to expose your APIs to clients."
   },
   "gateways.title": {
     "defaultMessage": "Gateways"
