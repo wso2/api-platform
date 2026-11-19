@@ -24,6 +24,7 @@ import (
 	"github.com/wso2/api-platform/cli/cmd/gateway/image"
 	"github.com/wso2/api-platform/cli/cmd/gateway/mcp"
 	"github.com/wso2/api-platform/cli/cmd/gateway/restapi"
+	"github.com/wso2/api-platform/cli/cmd/gateway/soapapi"
 	"github.com/wso2/api-platform/cli/cmd/gateway/subscription"
 	"github.com/wso2/api-platform/cli/cmd/gateway/subscriptionplan"
 )
@@ -60,6 +61,7 @@ func init() {
 	GatewayCmd.AddCommand(image.ImageCmd)
 	GatewayCmd.AddCommand(restapi.APICmd)
 	GatewayCmd.AddCommand(graphqlapi.APICmd)
+	GatewayCmd.AddCommand(soapapi.APICmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)
 	GatewayCmd.AddCommand(subscriptionplan.SubscriptionPlanCmd)
 	GatewayCmd.AddCommand(subscription.SubscriptionCmd)

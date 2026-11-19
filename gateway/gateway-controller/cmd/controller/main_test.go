@@ -766,6 +766,15 @@ func TestGenerateAuthConfig(t *testing.T) {
 		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/graphql-apis/{id}/api-keys/{apiKeyName}/regenerate")
 		assert.Contains(t, authConfig.ResourceRoles, "DELETE "+managementAPIBasePath+"/graphql-apis/{id}/api-keys/{apiKeyName}")
 		assert.Equal(t, []string{"admin", "consumer"}, authConfig.ResourceRoles["POST "+managementAPIBasePath+"/graphql-apis/{id}/api-keys"])
+		// SoapApi is a core kind too; its routes carry the same roles as GraphQL's.
+		for _, route := range []string{"POST /soap-apis", "GET /soap-apis", "GET /soap-apis/{id}", "PUT /soap-apis/{id}", "DELETE /soap-apis/{id}"} {
+			method, path, _ := strings.Cut(route, " ")
+			assert.Equal(t, []string{"admin", "developer"}, authConfig.ResourceRoles[method+" "+managementAPIBasePath+path], route)
+		}
+		for _, route := range []string{"POST /soap-apis/{id}/api-keys", "GET /soap-apis/{id}/api-keys", "PUT /soap-apis/{id}/api-keys/{apiKeyName}", "POST /soap-apis/{id}/api-keys/{apiKeyName}/regenerate", "DELETE /soap-apis/{id}/api-keys/{apiKeyName}"} {
+			method, path, _ := strings.Cut(route, " ")
+			assert.Equal(t, []string{"admin", "consumer"}, authConfig.ResourceRoles[method+" "+managementAPIBasePath+path], route)
+		}
 		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/policies")
 		// Admin API paths are served separately and must not leak into management auth config.
 		assert.NotContains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/config_dump")

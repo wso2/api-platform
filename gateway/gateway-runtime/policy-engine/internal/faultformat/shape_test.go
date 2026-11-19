@@ -47,6 +47,13 @@ func TestNegotiate(t *testing.T) {
 		{"SOAP 1.2 with charset", Request{ContentType: "application/soap+xml; charset=utf-8"}, ShapeSOAP12},
 		{"SOAP 1.2 media type is case-insensitive", Request{ContentType: "Application/SOAP+XML"}, ShapeSOAP12},
 
+		// On a SoapApi route the kind settles the version question text/xml leaves open,
+		// and an Accept header cannot move it off a Fault.
+		{"SoapApi with SOAP 1.2 media type", Request{APIKind: policy.APIKindSoapApi, ContentType: "application/soap+xml; charset=utf-8; action=\"urn:add\""}, ShapeSOAP12},
+		{"SoapApi with text/xml is SOAP 1.1", Request{APIKind: policy.APIKindSoapApi, ContentType: "text/xml; charset=utf-8"}, ShapeSOAP11},
+		{"SoapApi GET ?wsdl with no content type is SOAP 1.1", Request{APIKind: policy.APIKindSoapApi}, ShapeSOAP11},
+		{"SoapApi ignores a JSON Accept", Request{APIKind: policy.APIKindSoapApi, ContentType: mediaTextXML, Accept: "application/json"}, ShapeSOAP11},
+
 		// text/xml is ambiguous between SOAP 1.1 and plain XML. A plain XML document is
 		// merely incomplete for a SOAP caller; JSON would be unreadable to it.
 		{"text/xml gets XML, the lesser wrong for an unresolved SOAP 1.1", Request{ContentType: mediaTextXML}, ShapeXML},
@@ -81,7 +88,7 @@ func TestNegotiate(t *testing.T) {
 // error into a broken response instead of an unimproved one.
 func TestRender_UnimplementedShapeDegradesToPassthrough(t *testing.T) {
 	r := NewRegistry()
-	for _, shape := range []ShapeID{ShapeSOAP11, ShapeSOAP12, ShapePassthrough, ShapeID("not-a-shape")} {
+	for _, shape := range []ShapeID{ShapePassthrough, ShapeID("not-a-shape")} {
 		if _, _, ok := r.Render(shape, RenderInput{Err: policy.FaultDetails{Message: "x"}, Status: 0}); ok {
 			t.Fatalf("shape %q reported ok=true but has no renderer", shape)
 		}

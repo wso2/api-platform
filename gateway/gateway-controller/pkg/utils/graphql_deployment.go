@@ -138,6 +138,13 @@ func validateGraphQLAPIConfig(cfg any) (apiName, apiVersion string, validationEr
 // config.APIValidator's private validateUpstreamUrl in miniature: GraphQLApi does not
 // support upstreamDefinitions references in this pass, so only a direct url is valid.
 func validateGraphQLUpstream(label string, up *api.Upstream) []config.ValidationError {
+	return validateDirectUpstream(graphQLApiKind, label, up)
+}
+
+// validateDirectUpstream validates an upstream slot of a kind that has no
+// upstreamDefinitions list (GraphQLApi, SoapApi): only a direct http(s) url is valid,
+// and a ref is rejected because there is nothing for it to resolve against.
+func validateDirectUpstream(kind, label string, up *api.Upstream) []config.ValidationError {
 	var errors []config.ValidationError
 	if up == nil {
 		return errors
@@ -146,7 +153,7 @@ func validateGraphQLUpstream(label string, up *api.Upstream) []config.Validation
 	if up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
 		errors = append(errors, config.ValidationError{
 			Field:   "spec.upstream." + label + ".ref",
-			Message: "Upstream ref is not supported for GraphQLApi (no upstreamDefinitions list); use a direct url",
+			Message: "Upstream ref is not supported for " + kind + " (no upstreamDefinitions list); use a direct url",
 		})
 	}
 

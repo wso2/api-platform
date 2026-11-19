@@ -125,6 +125,19 @@ Base URLs:
 - [Update a secret](secrets-management.md#update-a-secret)
 - [Delete a secret](secrets-management.md#delete-a-secret)
 
+### [SOAP API Management](soap-api-management.md)
+
+- [Create a new SoapAPI](soap-api-management.md#create-a-new-soapapi)
+- [List all SoapAPIs](soap-api-management.md#list-all-soapapis)
+- [Get SoapAPI by id](soap-api-management.md#get-soapapi-by-id)
+- [Update an existing SoapAPI](soap-api-management.md#update-an-existing-soapapi)
+- [Delete a SoapAPI](soap-api-management.md#delete-a-soapapi)
+- [Generate a new API key for a SoapAPI](soap-api-management.md#generate-a-new-api-key-for-a-soapapi)
+- [List all API keys for a SoapAPI](soap-api-management.md#list-all-api-keys-for-a-soapapi)
+- [Regenerate an existing API key for a SoapAPI](soap-api-management.md#regenerate-an-existing-api-key-for-a-soapapi)
+- [Update an API key with a new regenerated value](soap-api-management.md#update-an-api-key-with-a-new-regenerated-value)
+- [Revoke an API key](soap-api-management.md#revoke-an-api-key)
+
 ### [Schemas](schemas.md)
 
 - [ResourceStatus](schemas.md#resourcestatus)
@@ -136,6 +149,9 @@ Base URLs:
 - [GraphQLAPIConfigData](schemas.md#graphqlapiconfigdata)
 - [GraphQLAPIRequest](schemas.md#graphqlapirequest)
 - [GraphQLAPI](schemas.md#graphqlapi)
+- [SoapAPIRequest](schemas.md#soapapirequest)
+- [SoapAPI](schemas.md#soapapi)
+- [SoapAPIData](schemas.md#soapapidata)
 - [UpstreamDefinition](schemas.md#upstreamdefinition)
 - [UpstreamTimeout](schemas.md#upstreamtimeout)
 - [Resilience](schemas.md#resilience)

@@ -36,6 +36,7 @@ func TestGetResourceHandler_KnownKinds(t *testing.T) {
 		{ResourceKindLLMProvider, utils.GatewayLLMProvidersPath, utils.GatewayLLMProviderByIDPath},
 		{ResourceKindLLMProxy, utils.GatewayLLMProxiesPath, utils.GatewayLLMProxyByIDPath},
 		{ResourceKindGraphQLAPI, utils.GatewayGraphQLAPIsPath, utils.GatewayGraphQLAPIByIDPath},
+		{ResourceKindSoapAPI, utils.GatewaySoapAPIsPath, utils.GatewaySoapAPIByIDPath},
 	}
 
 	for _, tt := range tests {

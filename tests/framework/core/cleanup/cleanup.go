@@ -66,6 +66,7 @@ var (
 	// also deletes before them.
 	KindAgent      = Kind{Name: "agent", Order: 52}
 	KindGraphQLAPI = Kind{Name: "graphql-api", Order: 53}
+	KindSoapAPI    = Kind{Name: "soap-api", Order: 53}
 	KindMCPServer  = Kind{Name: "mcp-server", Order: 55}
 	// An Agent proxy can hold its upstream credential as a {{ secret "handle" }}
 	// placeholder, so it deletes before KindSecret.

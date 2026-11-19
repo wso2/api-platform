@@ -224,8 +224,8 @@ func computeSyncDiff(remote []models.ControlPlaneDeployment, local []*models.Sto
 // processSyncFetches fetches deployment artifacts in chunked batches, ordered by
 // dependency: LLM Providers first, then LLM Proxies, then REST APIs.
 func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment, gatewayID string) {
-	// Sort by dependency order: providers → proxies → REST APIs/MCP proxies/agents/GraphQL APIs
-	var providers, proxies, restAPIs, mcpProxies, agents, graphqlAPIs []models.ControlPlaneDeployment
+	// Sort by dependency order: providers → proxies → REST APIs/MCP proxies/agents/GraphQL APIs/SOAP APIs
+	var providers, proxies, restAPIs, mcpProxies, agents, graphqlAPIs, soapAPIs []models.ControlPlaneDeployment
 	for _, dep := range deployments {
 		switch dep.Kind {
 		case models.KindLlmProvider:
@@ -240,6 +240,13 @@ func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment,
 			agents = append(agents, dep)
 		case models.KindGraphQLApi:
 			graphqlAPIs = append(graphqlAPIs, dep)
+		case models.KindSoapApi:
+			soapAPIs = append(soapAPIs, dep)
+		default:
+			c.logger.Warn("Skipping deployment of an unsupported kind during sync",
+				slog.String("artifact_id", dep.ArtifactID),
+				slog.String("kind", dep.Kind),
+			)
 		}
 	}
 
@@ -251,6 +258,7 @@ func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment,
 	ordered = append(ordered, mcpProxies...)
 	ordered = append(ordered, agents...)
 	ordered = append(ordered, graphqlAPIs...)
+	ordered = append(ordered, soapAPIs...)
 
 	batchSize := c.config.SyncBatchSize
 	if batchSize <= 0 {
@@ -361,12 +369,13 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 			// pkg/utils. Same call shape either way.
 			_, err = c.agentService.CreateFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.logger)
-		case models.KindGraphQLApi:
-			// GraphQLApi has no dedicated deployment service — it self-registers into
-			// APIDeploymentService's generic kindDeployParsers extension point (see
-			// pkg/utils/graphql_deployment.go's init()), so it is deployed through the
-			// same generic deploymentService RestApi uses, keyed off the YAML's own
-			// "kind: GraphQLApi" field rather than a per-kind service reference.
+		case models.KindGraphQLApi, models.KindSoapApi:
+			// GraphQLApi and SoapApi have no dedicated deployment service — each
+			// self-registers into APIDeploymentService's generic kindDeployParsers
+			// extension point (see the init() of pkg/utils/graphql_deployment.go and
+			// soap_deployment.go), so they are deployed through the same generic
+			// deploymentService RestApi uses, keyed off the YAML's own "kind" field
+			// rather than a per-kind service reference.
 			_, err = c.apiUtilsService.CreateAPIFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.deploymentService)
 		}
@@ -479,7 +488,7 @@ func (c *Client) processSyncDeletions(artifactIDs []string, gatewayID string) {
 		kind string
 	}
 
-	var restAPIs, proxies, providers, mcpProxies, agents, graphqlAPIs, unknown []deletionEntry
+	var restAPIs, proxies, providers, mcpProxies, agents, graphqlAPIs, soapAPIs, unknown []deletionEntry
 
 	for _, id := range artifactIDs {
 		cfg, err := c.db.GetConfig(id)
@@ -508,15 +517,20 @@ func (c *Client) processSyncDeletions(artifactIDs []string, gatewayID string) {
 			agents = append(agents, entry)
 		case models.KindGraphQLApi:
 			graphqlAPIs = append(graphqlAPIs, entry)
+		case models.KindSoapApi:
+			soapAPIs = append(soapAPIs, entry)
+		default:
+			unknown = append(unknown, entry)
 		}
 	}
 
-	// Reverse dependency order: agents/MCP proxies/REST APIs/GraphQL APIs → proxies → providers
+	// Reverse dependency order: agents/MCP proxies/REST APIs/GraphQL APIs/SOAP APIs → proxies → providers
 	ordered := make([]deletionEntry, 0, len(artifactIDs))
 	ordered = append(ordered, agents...)
 	ordered = append(ordered, mcpProxies...)
 	ordered = append(ordered, restAPIs...)
 	ordered = append(ordered, graphqlAPIs...)
+	ordered = append(ordered, soapAPIs...)
 	ordered = append(ordered, unknown...)
 	ordered = append(ordered, proxies...)
 	ordered = append(ordered, providers...)
@@ -576,10 +590,10 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 			}
 		}
 
-	case models.KindRestApi, models.KindGraphQLApi:
-		// REST API / WebSub / GraphQL API — follow the performFullAPIDeletion pattern.
-		// GraphQLApi is stored as a generic StoredConfig artifact (no dedicated
-		// deployment/deletion service — see the KindGraphQLApi case in
+	case models.KindRestApi, models.KindGraphQLApi, models.KindSoapApi:
+		// REST API / WebSub / GraphQL API / SOAP API — follow the performFullAPIDeletion
+		// pattern. GraphQLApi and SoapApi are stored as generic StoredConfig artifacts
+		// (no dedicated deployment/deletion service — see their case in
 		// processSyncFetchBatch), so the same generic deletion path REST/WebSub use
 		// applies unmodified.
 		apiConfig, err := c.findAPIConfig(artifactID)
@@ -639,6 +653,15 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				return
 			}
 		}
+
+	default:
+		// Reported rather than passed over: an orphan of a kind with no case here
+		// stays deployed, and the log below would otherwise claim it was removed.
+		c.logger.Warn("Cannot delete orphaned artifact of an unsupported kind during sync",
+			slog.String("artifact_id", artifactID),
+			slog.String("kind", kind),
+		)
+		return
 	}
 
 	c.logger.Info("Successfully deleted orphaned artifact during sync",

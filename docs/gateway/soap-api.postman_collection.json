@@ -1,0 +1,1135 @@
+{
+  "info": {
+    "name": "WSO2 API Platform — SOAP API",
+    "description": "Demo and test collection for the gateway's `SoapApi` kind, against the calculator SOAP backend.\n\nRun top to bottom (Runner or `postman collection run`). Every request asserts what it shows.\n\n**Prerequisites**\n- Gateway on `{{gwUrl}}` / `{{mgmtUrl}}` with the `api-key-auth` and `error-response-formatter` policies built in, and `policy_engine.fault_policies.handle_upstream_faults = true` for folder 5.\n- Calculator backend reachable from the gateway at `{{upstreamUrl}}` and from you at `{{backendUrl}}`. The defaults assume a `calculator-backend` container on the gateway's network with port 3002 published; for a backend on the host use `http://host.docker.internal:3002/calculator/v1`.\n- Nothing listening at `{{deadUpstreamUrl}}`.\n\nSee `docs/gateway/soap-api.md`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Reset",
+      "description": "Removes APIs left by an earlier run. 404 is fine.",
+      "item": [
+        {
+          "name": "Delete calculator-v1.0 (if present)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-v1.0",
+            "description": "Idempotent cleanup.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('deleted or absent', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete calculator-secure-v1.0 (if present)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-secure-v1.0",
+            "description": "Idempotent cleanup.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('deleted or absent', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete calculator-down-v1.0 (if present)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-down-v1.0",
+            "description": "Idempotent cleanup.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('deleted or absent', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Management — deploy & inspect",
+      "description": "SoapApi CRUD on the gateway-controller management API.",
+      "item": [
+        {
+          "name": "Create SoapApi — passthrough",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/yaml"
+              }
+            ],
+            "url": "{{mgmtUrl}}/soap-apis",
+            "description": "A SOAP API is a context plus one upstream. The gateway serves it as a wildcard POST (invocations) and GET (`?wsdl`/`?xsd`) under the context.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "apiVersion: gateway.api-platform.wso2.com/v1\nkind: SoapApi\nmetadata:\n  name: calculator-v1.0\nspec:\n  displayName: Calculator\n  version: v1.0\n  context: /calc/$version\n  upstream:\n    main:\n      url: {{upstreamUrl}}\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('echoes the name', () => pm.expect(pm.response.text()).to.include(\"calculator-v1.0\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create SoapApi — api-key-auth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/yaml"
+              }
+            ],
+            "url": "{{mgmtUrl}}/soap-apis",
+            "description": "API-level policies apply to both routes, so `?wsdl` needs a key too.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "apiVersion: gateway.api-platform.wso2.com/v1\nkind: SoapApi\nmetadata:\n  name: calculator-secure-v1.0\nspec:\n  displayName: Calculator Secure\n  version: v1.0\n  context: /calc-secure/$version\n  upstream:\n    main:\n      url: {{upstreamUrl}}\n  policies:\n    - name: api-key-auth\n      version: v1\n      params:\n        key: X-API-Key\n        in: header\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create SoapApi — dead upstream + faultPolicies",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/yaml"
+              }
+            ],
+            "url": "{{mgmtUrl}}/soap-apis",
+            "description": "The upstream is unreachable. The `error-response-formatter` fault policy (preset `soap11`) turns the router's 503 into a SOAP Fault. Needs `policy_engine.fault_policies.handle_upstream_faults = true`.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "apiVersion: gateway.api-platform.wso2.com/v1\nkind: SoapApi\nmetadata:\n  name: calculator-down-v1.0\nspec:\n  displayName: Calculator Down\n  version: v1.0\n  context: /calc-down/$version\n  upstream:\n    main:\n      url: {{deadUpstreamUrl}}\n  faultPolicies:\n    - name: error-response-formatter\n      version: v1\n      params:\n        preset: soap11\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List SoapApis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis",
+            "description": "Lists every SoapApi.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const names = pm.response.json().soapApis.map(a => a.metadata.name);",
+                  "pm.test('all three listed', () => pm.expect(names).to.include.members(['calculator-v1.0', 'calculator-secure-v1.0', 'calculator-down-v1.0']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get SoapApi",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-v1.0",
+            "description": "One SoapApi by handle.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has the context', () => pm.expect(pm.response.text()).to.include(\"/calc/$version\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update SoapApi",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/yaml"
+              }
+            ],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-v1.0",
+            "description": "Replaces the spec (display name here).",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "apiVersion: gateway.api-platform.wso2.com/v1\nkind: SoapApi\nmetadata:\n  name: calculator-v1.0\nspec:\n  displayName: Calculator Updated\n  version: v1.0\n  context: /calc/$version\n  upstream:\n    main:\n      url: {{upstreamUrl}}\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('new display name', () => pm.expect(pm.response.text()).to.include(\"Calculator Updated\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Invoke — passthrough",
+      "description": "Requests and responses pass through unchanged.",
+      "item": [
+        {
+          "name": "SOAP 1.1 — Add",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              },
+              {
+                "key": "SOAPAction",
+                "value": "\"Add\""
+              }
+            ],
+            "url": "{{gwUrl}}/calc/v1.0/soap11",
+            "description": "7 + 5 through the gateway.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <cal:AddRequest>\n      <cal:a>7</cal:a>\n      <cal:b>5</cal:b>\n    </cal:AddRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.variables.get('__retry_wait')) { setTimeout(() => {}, 1000); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "const tries = Number(pm.variables.get('__retry') || 0);",
+                  "if (pm.response.code === 404 && tries < 15) {",
+                  "    pm.variables.set('__retry', tries + 1);",
+                  "    pm.variables.set('__retry_wait', 1);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.variables.unset('__retry'); pm.variables.unset('__retry_wait');",
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('content-type is text/xml', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/xml'));",
+                  "pm.test('result is 12', () => pm.expect(pm.response.text()).to.include(\"<result>12</result>\"));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SOAP 1.2 — Add",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/soap+xml; charset=utf-8"
+              }
+            ],
+            "url": "{{gwUrl}}/calc/v1.0/soap12",
+            "description": "SOAP 1.2 envelope, same operation.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <env:Body>\n    <cal:AddRequest>\n      <cal:a>7</cal:a>\n      <cal:b>5</cal:b>\n    </cal:AddRequest>\n  </env:Body>\n</env:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('content-type is application/soap+xml', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/soap+xml'));",
+                  "pm.test('result is 12', () => pm.expect(pm.response.text()).to.include(\"<result>12</result>\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SOAP 1.1 — SubtractOperands (document/literal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              },
+              {
+                "key": "SOAPAction",
+                "value": "\"SubtractOperands\""
+              }
+            ],
+            "url": "{{gwUrl}}/calc/v1.0/soap11",
+            "description": "10 - 4.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <cal:SubtractOperandsRequest>\n      <cal:a>10</cal:a>\n      <cal:b>4</cal:b>\n    </cal:SubtractOperandsRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('result is 6', () => pm.expect(pm.response.text()).to.include(\"<result>6</result>\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend SOAP Fault passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              }
+            ],
+            "url": "{{gwUrl}}/calc/v1.0/soap11",
+            "description": "The backend answers with its own Fault (HTTP 500). The gateway forwards it untouched.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <cal:TriggerFaultRequest>\n      <cal:faultCode>soap:Client</cal:faultCode>\n      <cal:faultString>Intentional validation failure</cal:faultString>\n      <cal:httpStatus>500</cal:httpStatus>\n    </cal:TriggerFaultRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 500', () => pm.response.to.have.status(500));",
+                  "pm.test('backend fault string', () => pm.expect(pm.response.text()).to.include(\"Intentional validation failure\"));",
+                  "pm.test('backend detail', () => pm.expect(pm.response.text()).to.include(\"<source>soap-backend</source>\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. WSDL rewrite",
+      "description": "The gateway rewrites backend addresses in the service description to its own.",
+      "item": [
+        {
+          "name": "Retrieve WSDL through the gateway",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gwUrl}}/calc/v1.0?wsdl",
+            "description": "`soap:address`/`soap12:address` now point at the gateway. The response is `no-store`, since the addresses depend on how the request reached the gateway."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const gw = pm.variables.replaceIn('{{gwUrl}}');",
+                  "pm.test('soap 1.1 address is the gateway', () => pm.expect(pm.response.text()).to.include(`location=\"${gw}/calc/v1.0/soap11\"`));",
+                  "pm.test('soap 1.2 address is the gateway', () => pm.expect(pm.response.text()).to.include(`location=\"${gw}/calc/v1.0/soap12\"`));",
+                  "pm.test('no backend address left', () => pm.expect(pm.response.text()).to.not.include(\":3002/\"));",
+                  "pm.test('cache-control: no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+                  "pm.test('no ETag', () => pm.expect(pm.response.headers.has('ETag')).to.be.false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Retrieve WSDL with another Host",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "soap.example.com:8080"
+              }
+            ],
+            "url": "{{gwUrl}}/calc/v1.0?wsdl",
+            "description": "With a wildcard vhost the addresses follow the authority the client used."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('address uses the request authority', () => pm.expect(pm.response.text()).to.include(\"location=\\\"http://soap.example.com:8080/calc/v1.0/soap11\\\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend WSDL directly (for comparison)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{backendUrl}}?wsdl",
+            "description": "What the backend itself advertises — run from the host, not the gateway container."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('backend advertises itself', () => pm.expect(pm.response.text()).to.include(\"localhost:3002\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. API key auth — SOAP Faults",
+      "description": "An auth failure on a SoapApi is a SOAP Fault, never JSON.",
+      "item": [
+        {
+          "name": "Create API key (saves {{apiKey}})",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-secure-v1.0/api-keys",
+            "description": "Issues a key for the secured API.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"demo-key\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('apiKey', pm.response.json().apiKey.apiKey);",
+                  "pm.test('key returned', () => pm.expect(pm.collectionVariables.get('apiKey')).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No key, SOAP 1.1 → 401 SOAP 1.1 Fault",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              },
+              {
+                "key": "SOAPAction",
+                "value": "\"Add\""
+              }
+            ],
+            "url": "{{gwUrl}}/calc-secure/v1.0/soap11",
+            "description": "SOAP 1.1 request: `text/xml` Fault, `soapenv:Client`.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <cal:AddRequest>\n      <cal:a>7</cal:a>\n      <cal:b>5</cal:b>\n    </cal:AddRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.variables.get('__retry_wait')) { setTimeout(() => {}, 1000); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "const tries = Number(pm.variables.get('__retry') || 0);",
+                  "if (pm.response.code === 404 && tries < 15) {",
+                  "    pm.variables.set('__retry', tries + 1);",
+                  "    pm.variables.set('__retry_wait', 1);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.variables.unset('__retry'); pm.variables.unset('__retry_wait');",
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('content-type is text/xml', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/xml'));",
+                  "pm.test('is a SOAP 1.1 Fault', () => pm.expect(pm.response.text()).to.include(\"<soapenv:Fault>\"));",
+                  "pm.test('faultcode is soapenv:Client', () => pm.expect(pm.response.text()).to.include(\"<faultcode>soapenv:Client</faultcode>\"));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No key, SOAP 1.2 → 401 SOAP 1.2 Fault",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/soap+xml; charset=utf-8"
+              }
+            ],
+            "url": "{{gwUrl}}/calc-secure/v1.0/soap12",
+            "description": "SOAP 1.2 request (`application/soap+xml`): SOAP 1.2 Fault, `env:Sender`.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <env:Body>\n    <cal:AddRequest>\n      <cal:a>7</cal:a>\n      <cal:b>5</cal:b>\n    </cal:AddRequest>\n  </env:Body>\n</env:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('content-type is application/soap+xml', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/soap+xml'));",
+                  "pm.test('is a SOAP 1.2 Fault', () => pm.expect(pm.response.text()).to.include(\"<env:Fault>\"));",
+                  "pm.test('code is env:Sender', () => pm.expect(pm.response.text()).to.include(\"<env:Value>env:Sender</env:Value>\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No key, GET ?wsdl → 401 SOAP Fault",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gwUrl}}/calc-secure/v1.0?wsdl",
+            "description": "The WSDL is protected by the same policy. `Accept: application/json` is ignored — a SoapApi always answers in SOAP."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('content-type is text/xml', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/xml'));",
+                  "pm.test('is a SOAP 1.1 Fault', () => pm.expect(pm.response.text()).to.include(\"<soapenv:Fault>\"));",
+                  "pm.test('faultcode is soapenv:Client', () => pm.expect(pm.response.text()).to.include(\"<faultcode>soapenv:Client</faultcode>\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong key → 401 SOAP Fault",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "not-a-real-key"
+              }
+            ],
+            "url": "{{gwUrl}}/calc-secure/v1.0/soap11",
+            "description": "Same Fault as no key.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <cal:AddRequest>\n      <cal:a>7</cal:a>\n      <cal:b>5</cal:b>\n    </cal:AddRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('content-type is text/xml', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/xml'));",
+                  "pm.test('is a SOAP 1.1 Fault', () => pm.expect(pm.response.text()).to.include(\"<soapenv:Fault>\"));",
+                  "pm.test('faultcode is soapenv:Client', () => pm.expect(pm.response.text()).to.include(\"<faultcode>soapenv:Client</faultcode>\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Valid key → 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "SOAPAction",
+                "value": "\"Add\""
+              }
+            ],
+            "url": "{{gwUrl}}/calc-secure/v1.0/soap11",
+            "description": "A new key can take a few seconds to reach the router; the request retries on 401.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <cal:AddRequest>\n      <cal:a>7</cal:a>\n      <cal:b>5</cal:b>\n    </cal:AddRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.variables.get('__retry_wait')) { setTimeout(() => {}, 1000); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "const tries = Number(pm.variables.get('__retry') || 0);",
+                  "if (pm.response.code === 401 && tries < 15) {",
+                  "    pm.variables.set('__retry', tries + 1);",
+                  "    pm.variables.set('__retry_wait', 1);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.variables.unset('__retry'); pm.variables.unset('__retry_wait');",
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('result is 12', () => pm.expect(pm.response.text()).to.include(\"<result>12</result>\"));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Valid key, GET ?wsdl → rewritten WSDL",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{gwUrl}}/calc-secure/v1.0?wsdl",
+            "description": "Auth and WSDL rewrite on the same route."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const gw = pm.variables.replaceIn('{{gwUrl}}');",
+                  "pm.test('address is the gateway', () => pm.expect(pm.response.text()).to.include(`location=\"${gw}/calc-secure/v1.0/soap11\"`));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Fault policies",
+      "description": "Router failures become SOAP Faults through the API's `faultPolicies`.",
+      "item": [
+        {
+          "name": "Unreachable upstream → 503 SOAP Fault",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              }
+            ],
+            "url": "{{gwUrl}}/calc-down/v1.0/soap11",
+            "description": "Nothing listens on the upstream. Without the fault policy this is Envoy's plain-text 503.",
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cal=\"http://example.com/soap/calculator/v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <cal:AddRequest>\n      <cal:a>7</cal:a>\n      <cal:b>5</cal:b>\n    </cal:AddRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.variables.get('__retry_wait')) { setTimeout(() => {}, 1000); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "const tries = Number(pm.variables.get('__retry') || 0);",
+                  "if (pm.response.code === 404 && tries < 15) {",
+                  "    pm.variables.set('__retry', tries + 1);",
+                  "    pm.variables.set('__retry_wait', 1);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.variables.unset('__retry'); pm.variables.unset('__retry_wait');",
+                  "pm.test('status is 503', () => pm.response.to.have.status(503));",
+                  "pm.test('content-type is text/xml', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/xml'));",
+                  "pm.test('is a SOAP 1.1 Fault', () => pm.expect(pm.response.text()).to.include(\"Fault>\"));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Cleanup",
+      "description": "Revokes the key and removes the APIs.",
+      "item": [
+        {
+          "name": "Revoke API key",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-secure-v1.0/api-keys/demo-key",
+            "description": "",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete calculator-v1.0",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-v1.0",
+            "description": "",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete calculator-secure-v1.0",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-secure-v1.0",
+            "description": "",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete calculator-down-v1.0",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mgmtUrl}}/soap-apis/calculator-down-v1.0",
+            "description": "",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPass}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "mgmtUrl",
+      "value": "http://localhost:9090/api/management/v1"
+    },
+    {
+      "key": "gwUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "upstreamUrl",
+      "value": "http://calculator-backend:3002/calculator/v1"
+    },
+    {
+      "key": "deadUpstreamUrl",
+      "value": "http://calculator-backend:3009/calculator/v1"
+    },
+    {
+      "key": "backendUrl",
+      "value": "http://localhost:3002/calculator/v1"
+    },
+    {
+      "key": "adminUser",
+      "value": "admin"
+    },
+    {
+      "key": "adminPass",
+      "value": "admin"
+    },
+    {
+      "key": "apiKey",
+      "value": ""
+    }
+  ]
+}

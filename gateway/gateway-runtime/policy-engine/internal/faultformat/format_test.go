@@ -32,21 +32,23 @@ import (
 // unless its protocol leaves the caller unable to read anything else, and named SoapApi and
 // A2A as the two that would qualify when they landed.
 //
-// A2A has landed, so Agent is here and nothing else is. The qualifying part is not that A2A
-// is new — it is that an Agent route serving JSON-RPC has no other way to answer. MCP fixes a
-// protocol too and is still absent, because its policies write the JSON-RPC envelope
-// themselves; A2A has no such policies, so a rejection there comes from an ordinary policy
-// writing ordinary JSON to a client that can only read JSON-RPC.
+// Both have landed, so Agent and SoapApi are here and nothing else is. The qualifying part is
+// not that they are new — it is that an Agent route serving JSON-RPC, and a SOAP client
+// expecting a Fault, have no other way to read a rejection. MCP fixes a protocol too and is
+// still absent, because its policies write the JSON-RPC envelope themselves; A2A and SOAP have
+// no such policies, so a rejection there comes from an ordinary policy writing ordinary JSON.
 //
 // Asserted rather than left to the declaration because adding a kind here changes bytes every
 // client of that kind parses, and it should not be possible to do by accident.
-func TestSupportedKinds_OnlyAgentFormats(t *testing.T) {
+func TestSupportedKinds_OnlyAgentAndSoapFormat(t *testing.T) {
 	set := SupportedKinds()
 
 	assert.True(t, set.Enabled(policy.APIKindAgent),
 		"an Agent route serving JSON-RPC cannot read a plain JSON error")
+	assert.True(t, set.Enabled(policy.APIKindSoapApi),
+		"a SOAP client cannot read a plain JSON error")
 	for _, kind := range knownAPIKinds {
-		if kind == policy.APIKindAgent {
+		if kind == policy.APIKindAgent || kind == policy.APIKindSoapApi {
 			continue
 		}
 		assert.False(t, set.Enabled(kind),
@@ -84,9 +86,9 @@ func TestKindSet_MatchingIsCaseInsensitiveAndTrimmed(t *testing.T) {
 // A typo must be visible. It cannot silently enable something else, and it must be reported
 // so the operator finds out from the log rather than from a client.
 func TestKindSet_UnknownKindIsReportedAndEnablesNothing(t *testing.T) {
-	set, unknown := NewKindSet([]string{"RestAPIs", "SoapApi"})
+	set, unknown := NewKindSet([]string{"RestAPIs", "SoapAPIs"})
 
-	assert.Equal(t, []string{"RestAPIs", "SoapApi"}, unknown,
+	assert.Equal(t, []string{"RestAPIs", "SoapAPIs"}, unknown,
 		"both are unknown and both must be reported verbatim, not normalized")
 	assert.False(t, set.Enabled(policy.APIKindRestApi),
 		"a near-miss must not enable the kind it resembles")

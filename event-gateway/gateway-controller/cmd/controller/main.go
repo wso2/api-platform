@@ -453,7 +453,11 @@ func main() {
 	// silently fail to ever deploy; build one exactly the way restTransformer
 	// is built above so it actually can.
 	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer)
+	// SoapApi is wired in the same way and for the same reason as GraphQLApi above
+	// (pkg/utils/soap_deployment.go self-registers; /soap-apis is routable here but
+	// absent from this binary's role map).
+	soapTransformer := transform.NewSoapAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer, soapTransformer)
 
 	// Derived from the registry rather than hand-listed, for the same reason the
 	// gateway controller derives it: a hand-written map beside the registry's own
