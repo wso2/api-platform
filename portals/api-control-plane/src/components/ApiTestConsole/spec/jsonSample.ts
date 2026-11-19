@@ -64,7 +64,7 @@ export const resolveRef = (spec: Schema, ref: string): Schema | undefined => {
 };
 
 /** Merges an `allOf` chain into one schema, so composed models produce a body. */
-const flatten = (spec: Schema, schema: Schema, depth: number): Schema => {
+export const flatten = (spec: Schema, schema: Schema, depth: number): Schema => {
   const ref = schema.$ref;
   if (typeof ref === 'string') {
     const resolved = depth < MAX_DEPTH ? resolveRef(spec, ref) : undefined;
@@ -88,19 +88,44 @@ const flatten = (spec: Schema, schema: Schema, depth: number): Schema => {
         ...(isObject(merged.properties) ? merged.properties : {}),
         ...(isObject(resolved.properties) ? resolved.properties : {}),
       };
+      // Each member names its own required fields; the composed model needs all of them.
+      const required = Array.from(
+        new Set(
+          [merged.required, resolved.required]
+            .flatMap((list) => (Array.isArray(list) ? list : []))
+            .filter((name): name is string => typeof name === 'string'),
+        ),
+      );
       return {
         ...merged,
         ...resolved,
         ...(Object.keys(properties).length > 0 ? { properties } : {}),
+        ...(required.length > 0 ? { required } : {}),
       };
     },
     { ...schema, allOf: undefined },
   );
 };
 
+/**
+ * Whether a schema is response-only. `readOnly` may sit on the wrapper of a `oneOf`/`anyOf`, which
+ * `flatten` drops when it picks a branch, so the schema's own flag is read first, then through
+ * `$ref`, a choice and `allOf`.
+ */
+export const isReadOnly = (spec: Schema, schema: unknown, depth = 0): boolean => {
+  if (!isObject(schema) || depth > MAX_DEPTH) return false;
+  if (schema.readOnly === true) return true;
+  if (typeof schema.$ref === 'string') {
+    return isReadOnly(spec, resolveRef(spec, schema.$ref), depth + 1);
+  }
+  const branch = schema.oneOf ?? schema.anyOf;
+  if (Array.isArray(branch) && branch.length > 0) return isReadOnly(spec, branch[0], depth + 1);
+  return flatten(spec, schema, depth).readOnly === true;
+};
+
 /** Whether a property is response-only, including through `$ref`/`allOf`. */
 const isResponseOnly = (spec: Schema, property: unknown, depth: number): boolean =>
-  isObject(property) && flatten(spec, property, depth).readOnly === true;
+  isReadOnly(spec, property, depth);
 
 /** A placeholder for a schema that says only what type it is. */
 const placeholderFor = (type: unknown, format: unknown): unknown => {

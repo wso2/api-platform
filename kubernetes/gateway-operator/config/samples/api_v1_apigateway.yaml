@@ -524,24 +524,43 @@ data:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
+          # Both routes are answered by the policy engine through the router. Liveness
+          # depends on no dependency check, so once a runtime has its configuration a controller
+          # outage never restarts it. The traffic listener arrives with the controller's first
+          # configuration, so a runtime that never receives one is restarted when the startup
+          # probe gives up. Readiness takes the pod out of the Service after
+          # about 15 s of failed answers; liveness restarts it only after about 2 minutes
+          # of no answer. These match the gateway chart's defaults.
+          # With the pinned 1.2.0 images Envoy answers these routes itself with a static 200;
+          # they check the policy engine and its dependencies once the controller and runtime
+          # images include the gateway health work.
           livenessProbe:
             httpGet:
               path: /_gateway-health/healthy
               port: https
               scheme: HTTPS
-            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
               path: /_gateway-health/ready
               port: https
               scheme: HTTPS
-            initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 6
+            failureThreshold: 3
+          # Holds off the liveness probe until the router and policy engine answer, which
+          # needs the traffic listener from the controller's first configuration. It allows
+          # 5 minutes; set to null to disable.
+          startupProbe:
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
           resources: {}
           podSecurityContext: {}
           securityContext: {}

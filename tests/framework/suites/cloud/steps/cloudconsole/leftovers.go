@@ -168,6 +168,8 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 	for _, collection := range projectScopedCollections {
 		sweeps = append(sweeps, projectScopedSweep(client, base, token, owns, collection))
 	}
+	// A plan is deleted after the APIs that offer it.
+	sweeps = append(sweeps, subscriptionPlanSweep(client, base, token))
 	for _, entry := range finalizerCollections {
 		budget := entry.budget
 		if budget == 0 {
@@ -202,17 +204,18 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 
 // projectScopedCollections are the collections the platform lists only for one project: a list
 // request without projectId is refused with 400.
-var projectScopedCollections = []string{"/rest-apis"}
+var projectScopedCollections = []string{"/rest-apis", "/graphql-apis"}
 
 // projectScopedSweep describes a collection the platform lists per project, so it reads the
-// default project and every project a tracked run created.
+// projects the suite works in and every project a tracked run created. Only the entries named with
+// a tracked run's suffix are deleted, so an API the organisation owns stays.
 func projectScopedSweep(client *httpx.Client, base, token string, owns func(names []string) bool, collection string) finalizer.Collection {
 	return finalizer.Collection{
 		Name:    collection,
 		Timeout: finalizerCollectionBudget,
 		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 			items, err := projectScopedItems(ctx, client, base, token, owns, collection)
-			return leftoversOf(items, []string{"id"}), err
+			return leftoversByID(items), err
 		},
 		Delete: func(ctx context.Context, id string) error {
 			return deleteLeftover(ctx, client, base, token, collection, id)
@@ -220,9 +223,9 @@ func projectScopedSweep(client *httpx.Client, base, token string, owns func(name
 	}
 }
 
-// projectScopedItems reads a collection the platform lists per project, for the default project
-// and every project a tracked run created. A failure part way returns the items already read with
-// the error.
+// projectScopedItems reads a collection the platform lists per project, for the projects the suite
+// works in and every project a tracked run created.
+// A failure part way returns the items already read with the error.
 func projectScopedItems(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool, collection string) ([]map[string]any, error) {
 	projects, err := listCollection(ctx, client, base, token, "/projects")
 	if errors.Is(err, errCollectionNotServed) {
@@ -232,9 +235,21 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 	if err != nil {
 		errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
 	}
-	scopes := []string{defaultProjectID}
+	// The suite's projects are read only when the organisation lists them: a project it lacks
+	// is one the runners skipped, which the platform refuses to list. When the projects cannot be
+	// listed both are read.
+	var scopes []string
+	if err != nil {
+		// The list is not known, so both are read; the one the organisation lacks is refused.
+		scopes = slices.Clone(suiteProjects)
+	}
 	for _, project := range projects {
-		if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) {
+		if id := firstString(project, []string{"id"}); slices.Contains(suiteProjects, id) {
+			scopes = append(scopes, id)
+		}
+	}
+	for _, project := range projects {
+		if id := firstString(project, []string{"id"}); id != "" && owns(namesOf(project)) && !slices.Contains(scopes, id) {
 			scopes = append(scopes, id)
 		}
 	}
@@ -250,6 +265,35 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 		}
 	}
 	return items, errors.Join(errs...)
+}
+
+// syntheticPlanPrefix starts the id of every subscription plan a scenario creates.
+const syntheticPlanPrefix = "syn-plan-"
+
+// subscriptionPlanSweep deletes the subscription plans scenarios created. A plan the organisation
+// owns does not carry the prefix, and a plan of another run does not carry this run's suffix, so
+// both stay.
+func subscriptionPlanSweep(client *httpx.Client, base, token string) finalizer.Collection {
+	return finalizer.Collection{
+		Name:    "/subscription-plans",
+		Timeout: finalizerCollectionBudget,
+		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+			items, err := listCollection(ctx, client, base, token, "/subscription-plans")
+			if errors.Is(err, errCollectionNotServed) {
+				return nil, nil
+			}
+			var created []map[string]any
+			for _, item := range items {
+				if strings.HasPrefix(firstString(item, []string{"id"}), syntheticPlanPrefix) {
+					created = append(created, item)
+				}
+			}
+			return leftoversOf(created, []string{"id"}), err
+		},
+		Delete: func(ctx context.Context, id string) error {
+			return deleteLeftover(ctx, client, base, token, "/subscription-plans", id)
+		},
+	}
 }
 
 // publishedAPICollections are the API collections whose APIs a portal can list, by the API type
@@ -373,9 +417,11 @@ func portalPublications(ctx context.Context, client *httpx.Client, base, token s
 	return leftovers, errors.Join(errs...)
 }
 
-// defaultGatewayLast moves the default gateway the starter created behind every other gateway. The
-// platform refuses to delete an environment's default gateway while other gateways of its kind
-// remain, and allows the last one to go.
+// defaultGatewayLast moves a gateway the starter created behind every other gateway. The finalizer
+// of a run never deletes it, since a run tracks only the suffixes of its runners; it is deleted when
+// a person names the starter's suffix to the setup command. The platform refuses to delete an
+// environment's default gateway while other gateways of its kind remain, and allows the last one to
+// go.
 func defaultGatewayLast(leftovers []finalizer.Leftover) {
 	slices.SortStableFunc(leftovers, func(a, b finalizer.Leftover) int {
 		return boolRank(isStarterGateway(a.Names)) - boolRank(isStarterGateway(b.Names))
@@ -519,6 +565,17 @@ func deleteLeftover(ctx context.Context, client *httpx.Client, base, token, coll
 }
 
 // namesOf collects the values of an item a generated name can appear in.
+// leftoversByID describes items that are deleted by their id, judged by that id alone: another
+// name of an item, such as a display name, can carry a run's suffix without the run owning it.
+func leftoversByID(items []map[string]any) []finalizer.Leftover {
+	leftovers := make([]finalizer.Leftover, 0, len(items))
+	for _, item := range items {
+		id := firstString(item, []string{"id"})
+		leftovers = append(leftovers, finalizer.Leftover{ID: id, Names: []string{id}})
+	}
+	return leftovers
+}
+
 func namesOf(item map[string]any) []string {
 	names := make([]string, 0, len(nameFields))
 	for _, field := range nameFields {

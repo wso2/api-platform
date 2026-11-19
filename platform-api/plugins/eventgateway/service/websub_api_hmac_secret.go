@@ -243,9 +243,24 @@ func (s *WebSubAPIHmacSecretService) DecryptSecret(secret *model.WebSubAPIHmacSe
 	return utils.DecryptSubscriptionToken(s.encryptionKey, secret.EncryptedSecret)
 }
 
-// ListByArtifactUUID returns all HMAC secrets for an artifact UUID (used by internal gateway endpoint).
-func (s *WebSubAPIHmacSecretService) ListByArtifactUUID(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error) {
-	return s.repo.ListByArtifact(artifactUUID)
+// ListByArtifactUUID returns all HMAC secrets for an artifact UUID (used by the
+// internal gateway endpoint).
+//
+// The artifact is resolved under orgUUID first, matching every other read in
+// this service (Generate, List, Regenerate and Delete all go through
+// websubRepo with the org). websub_api_hmac_secrets carries no organization
+// column of its own — artifact_uuid is its only link to an owner — so the
+// artifact lookup is what scopes the result. An artifact that does not resolve
+// under orgUUID yields WebSubAPINotFound and no row is read.
+func (s *WebSubAPIHmacSecretService) ListByArtifactUUID(artifactUUID, orgUUID string) ([]*model.WebSubAPIHmacSecret, error) {
+	api, err := s.websubRepo.GetByUUID(artifactUUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up WebSub API: %w", err)
+	}
+	if api == nil {
+		return nil, apperror.WebSubAPINotFound.New()
+	}
+	return s.repo.ListByArtifact(api.UUID)
 }
 
 // broadcastSecretEvent sends a HMAC secret change event to all gateways in the org.

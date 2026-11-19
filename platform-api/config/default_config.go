@@ -191,6 +191,8 @@ func defaultConfig() *Server {
 					AllowedSchemes:      []string{"http", "https"},
 				},
 			},
+			// The largest route limit is publication content (10 MiB).
+			MaxRequestBodyBytes: 10 << 20, // 10 MiB
 			WebSocket: WebSocket{
 				MaxConnections:           1000,
 				MaxConnectionsPerGateway: -1, // unlimited

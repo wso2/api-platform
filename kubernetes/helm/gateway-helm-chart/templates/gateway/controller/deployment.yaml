@@ -3,6 +3,12 @@
 {{- $serverTls := default (dict) .Values.gateway.config.controller.server.tls -}}
 {{- $restApiTls := $controller.restApiTls -}}
 {{- $mountRestApiCerts := and $serverTls.enabled (ne $restApiTls.certificateProvider "none") -}}
+{{- /* Secrets delivered as env vars (source: env, default) or as mounted files
+       (source: file, read by config.toml's {{ file }} token, never in the env). */ -}}
+{{- $cpTokenSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "token") | fromYaml -}}
+{{- $pgSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "postgres") | fromYaml -}}
+{{- $sqlSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "sqlserver") | fromYaml -}}
+{{- $secretMounts := (include "gateway-operator.controllerSecretMounts" . | fromYaml).mounts -}}
 {{- if $deployment.enabled }}
 {{- if and $serverTls.enabled (eq $restApiTls.certificateProvider "secret") (not $restApiTls.secret.name) }}
 {{- fail "gateway.controller.restApiTls.secret.name is required when gateway.config.controller.server.tls.enabled=true and restApiTls.certificateProvider=secret." }}
@@ -99,7 +105,14 @@ spec:
           args:
             - "-config"
             - "/etc/gateway-controller/config.toml"
+            {{- if $secretMounts }}
+            {{- /* Controller-only overlay holding the {{ file }} tokens for mounted secrets;
+                   merged over config.toml (see gateway-config.yaml). */}}
+            - "-config"
+            - "/etc/gateway-controller/controller-secrets.toml"
+            {{- end }}
           env:
+            {{- if eq $cpTokenSecret.source "env" }}
             - name: APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN
               {{- if $controller.controlPlane.token.secretName }}
               valueFrom:
@@ -109,16 +122,17 @@ spec:
               {{- else }}
               value: {{ $controller.controlPlane.token.value | quote }}
               {{- end }}
+            {{- end }}
             - name: GATEWAY_CONTROLLER_HOST
               value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.gatewayControllerHost | quote }}
-            {{- if and (eq .Values.gateway.config.controller.storage.type "postgres") $controller.postgres.passwordSecretRef.name }}
+            {{- if and (eq .Values.gateway.config.controller.storage.type "postgres") $controller.postgres.passwordSecretRef.name (eq $pgSecret.source "env") }}
             - name: APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $controller.postgres.passwordSecretRef.name }}
                   key: {{ $controller.postgres.passwordSecretRef.key | default "password" }}
             {{- end }}
-            {{- if and (eq .Values.gateway.config.controller.storage.type "sqlserver") $controller.sqlserver.passwordSecretRef.name }}
+            {{- if and (eq .Values.gateway.config.controller.storage.type "sqlserver") $controller.sqlserver.passwordSecretRef.name (eq $sqlSecret.source "env") }}
             - name: APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -170,6 +184,11 @@ spec:
             - name: controller-config
               mountPath: /etc/gateway-controller/config.toml
               subPath: config.toml
+            {{- if $secretMounts }}
+            - name: controller-config
+              mountPath: /etc/gateway-controller/controller-secrets.toml
+              subPath: controller-secrets.toml
+            {{- end }}
             {{- if $controller.tls.enabled }}
             - name: listener-certs
               mountPath: /app/listener-certs
@@ -196,6 +215,11 @@ spec:
               mountPath: {{ $controller.encryptionKeys.mountPath }}
               readOnly: true
             {{- end }}
+            {{- range $secretMounts }}
+            - name: {{ .volume }}
+              mountPath: {{ .mountPath }}
+              readOnly: true
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -213,6 +237,10 @@ spec:
             items:
               - key: config.toml
                 path: config.toml
+              {{- if $secretMounts }}
+              - key: controller-secrets.toml
+                path: controller-secrets.toml
+              {{- end }}
         {{- if $controller.tls.enabled }}
         - name: listener-certs
           secret:
@@ -256,6 +284,16 @@ spec:
         - name: encryption-keys
           secret:
             secretName: {{ $controller.encryptionKeys.secretName }}
+        {{- end }}
+        {{- /* Default file mode on purpose: the chart sets no fsGroup, so a tighter
+               mode could leave the file unreadable for the non-root controller. */}}
+        {{- range $secretMounts }}
+        - name: {{ .volume }}
+          secret:
+            secretName: {{ .secretName }}
+            items:
+              - key: {{ .key }}
+                path: {{ .key }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

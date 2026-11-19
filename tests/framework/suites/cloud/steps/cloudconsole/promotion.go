@@ -23,7 +23,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -34,12 +33,6 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
-
-// pipelineProjectEnv names the project the scenarios that deploy along a deployment pipeline use.
-// The project must already be bound to a deployment pipeline whose environments hold an active
-// regular gateway each: the suite creates no environments or pipelines and never changes a
-// project's binding. When it is unset, those scenarios are skipped.
-const pipelineProjectEnv = "CLOUD_IT_PIPELINE_PROJECT"
 
 const (
 	keyPipelineEnvironments = "cloudPipelineEnvironments"
@@ -73,13 +66,14 @@ func resetPromotionState(ctx context.Context) error {
 	return nil
 }
 
-// findPipelineProject makes the project pipelineProjectEnv names the scenario's project, and skips
-// the scenario when no project is named.
+// findPipelineProject makes the project the scenario's feature file works in the scenario's project.
+// The project must already be bound to a deployment pipeline whose environments hold an active
+// regular gateway each: the suite creates no environments or pipelines and never changes a
+// project's binding.
 func (s *Steps) findPipelineProject(ctx context.Context) error {
-	project := strings.TrimSpace(os.Getenv(pipelineProjectEnv))
-	if project == "" {
-		slog.Warn("skipping: no project bound to a deployment pipeline is configured", "environment", pipelineProjectEnv)
-		return godog.ErrSkip
+	project, err := requiredValue(ctx, keyScenarioProject)
+	if err != nil {
+		return fmt.Errorf("the scenario's project is not known: %w", err)
 	}
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
 	if err != nil {
@@ -89,7 +83,7 @@ func (s *Steps) findPipelineProject(ctx context.Context) error {
 	case http.StatusOK:
 		return tcontext.Set(ctx, keyProjectID, project)
 	case http.StatusNotFound:
-		return fmt.Errorf("%s names project %q, which the organization does not have", pipelineProjectEnv, project)
+		return fmt.Errorf("the organization has no %q project", project)
 	default:
 		return responseError(resp)
 	}
@@ -193,6 +187,11 @@ func (s *Steps) findPromotionChain(ctx context.Context, length int) error {
 	if err != nil {
 		return fmt.Errorf("reading the deployment pipeline of project %q: %w", projectID, err)
 	}
+	if !ownedPipeline(pipeline) {
+		slog.Warn("skipping: the project's deployment pipeline is not named with the suite's prefix",
+			"project", projectID, "pipeline", pipeline, "prefix", testResourcePrefix)
+		return godog.ErrSkip
+	}
 	items, err := s.fetchGatewayList(ctx, regularGatewayKind)
 	if err != nil {
 		return err
@@ -200,6 +199,10 @@ func (s *Steps) findPromotionChain(ctx context.Context, length int) error {
 	gateways := map[string]gatewayChoice{}
 	var unusable []string
 	for _, environment := range sortedKeys(environmentsOf(paths)) {
+		if !ownedEnvironment(environment) {
+			unusable = append(unusable, fmt.Sprintf("environment %q is neither the default one nor named with the prefix %q", environment, testResourcePrefix))
+			continue
+		}
 		choice, err := s.chooseActiveGateway(ctx, items, "gateway of environment "+environment,
 			append(gatewayFilters(""), inEnvironment(environment))...)
 		if errors.Is(err, errCloudDataPlaneDomains) {
@@ -263,12 +266,12 @@ func pipelineEnvironmentAt(ctx context.Context, n int) (string, error) {
 	return names[n-1], nil
 }
 
-// createAPIInPipelineProject creates the synthetic REST API in the project pipelineProjectEnv
-// names, and refuses to run against any other project.
+// createAPIInPipelineProject creates the synthetic REST API in the project of the scenario's feature
+// file, and refuses to run against any other project.
 func (s *Steps) createAPIInPipelineProject(ctx context.Context) error {
 	project := optionalValue(ctx, keyProjectID)
-	if want := strings.TrimSpace(os.Getenv(pipelineProjectEnv)); want == "" || project != want {
-		return fmt.Errorf("the scenario has not found the project %s names, so the API would be created in %q", pipelineProjectEnv, project)
+	if want := optionalValue(ctx, keyScenarioProject); want == "" || project != want {
+		return fmt.Errorf("the scenario has not found its project %q, so the API would be created in %q", want, project)
 	}
 	return s.createAPI(ctx, primaryAPI, nil)
 }

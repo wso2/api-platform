@@ -64,10 +64,12 @@ const (
 	keyVersionDeploymentID  = "cloudVersionDeploymentID"
 	keyVersionAPIDefinition = "cloudVersionAPIDefinition"
 
-	keyBuildID         = "cloudBuildID"
-	keyBuildIDs        = "cloudBuildIDs"
-	keyBuildsOwner     = "cloudBuildsOwner"
-	keyBuildMetadata   = "cloudBuildMetadata"
+	keyBuildID       = "cloudBuildID"
+	keyBuildIDs      = "cloudBuildIDs"
+	keyBuildsOwner   = "cloudBuildsOwner"
+	keyBuildMetadata = "cloudBuildMetadata"
+	// keyBuildMetadataOf names the build the stored metadata was prepared with.
+	keyBuildMetadataOf = "cloudBuildMetadataBuildID"
 	keyDeployedBuildID = "cloudDeployedBuildID"
 	keyEchoBackendURL  = "cloudEchoBackendURL"
 
@@ -141,6 +143,9 @@ func (r *stepRecorder) Step(expr, stepFunc any) {
 // Register binds APIP cloud-specific Gherkin steps.
 func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel *httpx.Funnel) {
 	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client()}
+	sc.Before(func(ctx context.Context, scenario *godog.Scenario) (context.Context, error) {
+		return ctx, tcontext.Set(ctx, keyScenarioProject, projectOfFeature(scenario.Uri))
+	})
 	s.registerSteps(sc)
 }
 
@@ -153,28 +158,33 @@ func (s *Steps) stepDefinitions() []stepDefinition {
 
 func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^I obtain an APIP cloud console token$`, s.obtainToken)
-	sc.Step(`^I find the default APIP project$`, s.findDefaultProject)
+	sc.Step(`^I find the APIP test project$`, s.findTestProject)
 	sc.Step(`^I find an active APIP gateway$`, s.findActiveGateway)
-	sc.Step(`^I create a synthetic REST API in the default project$`, s.createDefaultAPI)
-	sc.Step(`^I create a synthetic REST API in the default project with:$`, s.createAPIWithValues)
+	sc.Step(`^I create a synthetic REST API in the APIP test project$`, s.createDefaultAPI)
+	sc.Step(`^I create a synthetic REST API in the APIP test project with:$`, s.createAPIWithValues)
 	sc.Step(`^I create a new version "([^"]*)" of the synthetic REST API with:$`, s.createNewAPIVersion)
 	sc.Step(`^I submit a synthetic REST API creation request with:$`, s.submitAPICreation)
 	sc.Step(`^the cloud API response status code should be (\d+)$`, s.assertCloudResponseStatus)
 	sc.Step(`^I update the synthetic REST API with:$`, s.updateAPI)
-	sc.Step(`^I deploy the (synthetic REST API|new API version) to the active gateway$`, s.deployAPI)
+	sc.Step(`^I deploy the (synthetic REST API|new API version|synthetic GraphQL API) to the active gateway$`, s.deployAPI)
 	sc.Step(`^I redeploy the synthetic REST API to the active gateway$`, s.redeployAPI)
-	sc.Step(`^I undeploy the synthetic REST API$`, s.undeployAPI)
-	sc.Step(`^the (synthetic REST API|new API version) deployment should become (DEPLOYED|UNDEPLOYED|FAILED)$`, s.waitDeployment)
+	sc.Step(`^I undeploy the (synthetic REST API|synthetic GraphQL API)$`, s.undeployAPI)
+	sc.Step(`^I try to undeploy the synthetic REST API(?: from the environment "([^"]*)")?$`, s.tryUndeployAPI)
+	sc.Step(`^the (synthetic REST API|new API version|synthetic GraphQL API) deployment should become (DEPLOYED|UNDEPLOYED|FAILED)$`, s.waitDeployment)
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) until the redeployment is DEPLOYED$`, s.keepServingUntilDeployed)
+	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) for (\d+) seconds$`, s.keepReturningFor)
 	sc.Step(`^I create an API key for the synthetic REST API$`, s.createAPIKey)
-	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the API key until status (\d+)$`, s.sendWithAPIKeyUntilStatus)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the (API key|previous API key|subscription token|previous subscription token|access token|access token with a forged signature) until status (\d+)$`, s.sendWithCredentialUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, s.sendUntilStatus)
 	sc.Step(`^the synthetic REST API data-plane response should contain post (\d+)$`, s.assertAPIResponse)
 	sc.Step(`^I delete the synthetic REST API$`, s.deleteAPI)
 	sc.Step(`^the synthetic REST API should eventually be absent$`, s.verifyAPIDeleted)
 
 	s.registerIdentitySteps(sc)
+	s.registerAPIDefinitionSteps(sc)
 	s.registerDeploymentSteps(sc)
+	s.registerBuildSteps(sc)
+	s.registerGraphQLSteps(sc)
 	s.registerGatewaySteps(sc)
 	s.registerGatewayConfigSteps(sc)
 	s.registerPromotionSteps(sc)
@@ -182,6 +192,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	s.registerProjectSteps(sc)
 	s.registerPortalSteps(sc)
 	s.registerPortalSignInSteps(sc)
+	s.registerPortalConsumerSteps(sc)
 	s.registerSelfHostedGatewaySteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
@@ -207,7 +218,7 @@ func (s *Steps) registerIdentitySteps(sc stepRegistrar) {
 	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" bearing an expired console token$`, s.sendWithExpiredToken)
 	sc.Step(`^the cloud API error response should not expose internal detail$`, s.assertNoInternalDetail)
 	sc.Step(`^the cloud API response status code should be a client error$`, s.assertCloudResponseClientError)
-	sc.Step(`^the cloud API response body should contain "([^"]*)"$`, s.assertCloudResponseContains)
+	sc.Step(`^the cloud API response body should (contain|not contain) "([^"]*)"$`, s.assertCloudResponseContains)
 	sc.Step(`^the cloud API error code should be "([^"]*)"$`, s.assertCloudErrorCode)
 }
 
@@ -319,6 +330,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(cleanup.KindGraphQLAPI, cloudDeleter(topo, client, "/graphql-apis")); err != nil {
 		return err
 	}
+	if err := reg.RegisterDeleter(kindGraphQLAPIKey, cloudRequestDeleter(topo, client, revokeGraphQLKeyRequest)); err != nil {
+		return err
+	}
 	if err := reg.RegisterDeleter(cleanup.KindSubscriptionPlan, cloudDeleter(topo, client, "/subscription-plans")); err != nil {
 		return err
 	}
@@ -332,6 +346,10 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindPortalRestore, portalRestoreDeleter(topo, client)); err != nil {
+		return err
+	}
+	signIn := func(ctx context.Context) error { return (&Steps{client: client}).signInConsumer(ctx) }
+	if err := registerConsumerDeleters(reg, signIn); err != nil {
 		return err
 	}
 	if err := reg.RegisterDeleter(kindLocalGateway, localGatewayDeleter); err != nil {
@@ -430,7 +448,25 @@ func responseError(resp *httpx.Response) error {
 	if resp == nil {
 		return errors.New("cloud-console: no response")
 	}
-	return fmt.Errorf("cloud-console: unexpected response: %s", resp.Describe())
+	return &statusError{status: resp.StatusCode, message: "cloud-console: unexpected response: " + resp.Describe()}
+}
+
+// statusError is an answer a caller did not expect. It keeps the status, so a caller can tell a
+// resource that is absent from one the token may not touch.
+type statusError struct {
+	status  int
+	message string
+}
+
+func (e *statusError) Error() string { return e.message }
+
+// errorStatus returns the status of the answer behind err, or zero when err is not one.
+func errorStatus(err error) int {
+	var answer *statusError
+	if errors.As(err, &answer) {
+		return answer.status
+	}
+	return 0
 }
 
 func cloudAPIURL(base, path string) string {

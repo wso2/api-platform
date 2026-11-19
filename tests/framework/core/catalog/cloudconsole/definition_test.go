@@ -174,6 +174,22 @@ func TestLoadEnvironmentConfigRejectsACloudConsoleHostThatIsNotAHost(t *testing.
 	require.ErrorContains(t, err, "must be a string")
 }
 
+func TestPlatformAPIEndpointReturnsTheEndpointOfAnEnvironment(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, EnvironmentConfigPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("[environments.sample]\ncloud_base_domain = \"example.test\"\n"), 0o644))
+
+	endpoint, err := PlatformAPIEndpoint(root, "sample")
+	require.NoError(t, err)
+	require.Equal(t, "https://sample-wso2cloud.gateway.example.test/apip-platform-api-apip-platform-api-endpoint/api/v0.9", endpoint)
+
+	_, err = PlatformAPIEndpoint(root, "missing")
+	require.Error(t, err)
+	_, err = PlatformAPIEndpoint(root, "")
+	require.Error(t, err)
+}
+
 func TestResolveEndpointsUsesTheConfiguredPlatformAPIEndpoint(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, EnvironmentConfigPath)

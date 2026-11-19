@@ -623,6 +623,11 @@ type ServerListeners struct {
 	CORS            CORS            `koanf:"cors"`
 	WebSocket       WebSocket       `koanf:"websocket"`
 	NetworkSecurity NetworkSecurity `koanf:"network_security"`
+	// MaxRequestBodyBytes caps every request body on both listeners, so a handler
+	// that decodes without its own limit cannot be made to buffer an unbounded body.
+	// A route's own, lower limit still applies; none may need more than this. 0
+	// disables the cap.
+	MaxRequestBodyBytes int64 `koanf:"max_request_body_bytes"`
 }
 
 // NetworkSecurity groups outbound network controls.
@@ -1085,6 +1090,10 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	warnHealthConfig(&cfg.Health)
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
+	}
+	if cfg.Listeners.MaxRequestBodyBytes < 0 {
+		return nil, fmt.Errorf("server.max_request_body_bytes must not be negative (got %d); use 0 to disable the cap",
+			cfg.Listeners.MaxRequestBodyBytes)
 	}
 	// Without listing_request_timeout, the listing push gets the time of any other call.
 	if cfg.APIPortalPublication.ListingRequestTimeout == 0 {
