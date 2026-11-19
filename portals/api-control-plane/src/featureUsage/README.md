@@ -449,6 +449,7 @@ Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
 
 | Cloud page                              | Reports                                                                                                  |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Gateways: open the add form            | `gateway-add-open` (`entry_point`: `gateways-list` or `gateways-empty-state`; `gateway_hosting` from a hosting card) |
 | Gateways: Add or Save                   | `gateway-register-click` (`gateway_hosting`, `gateway_type`), `gateway-update-click`                     |
 | Gateway overview                        | `gateway-setup-command-copy` (`install_method`, `setup_step`), `gateway-token-regenerate-click`          |
 | Deploy: Deploy or promote, Stop         | `api-deploy-click` (no `gateway_hosting`), `deployment-undeploy-click`                                   |

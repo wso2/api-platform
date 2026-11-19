@@ -27,7 +27,7 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
+import { GATEWAY_ADD_OPEN, GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
 import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
 import { hostingBlocked } from './utils/limits';
 import type {
@@ -452,7 +452,13 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
       canDelete={canDelete}
       canReadConfiguration={canReadConfiguration}
       canWriteConfiguration={canWriteConfiguration}
-      onAddClick={(hosting) => {
+      onAddClick={(entryPoint, hosting) => {
+        // The first step of the add-gateway funnel; Add API Gateway on the form
+        // (GATEWAY_REGISTER_CLICK) is the last.
+        port.trackFeature?.(GATEWAY_ADD_OPEN, {
+          entry_point: entryPoint,
+          ...(hosting ? { gateway_hosting: hosting } : {}),
+        });
         setInitialHosting(hosting ?? null);
         setView('create');
       }}

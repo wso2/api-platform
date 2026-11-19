@@ -23,6 +23,7 @@
  * usage dashboard counts a cloud gateway like any other.
  */
 
+export const GATEWAY_ADD_OPEN = 'apip.gateway.gateway-add-open';
 export const GATEWAY_REGISTER_CLICK = 'apip.gateway.gateway-register-click';
 export const GATEWAY_UPDATE_CLICK = 'apip.gateway.gateway-update-click';
 export const GATEWAY_TOKEN_REGENERATE_CLICK = 'apip.gateway.gateway-token-regenerate-click';
@@ -36,3 +37,6 @@ export const INSTALL_METHOD_DIMENSION = {
   Docker: 'docker',
   Kubernetes: 'kubernetes',
 } as const;
+
+/** Where the add-gateway form was opened from: the taxonomy's `entry_point` for `GATEWAY_ADD_OPEN`. */
+export type GatewayAddEntryPoint = 'gateways-list' | 'gateways-empty-state';
