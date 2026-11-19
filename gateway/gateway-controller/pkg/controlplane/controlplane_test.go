@@ -26,10 +26,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -950,6 +952,461 @@ func TestPolicyRemovalInControlPlane(t *testing.T) {
 			err := mock.RemovePolicy("test-id")
 			if got := storage.IsPolicyNotFoundError(err); got != tt.want {
 				t.Errorf("IsPolicyNotFoundError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func newPeriodicSyncTestClient(t *testing.T, interval time.Duration, connected bool) *Client {
+	t.Helper()
+	client := createTestClientWithConfig(t, config.ControlPlaneConfig{
+		Host:             "control-plane.example.com",
+		Token:            "test-token",
+		ReconnectInitial: 1 * time.Second,
+		ReconnectMax:     30 * time.Second,
+		PollingInterval:  interval,
+	})
+	client.state.mu.Lock()
+	client.state.GatewayID = "gw-periodic"
+	if connected {
+		client.state.Conn = &websocket.Conn{}
+		client.state.Current = Connected
+	}
+	client.state.mu.Unlock()
+	return client
+}
+
+func closeOnce(ch chan struct{}) func() {
+	var once sync.Once
+	return func() { once.Do(func() { close(ch) }) }
+}
+
+func startPeriodicSyncLoop(t *testing.T, client *Client, releases ...func()) func() {
+	t.Helper()
+	var once sync.Once
+	stop := func() { once.Do(func() { close(client.stopChan) }) }
+	t.Cleanup(func() {
+		for _, release := range releases {
+			release()
+		}
+		stop()
+		waitForClientGoroutines(t, client, 5*time.Second)
+	})
+	client.wg.Add(1)
+	go client.periodicSyncLoop()
+	return stop
+}
+
+func waitForClientGoroutines(t *testing.T, client *Client, timeout time.Duration) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		client.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		t.Fatal("client goroutines did not exit in time")
+	}
+}
+
+type concurrencyTracker struct {
+	active atomic.Int32
+	max    atomic.Int32
+}
+
+func (ct *concurrencyTracker) enter() {
+	n := ct.active.Add(1)
+	for {
+		m := ct.max.Load()
+		if n <= m || ct.max.CompareAndSwap(m, n) {
+			return
+		}
+	}
+}
+
+func (ct *concurrencyTracker) exit() {
+	ct.active.Add(-1)
+}
+
+func TestClient_PeriodicSyncLoop_RunsRepeatedlyWhileConnected(t *testing.T) {
+	client := newPeriodicSyncTestClient(t, 20*time.Millisecond, true)
+	runs := make(chan string, 16)
+	client.periodicSyncFn = func(gwID string) {
+		select {
+		case runs <- gwID:
+		default:
+		}
+	}
+
+	stop := startPeriodicSyncLoop(t, client)
+
+	for i := 0; i < 3; i++ {
+		select {
+		case gwID := <-runs:
+			if gwID != "gw-periodic" {
+				t.Errorf("periodic sync gateway ID = %q, want %q", gwID, "gw-periodic")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("periodic sync run %d did not happen in time", i+1)
+		}
+	}
+
+	stop()
+	waitForClientGoroutines(t, client, 5*time.Second)
+}
+
+func TestClient_PeriodicSyncLoop_SkipsWhileDisconnected(t *testing.T) {
+	client := newPeriodicSyncTestClient(t, 10*time.Millisecond, false)
+	var calls atomic.Int32
+	runs := make(chan struct{}, 16)
+	client.periodicSyncFn = func(string) {
+		calls.Add(1)
+		select {
+		case runs <- struct{}{}:
+		default:
+		}
+	}
+
+	stop := startPeriodicSyncLoop(t, client)
+
+	time.Sleep(200 * time.Millisecond)
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("periodic sync ran %d times while disconnected, want 0", got)
+	}
+
+	client.state.mu.Lock()
+	client.state.Conn = &websocket.Conn{}
+	client.state.Current = Connected
+	client.state.mu.Unlock()
+
+	select {
+	case <-runs:
+	case <-time.After(5 * time.Second):
+		t.Fatal("periodic sync did not run after connecting")
+	}
+
+	stop()
+	waitForClientGoroutines(t, client, 5*time.Second)
+}
+
+func TestClient_PeriodicSyncLoop_SkipsUntilConnectionAcknowledged(t *testing.T) {
+	for _, state := range []State{Disconnected, Connecting, Reconnecting} {
+		t.Run(state.String(), func(t *testing.T) {
+			client := newPeriodicSyncTestClient(t, 10*time.Millisecond, true)
+			client.state.mu.Lock()
+			client.state.Current = state
+			client.state.mu.Unlock()
+
+			var calls atomic.Int32
+			runs := make(chan struct{}, 16)
+			client.periodicSyncFn = func(string) {
+				calls.Add(1)
+				select {
+				case runs <- struct{}{}:
+				default:
+				}
+			}
+
+			stop := startPeriodicSyncLoop(t, client)
+
+			time.Sleep(200 * time.Millisecond)
+			if got := calls.Load(); got != 0 {
+				t.Fatalf("periodic sync ran %d times in state %s, want 0", got, state)
+			}
+
+			client.setState(Connected)
+
+			select {
+			case <-runs:
+			case <-time.After(5 * time.Second):
+				t.Fatal("periodic sync did not run after the connection was acknowledged")
+			}
+
+			stop()
+			waitForClientGoroutines(t, client, 5*time.Second)
+		})
+	}
+}
+
+func TestClient_PeriodicSyncLoop_SkipsOverlappingRuns(t *testing.T) {
+	client := newPeriodicSyncTestClient(t, 10*time.Millisecond, true)
+	var calls atomic.Int32
+	var tracker concurrencyTracker
+	started := make(chan struct{}, 16)
+	release := make(chan struct{})
+	releaseOnce := closeOnce(release)
+	client.periodicSyncFn = func(string) {
+		tracker.enter()
+		if calls.Add(1) == 1 {
+			<-release
+		}
+		tracker.exit()
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+	}
+
+	stop := startPeriodicSyncLoop(t, client, releaseOnce)
+
+	deadline := time.After(5 * time.Second)
+	for calls.Load() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("first periodic sync did not start in time")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("periodic sync started %d times while first run was in progress, want 1", got)
+	}
+
+	releaseOnce()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("periodic sync did not resume after slow run finished")
+		}
+	}
+
+	stop()
+	waitForClientGoroutines(t, client, 5*time.Second)
+
+	if got := tracker.max.Load(); got != 1 {
+		t.Errorf("max concurrent periodic syncs = %d, want 1", got)
+	}
+}
+
+func TestClient_PeriodicSyncLoop_SkipsTickWhileReconnectSyncHoldsLock(t *testing.T) {
+	client := newPeriodicSyncTestClient(t, 10*time.Millisecond, true)
+	var calls atomic.Int32
+	entered := make(chan struct{})
+	runs := make(chan struct{}, 16)
+	release := make(chan struct{})
+	releaseOnce := closeOnce(release)
+	t.Cleanup(releaseOnce)
+	client.periodicSyncFn = func(string) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+			return
+		}
+		select {
+		case runs <- struct{}{}:
+		default:
+		}
+	}
+
+	client.wg.Add(1)
+	go func() {
+		defer client.wg.Done()
+		client.runReconnectSync("gw-periodic")
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconnect sync did not start in time")
+	}
+
+	stop := startPeriodicSyncLoop(t, client, releaseOnce)
+
+	time.Sleep(200 * time.Millisecond)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("sync passes started = %d while reconnect sync held the lock, want 1", got)
+	}
+
+	releaseOnce()
+
+	select {
+	case <-runs:
+	case <-time.After(5 * time.Second):
+		t.Fatal("periodic sync did not run after reconnect sync finished")
+	}
+
+	stop()
+	waitForClientGoroutines(t, client, 5*time.Second)
+}
+
+func TestClient_PeriodicSyncLoop_ReconnectSyncWaitsForRunningPeriodicSync(t *testing.T) {
+	client := newPeriodicSyncTestClient(t, 10*time.Millisecond, true)
+	var calls atomic.Int32
+	var tracker concurrencyTracker
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	releaseOnce := closeOnce(release)
+	reconnectCalled := make(chan struct{}, 1)
+	client.periodicSyncFn = func(gwID string) {
+		tracker.enter()
+		defer tracker.exit()
+		if gwID == "gw-reconnect" {
+			select {
+			case reconnectCalled <- struct{}{}:
+			default:
+			}
+		}
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+	}
+
+	stop := startPeriodicSyncLoop(t, client, releaseOnce)
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("periodic sync did not start in time")
+	}
+
+	reconnectDone := make(chan struct{})
+	client.wg.Add(1)
+	go func() {
+		defer client.wg.Done()
+		defer close(reconnectDone)
+		client.runReconnectSync("gw-reconnect")
+	}()
+
+	select {
+	case <-reconnectDone:
+		t.Fatal("reconnect sync finished while a periodic sync was still running")
+	case <-time.After(200 * time.Millisecond):
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("sync passes started = %d while periodic sync was running, want 1", got)
+	}
+
+	releaseOnce()
+
+	select {
+	case <-reconnectCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconnect sync callback was not invoked for gw-reconnect after periodic sync finished")
+	}
+
+	select {
+	case <-reconnectDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconnect sync did not run after periodic sync finished")
+	}
+
+	stop()
+	waitForClientGoroutines(t, client, 5*time.Second)
+
+	if got := calls.Load(); got < 2 {
+		t.Errorf("sync passes = %d, want at least 2", got)
+	}
+	if got := tracker.max.Load(); got != 1 {
+		t.Errorf("max concurrent sync passes = %d, want 1", got)
+	}
+}
+
+func TestClient_PeriodicSyncLoop_NoNewPassAfterShutdown(t *testing.T) {
+	tests := []struct {
+		name     string
+		shutdown func(c *Client, stop func())
+	}{
+		{name: "stop channel closed", shutdown: func(_ *Client, stop func()) { stop() }},
+		{name: "context cancelled", shutdown: func(c *Client, _ func()) { c.cancel() }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newPeriodicSyncTestClient(t, time.Millisecond, true)
+			var calls atomic.Int32
+			var finished atomic.Bool
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			releaseOnce := closeOnce(release)
+			client.periodicSyncFn = func(string) {
+				if calls.Add(1) == 1 {
+					close(entered)
+					<-release
+					finished.Store(true)
+				}
+			}
+
+			stop := startPeriodicSyncLoop(t, client, releaseOnce)
+
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("periodic sync did not start in time")
+			}
+
+			tt.shutdown(client, stop)
+
+			wgDone := make(chan struct{})
+			go func() {
+				client.wg.Wait()
+				close(wgDone)
+			}()
+
+			select {
+			case <-wgDone:
+				t.Fatal("client goroutines exited while the admitted periodic sync was still blocked")
+			case <-time.After(50 * time.Millisecond):
+			}
+
+			releaseOnce()
+
+			select {
+			case <-wgDone:
+			case <-time.After(5 * time.Second):
+				t.Fatal("client goroutines did not exit in time after releasing the periodic sync")
+			}
+
+			if !finished.Load() {
+				t.Error("admitted periodic sync did not finish before goroutines exited")
+			}
+			if got := calls.Load(); got != 1 {
+				t.Errorf("periodic sync passes = %d, want 1 (no pass after shutdown)", got)
+			}
+		})
+	}
+}
+
+func TestClient_PeriodicSyncLoop_ExitsOnShutdown(t *testing.T) {
+	tests := []struct {
+		name string
+		stop func(c *Client, stop func())
+	}{
+		{name: "stop channel closed", stop: func(_ *Client, stop func()) { stop() }},
+		{name: "context cancelled", stop: func(c *Client, _ func()) { c.cancel() }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newPeriodicSyncTestClient(t, time.Hour, true)
+			client.periodicSyncFn = func(string) {
+				t.Error("periodic sync should not run before the first tick")
+			}
+
+			stop := startPeriodicSyncLoop(t, client)
+			tt.stop(client, stop)
+			waitForClientGoroutines(t, client, 5*time.Second)
+		})
+	}
+}
+
+func TestClient_PeriodicSyncLoop_NonPositiveIntervalReturnsImmediately(t *testing.T) {
+	for _, interval := range []time.Duration{0, -1 * time.Second} {
+		t.Run(interval.String(), func(t *testing.T) {
+			client := newPeriodicSyncTestClient(t, interval, true)
+			var calls atomic.Int32
+			client.periodicSyncFn = func(string) { calls.Add(1) }
+
+			startPeriodicSyncLoop(t, client)
+			waitForClientGoroutines(t, client, 5*time.Second)
+
+			if got := calls.Load(); got != 0 {
+				t.Errorf("periodic sync ran %d times with interval %s, want 0", got, interval)
 			}
 		})
 	}

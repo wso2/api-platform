@@ -288,7 +288,10 @@ gateway:
         # Maximum delay between reconnection attempts (exponential backoff cap)
         reconnect_max: 5m
 
-        # How often to reconcile state with the control plane
+        # How often to re-sync secrets, gateway artifacts, subscription plans, subscriptions
+        # and API keys with the control plane while connected. With deployment_sync_enabled, an on-prem
+        # tick also pushes gateway artifacts to APIM; only the control-plane-to-gateway bulk deployment
+        # pull stays first-connect-only
         polling_interval: 15m
 
         # Push API deployment events to the control plane

@@ -159,6 +159,8 @@ type Client struct {
 	gatewayPath                 string      // cached gateway path from well-known discovery
 	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+	syncMu                      sync.Mutex
+	periodicSyncFn              func(gatewayID string)
 
 	// httpClient is the single shared outbound *http.Client for this entire process (built
 	// once in cmd/controller/main.go and injected here), used for every plain (non-WebSocket)
@@ -264,6 +266,7 @@ func NewClient(
 	}
 
 	client.isFirstConnect.Store(true)
+	client.periodicSyncFn = client.runPeriodicSync
 
 	client.apimSyncPool = workerpool.New("apim-sync", cfg.APIMSyncPoolSize, cfg.APIMSyncQueueSize, logger)
 	client.aiWorkspaceSyncPool = workerpool.New("ai-workspace-sync", cfg.AIWorkspaceSyncPoolSize, cfg.AIWorkspaceSyncQueueSize, logger)
@@ -379,6 +382,9 @@ func (c *Client) Start() error {
 	// Start connection in background
 	c.wg.Add(1)
 	go c.connectionLoop()
+
+	c.wg.Add(1)
+	go c.periodicSyncLoop()
 
 	return nil
 }
@@ -527,6 +533,8 @@ func (c *Client) Connect() error {
 		c.wg.Add(1)
 		go func(gwID string) {
 			defer c.wg.Done()
+			c.syncMu.Lock()
+			defer c.syncMu.Unlock()
 			// Sync secrets before deployments so {{ secret "..." }} placeholders
 			// in API configs resolve correctly during the first render pass.
 			c.syncSecrets()
@@ -556,24 +564,7 @@ func (c *Client) Connect() error {
 		c.wg.Add(1)
 		go func(gwID string) {
 			defer c.wg.Done()
-			// Bottom-up sync on reconnect
-			if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
-				c.SubmitAPIMSync(func() {
-					if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
-						c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
-					}
-				})
-			}
-			// Re-sync secrets on reconnect so any rotated or newly added secrets
-			// are picked up. Hash-based change detection ensures only changed
-			// secrets trigger a plaintext fetch.
-			c.syncSecrets()
-			// Push gateway-originated artifacts up to the platform-API control plane.
-			c.SubmitArtifactPush(c.PushGatewayArtifactsToControlPlane)
-			c.syncSubscriptionPlans(gwID)
-			c.syncSubscriptionsForExistingAPIs(gwID)
-			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
-			c.syncAPIKeysForExistingArtifacts(gwID)
+			c.runReconnectSync(gwID)
 		}(gatewayID)
 	}
 
@@ -1295,6 +1286,91 @@ func (c *Client) heartbeatMonitor() {
 				c.setState(Reconnecting)
 				return
 			}
+
+		case <-c.stopChan:
+			return
+		case <-c.ctx.Done():
+			return
+		}
+	}
+}
+
+func (c *Client) runPeriodicSync(gwID string) {
+	// Bottom-up sync on reconnect and on each polling interval
+	if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
+		c.SubmitAPIMSync(func() {
+			if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
+				c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
+			}
+		})
+	}
+	// Re-sync secrets on reconnect and on each polling interval so any rotated
+	// or newly added secrets are picked up. Hash-based change detection ensures
+	// only changed secrets trigger a plaintext fetch.
+	c.syncSecrets()
+	// Push gateway-originated artifacts up to the platform-API control plane.
+	c.SubmitArtifactPush(c.PushGatewayArtifactsToControlPlane)
+	c.syncSubscriptionPlans(gwID)
+	c.syncSubscriptionsForExistingAPIs(gwID)
+	// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
+	c.syncAPIKeysForExistingArtifacts(gwID)
+}
+
+func (c *Client) runReconnectSync(gwID string) {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+	if c.isShuttingDown() {
+		return
+	}
+	c.periodicSyncFn(gwID)
+}
+
+func (c *Client) periodicSyncLoop() {
+	defer c.wg.Done()
+
+	if c.config.PollingInterval <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(c.config.PollingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.state.mu.RLock()
+			connected := c.state.Current == Connected && c.state.Conn != nil && c.state.GatewayID != ""
+			gwID := c.state.GatewayID
+			c.state.mu.RUnlock()
+
+			if !connected {
+				continue
+			}
+
+			if !c.syncMu.TryLock() {
+				c.logger.Debug("Skipping periodic control plane sync: previous sync still running")
+				continue
+			}
+
+			if c.isShuttingDown() {
+				c.syncMu.Unlock()
+				return
+			}
+
+			c.logger.Info("Running periodic control plane sync",
+				slog.String("gateway_id", gwID),
+				slog.Duration("polling_interval", c.config.PollingInterval),
+			)
+
+			c.wg.Add(1)
+			go func(gwID string) {
+				defer c.wg.Done()
+				defer c.syncMu.Unlock()
+				if c.isShuttingDown() {
+					return
+				}
+				c.periodicSyncFn(gwID)
+			}(gwID)
 
 		case <-c.stopChan:
 			return
