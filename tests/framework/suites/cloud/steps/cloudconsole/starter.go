@@ -150,6 +150,8 @@ type Starter struct {
 	// gateways holds, for each project whose default gateway was prepared, that gateway.
 	gateways map[string]gatewayOutcome
 	portal   portalOutcome
+	// admin is the suite's portal administrator, or why there is none.
+	admin portalAdminState
 	// pipelines holds, for each project whose pipeline was checked, the pipeline and its promotion
 	// paths.
 	pipelines map[string]pipelineState
@@ -381,6 +383,18 @@ func (s *Starter) Report() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var lines []string
+	switch {
+	case s.admin.unavailable != nil:
+		lines = append(lines, fmt.Sprintf("the portal administrator was not made, so the portal's leftovers were not removed: %v", s.admin.unavailable))
+	case s.admin.browser != nil:
+		for i, sweep := range s.admin.sweeps {
+			when := "at the start"
+			if i > 0 {
+				when = "at the end"
+			}
+			lines = append(lines, fmt.Sprintf("portal administrator %s on %s swept the portal %s: %s", s.admin.admin.username, s.admin.environment, when, sweep))
+		}
+	}
 	for _, need := range allPreconditions {
 		if err := s.unmet[need]; err != nil {
 			lines = append(lines, fmt.Sprintf("%s is not met, %d scenario(s) skipped: %v", need, s.skipped[need], err))
@@ -425,7 +439,91 @@ func (s *Starter) preparePortal(ctx context.Context, platform organisationAPI) e
 	s.mu.Lock()
 	s.portal = outcome
 	s.mu.Unlock()
+	s.preparePortalAdmin(ctx, platform, outcome.ID)
 	return nil
+}
+
+// portalAdminState is the suite's administrator of the shared portal, signed in, and what its sweeps
+// removed; or why the starter made none.
+type portalAdminState struct {
+	browser     *portalBrowser
+	admin       portalAdmin
+	portal      *url.URL
+	platform    organisationAPI
+	environment string
+	sweeps      []portalSweep
+	unavailable error
+}
+
+// preparePortalAdmin makes the suite's portal administrator, signs it in and sweeps the leftovers of
+// every run from the shared portal. It never fails the portal precondition: without an
+// administrator the scenarios still run, the leftovers stay, and Report says why.
+func (s *Starter) preparePortalAdmin(ctx context.Context, platform organisationAPI, portalID string) {
+	state := portalAdminState{platform: platform}
+	state.unavailable = s.makePortalAdmin(ctx, platform, portalID, &state)
+	if state.unavailable != nil {
+		s.log.Warn("the portal administrator was not made; leftovers in the portal stay", "portal", portalID, "reason", state.unavailable)
+	}
+	s.mu.Lock()
+	s.admin = state
+	s.mu.Unlock()
+}
+
+func (s *Starter) makePortalAdmin(ctx context.Context, platform organisationAPI, portalID string, state *portalAdminState) error {
+	identity, err := identityPlatformFromEnv(s.client)
+	if err != nil {
+		return err
+	}
+	identity.pollInterval = s.pollInterval
+	portal, environment, err := readPortalRecord(ctx, platform, portalID)
+	if err != nil {
+		return err
+	}
+	admin, err := ensurePortalAdmin(ctx, identity, environment, s.log)
+	if err != nil {
+		return err
+	}
+	browser, err := signInAs(ctx, s.client, portal, admin.username, admin.password)
+	if err != nil {
+		return err
+	}
+	state.browser, state.admin, state.portal, state.environment = browser, admin, portal, environment
+	sweep, err := sweepPortal(ctx, browser, platformHoldsAPI(platform))
+	state.sweeps = append(state.sweeps, sweep)
+	if err != nil {
+		s.log.Warn("the portal sweep at the start stopped; the one at the end tries again", "portal", portalID, "reason", err)
+	}
+	s.log.Info("swept the portal's leftovers of every run", "portal", portalID, "result", sweep.String())
+	return nil
+}
+
+// SweepPortal removes the leftovers of every run from the shared portal with the administrator the
+// starter made, signing it in again when the portal no longer takes its session. It does nothing
+// when the starter made no administrator, and returns what it removed.
+func (s *Starter) SweepPortal(ctx context.Context) ([]string, error) {
+	s.mu.Lock()
+	state := s.admin
+	s.mu.Unlock()
+	if state.browser == nil {
+		return nil, nil
+	}
+	sweep, err := sweepPortal(ctx, state.browser, platformHoldsAPI(state.platform))
+	if errors.Is(err, errPortalSessionEnded) {
+		browser, signErr := signInAs(ctx, s.client, state.portal, state.admin.username, state.admin.password)
+		if signErr != nil {
+			return sweep.removed, fmt.Errorf("signing the portal administrator in again: %w", signErr)
+		}
+		state.browser = browser
+		sweep, err = sweepPortal(ctx, browser, platformHoldsAPI(state.platform))
+	}
+	s.mu.Lock()
+	s.admin.browser = state.browser
+	s.admin.sweeps = append(s.admin.sweeps, sweep)
+	s.mu.Unlock()
+	if err == nil && (len(sweep.inUse) > 0 || len(sweep.failed) > 0) {
+		err = fmt.Errorf("kept in use: %s; failed: %s", strings.Join(sweep.inUse, ", "), strings.Join(sweep.failed, ", "))
+	}
+	return sweep.removed, err
 }
 
 // removeCreated deletes a resource the starter created and could not make ready, and returns the
