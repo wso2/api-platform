@@ -1179,6 +1179,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
+	sc.Step(`^I wait for the analytics events for path "([^"]*)" to settle$`, g.waitForAnalyticsPathToSettle)
 	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
 	sc.Step(`^the analytics event for path "([^"]*)" with metadata field "([^"]*)" "([^"]*)" should have metadata fields:$`,
 		g.analyticsEventMetadataFields)
@@ -2324,6 +2325,43 @@ func (g *Gateway) resetAnalyticsCollector(ctx context.Context) error {
 	}, "resetting the analytics collector")
 }
 
+// addAnalyticsEventsForPath adds the collector's events for path to seen, keyed by correlation id,
+// or by the whole event when it has none.
+func (g *Gateway) addAnalyticsEventsForPath(ctx context.Context, path string, seen map[string]bool) error {
+	url, err := g.serviceURL(ctx, "analytics", "/test/events")
+	if err != nil {
+		return err
+	}
+	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+	}, 0, 0)
+	if err != nil {
+		return retry.Transient(err)
+	}
+	if !resp.Succeeded() {
+		return retry.Transient(fmt.Errorf("analytics events returned %s", resp.Describe()))
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(resp.Body, &raw); err != nil {
+		return err
+	}
+	for _, item := range raw {
+		var event analyticsEvent
+		if err := json.Unmarshal(item, &event); err != nil {
+			return err
+		}
+		if !analyticsEventMatchesPath(event.Request.URI, path) {
+			continue
+		}
+		key, _ := event.Metadata["correlationId"].(string)
+		if key == "" {
+			key = string(item)
+		}
+		seen[key] = true
+	}
+	return nil
+}
+
 func (g *Gateway) analyticsEventCount(ctx context.Context) (int, error) {
 	url, err := g.serviceURL(ctx, "analytics", "/test/events/count")
 	if err != nil {
@@ -2408,6 +2446,38 @@ func (g *Gateway) analyticsEventCountExactly(ctx context.Context, want int) erro
 func (g *Gateway) waitForAnalyticsToSettle(ctx context.Context) error {
 	_, err := g.settleAnalyticsEventCount(ctx)
 	return err
+}
+
+// waitForAnalyticsPathToSettle waits until the number of events for path stops changing. The
+// collector holds the whole block's events, and in a block that runs runners in parallel the
+// others keep adding theirs, so a scenario that reads only its own path's events settles on those.
+func (g *Gateway) waitForAnalyticsPathToSettle(ctx context.Context, path string) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	quiet := analyticsQuietWindow
+	if isMTLSScenario(ctx) {
+		quiet = mtlsAnalyticsQuietWindow
+	}
+	// The collector keeps a bounded list per block, so other runners' events can evict this
+	// path's: counting the distinct events seen across polls keeps the count from dropping.
+	seen := map[string]bool{}
+	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, quiet,
+		func(ctx context.Context) (int, error) {
+			if err := g.addAnalyticsEventsForPath(ctx, resolved, seen); err != nil {
+				return 0, err
+			}
+			return len(seen), nil
+		})
+	if err != nil {
+		return err
+	}
+	if !settled.Quiet {
+		return fmt.Errorf("analytics events for path %q did not settle: last observed %d after %d sample(s)",
+			resolved, settled.Value, settled.Samples)
+	}
+	return nil
 }
 
 // waitForAnalyticsEvent waits until the collector holds an event for path with the response
