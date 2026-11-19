@@ -357,7 +357,7 @@ data:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "1.2.0"
+          tag: "latest"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -465,9 +465,9 @@ data:
           # allows for that. Readiness takes the pod out of the Service after about 15 s of failed
           # answers; liveness restarts it only after about 2 minutes, so a short database outage never
           # causes a restart. These match the gateway chart's defaults.
-          # They need a gateway chart and a controller image that serve them, so bump
-          # gateway.helm.chartVersion and the controller image tag together with them. With an older
-          # chart or image, probe the admin server instead: path /api/admin/v1/health with port: admin.
+          # They need a gateway chart and a controller image that serve them (gateway chart
+          # 2026.11.19-r1 or later). With an older chart or image, probe the admin server
+          # instead: path /api/admin/v1/health with port: admin.
           livenessProbe:
             httpGet:
               path: /api/management/v1/health
@@ -508,7 +508,7 @@ data:
       gatewayRuntime:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-runtime
-          tag: "1.2.0"
+          tag: "latest"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -547,9 +547,6 @@ data:
           # probe gives up. Readiness takes the pod out of the Service after
           # about 15 s of failed answers; liveness restarts it only after about 2 minutes
           # of no answer. These match the gateway chart's defaults.
-          # With the pinned 1.2.0 images Envoy answers these routes itself with a static 200;
-          # they check the policy engine and its dependencies once the controller and runtime
-          # images include the gateway health work.
           livenessProbe:
             httpGet:
               path: /_gateway-health/healthy

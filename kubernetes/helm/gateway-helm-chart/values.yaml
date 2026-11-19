@@ -1052,6 +1052,8 @@ gateway:
       # causes a restart.
       # These paths need a controller image that serves them. With an older image, probe the
       # admin server instead: path /api/admin/v1/health with port: admin.
+      # To remove a probe, set it to null (for example --set gateway.controller.deployment.livenessProbe=null).
+      # An empty map ({}) does not remove it: Helm merges it with the default probe.
       livenessProbe:
         httpGet:
           path: /api/management/v1/health
