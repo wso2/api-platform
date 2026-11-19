@@ -36,6 +36,15 @@ export interface ParameterSchema {
     required?: string[];
     properties?: Record<string, { const?: unknown }>;
   }>;
+  // Mutually exclusive option groups; `not` keeps overlapping options apart
+  oneOf?: PresenceCondition[];
+}
+
+/** A JSON Schema condition on which properties are set, as in oneOf options. */
+export interface PresenceCondition {
+  required?: string[];
+  anyOf?: PresenceCondition[];
+  not?: PresenceCondition;
 }
 
 /**
@@ -48,6 +57,8 @@ export interface SchemaTreeNode {
   schema: ParameterSchema;
   depth: number;
   isRequired: boolean;
+  // Required only when its oneOf group is the chosen one
+  isOneOfField?: boolean;
   isExpanded?: boolean;
   children?: SchemaTreeNode[];
   // Array-specific
