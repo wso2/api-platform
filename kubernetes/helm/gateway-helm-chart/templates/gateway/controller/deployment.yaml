@@ -169,13 +169,13 @@ spec:
               containerPort: {{ $controller.service.ports.metrics }}
               protocol: TCP
           livenessProbe:
-            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+            {{- include "gateway-operator.controllerProbe" (dict "probe" $deployment.livenessProbe "tls" $serverTls.enabled) | nindent 12 }}
           {{- with $deployment.startupProbe }}
           startupProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- include "gateway-operator.controllerProbe" (dict "probe" . "tls" $serverTls.enabled) | nindent 12 }}
           {{- end }}
           readinessProbe:
-            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+            {{- include "gateway-operator.controllerProbe" (dict "probe" $deployment.readinessProbe "tls" $serverTls.enabled) | nindent 12 }}
           resources:
             {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
           volumeMounts:

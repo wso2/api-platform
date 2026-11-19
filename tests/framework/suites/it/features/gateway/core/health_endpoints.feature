@@ -72,6 +72,39 @@ Feature: Gateway liveness and readiness endpoints
     When I send a "GET" request to the gateway controller health path "/ready"
     Then the response status code should be 404
 
+  @HEALTH-034
+  Scenario Outline: The controller <role> endpoint on the management API reports every check up without credentials
+    When I send a "GET" request to the gateway controller management API health path "<path>"
+    Then the response status code should be 200
+    And the response header "Content-Type" should contain "application/json"
+    And the response header "Cache-Control" should be "no-store"
+    And the JSON response field "status" should be "healthy"
+    And the JSON response field "checks.database.status" should be "up"
+    And the JSON response field "checks.startup.status" should be "up"
+    And the response header "Deprecation" should not exist
+
+    Examples:
+      | role      | path                      |
+      | liveness  | /api/management/v1/health |
+      | readiness | /api/management/v1/ready  |
+
+  @HEALTH-035
+  Scenario: Other management API paths still require credentials
+    When I send a "GET" request to the gateway controller management API health path "/api/management/v1/rest-apis"
+    Then the response status code should be 401
+    When I send a "GET" request to the gateway controller management API health path "/api/management/v1/ready"
+    Then the response status code should be 200
+
+  @HEALTH-036
+  Scenario Outline: The management API has no unprefixed <path> health path
+    When I send a "GET" request to the gateway controller management API health path "<path>"
+    Then the response status code should be 404
+
+    Examples:
+      | path    |
+      | /health |
+      | /ready  |
+
   @HEALTH-006
   Scenario: Runtime readiness reports the policy engine and its control-plane connection
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready"

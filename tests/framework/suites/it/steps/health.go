@@ -36,7 +36,7 @@ import (
 
 // healthComponents are the component names a health step accepts. Each health endpoint is
 // served on a different listener of its component.
-const healthComponents = `(platform-api|API Portal|gateway controller|gateway runtime)`
+const healthComponents = `(platform-api|API Portal|gateway controller management API|gateway controller|gateway runtime)`
 
 // healthTransitionTimeout bounds a wait for a health endpoint to change state. A database
 // check reports a failed server within its idle period plus the cache lifetime, but reports a
@@ -112,6 +112,8 @@ func (b *Base) healthURL(component, path string) (string, error) {
 		base, err = b.topo.URL("api-portal", "https")
 	case "gateway controller":
 		base, err = b.topo.URL("platform-gateway", "admin")
+	case "gateway controller management API":
+		base, err = b.topo.URL("platform-gateway", "rest")
 	case "gateway runtime":
 		return b.gatewayURL(path)
 	default:

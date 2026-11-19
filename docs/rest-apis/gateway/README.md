@@ -125,6 +125,11 @@ Base URLs:
 - [Update a secret](secrets-management.md#update-a-secret)
 - [Delete a secret](secrets-management.md#delete-a-secret)
 
+### [System](system.md)
+
+- [Liveness check](system.md#liveness-check)
+- [Readiness check](system.md#readiness-check)
+
 ### [Schemas](schemas.md)
 
 - [ResourceStatus](schemas.md#resourcestatus)
@@ -224,4 +229,7 @@ Base URLs:
 - [SecretResourceServiceStatus](schemas.md#secretresourceservicestatus)
 - [SecretConfigurationResponseCreateUpdate](schemas.md#secretconfigurationresponsecreateupdate)
 - [SecretConfigurationResponseRetrieved](schemas.md#secretconfigurationresponseretrieved)
+- [HealthResponse](schemas.md#healthresponse)
+- [HealthForbiddenResponse](schemas.md#healthforbiddenresponse)
+- [HealthCheck](schemas.md#healthcheck)
 
