@@ -55,6 +55,10 @@ const (
 	portalListPageSize = 50
 	portalListMaxPages = 200
 
+	// portalSweepMinAge is how old another run's synthetic plan must be before a sweep removes
+	// it: longer than a run, so a plan a run is still publishing with is never taken from it.
+	portalSweepMinAge = 30 * time.Minute
+
 	// portalAdminDeployTimeout bounds the wait for a change to be pending and for a deploy that
 	// another deploy holds up.
 	portalAdminDeployTimeout = 2 * time.Minute
@@ -478,32 +482,60 @@ func signInAs(ctx context.Context, client *httpx.Client, portal *url.URL, userna
 	return browser, nil
 }
 
-// portalSweep says what a sweep of a portal removed, kept because it is in use, and could not
-// remove. Each entry is "<kind>/<id>".
+// portalSweep says what a sweep of a portal removed, kept because it is in use or too recent to be
+// a leftover, and could not remove. Each entry is "<kind>/<id>".
 type portalSweep struct {
 	removed []string
 	inUse   []string
+	recent  []string
 	failed  []string
 }
 
 func (s portalSweep) String() string {
-	return fmt.Sprintf("removed %d, kept %d in use, %d failed", len(s.removed), len(s.inUse), len(s.failed))
+	return fmt.Sprintf("removed %d, kept %d in use and %d recent, %d failed", len(s.removed), len(s.inUse), len(s.recent), len(s.failed))
+}
+
+// merge adds what another attempt of the same sweep found.
+func (s portalSweep) merge(other portalSweep) portalSweep {
+	return portalSweep{
+		removed: append(s.removed, other.removed...),
+		inUse:   append(s.inUse, other.inUse...),
+		recent:  append(s.recent, other.recent...),
+		failed:  append(s.failed, other.failed...),
+	}
 }
 
 // apiHeld reports whether the platform still holds an API.
 type apiHeld func(ctx context.Context, id string) (bool, error)
 
+// sweepScope says which synthetic plans a sweep may remove: those of this run, whatever their
+// age, and another run's once they are older than portalSweepMinAge, so a run still publishing
+// keeps its plans. ownedByRun is nil before the run has made any.
+type sweepScope struct {
+	ownedByRun func(id string) bool
+	now        time.Time
+}
+
+func (s sweepScope) removable(item portalItem) bool {
+	if s.ownedByRun != nil && s.ownedByRun(item.ID) {
+		return true
+	}
+	return item.CreatedAt.IsZero() || s.now.Sub(item.CreatedAt) >= portalSweepMinAge
+}
+
 // sweepPortal removes the leftovers of every run from the portal, whichever run made them: the
-// listings of synthetic APIs the platform no longer holds, then every synthetic subscription plan.
-// The portal refuses to remove a plan an API offers or a subscription uses, and a listing a
-// subscription uses; those are kept and reported. Nothing without a synthetic name is touched.
-func sweepPortal(ctx context.Context, browser *portalBrowser, held apiHeld) (portalSweep, error) {
+// listings of synthetic APIs the platform no longer holds, then the synthetic subscription plans
+// scope allows. The portal refuses to remove a plan an API offers or a subscription uses, and a
+// listing a subscription uses; those are kept and reported. Nothing without a synthetic name is
+// touched.
+func sweepPortal(ctx context.Context, browser *portalBrowser, held apiHeld, scope sweepScope) (portalSweep, error) {
 	var sweep portalSweep
-	listings, err := browser.listIDs(ctx, "/apis")
+	listings, err := browser.listItems(ctx, "/apis")
 	if err != nil {
 		return sweep, err
 	}
-	for _, id := range listings {
+	for _, listing := range listings {
+		id := listing.ID
 		if !strings.HasPrefix(id, syntheticListingPrefix) {
 			continue
 		}
@@ -519,15 +551,19 @@ func sweepPortal(ctx context.Context, browser *portalBrowser, held apiHeld) (por
 			return sweep, err
 		}
 	}
-	plans, err := browser.listIDs(ctx, "/subscription-plans")
+	plans, err := browser.listItems(ctx, "/subscription-plans")
 	if err != nil {
 		return sweep, err
 	}
-	for _, id := range plans {
-		if !strings.HasPrefix(id, syntheticPlanPrefix) {
+	for _, plan := range plans {
+		if !strings.HasPrefix(plan.ID, syntheticPlanPrefix) {
 			continue
 		}
-		if err := sweep.remove(ctx, browser, "subscription-plan", "/subscription-plans/", id); err != nil {
+		if !scope.removable(plan) {
+			sweep.recent = append(sweep.recent, "subscription-plan/"+plan.ID)
+			continue
+		}
+		if err := sweep.remove(ctx, browser, "subscription-plan", "/subscription-plans/", plan.ID); err != nil {
 			return sweep, err
 		}
 	}
@@ -561,9 +597,16 @@ func sessionEnded(status int) bool {
 	return status == http.StatusUnauthorized || status == http.StatusForbidden || (status >= 300 && status < 400)
 }
 
-// listIDs returns the ids of every item of a portal collection, page by page.
-func (b *portalBrowser) listIDs(ctx context.Context, collection string) ([]string, error) {
-	var ids []string
+// portalItem is an item of a portal collection: its id, and when it was created when the portal
+// says.
+type portalItem struct {
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// listItems returns every item of a portal collection, page by page.
+func (b *portalBrowser) listItems(ctx context.Context, collection string) ([]portalItem, error) {
+	var items []portalItem
 	for page := range portalListMaxPages {
 		offset := page * portalListPageSize
 		resp, err := b.apiRequest(ctx, http.MethodGet, fmt.Sprintf("%s?limit=%d&offset=%d", collection, portalListPageSize, offset), nil)
@@ -574,9 +617,7 @@ func (b *portalBrowser) listIDs(ctx context.Context, collection string) ([]strin
 			return nil, errPortalSessionEnded
 		}
 		var out struct {
-			List []struct {
-				ID string `json:"id"`
-			} `json:"list"`
+			List       []portalItem `json:"list"`
 			Pagination struct {
 				Total int `json:"total"`
 			} `json:"pagination"`
@@ -586,11 +627,11 @@ func (b *portalBrowser) listIDs(ctx context.Context, collection string) ([]strin
 		}
 		for _, item := range out.List {
 			if item.ID != "" {
-				ids = append(ids, item.ID)
+				items = append(items, item)
 			}
 		}
 		if len(out.List) < portalListPageSize || offset+len(out.List) >= out.Pagination.Total {
-			return ids, nil
+			return items, nil
 		}
 	}
 	return nil, fmt.Errorf("the portal's %s run past %d pages", strings.TrimPrefix(collection, "/"), portalListMaxPages)

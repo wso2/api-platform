@@ -488,7 +488,7 @@ func (s *Starter) makePortalAdmin(ctx context.Context, platform organisationAPI,
 		return err
 	}
 	state.browser, state.admin, state.portal, state.environment = browser, admin, portal, environment
-	sweep, err := sweepPortal(ctx, browser, platformHoldsAPI(platform))
+	sweep, err := sweepPortal(ctx, browser, platformHoldsAPI(platform), sweepScope{now: time.Now()})
 	state.sweeps = append(state.sweeps, sweep)
 	if err != nil {
 		s.log.Warn("the portal sweep at the start stopped; the one at the end tries again", "portal", portalID, "reason", err)
@@ -498,23 +498,28 @@ func (s *Starter) makePortalAdmin(ctx context.Context, platform organisationAPI,
 }
 
 // SweepPortal removes the leftovers of every run from the shared portal with the administrator the
-// starter made, signing it in again when the portal no longer takes its session. It does nothing
-// when the starter made no administrator, and returns what it removed.
-func (s *Starter) SweepPortal(ctx context.Context) ([]string, error) {
+// starter made, signing it in again when the portal no longer takes its session. ownedByRun says
+// which synthetic names this run made; their plans go whatever their age. It does nothing when the
+// starter made no administrator, and returns what it removed.
+func (s *Starter) SweepPortal(ctx context.Context, ownedByRun func(id string) bool) ([]string, error) {
 	s.mu.Lock()
 	state := s.admin
 	s.mu.Unlock()
 	if state.browser == nil {
 		return nil, nil
 	}
-	sweep, err := sweepPortal(ctx, state.browser, platformHoldsAPI(state.platform))
+	scope := sweepScope{ownedByRun: ownedByRun, now: time.Now()}
+	sweep, err := sweepPortal(ctx, state.browser, platformHoldsAPI(state.platform), scope)
 	if errors.Is(err, errPortalSessionEnded) {
 		browser, signErr := signInAs(ctx, s.client, state.portal, state.admin.username, state.admin.password)
 		if signErr != nil {
-			return sweep.removed, fmt.Errorf("signing the portal administrator in again: %w", signErr)
+			err = fmt.Errorf("signing the portal administrator in again: %w", signErr)
+		} else {
+			state.browser = browser
+			var again portalSweep
+			again, err = sweepPortal(ctx, browser, platformHoldsAPI(state.platform), scope)
+			sweep = sweep.merge(again)
 		}
-		state.browser = browser
-		sweep, err = sweepPortal(ctx, browser, platformHoldsAPI(state.platform))
 	}
 	s.mu.Lock()
 	s.admin.browser = state.browser

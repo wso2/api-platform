@@ -177,7 +177,7 @@ func TestCloudSuite(t *testing.T) {
 		// After the finalizer has unpublished the run's listings, the portal administrator removes
 		// what every run left on the shared portal. A leftover it cannot remove is reported, and
 		// does not fail the run.
-		swept, err := starter.SweepPortal(ctx)
+		swept, err := starter.SweepPortal(ctx, finalizer.Owns)
 		for _, resource := range swept {
 			t.Logf("cloud run portal sweep removed a leftover: %s", resource)
 		}

@@ -159,10 +159,11 @@ The sweep goes by the synthetic prefix, not the run's suffix, so it removes what
 | Portal collection | What the sweep removes |
 |---|---|
 | API listings | the listings of synthetic APIs (`syn-`) the platform no longer holds |
-| subscription plans | every synthetic plan (`syn-plan-`) |
+| subscription plans | every synthetic plan (`syn-plan-`) of this run, and another run's once it is older than 30 minutes |
 
-The portal refuses to remove a plan an API offers or a subscription uses; such a plan is kept and
-reported. Without `CLOUD_IAM_ACCESS_TOKEN`, or when the administrator cannot be made, the scenarios
+The age rule keeps a plan another run may still publish with, since the portal protects only a
+plan an API offers or a subscription uses. The portal refuses to remove such a plan, which is kept
+and reported. Without `CLOUD_IAM_ACCESS_TOKEN`, or when the administrator cannot be made, the scenarios
 still run and the run does not fail: the leftovers stay, and the starter's report says why.
 
 ## What the finalizer removes

@@ -128,6 +128,11 @@ func (f *Finalizer) Watch(base, suffix string) {
 	f.bases[base] = struct{}{}
 }
 
+// Owns reports whether a name carries the suffix of one of this run's runners.
+func (f *Finalizer) Owns(name string) bool {
+	return f.finals.Owns([]string{name})
+}
+
 // Finalize deletes the run's leftovers from every platform the run talked to. It returns the
 // resources it removed, each one a leak the per-scenario cleanup missed, and an error for the
 // ones it could not remove.

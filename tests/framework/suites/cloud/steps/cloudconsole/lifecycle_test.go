@@ -9722,14 +9722,18 @@ type fakePortalAdminAPI struct {
 	plans    []string
 	listings []string
 	inUse    map[string]bool
-	// sessionEnded makes every request answer as a portal that no longer takes the session.
-	sessionEnded bool
-	lists        int
+	// created is when a plan was made; a plan not named here is two hours old.
+	created map[string]time.Time
+	// sessionEnded makes every request answer as a portal that no longer takes the session, and
+	// endSessionAfter ends it after that many removals.
+	sessionEnded    bool
+	endSessionAfter int
+	lists           int
 }
 
 func newFakePortalAdminAPI(t *testing.T, plans, listings []string) *fakePortalAdminAPI {
 	t.Helper()
-	f := &fakePortalAdminAPI{t: t, plans: plans, listings: listings, inUse: map[string]bool{}}
+	f := &fakePortalAdminAPI{t: t, plans: plans, listings: listings, inUse: map[string]bool{}, created: map[string]time.Time{}}
 	f.server = httptest.NewTLSServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)
 	return f
@@ -9766,7 +9770,11 @@ func (f *fakePortalAdminAPI) serve(w http.ResponseWriter, r *http.Request) {
 		end := min(offset+limit, len(items))
 		var page []map[string]any
 		for _, id := range items[min(offset, end):end] {
-			page = append(page, map[string]any{"id": id})
+			created, ok := f.created[id]
+			if !ok {
+				created = time.Now().Add(-2 * time.Hour)
+			}
+			page = append(page, map[string]any{"id": id, "createdAt": created.UTC().Format(time.RFC3339Nano)})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"list": page, "count": len(page),
 			"pagination": map[string]any{"total": len(items), "limit": limit, "offset": offset}})
@@ -9788,6 +9796,10 @@ func (f *fakePortalAdminAPI) serve(w http.ResponseWriter, r *http.Request) {
 		default:
 			*items = slices.DeleteFunc(*items, func(item string) bool { return item == id })
 			w.WriteHeader(http.StatusNoContent)
+			if f.endSessionAfter > 0 {
+				f.endSessionAfter--
+				f.sessionEnded = f.endSessionAfter == 0
+			}
 		}
 	default:
 		f.t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -9802,32 +9814,38 @@ func TestSweepPortalRemovesTheLeftoversOfEveryRunAndNothingElse(t *testing.T) {
 			plans = append(plans, fmt.Sprintf("syn-plan-%s-%d", suffix, n))
 		}
 	}
+	plans = append(plans, "syn-plan-qqqqq333-0", "syn-plan-ownrun12-0")
 	listings := []string{"weather-api", "syn-api-abcde234-1", "syn-api-zzzzz222-2", "syn-graphql-zzzzz222-3"}
 	fake := newFakePortalAdminAPI(t, plans, listings)
 	fake.inUse["syn-plan-zzzzz222-7"] = true
+	fake.created["syn-plan-qqqqq333-0"] = time.Now().Add(-5 * time.Minute)
+	fake.created["syn-plan-ownrun12-0"] = time.Now().Add(-time.Minute)
 	held := func(_ context.Context, id string) (bool, error) {
 		return id == "syn-api-abcde234-1", nil
 	}
+	scope := sweepScope{ownedByRun: func(id string) bool { return strings.Contains(id, "ownrun12") }, now: time.Now()}
 
-	sweep, err := sweepPortal(context.Background(), fake.browser(t), held)
+	sweep, err := sweepPortal(context.Background(), fake.browser(t), held, scope)
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"AsyncUnlimited", "Bronze", "Gold", "syn-plan-zzzzz222-7"}, fake.plans,
-		"every run's synthetic plans go, across pages; the portal's own plans and one in use stay")
+	require.Equal(t, []string{"AsyncUnlimited", "Bronze", "Gold", "syn-plan-zzzzz222-7", "syn-plan-qqqqq333-0"}, fake.plans,
+		"every run's old synthetic plans and this run's go, across pages; the portal's own plans, one in use and another run's recent one stay")
 	require.Equal(t, []string{"weather-api", "syn-api-abcde234-1"}, fake.listings,
 		"only synthetic listings the platform no longer holds go")
-	require.Len(t, sweep.removed, 60+2)
+	require.Len(t, sweep.removed, 60+1+2)
 	require.Contains(t, sweep.removed, "api/syn-graphql-zzzzz222-3")
+	require.Contains(t, sweep.removed, "subscription-plan/syn-plan-ownrun12-0", "this run's plan goes however recent")
 	require.Equal(t, []string{"subscription-plan/syn-plan-zzzzz222-7"}, sweep.inUse)
+	require.Equal(t, []string{"subscription-plan/syn-plan-qqqqq333-0"}, sweep.recent, "another run may still publish with it")
 	require.Empty(t, sweep.failed)
-	require.Equal(t, "removed 62, kept 1 in use, 0 failed", sweep.String())
+	require.Equal(t, "removed 63, kept 1 in use and 1 recent, 0 failed", sweep.String())
 }
 
 func TestSweepPortalRecordsWhatThePlatformCannotTellAndCarriesOn(t *testing.T) {
 	fake := newFakePortalAdminAPI(t, []string{"syn-plan-abcde234-1"}, []string{"syn-api-abcde234-1"})
 	held := func(context.Context, string) (bool, error) { return false, errors.New("platform unreachable") }
 
-	sweep, err := sweepPortal(context.Background(), fake.browser(t), held)
+	sweep, err := sweepPortal(context.Background(), fake.browser(t), held, sweepScope{now: time.Now()})
 	require.NoError(t, err)
 	require.Equal(t, []string{"api/syn-api-abcde234-1: platform unreachable"}, sweep.failed)
 	require.Equal(t, []string{"syn-api-abcde234-1"}, fake.listings, "a listing whose API cannot be checked stays")
@@ -9838,8 +9856,30 @@ func TestSweepPortalStopsWhenThePortalNoLongerTakesTheSession(t *testing.T) {
 	fake := newFakePortalAdminAPI(t, []string{"syn-plan-abcde234-1"}, nil)
 	fake.sessionEnded = true
 
-	_, err := sweepPortal(context.Background(), fake.browser(t), func(context.Context, string) (bool, error) { return false, nil })
+	_, err := sweepPortal(context.Background(), fake.browser(t), func(context.Context, string) (bool, error) { return false, nil }, sweepScope{now: time.Now()})
 	require.ErrorIs(t, err, errPortalSessionEnded)
+}
+
+func TestSweepPortalKeepsWhatItRemovedWhenTheSessionEndsAndTheAdministratorCannotSignInAgain(t *testing.T) {
+	fake := newFakePortalAdminAPI(t, []string{"syn-plan-abcde234-1", "syn-plan-abcde234-2"}, nil)
+	fake.endSessionAfter = 1
+	browser := fake.browser(t)
+	starter, err := NewStarter()
+	require.NoError(t, err)
+	starter.admin = portalAdminState{browser: browser, portal: browser.portal,
+		admin: portalAdmin{username: portalAdminUsername, password: "Pw9!"}}
+
+	removed, err := starter.SweepPortal(context.Background(), nil)
+	require.ErrorContains(t, err, "signing the portal administrator in again")
+	require.Equal(t, []string{"subscription-plan/syn-plan-abcde234-1"}, removed, "what the first attempt removed is reported")
+	require.Len(t, starter.admin.sweeps, 1)
+	require.Equal(t, removed, starter.admin.sweeps[0].removed)
+}
+
+func TestPortalSweepMergeAddsAnotherAttemptsFindings(t *testing.T) {
+	first := portalSweep{removed: []string{"a"}, inUse: []string{"b"}}
+	merged := first.merge(portalSweep{removed: []string{"c"}, recent: []string{"d"}, failed: []string{"e"}})
+	require.Equal(t, portalSweep{removed: []string{"a", "c"}, inUse: []string{"b"}, recent: []string{"d"}, failed: []string{"e"}}, merged)
 }
 
 func TestSignInAsSignsAPortalUserInAndReportsARefusal(t *testing.T) {
@@ -9881,7 +9921,7 @@ func TestStarterRunsWithoutAPortalAdministratorAndSaysWhy(t *testing.T) {
 			require.NoError(t, starter.Failures(), "the run does not fail for it")
 			require.Contains(t, strings.Join(starter.Report(), "\n"), "the portal administrator was not made")
 
-			swept, err := starter.SweepPortal(context.Background())
+			swept, err := starter.SweepPortal(context.Background(), nil)
 			require.NoError(t, err)
 			require.Empty(t, swept)
 		})
