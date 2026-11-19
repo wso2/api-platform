@@ -404,12 +404,13 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
         error instanceof Error && error.message
           ? error.message
           : 'The configuration could not be saved.';
-      // A field-level message begins with the setting path it is about;
-      // anything else is form-level. Either way the platform's own sentence is
-      // user-presentable prose, so it is surfaced verbatim.
+      // A field-level message begins with the path of a setting the form shows;
+      // anything else, including a setting it hides, is form-level. Either way
+      // the platform's own sentence is user-presentable prose, so it is
+      // surfaced verbatim.
       const path = fieldForServerMessage(
         message,
-        config.editable.map((field) => field.path)
+        config.editable.filter((field) => !isTomlBlock(field)).map((field) => field.path)
       );
       // Under a field the path is dropped — the label already says which
       // setting this is. The banner keeps the full sentence, having no label
