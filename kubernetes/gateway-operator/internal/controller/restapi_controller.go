@@ -745,9 +745,24 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 	// Try every gateway, then report all failures, so the caller keeps the finalizer and
 	// retries instead of forgetting an API that is still deployed. A gateway that no longer
 	// has the API answers 404, which DeleteRestAPI treats as success.
+	//
+	// A gateway whose configuration provides no usable controller credential
+	// (ErrNoControllerCredentials: basic auth off, only hashed passwords without a
+	// passwordSecretRef, or no generated Secret because the release is not installed) does not
+	// block the deletion. The operator deploys with the same credential, so it could not have
+	// deployed the API there under that configuration, and retrying cannot succeed until the
+	// configuration changes. Transient failures (a Secret read error, the network, a 5xx) still
+	// keep the finalizer.
 	var deleteErrs []error
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
+			if errors.Is(err, auth.ErrNoControllerCredentials) {
+				log.Warn("skipping API removal from gateway without a usable controller credential",
+					slog.Any("error", err),
+					slog.String("api", handle),
+					slog.String("gateway", gateway.Name))
+				continue
+			}
 			log.Error("failed to delete API from gateway",
 				slog.Any("error", err),
 				slog.String("api", handle),

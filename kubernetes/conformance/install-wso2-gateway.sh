@@ -29,7 +29,9 @@
 #                    repo (default): package kubernetes/helm/gateway-helm-chart from this checkout
 #                    and serve it to the operator from an in-cluster OCI registry, so the operator
 #                    and the gateway chart under test come from the same commit.
-#                    published: use the operator chart's gateway.helm.chartName/chartVersion.
+#                    published: install the published gateway chart GATEWAY_CHART_VERSION (required;
+#                    it must generate the controller admin credential), from GATEWAY_CHART_NAME
+#                    (default: the operator chart's gateway.helm.chartName).
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
@@ -146,15 +148,31 @@ EOF
   workdir="$(mktemp -d)"
   helm package "${REPO_ROOT}/kubernetes/helm/gateway-helm-chart" \
     --version "${LOCAL_GATEWAY_CHART_VERSION}" --destination "${workdir}" >/dev/null
-  kubectl port-forward -n "${CHART_REGISTRY_NS}" svc/registry 5000:5000 >"${workdir}/port-forward.log" 2>&1 &
+  # Let kubectl pick a free local port (":5000") and push only through the port it reports, so a
+  # failed forward can never be mistaken for a push to some other registry on localhost.
+  local local_port=""
+  kubectl port-forward -n "${CHART_REGISTRY_NS}" svc/registry :5000 >"${workdir}/port-forward.log" 2>&1 &
   pf_pid=$!
-  for _ in $(seq 1 15); do
-    sleep 2
-    if helm push "${workdir}/gateway-${LOCAL_GATEWAY_CHART_VERSION}.tgz" oci://localhost:5000/charts --plain-http; then
-      pushed=yes
+  for _ in $(seq 1 30); do
+    local_port="$(sed -nE 's/^Forwarding from 127\.0\.0\.1:([0-9]+) -> 5000$/\1/p' "${workdir}/port-forward.log" | head -1)"
+    [ -n "${local_port}" ] && break
+    if ! kill -0 "${pf_pid}" 2>/dev/null; then
       break
     fi
+    sleep 1
   done
+  if [ -n "${local_port}" ]; then
+    for _ in $(seq 1 10); do
+      if helm push "${workdir}/gateway-${LOCAL_GATEWAY_CHART_VERSION}.tgz" "oci://localhost:${local_port}/charts" --plain-http; then
+        pushed=yes
+        break
+      fi
+      sleep 2
+    done
+  else
+    echo "error: kubectl port-forward to the in-cluster registry did not start:" >&2
+    cat "${workdir}/port-forward.log" >&2 || true
+  fi
   kill "${pf_pid}" >/dev/null 2>&1 || true
   rm -rf "${workdir}"
   if [ -z "${pushed}" ]; then
@@ -247,7 +265,21 @@ provision_encryption_key
 
 case "${GATEWAY_CHART_SOURCE}" in
   repo) publish_repo_gateway_chart ;;
-  published) echo ">> Using the gateway chart named in the operator chart values" ;;
+  published)
+    # The operator chart's default gateway.helm.chartVersion can predate the generated controller
+    # admin credential that its base values rely on; the operator then refuses to install it. So
+    # name a published chart version that has it (or set explicit users through the operator values).
+    if [ -z "${GATEWAY_CHART_VERSION:-}" ]; then
+      echo "error: GATEWAY_CHART_SOURCE=published needs GATEWAY_CHART_VERSION, a published gateway chart" >&2
+      echo "       version that generates the controller admin credential (gateway.config.controller.auth.basic.generate)." >&2
+      exit 2
+    fi
+    echo ">> Using the published gateway chart ${GATEWAY_CHART_NAME:-(operator chart default name)} ${GATEWAY_CHART_VERSION}"
+    GATEWAY_CHART_ARGS=(--set "gateway.helm.chartVersion=${GATEWAY_CHART_VERSION}")
+    if [ -n "${GATEWAY_CHART_NAME:-}" ]; then
+      GATEWAY_CHART_ARGS+=(--set "gateway.helm.chartName=${GATEWAY_CHART_NAME}")
+    fi
+    ;;
   *)
     echo "error: GATEWAY_CHART_SOURCE must be repo or published (got '${GATEWAY_CHART_SOURCE}')" >&2
     exit 2

@@ -273,10 +273,15 @@ Name of the Secret holding the controller REST API admin credential (keys "passw
 "password-hash"), or "" when basic auth is off or explicit users are configured.
 gateway.config.controller.auth.basic.existingSecret names a Secret you provide; otherwise, with
 generate (default true), the chart renders <fullname>-controller-admin.
+It is also "" when auth or auth.basic is unset or empty (for example basic: null), because
+gateway-config.yaml then renders no [controller.auth.basic] section and so no admin user: keep
+this condition in step with that template.
 */}}
 {{- define "gateway-operator.controllerAdminSecretName" -}}
-{{- $basic := dig "auth" "basic" (dict) (default (dict) .Values.gateway.config.controller) -}}
-{{- if and (dig "enabled" true $basic) (not $basic.users) -}}
+{{- $auth := (default (dict) .Values.gateway.config.controller).auth -}}
+{{- $basic := dict -}}
+{{- if $auth -}}{{- $basic = default (dict) $auth.basic -}}{{- end -}}
+{{- if and $basic (dig "enabled" true $basic) (not $basic.users) -}}
 {{- if $basic.existingSecret -}}
 {{- $basic.existingSecret -}}
 {{- else if (dig "generate" true $basic) -}}

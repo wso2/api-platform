@@ -85,11 +85,9 @@ func renderAdminErr(t *testing.T, overrides map[string]interface{}, cluster []ru
 	if err != nil {
 		t.Fatalf("load chart: %v", err)
 	}
-	vals, err := chartutil.CoalesceValues(chrt, overrides)
-	if err != nil {
-		t.Fatalf("coalesce values: %v", err)
-	}
-	renderValues, err := chartutil.ToRenderValues(chrt, vals, chartutil.ReleaseOptions{
+	// ToRenderValues coalesces the overrides with the chart defaults once, as helm install does;
+	// coalescing twice would let the defaults return for keys the overrides set to null.
+	renderValues, err := chartutil.ToRenderValues(chrt, overrides, chartutil.ReleaseOptions{
 		Name: adminRelease, Namespace: adminNamespace, IsUpgrade: cluster != nil, IsInstall: cluster == nil,
 	}, nil)
 	if err != nil {
@@ -311,6 +309,11 @@ func TestGatewayChartRefusesUnauthenticatedOrDefaultPasswordControllerAuth(t *te
 		},
 		"basic auth disabled and IDP off": {
 			auth:    map[string]interface{}{"basic": map[string]interface{}{"enabled": false}},
+			wantErr: "would accept every request",
+		},
+		"basic auth null and IDP off": {
+			// A nil value deletes the chart's default basic section, so no admin user is rendered.
+			auth:    map[string]interface{}{"basic": nil},
 			wantErr: "would accept every request",
 		},
 		"plaintext password admin": {
