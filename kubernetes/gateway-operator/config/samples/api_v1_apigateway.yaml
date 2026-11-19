@@ -457,22 +457,38 @@ data:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
+          # The probes call the controller's management API health endpoints, which answer 503 while
+          # the database is down. They leave out port and scheme: the gateway chart fills in the
+          # management listener, "rest" over HTTP, or "rest-tls" over HTTPS when
+          # gateway.config.controller.server.tls.enabled is true. The listener opens only once startup
+          # has finished, so the probes fail with a refused connection until then; the startup probe
+          # allows for that. Readiness takes the pod out of the Service after about 15 s of failed
+          # answers; liveness restarts it only after about 2 minutes, so a short database outage never
+          # causes a restart. These match the gateway chart's defaults.
+          # They need a gateway chart and a controller image that serve them, so bump
+          # gateway.helm.chartVersion and the controller image tag together with them. With an older
+          # chart or image, probe the admin server instead: path /api/admin/v1/health with port: admin.
           livenessProbe:
             httpGet:
-              path: /health
-            port: admin
-            initialDelaySeconds: 10
+              path: /api/management/v1/health
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
-              path: /health
-            port: admin
-            initialDelaySeconds: 5
+              path: /api/management/v1/ready
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          # Holds off the liveness probe while the controller starts. It allows 6 minutes;
+          # keep this above gateway.config.controller.health.database.startup_wait so the controller,
+          # not the probe, decides when a database wait gives up. Set to null to disable.
+          startupProbe:
+            httpGet:
+              path: /api/management/v1/health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 72
           # Resource limits and requests
           # Uncomment and adjust based on your workload
           resources: {}
