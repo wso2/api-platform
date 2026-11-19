@@ -174,6 +174,16 @@ func TestCloudSuite(t *testing.T) {
 		if err != nil {
 			t.Errorf("cloud run finalizer left resources in the organisation: %v", err)
 		}
+		// After the finalizer has unpublished the run's listings, the portal administrator removes
+		// what every run left on the shared portal. A leftover it cannot remove is reported, and
+		// does not fail the run.
+		swept, err := starter.SweepPortal(ctx, finalizer.Owns)
+		for _, resource := range swept {
+			t.Logf("cloud run portal sweep removed a leftover: %s", resource)
+		}
+		if err != nil {
+			t.Logf("cloud run portal sweep could not remove every leftover: %v", err)
+		}
 	})
 
 	frameworkruntime.Run(t, narrowed, frameworkruntime.Deps{

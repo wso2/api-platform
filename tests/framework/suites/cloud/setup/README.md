@@ -132,6 +132,39 @@ Read those lines before trusting a green run: a skip is not a pass.
 |---|---|
 | `CLOUD_CONSOLE_ACCESS_TOKEN` | the console token that decides the organisation (required, never printed) |
 | `CLOUD_GATEWAY_ID` | pins the gateway the scenarios deploy to, which must be in a first stage of the project's pipeline; the starter never builds a pinned one |
+| `CLOUD_IAM_ACCESS_TOKEN` | a token of the organisation's administrator for the Identity Platform API, for the portal administrator (optional, never printed) |
+| `CLOUD_IAM_API_URL` | the Identity Platform API's base URL, `https://api-<env>.gateway.<domain>/iam/v1` |
+
+### The portal administrator and the portal sweep
+
+The platform never deletes a portal's copy of a subscription plan, so every run's synthetic plans
+stay on the shared portal until something with the portal's administrator role removes them. Once
+the `api-portal` precondition is met, the starter makes that administrator, `apip-test-portal-admin`,
+and signs it in:
+
+1. it deletes the previous `apip-test-portal-admin` on the Identity Platform's control plane and
+   deploys its removal, together with the `dp_admin` role that still names it, to the environment
+   the portal's consumers sign in on (the portal's `loginEnvironment`);
+2. it creates the user again (OU `default`, user type `apip-portal-subscriber`) with a new random
+   password, gives it `dp_admin`, and deploys the two.
+
+A deploy carries only those changes, never anything else pending in the organisation, and its
+import results are checked, since the Identity Platform answers 200 even when an item failed. The
+user is made again every run because a password changed on its own is never deployed. The password
+stays in memory and is never logged.
+
+The administrator then sweeps the portal, at the start of the run and again after the finalizer.
+The sweep goes by the synthetic prefix, not the run's suffix, so it removes what **every** run left:
+
+| Portal collection | What the sweep removes |
+|---|---|
+| API listings | the listings of synthetic APIs (`syn-`) the platform no longer holds |
+| subscription plans | every synthetic plan (`syn-plan-`) of this run, and another run's once it is older than 30 minutes |
+
+The age rule keeps a plan another run may still publish with, since the portal protects only a
+plan an API offers or a subscription uses. The portal refuses to remove such a plan, which is kept
+and reported. Without `CLOUD_IAM_ACCESS_TOKEN`, or when the administrator cannot be made, the scenarios
+still run and the run does not fail: the leftovers stay, and the starter's report says why.
 
 ## What the finalizer removes
 
