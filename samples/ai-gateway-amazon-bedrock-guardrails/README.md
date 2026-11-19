@@ -87,6 +87,9 @@ Some settings are deliberate for a sample that you create and delete in one sitt
 | Database without deletion protection, with one day of backups, no IAM database authentication, and no Performance Insights | `terraform destroy` must remove the sample completely. | Turn on deletion protection, longer backup retention, Multi-AZ (`db_multi_az`), and Performance Insights. |
 | Default encryption for Amazon ECR and CloudWatch Logs | Both encrypt data at rest with AWS owned keys. | Use customer managed AWS KMS keys if your policies require them. |
 | Database password copied into a Kubernetes Secret | `install-gateway.sh` copies the password that Amazon RDS manages in Secrets Manager. Amazon RDS rotates it every seven days, so after a rotation, rerun `install-gateway.sh` and restart the controller with `kubectl -n wso2-ai-gateway rollout restart deployment/wso2-ai-gateway-controller`. | Sync the secret into the cluster with the AWS Secrets and Configuration Provider (ASCP), so the controller always reads the current password. |
+| Gateway connects as the database's master user | Amazon RDS creates and manages one user, so the sample needs no extra setup. | Create a dedicated user that can access only the gateway's database. |
+| Database TLS with `sslmode=require` | The connection is encrypted without adding the Amazon RDS certificate bundle to the cluster. `require` doesn't verify the server's certificate. | Use `sslmode=verify-full` with the Amazon RDS certificate bundle. |
+| One NAT gateway | It keeps the cost down. Outbound traffic, including the EKS Pod Identity credential calls, depends on one Availability Zone. | Use one NAT gateway in each Availability Zone. |
 | Self-signed gateway certificate | The chart's cert-manager Issuer signs it for `localhost`, for the port forward. | Use a certificate from your CA, and expose the gateway through an internal load balancer. |
 
 ## Clean up
