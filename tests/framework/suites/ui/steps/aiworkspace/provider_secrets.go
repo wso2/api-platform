@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	playwright "github.com/mxschmitt/playwright-go"
 
@@ -38,13 +39,41 @@ func secretPlaceholder(handle string) string {
 	return fmt.Sprintf(`{{ secret "%s" }}`, handle)
 }
 
-// recordedCall is one finished request to an endpoint this file tracks.
+// recordedCall is one finished request to an endpoint this file tracks. Its status and
+// response body are fetched off Playwright's event loop (see record) and read through
+// Status and Response, which wait for that fetch.
 type recordedCall struct {
-	method   string
-	body     string
+	method string
+	body   string
+	result *callResult
+}
+
+// callResult is a recorded call's response, filled in once its fetch completes.
+type callResult struct {
+	done     chan struct{}
 	status   int
 	response string
 }
+
+// responseFetchTimeout bounds how long a reader waits for a recorded call's response.
+const responseFetchTimeout = 30 * time.Second
+
+func (c recordedCall) await() *callResult {
+	if c.result == nil {
+		return &callResult{}
+	}
+	select {
+	case <-c.result.done:
+	case <-time.After(responseFetchTimeout):
+	}
+	return c.result
+}
+
+// Status is the call's HTTP status, or 0 if its response could not be read.
+func (c recordedCall) Status() int { return c.await().status }
+
+// Response is the call's response body, or "" if it could not be read.
+func (c recordedCall) Response() string { return c.await().response }
 
 // callTracker groups the /secrets, /llm-providers, /llm-proxies, /mcp-proxies, and
 // /mcp-proxies/fetch-server-info requests made during a scenario action, so later steps
@@ -75,13 +104,18 @@ func (t *callTracker) record(req playwright.Request) {
 		return
 	}
 	body, _ := req.PostData()
-	var status int
-	var response string
-	if resp, err := req.Response(); err == nil && resp != nil {
-		status = resp.Status()
-		response, _ = resp.Text()
-	}
-	call := recordedCall{method: method, body: body, status: status, response: response}
+	// Event handlers run on playwright-go's single dispatch goroutine, so a blocking call here
+	// (Response, Text) holds back every later event, including the response a step is waiting
+	// for. Fetch it on another goroutine and file the call now, so its order is kept.
+	result := &callResult{done: make(chan struct{})}
+	go func() {
+		defer close(result.done)
+		if resp, err := req.Response(); err == nil && resp != nil {
+			result.status = resp.Status()
+			result.response, _ = resp.Text()
+		}
+	}()
+	call := recordedCall{method: method, body: body, result: result}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	switch {
@@ -122,15 +156,14 @@ func (t *callTracker) awaitSecretCall(ctx context.Context) (recordedCall, error)
 
 // lastSecretHandle returns the id of the most recently created secret, if any.
 func (t *callTracker) lastSecretHandle() (string, bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if len(t.secrets) == 0 {
+	call, ok := t.lastSecretCall()
+	if !ok {
 		return "", false
 	}
 	var body struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal([]byte(t.secrets[len(t.secrets)-1].response), &body); err != nil || body.ID == "" {
+	if err := json.Unmarshal([]byte(call.Response()), &body); err != nil || body.ID == "" {
 		return "", false
 	}
 	return body.ID, true
@@ -581,8 +614,8 @@ func (u *Steps) theProviderWasUpdated(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("no PUT request to /llm-providers was recorded: %w", err)
 	}
-	if call.status != 200 {
-		return fmt.Errorf("the provider update returned %d", call.status)
+	if status := call.Status(); status != 200 {
+		return fmt.Errorf("the provider update returned %d", status)
 	}
 	return nil
 }
