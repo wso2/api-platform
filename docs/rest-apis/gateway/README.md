@@ -153,6 +153,7 @@ Base URLs:
 - [APIKeyRegenerationRequest](schemas.md#apikeyregenerationrequest)
 - [APIKeyUpdateRequest](schemas.md#apikeyupdaterequest)
 - [APIKeyRevocationResponse](schemas.md#apikeyrevocationresponse)
+- [SubscriptionPlanCondition](schemas.md#subscriptionplancondition)
 - [SubscriptionPlanCreateRequest](schemas.md#subscriptionplancreaterequest)
 - [SubscriptionPlanUpdateRequest](schemas.md#subscriptionplanupdaterequest)
 - [SubscriptionPlanResponse](schemas.md#subscriptionplanresponse)

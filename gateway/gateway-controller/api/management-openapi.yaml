@@ -4957,10 +4957,50 @@ components:
         - status
         - message
 
+    SubscriptionPlanCondition:
+      type: object
+      required: [type, params]
+      description: |
+        One condition of a subscription plan. A built-in condition (request-count, tool-call-count,
+        token-count) has the id its type fixes (requests, tool-calls, tokens) and
+        its limits as params: {"limits": [{"count", "timeAmount", "timeUnit"}], "onExceed", "tokenType"},
+        with timeUnit one of MINUTE, HOUR, DAY or MONTH, and tokenType for token-count only.
+        A custom condition has an id of its own and key-value pairs as params.
+      properties:
+        id:
+          type: string
+          example: requests
+        type:
+          type: string
+          enum: [request-count, tool-call-count, token-count, custom]
+          x-enum-varnames: [ConditionTypeRequestCount, ConditionTypeToolCallCount, ConditionTypeTokenCount, ConditionTypeCustom]
+        params:
+          type: object
+          additionalProperties: true
+      example:
+        id: requests
+        type: request-count
+        params:
+          limits:
+            - { count: 100, timeAmount: 1, timeUnit: MINUTE }
+          onExceed: reject
     SubscriptionPlanCreateRequest:
       type: object
       required:
         - planName
+      example:
+        planName: Gold
+        billingPlan: COMMERCIAL
+        status: ACTIVE
+        conditions:
+          - id: requests
+            type: request-count
+            params:
+              limits:
+                - count: 1000
+                  timeAmount: 1
+                  timeUnit: HOUR
+              onExceed: reject
       properties:
         planName:
           type: string
@@ -4979,6 +5019,15 @@ components:
           type: string
           enum: [Min, Hour, Day, Month]
           example: Hour
+        conditions:
+          type: array
+          maxItems: 20
+          description: |
+            The plan's conditions, enforced by the policies attached to an API. A plan has at most 20
+            conditions: at most one of each built-in type (request-count, tool-call-count, token-count),
+            and custom conditions for the rest. Send either conditions or the throttle limit fields, not both.
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanCondition"
         expiryTime:
           type: string
           format: date-time
@@ -4992,6 +5041,18 @@ components:
       type: object
       description: |
         Partial update. Fields that are omitted are left unchanged.
+      example:
+        planName: Gold
+        billingPlan: COMMERCIAL
+        conditions:
+          - id: requests
+            type: request-count
+            params:
+              limits:
+                - count: 1000
+                  timeAmount: 1
+                  timeUnit: HOUR
+              onExceed: reject
       properties:
         planName:
           type: string
@@ -5016,6 +5077,17 @@ components:
           enum: [Min, Hour, Day, Month]
           description: |
             Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.
+        conditions:
+          type: array
+          maxItems: 20
+          description: |
+            The plan's conditions, enforced by the policies attached to an API. A plan has at most 20
+            conditions: at most one of each built-in type (request-count, tool-call-count, token-count),
+            and custom conditions for the rest. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or
+            the throttle limit fields, not both. The throttle limit fields alone change only the
+            request-count condition.
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanCondition"
         expiryTime:
           type: string
           format: date-time
@@ -5039,6 +5111,14 @@ components:
           type: integer
         throttleLimitUnit:
           type: string
+        conditions:
+          type: array
+          description: |
+            The plan's conditions. A plan saved before conditions shows its throttle limit as a
+            request-count condition. The throttle limit fields are the plan's single limit, for
+            subscription-validation v1.
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanCondition"
         expiryTime:
           type: string
           format: date-time
@@ -5364,6 +5444,13 @@ components:
           description: List of MCP Proxy level policies applied
           items:
             $ref: "#/components/schemas/Policy"
+        subscriptionPlans:
+          type: array
+          description: >
+            Names of the subscription plans this MCP proxy offers. A subscription to the proxy must
+            use one of them. When empty, any active plan can be used.
+          items:
+            type: string
         faultPolicies:
           type: array
           description: >

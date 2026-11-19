@@ -1,5 +1,5 @@
 -- SQL Server Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 --
 -- Portable counterpart of gateway-controller-db.postgres.sql. Type mapping:
 --   TEXT (keyed)      -> NVARCHAR(64)/NVARCHAR(255)  (NVARCHAR(MAX) cannot be indexed;
@@ -229,6 +229,8 @@ CREATE TABLE dbo.subscription_plans (
     stop_on_quota_reach BIT DEFAULT 1,
     throttle_limit_count INT,
     throttle_limit_unit NVARCHAR(64),
+    -- The plan's conditions as a JSON array; NULL for a plan synced before conditions.
+    conditions NVARCHAR(MAX) NULL,
     expiry_time DATETIME2(7),
     status NVARCHAR(20) NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE')) DEFAULT 'ACTIVE',
     created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
@@ -236,6 +238,9 @@ CREATE TABLE dbo.subscription_plans (
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, plan_name)
 );
+-- Adds the column to databases created by earlier releases.
+IF COL_LENGTH('dbo.subscription_plans', 'conditions') IS NULL
+ALTER TABLE dbo.subscription_plans ADD conditions NVARCHAR(MAX) NULL;
 
 -- Subscriptions table (application-level subscriptions for REST APIs, even before deployment)
 IF OBJECT_ID(N'dbo.subscriptions', N'U') IS NULL

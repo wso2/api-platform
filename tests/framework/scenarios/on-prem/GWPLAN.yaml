@@ -1,0 +1,56 @@
+# Scenario list: Subscription Plan Conditions in the Gateway (GWPLAN).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: GWPLAN
+title: Subscription Plan Conditions in the Gateway
+scenarios:
+  - id: GWPLAN-001
+    title: "Create a plan with request-count (2 DAY and 1 MINUTE windows), token-count and custom conditions through the management API; the one-minute window becomes the v1 rate limit and the 4th request is throttled, conditions without request-count remove the limit, the throttle fields alone set it again and keep the custom condition, and [] makes the plan unlimited."
+    priority: P0
+    ui:
+      status: exempt
+      reason: The gateway management API is driven by a control plane; no portal action calls it directly.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/subscription_plan_conditions.feature
+          scenario: "A plan's request-count condition rate limits its subscriptions, and changing the conditions changes the limit"
+  - id: GWPLAN-002
+    title: "A plan with invalid conditions (removed event-count type, bad windows, ids or params), with both conditions and throttle fields, or with null conditions is refused with 400 and the reason."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway management API is driven by a control plane; no portal action calls it directly.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/subscription_plan_conditions.feature
+          scenario: "A plan with invalid conditions is refused with the reason"
+  - id: GWPLAN-003
+    title: "A plan sent with only throttle limit fields (3 a minute) is stored without conditions, as gateways before plan conditions stored it; after a gateway-controller restart it reads as a request-count condition, still throttles its subscription, keeps no conditions after a throttle-only update, and stores the conditions a control plane later sends."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Gateway management API and storage; the gateway has no UI.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/subscription_plan_upgrade.feature
+          scenario: "A plan stored without conditions keeps its rate limit across a restart and takes conditions from the control plane"
+  - id: GWPLAN-004
+    title: "A plan stored without conditions whose limit lets requests through (stopOnQuotaReach false) reads after a restart as onExceed allow; stopOnQuotaReach alone then changes only onExceed."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Gateway management API and storage; the gateway has no UI.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/subscription_plan_upgrade.feature
+          scenario: "A plan stored without conditions that lets requests past its limit reads as onExceed allow"

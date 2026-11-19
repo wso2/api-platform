@@ -3114,13 +3114,17 @@ func (s *sqlStore) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
 	now := time.Now()
 	plan.CreatedAt = now
 	plan.UpdatedAt = now
+	conditions, err := conditionsColumn(plan.Conditions)
+	if err != nil {
+		return err
+	}
 	query := `
 		INSERT INTO subscription_plans (uuid, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
-			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			throttle_limit_count, throttle_limit_unit, conditions, expiry_time, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := s.exec(query, plan.ID, s.gatewayId, plan.PlanName, plan.BillingPlan,
-		plan.StopOnQuotaReach, plan.ThrottleLimitCount, plan.ThrottleLimitUnit,
+	_, err = s.exec(query, plan.ID, s.gatewayId, plan.PlanName, plan.BillingPlan,
+		plan.StopOnQuotaReach, plan.ThrottleLimitCount, plan.ThrottleLimitUnit, conditions,
 		plan.ExpiryTime, string(plan.Status), plan.CreatedAt, plan.UpdatedAt)
 	if err != nil {
 		if s.isUniqueViolation(err) {
@@ -3135,14 +3139,15 @@ func (s *sqlStore) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
 func (s *sqlStore) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
 	query := `
 		SELECT uuid, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
-			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at
+			throttle_limit_count, throttle_limit_unit, conditions, expiry_time, status, created_at, updated_at
 		FROM subscription_plans
 		WHERE uuid = ? AND gateway_id = ?
 	`
 	plan := &models.SubscriptionPlan{}
+	var conditions sql.NullString
 	err := s.queryRow(query, id, s.gatewayId).Scan(
 		&plan.ID, &plan.GatewayID, &plan.PlanName, &plan.BillingPlan,
-		&plan.StopOnQuotaReach, &plan.ThrottleLimitCount, &plan.ThrottleLimitUnit,
+		&plan.StopOnQuotaReach, &plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &conditions,
 		&plan.ExpiryTime, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
 	)
 	if err != nil {
@@ -3151,6 +3156,9 @@ func (s *sqlStore) GetSubscriptionPlanByID(id, gatewayID string) (*models.Subscr
 		}
 		return nil, err
 	}
+	if plan.Conditions, err = parseConditionsColumn(conditions); err != nil {
+		return nil, fmt.Errorf("subscription plan %s: %w", plan.ID, err)
+	}
 	return plan, nil
 }
 
@@ -3158,7 +3166,7 @@ func (s *sqlStore) GetSubscriptionPlanByID(id, gatewayID string) (*models.Subscr
 func (s *sqlStore) ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error) {
 	query := `
 		SELECT uuid, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
-			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at
+			throttle_limit_count, throttle_limit_unit, conditions, expiry_time, status, created_at, updated_at
 		FROM subscription_plans
 		WHERE gateway_id = ?
 		ORDER BY created_at DESC
@@ -3171,12 +3179,20 @@ func (s *sqlStore) ListSubscriptionPlans(gatewayID string) ([]*models.Subscripti
 	var list []*models.SubscriptionPlan
 	for rows.Next() {
 		plan := &models.SubscriptionPlan{}
+		var conditions sql.NullString
 		if err := rows.Scan(
 			&plan.ID, &plan.GatewayID, &plan.PlanName, &plan.BillingPlan,
-			&plan.StopOnQuotaReach, &plan.ThrottleLimitCount, &plan.ThrottleLimitUnit,
+			&plan.StopOnQuotaReach, &plan.ThrottleLimitCount, &plan.ThrottleLimitUnit, &conditions,
 			&plan.ExpiryTime, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		var err error
+		if plan.Conditions, err = parseConditionsColumn(conditions); err != nil {
+			// One bad row shouldn't hide every other plan; reading it by ID still fails.
+			s.logger.Warn("Skipping subscription plan with unreadable conditions",
+				slog.String("plan_id", plan.ID), slog.Any("error", err))
+			continue
 		}
 		list = append(list, plan)
 	}
@@ -3190,15 +3206,19 @@ func (s *sqlStore) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
 	}
 	plan.GatewayID = s.gatewayId
 	plan.UpdatedAt = time.Now()
+	conditions, err := conditionsColumn(plan.Conditions)
+	if err != nil {
+		return err
+	}
 	query := `
 		UPDATE subscription_plans
 		SET plan_name = ?, billing_plan = ?, stop_on_quota_reach = ?, throttle_limit_count = ?,
-			throttle_limit_unit = ?, expiry_time = ?, status = ?, updated_at = ?
+			throttle_limit_unit = ?, conditions = ?, expiry_time = ?, status = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 	result, err := s.exec(query,
 		plan.PlanName, plan.BillingPlan, plan.StopOnQuotaReach,
-		plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.ExpiryTime,
+		plan.ThrottleLimitCount, plan.ThrottleLimitUnit, conditions, plan.ExpiryTime,
 		string(plan.Status), plan.UpdatedAt,
 		plan.ID, s.gatewayId,
 	)
@@ -3216,6 +3236,31 @@ func (s *sqlStore) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
 		return fmt.Errorf("%w: subscription plan not found: %s", ErrNotFound, plan.ID)
 	}
 	return nil
+}
+
+// conditionsColumn encodes a plan's conditions for the conditions column: NULL when the plan has
+// none recorded (synced before conditions), else a JSON array.
+func conditionsColumn(conditions []models.SubscriptionPlanCondition) (any, error) {
+	if conditions == nil {
+		return nil, nil
+	}
+	data, err := json.Marshal(conditions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode subscription plan conditions: %w", err)
+	}
+	return string(data), nil
+}
+
+// parseConditionsColumn decodes the conditions column; NULL stays nil.
+func parseConditionsColumn(column sql.NullString) ([]models.SubscriptionPlanCondition, error) {
+	if !column.Valid {
+		return nil, nil
+	}
+	conditions := []models.SubscriptionPlanCondition{}
+	if err := json.Unmarshal([]byte(column.String), &conditions); err != nil {
+		return nil, fmt.Errorf("unreadable conditions: %w", err)
+	}
+	return conditions, nil
 }
 
 // DeleteSubscriptionPlan removes a subscription plan by ID and gateway.

@@ -970,7 +970,7 @@ func TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs(t *testing.T) {
 		`ALTER TABLE certificates ADD COLUMN match_json TEXT`,
 		`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`,
 		`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`,
-		fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion),
+		fmt.Sprintf("PRAGMA user_version = %d", conditionsSchemaVersion),
 	} {
 		_, err = rawDB.Exec(statement)
 		assert.NilError(t, err)

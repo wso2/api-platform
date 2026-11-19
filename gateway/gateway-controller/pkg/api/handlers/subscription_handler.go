@@ -376,24 +376,20 @@ func (s *APIServer) validateSubscriptionPlanForAPI(w http.ResponseWriter, planID
 		})
 		return false
 	}
-	if cfg.Kind == string(api.RestAPIKindRestApi) {
-		if restAPI, ok := cfg.Configuration.(api.RestAPI); ok {
-			if restAPI.Spec.SubscriptionPlans != nil && len(*restAPI.Spec.SubscriptionPlans) > 0 {
-				enabled := false
-				for _, name := range *restAPI.Spec.SubscriptionPlans {
-					if strings.EqualFold(name, plan.PlanName) {
-						enabled = true
-						break
-					}
-				}
-				if !enabled {
-					httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
-						Status:  "error",
-						Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
-					})
-					return false
-				}
+	if names := models.SubscriptionPlanNames(cfg); len(names) > 0 {
+		enabled := false
+		for _, name := range names {
+			if strings.EqualFold(name, plan.PlanName) {
+				enabled = true
+				break
 			}
+		}
+		if !enabled {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Subscription plan %q is not enabled for this API or MCP proxy", plan.PlanName),
+			})
+			return false
 		}
 	}
 	return true

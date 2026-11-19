@@ -85,6 +85,11 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/subscription_plan_management.feature
+      # Plan conditions are new in the gateway management API.
+      - name: subscription-plan-conditions
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_conditions.feature
       # The ap CLI built from this checkout, driving the gateway through its management and
       # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
       - name: ap-cli-gateway
@@ -189,6 +194,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp/mcp_resolver.feature
+      - name: mcp-subscriptions
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_subscriptions.feature
       # No version gate: a session surviving the gateway is behaviour every supported release
       # has, and the era a proxy declares is what these scenarios vary instead.
       - name: mcp-legacy-upstream
@@ -407,6 +416,22 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/mtls/outbound.feature
+
+  # Plans stored before plan conditions: the scenarios restart gateway-controller to load plans from
+  # the database, as an upgraded gateway does, so they run alone here. Plan conditions are new in
+  # the gateway management API.
+  - name: gateway-plan-upgrade
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: subscription-plan-upgrade
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_upgrade.feature
 
   # Config dump asserts the gateway's total API count starts at zero, which no other runner
   # may be free to disturb - it needs a gateway to itself rather than gateway-core's shared one.
