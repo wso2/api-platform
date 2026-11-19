@@ -279,6 +279,7 @@ data:
     disable_path_normalization = {{ $router.http_listener.disable_path_normalization }}
     return_request_id_in_response = {{ $router.http_listener.return_request_id_in_response }}
     path_with_escaped_slashes_action = {{ $router.http_listener.path_with_escaped_slashes_action | quote }}
+    allow_path_case_variants = {{ $router.http_listener.allow_path_case_variants | default false }}
 
     [router.http_listener.timeouts]
     request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}
