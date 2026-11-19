@@ -16,13 +16,36 @@
  * under the License.
  */
 
+import { useEffect, useState } from 'react';
 import { Box, ColorSchemeImage, Stack, Typography } from '@wso2/oxygen-ui';
 
 import loaderNavy from '../assets/loaders/choreo-labs-loader-navy.svg';
 import loaderWhite from '../assets/loaders/choreo-labs-loader-white.svg';
+import staticNavy from '../assets/loaders/choreo-labs-loader-static-navy.svg';
+import staticWhite from '../assets/loaders/choreo-labs-loader-static-white.svg';
 
 /** The animated Choreo Labs mark: white on a dark scheme, navy on a light one. */
 const LOADER_SRC = { dark: loaderWhite, light: loaderNavy };
+/** Still mark for users who prefer reduced motion: SMIL animation ignores CSS `animation: none`. */
+const STATIC_SRC = { dark: staticWhite, light: staticNavy };
+
+/** Whether the user asked the system to reduce motion. */
+function usePrefersReducedMotion(): boolean {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [reduced, setReduced] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.(query).matches === true,
+  );
+  useEffect(() => {
+    const media = window.matchMedia?.(query);
+    if (!media) return undefined;
+    const onChange = () => setReduced(media.matches);
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+  return reduced;
+}
+
 
 type ChoreoLoaderProps = {
   /** Text shown under the loader. */
@@ -36,6 +59,7 @@ type ChoreoLoaderProps = {
 /** Page loader: the animated mark centred horizontally and vertically in its container. */
 export function ChoreoLoader({ label, fullScreen = false, width = 58 }: ChoreoLoaderProps) {
   const height = Math.round((width * 98) / 96);
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <Box
@@ -54,7 +78,7 @@ export function ChoreoLoader({ label, fullScreen = false, width = 58 }: ChoreoLo
         <ColorSchemeImage
           alt={label ?? 'Loading'}
           height={height}
-          src={LOADER_SRC}
+          src={reducedMotion ? STATIC_SRC : LOADER_SRC}
           width={width}
         />
         {label && (

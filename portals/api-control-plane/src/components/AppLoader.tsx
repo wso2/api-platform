@@ -16,13 +16,36 @@
  * under the License.
  */
 
+import { useEffect, useState } from 'react';
 import { Box, ColorSchemeImage, Stack, Typography } from '@wso2/oxygen-ui';
 
 import loaderNavy from '@/assets/icons/loaders/choreo-labs-loader-navy.svg';
 import loaderWhite from '@/assets/icons/loaders/choreo-labs-loader-white.svg';
+import staticNavy from '@/assets/icons/loaders/choreo-labs-loader-static-navy.svg';
+import staticWhite from '@/assets/icons/loaders/choreo-labs-loader-static-white.svg';
 
 /** The animated Choreo Labs mark: white on a dark scheme, navy on a light one. */
 const LOADER_SRC = { dark: loaderWhite, light: loaderNavy };
+/** Still mark for users who prefer reduced motion: SMIL animation ignores CSS `animation: none`. */
+const STATIC_SRC = { dark: staticWhite, light: staticNavy };
+
+/** Whether the user asked the system to reduce motion. */
+function usePrefersReducedMotion(): boolean {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [reduced, setReduced] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.(query).matches === true,
+  );
+  useEffect(() => {
+    const media = window.matchMedia?.(query);
+    if (!media) return undefined;
+    const onChange = () => setReduced(media.matches);
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+  return reduced;
+}
+
 
 type AppLoaderProps = {
   /** Text shown under the loader. */
@@ -37,6 +60,7 @@ type AppLoaderProps = {
 export function AppLoader({ label, fullScreen = false, size }: AppLoaderProps) {
   const width = Math.round(96 * (size ?? 0.6));
   const height = Math.round((width * 98) / 96);
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <Box
@@ -52,7 +76,7 @@ export function AppLoader({ label, fullScreen = false, size }: AppLoaderProps) {
       }}
     >
       <Stack alignItems="center" spacing={2.5}>
-        <ColorSchemeImage alt={label ?? 'Loading'} height={height} src={LOADER_SRC} width={width} />
+        <ColorSchemeImage alt={label ?? 'Loading'} height={height} src={reducedMotion ? STATIC_SRC : LOADER_SRC} width={width} />
         {label && (
           <Typography color="text.secondary" variant="body2" sx={{ textAlign: 'center' }}>
             {label}
