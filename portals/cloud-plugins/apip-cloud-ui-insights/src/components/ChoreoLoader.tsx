@@ -29,12 +29,12 @@ type ChoreoLoaderProps = {
   label?: string;
   /** Centre in the full viewport instead of the page area. */
   fullScreen?: boolean;
-  /** Width of the mark in px; height follows its 96x98 proportions. Defaults to 96. */
+  /** Width of the mark in px; height follows its 96x98 proportions. Defaults to 58, the same as the control plane's AppLoader. */
   width?: number;
 };
 
 /** Page loader: the animated mark centred horizontally and vertically in its container. */
-export function ChoreoLoader({ label, fullScreen = false, width = 96 }: ChoreoLoaderProps) {
+export function ChoreoLoader({ label, fullScreen = false, width = 58 }: ChoreoLoaderProps) {
   const height = Math.round((width * 98) / 96);
 
   return (
@@ -46,7 +46,7 @@ export function ChoreoLoader({ label, fullScreen = false, width = 96 }: ChoreoLo
         flexGrow: 1,
         justifyContent: 'center',
         minHeight: fullScreen ? '100dvh' : '70dvh',
-        p: 2,
+        p: fullScreen ? 2 : 4,
         width: '100%',
       }}
     >
