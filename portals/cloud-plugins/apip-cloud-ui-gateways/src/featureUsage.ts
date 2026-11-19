@@ -29,6 +29,10 @@ export const GATEWAY_UPDATE_CLICK = 'apip.gateway.gateway-update-click';
 export const GATEWAY_TOKEN_REGENERATE_CLICK = 'apip.gateway.gateway-token-regenerate-click';
 export const GATEWAY_SETUP_COMMAND_COPY = 'apip.gateway.gateway-setup-command-copy';
 export const GATEWAY_POLICIES_VIEW = 'apip.policies.gateway-policies-view';
+export const GATEWAY_DELETE_CLICK = 'apip.gateway.gateway-delete-click';
+export const GATEWAY_SETTINGS_OPEN = 'apip.gateway.gateway-settings-open';
+export const KEY_MANAGER_DISCOVER_CLICK = 'apip.gateway.key-manager-discover-click';
+export const GATEWAY_CONFIGURATION_UPDATE_CLICK = 'apip.gateway.gateway-configuration-update-click';
 
 /** The taxonomy's `install_method` for each install path the overview offers. */
 export const INSTALL_METHOD_DIMENSION = {

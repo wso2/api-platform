@@ -55,7 +55,7 @@ import NoGatewayState from './components/NoGatewayState';
 import type { AIWorkspaceHostPort } from './hostPort';
 import { hostingBlocked } from './utils/limits';
 import { NO_PERMISSION_TOOLTIP } from './permissions';
-import type { GatewayAddEntryPoint } from './featureUsage';
+import { GATEWAY_SETTINGS_OPEN, type GatewayAddEntryPoint } from './featureUsage';
 import type { Environment, Gateway, GatewayHosting } from './types';
 
 /**
@@ -522,7 +522,10 @@ const GatewaysList: FC<GatewaysListProps> = ({
         >
           <IconButton
             size="small"
-            onClick={() => setSettingsGateway(gateway)}
+            onClick={() => {
+              port.trackFeature?.(GATEWAY_SETTINGS_OPEN);
+              setSettingsGateway(gateway);
+            }}
             disabled={gateway.status === 'deleting'}
             aria-label={`Configure ${gateway.name}`}
           >

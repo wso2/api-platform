@@ -23,9 +23,12 @@ import DeployPage from './DeployPage';
 import { createDeployClient, gatewayTypeForKind, takesEndpointUrl, type ArtifactKind } from './deployApi';
 import {
   API_DEPLOY_CLICK,
+  API_DEPLOY_OPEN,
+  BUILD_DELETE_CLICK,
   DEPLOYMENT_UNDEPLOY_CLICK,
   featureArtifactKind,
   GATEWAY_REGISTER_CLICK,
+  type DeployMode,
 } from './featureUsage';
 import { createManagedGatewaysClient } from './managedGatewaysApi';
 import {
@@ -291,9 +294,15 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
-    // A promotion is a deploy to the next environment, so it counts as one too.
+    // A promotion is a deploy to the next environment, so it counts as one too;
+    // `deploy_mode` tells the three apart. No build named means the server builds one.
     if (artifactKind) {
-      trackFeature?.(API_DEPLOY_CLICK, { artifact_kind: artifactKind, gateway_type: gatewayType });
+      const deployMode: DeployMode = from ? 'promote' : buildId ? 'deploy' : 'build-and-deploy';
+      trackFeature?.(API_DEPLOY_CLICK, {
+        artifact_kind: artifactKind,
+        gateway_type: gatewayType,
+        deploy_mode: deployMode,
+      });
     }
     void runAction(
       () =>
@@ -316,6 +325,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
    */
   const handleDeleteBuild = (buildId: string) => {
     if (!client) return;
+    if (artifactKind) trackFeature?.(BUILD_DELETE_CLICK, { artifact_kind: artifactKind });
     void runAction(
       () => client.deleteBuild(buildId),
       `Deleted build ${buildId}.`,
@@ -547,6 +557,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onDeleteBuild={handleDeleteBuild}
+      onDialogOpen={(mode) => {
+        if (artifactKind) trackFeature?.(API_DEPLOY_OPEN, { artifact_kind: artifactKind, deploy_mode: mode });
+      }}
     />
     {setupDrawer}
     </>

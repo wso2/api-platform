@@ -446,7 +446,7 @@ Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
 `page.graphqlApiDeploy`). They report the same features through the host port's
 `trackFeature(code, dimensions)` (`useTrackFeatureByName`, built into the port in
 `AppLayout`), which drops any code or value the taxonomy doesn't list. The
-cloud-only Portals page (managed API Portals) reports its own features the same way:
+cloud-only Portals and Insights pages report their own features the same way:
 
 | Cloud page                              | Reports                                                                                                  |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -457,6 +457,12 @@ cloud-only Portals page (managed API Portals) reports its own features the same 
 | Deploy: add a gateway, its setup drawer | `gateway-register-click`, `gateway-setup-command-copy` (`quick-start`), `gateway-token-regenerate-click` |
 | Portals: open the add form              | `portal-add-open` (`entry_point`: `portals-list` or `portals-empty-state`)                               |
 | Portals: Add Portal                     | `portal-create-click` (`self_signup`)                                                                    |
+| Portals: Open Portal, Save, Delete      | `portal-open`, `portal-update-click` (`*_changed` yes/no per field), `portal-delete-click`               |
+| Gateways: Delete                        | `gateway-delete-click` (`gateway_hosting`)                                                               |
+| Gateways: Configure, its settings drawer | `gateway-settings-open`, `key-manager-discover-click`, `gateway-configuration-update-click` (`settings_changed`, `key_managers_changed`) |
+| Deploy: open the Deploy/Promote dialog  | `api-deploy-open` (`deploy_mode`: `deploy`, `build-and-deploy` or `promote`); Deploy/Promote also sends `deploy_mode` on `api-deploy-click` |
+| Deploy: delete a build                  | `build-delete-click`                                                                                     |
+| Insights (organization or project)      | `insights-open` (`scope`), once per visit                                                                |
 
 The cloud pages have no redeploy, restore, deployment delete or deployment
 history, and their gateway Policies tab shows no policies yet, so

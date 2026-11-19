@@ -16,6 +16,12 @@
 
 export const PORTAL_ADD_OPEN = 'apip.developer-portal.portal-add-open';
 export const PORTAL_CREATE_CLICK = 'apip.developer-portal.portal-create-click';
+export const PORTAL_OPEN = 'apip.developer-portal.portal-open';
+export const PORTAL_UPDATE_CLICK = 'apip.developer-portal.portal-update-click';
+export const PORTAL_DELETE_CLICK = 'apip.developer-portal.portal-delete-click';
+
+/** A yes/no dimension value, as the taxonomy spells booleans. */
+export const yesNo = (value: boolean): 'yes' | 'no' => (value ? 'yes' : 'no');
 
 /** Where the add-portal form was opened from: the taxonomy's `entry_point` for `PORTAL_ADD_OPEN`. */
 export type PortalAddEntryPoint = 'portals-list' | 'portals-empty-state';

@@ -39,7 +39,7 @@ import {
   Trash2,
 } from "@wso2/oxygen-ui-icons-react";
 
-import type { PortalAddEntryPoint } from "./featureUsage";
+import { PORTAL_DELETE_CLICK, PORTAL_OPEN, type PortalAddEntryPoint } from "./featureUsage";
 import { useManagedPortalList } from "./hooks";
 import { NO_PERMISSION_TOOLTIP } from "./permissions";
 import type { ManagedPortal } from "./types";
@@ -165,6 +165,7 @@ export default function ManagedPortalsList({
       setDeleteTarget(null);
       return;
     }
+    host.trackFeature?.(PORTAL_DELETE_CLICK);
     setDeleting(true);
     try {
       await remove(deleteTarget.id);
@@ -494,6 +495,7 @@ export default function ManagedPortalsList({
                                 variant="contained"
                                 component="a"
                                 href={portal.url}
+                                onClick={() => host.trackFeature?.(PORTAL_OPEN)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 startIcon={<ExternalLink size={16} />}

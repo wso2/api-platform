@@ -27,7 +27,7 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { GATEWAY_ADD_OPEN, GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
+import { GATEWAY_ADD_OPEN, GATEWAY_DELETE_CLICK, GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
 import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
 import { hostingBlocked } from './utils/limits';
 import type {
@@ -293,10 +293,13 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
       // gateway can otherwise be deleted while the first is still in flight.
       if (deletingRef.current) return;
       deletingRef.current = true;
+      const target = gateways.find((candidate) => candidate.id === id);
+      // The confirmed click, before the request: whether it succeeds is the
+      // server's to report.
+      if (target) port.trackFeature?.(GATEWAY_DELETE_CLICK, { gateway_hosting: target.hosting });
       try {
         // A gateway torn down in the background stays listed as deleting, and the
         // status poll drops it once it is gone.
-        const target = gateways.find((candidate) => candidate.id === id);
         let deletionPending = false;
         if (target?.hosting === 'self-hosted') {
           await selfHostedClient.deleteGateway(id);

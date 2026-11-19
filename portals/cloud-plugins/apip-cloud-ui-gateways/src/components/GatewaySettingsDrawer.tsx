@@ -46,6 +46,7 @@ import {
   type FieldErrors,
 } from '../config/validate';
 import type { AIWorkspaceHostPort } from '../hostPort';
+import { GATEWAY_CONFIGURATION_UPDATE_CLICK, KEY_MANAGER_DISCOVER_CLICK } from '../featureUsage';
 import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import type {
   ConfigStatus,
@@ -350,6 +351,10 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       );
       return;
     }
+    port.trackFeature?.(GATEWAY_CONFIGURATION_UPDATE_CLICK, {
+      settings_changed: Object.keys(patch).length > 0 ? 'yes' : 'no',
+      key_managers_changed: keyManagerChange ? 'yes' : 'no',
+    });
     // Invalidates any read still in flight: what the write returns is newer
     // than anything a GET started before it can report.
     const mine = ++generation.current;
@@ -428,9 +433,11 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
         saved={keyManagers ?? []}
         readOnly={locked}
         modified={keyManagerChange !== null}
-        discover={(issuer, wellKnownUrl) =>
-          discoverKeyManager(apiFetch, config.id, issuer, wellKnownUrl)
-        }
+        discover={(issuer, wellKnownUrl) => {
+          // Continue and Fetch again in the key manager dialog both land here.
+          port.trackFeature?.(KEY_MANAGER_DISCOVER_CLICK);
+          return discoverKeyManager(apiFetch, config.id, issuer, wellKnownUrl);
+        }}
         onChange={(next) => {
           if (keyManagerDraft === null) setKeyManagerBase(keyManagers);
           setKeyManagerDraft(next);
