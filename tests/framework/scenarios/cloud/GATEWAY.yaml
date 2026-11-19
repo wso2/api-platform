@@ -54,7 +54,8 @@ scenarios:
     title: "A version that is neither major.minor nor CalVer is refused."
     priority: P1
     cloud:
-      status: automated
+      status: known-issue
+      issue: "The managed-gateway create route of the development cloud accepts a version that is neither major.minor nor CalVer (latest, sha-3f2a9c1, v1.2, 1.2.3, 1, 2026-05-13) with 202 and builds the gateway, where the platform API's validateVersion answers 400."
       refs:
         - feature: suites/cloud/features/apip_gateway.feature
           scenario: "A version that is neither major.minor nor CalVer is refused"

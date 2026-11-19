@@ -54,6 +54,15 @@ func ownedEnvironment(name string) bool {
 // suite's prefix.
 func ownedPipeline(name string) bool { return hasSuitePrefix(name) }
 
+// ownedPortal reports whether the suite may publish to a managed API Portal: one whose name (or
+// handle) starts with the suite's prefix, such as apip-test-portal. The organisation's other portals
+// belong to other consoles.
+func ownedPortal(item map[string]any) bool {
+	name, _ := item["name"].(string)
+	id, _ := item["id"].(string)
+	return hasSuitePrefix(name) || hasSuitePrefix(id)
+}
+
 // minGatewayHandleBudget is the handle length an environment must allow for the suite's ordinary
 // gateway names: syntheticGatewayBase and the 11 characters the unique generator adds. The
 // platform limits a handle to 37 minus twice the environment name's length, so a long environment

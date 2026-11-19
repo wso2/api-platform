@@ -3362,7 +3362,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodGet && r.URL.Path == "/managed-api-portals":
 			portals := p.portals
 			if portals == nil && !p.noPortals {
-				portals = []map[string]any{{"id": "existing-portal", "status": "active"}}
+				portals = []map[string]any{{"id": "apip-test-existing", "status": "active"}}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": portals})
 		case r.Method == http.MethodPost && r.URL.Path == "/managed-api-portals":
@@ -3844,6 +3844,25 @@ func TestScenarioGatewayRequestAnsweredWithAnErrorIsNoLongerRegistered(t *testin
 	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusConflict))
 	require.Empty(t, registry.Pending(), "a refused request created nothing to clean up")
 	require.Empty(t, syntheticGatewayIDs(ctx))
+}
+
+func TestAScenarioGatewayTheProductBuiltAnywayIsNotNumberedForTheRunner(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		var sent map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusAccepted, map[string]any{"id": "development-" + sent["handle"].(string), "status": "PROVISIONING"})
+	})
+
+	// A request the scenario expects to be refused, which the platform builds a gateway for.
+	require.NoError(t, steps.requestManagedGatewayWith(ctx, map[string]string{
+		"environment": "development", "displayName": "sg-abcde234-2", "handle": "sg-abcde234-2"}))
+	require.Empty(t, syntheticGatewayIDs(ctx), "a gateway the scenario cleans up itself takes no number")
+	require.Len(t, registry.Pending(), 1, "it is still cleaned up with the scenario")
+
+	require.NoError(t, steps.requestRunnerManagedGateway(ctx, valuesTable(t,
+		[]string{"environment", "development"}, []string{"displayName", "sg-abcde234-3"}, []string{"handle", "sg-abcde234-3"})))
+	require.Equal(t, []string{"development-sg-abcde234-3"}, syntheticGatewayIDs(ctx), "the runner's first gateway is the one it asked to keep")
 }
 
 func TestProbeHandleBudgetReadsTheLimitAndCreatesNothing(t *testing.T) {
@@ -5206,22 +5225,49 @@ func TestDraftBody(t *testing.T) {
 	require.ErrorContains(t, err, "unsupported draft field")
 }
 
+func TestASignInGoesOnThroughAViewThatOnlyAsksToContinue(t *testing.T) {
+	require.True(t, asksOnlyToContinue([]byte(`{"flowStatus":"INCOMPLETE","type":"VIEW","data":{"actions":[{"ref":"action_continue","nextNode":"authorization"}]}}`)))
+
+	for name, raw := range map[string]string{
+		"a prompt that asks for input": `{"data":{"actions":[{"ref":"action_001"}],"inputs":[{"identifier":"username"}]}}`,
+		"a view with another action":   `{"data":{"actions":[{"ref":"action_signup"}]}}`,
+		"a view with two actions":      `{"data":{"actions":[{"ref":"action_continue"},{"ref":"action_001"}]}}`,
+		"a continue that asks input":   `{"data":{"actions":[{"ref":"action_continue"}],"inputs":[{"identifier":"x"}]}}`,
+		"no actions":                   `{"data":{}}`,
+		"not JSON":                     `<html>`,
+	} {
+		require.False(t, asksOnlyToContinue([]byte(raw)), name)
+	}
+}
+
+func TestFlowPromptExcerptHidesTheTokensAndIsBounded(t *testing.T) {
+	excerpt := flowPromptExcerpt([]byte(`{"executionId":"e1","challengeToken":"secret-token","flowStatus":"INCOMPLETE","assertion":"signed","data":{"inputs":[{"identifier":"firstName"}]}}`))
+	require.NotContains(t, excerpt, "secret-token")
+	require.NotContains(t, excerpt, "signed")
+	require.Contains(t, excerpt, `"flowStatus":"INCOMPLETE"`)
+	require.Contains(t, excerpt, "firstName", "the inputs the flow still asks for are kept")
+
+	require.Len(t, []rune(flowPromptExcerpt([]byte(strings.Repeat("x", 5000)))), 401)
+	require.Empty(t, flowPromptExcerpt(nil))
+}
+
 func TestActiveAPIPortalID(t *testing.T) {
 	id, err := activeAPIPortalID([]map[string]any{
-		{"id": "pending-portal", "status": "pending"},
+		{"id": "apip-test-pending", "status": "pending"},
 		{"id": "", "status": "active"},
+		{"id": "ops-portal", "name": "Operations portal", "status": "active"},
 		{"id": "syn-portal-abc-1", "status": "active"},
-		{"id": "live-portal", "status": "active"},
+		{"id": "apip-test", "name": "apip-test-portal", "status": "active"},
 	})
 	require.NoError(t, err)
-	require.Equal(t, "live-portal", id, "a portal a scenario created is never the one to publish to")
+	require.Equal(t, "apip-test", id, "only a portal named with the suite's prefix is published to, never another console's or a scenario's")
 
 	_, err = activeAPIPortalID(nil)
-	require.ErrorContains(t, err, "no managed API Portal")
-	_, err = activeAPIPortalID([]map[string]any{{"id": "syn-portal-abc-1", "status": "active"}})
-	require.ErrorContains(t, err, "no managed API Portal that a scenario did not create")
-	_, err = activeAPIPortalID([]map[string]any{{"id": "failed-portal", "status": "failed"}})
-	require.ErrorContains(t, err, "failed-portal: failed")
+	require.ErrorContains(t, err, "no managed API Portal named with the prefix")
+	_, err = activeAPIPortalID([]map[string]any{{"id": "ops-portal", "name": "Operations portal", "status": "active"}})
+	require.ErrorContains(t, err, "no managed API Portal named with the prefix", "an active portal of another console does not count")
+	_, err = activeAPIPortalID([]map[string]any{{"id": "apip-test-failed", "status": "failed"}})
+	require.ErrorContains(t, err, "apip-test-failed: failed")
 }
 
 func TestPublicationTargetPathAndID(t *testing.T) {
@@ -5423,33 +5469,38 @@ func TestStarterSkipsThePortalScenariosAndFailsTheRunInsteadOfCreatingAPortalWhi
 	require.ErrorContains(t, starter.Failures(), "the starter does not create one", "a portal that is not found fails the run")
 	require.Contains(t, strings.Join(starter.Report(), "\n"), "api-portal could not be prepared, 1 scenario(s) skipped")
 
-	existing := &starterPlatform{portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
+	existing := &starterPlatform{portals: []map[string]any{{"id": "apip-test-acme", "status": "active"}}}
 	require.NoError(t, starterAgainst(t, existing).checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}),
-		"an active portal the organisation has is still used")
+		"an active portal named with the suite's prefix is used")
+
+	other := starterAgainst(t, &starterPlatform{portals: []map[string]any{{"id": "ops-portal", "name": "Operations portal", "status": "active"}}})
+	require.ErrorIs(t, other.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}), godog.ErrSkip,
+		"another console's portal is not used")
+	require.ErrorContains(t, other.Failures(), "named with the prefix")
 }
 
 func ensurePortalForTest(t *testing.T, platform *starterPlatform) (portalOutcome, error) {
-	return ensureDefaultPortal(context.Background(), platform.api(t), defaultPortalName+"-abcde234", slog.Default())
+	return ensureDefaultPortal(context.Background(), platform.api(t), defaultPortalName, slog.Default())
 }
 
 func TestEnsureDefaultPortalLeavesAnActivePortalAlone(t *testing.T) {
 	platform := &starterPlatform{portals: []map[string]any{
 		{"id": "broken", "status": "failed"},
-		{"id": "acme-portal", "status": "active"},
+		{"id": "apip-test-acme", "status": "active"},
 	}}
 	got, err := ensurePortalForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, portalOutcome{ID: "acme-portal"}, got)
+	require.Equal(t, portalOutcome{ID: "apip-test-acme"}, got)
 	require.Empty(t, platform.createdPortals, "an organisation with a portal gets no second one")
 }
 
 func TestEnsureDefaultPortalWaitsForAPortalThatIsBeingBuilt(t *testing.T) {
 	platform := &starterPlatform{noPortals: true, portalActiveAt: 3, portals: []map[string]any{
-		{"id": "building", "status": "pending"},
+		{"id": "apip-test-building", "status": "pending"},
 	}}
 	got, err := ensurePortalForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, portalOutcome{ID: "building"}, got, "a portal that is being built is waited for, not created again")
+	require.Equal(t, portalOutcome{ID: "apip-test-building"}, got, "a portal that is being built is waited for, not created again")
 	require.Empty(t, platform.createdPortals)
 	require.GreaterOrEqual(t, platform.portalPolls, 3)
 }
@@ -5459,10 +5510,10 @@ func TestEnsureDefaultPortalCreatesOneWhenTheOrganisationHasNone(t *testing.T) {
 	platform := &starterPlatform{noPortals: true, portalActiveAt: 2}
 	got, err := ensurePortalForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, portalOutcome{ID: "dap-abcde234", Created: true}, got)
+	require.Equal(t, portalOutcome{ID: defaultPortalName, Created: true}, got)
 	require.Len(t, platform.createdPortals, 1)
-	require.Equal(t, "dap-abcde234", platform.createdPortals[0]["name"])
-	require.Equal(t, "dap-abcde234", platform.createdPortals[0]["handle"])
+	require.Equal(t, defaultPortalName, platform.createdPortals[0]["name"])
+	require.Equal(t, defaultPortalName, platform.createdPortals[0]["handle"])
 	require.GreaterOrEqual(t, platform.portalPolls, 2, "the portal is waited for until it is active")
 }
 
@@ -5503,14 +5554,14 @@ func TestEnsureDefaultPortalWaitsForThePortalAConflictPointsAt(t *testing.T) {
 
 func TestStarterUsesThePortalTheOrganisationAlreadyHas(t *testing.T) {
 	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1,
-		portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
+		portals: []map[string]any{{"id": "apip-test-acme", "status": "active"}}}
 	starter := starterAgainst(t, platform)
 
 	require.NoError(t, starter.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}))
 
 	require.Empty(t, platform.createdPortals)
 	id, created := starter.Portal()
-	require.Equal(t, "acme-portal", id)
+	require.Equal(t, "apip-test-acme", id)
 	require.False(t, created)
 }
 
@@ -5528,12 +5579,12 @@ func TestFinalizerEmptiesThePortalsAndNeverDeletesThePortalTheStarterBuilt(t *te
 	stub := newLeftoverStub()
 	stub.lists["/managed-api-portals"] = []map[string]any{
 		{"id": "dap-abcde234", "name": "dap-abcde234", "handle": "dap-abcde234", "status": "active"},
-		{"id": "acme-portal", "name": "Acme portal", "handle": "acme-portal", "status": "active"},
+		{"id": "apip-test-acme", "name": "Acme portal", "handle": "apip-test-acme", "status": "active"},
 	}
 	stub.published = map[string]bool{
-		"/api-portals/dap-abcde234/apis/rest-api/syn-api-abcde234-1/publication": true,
-		"/api-portals/acme-portal/apis/rest-api/syn-api-abcde234-1/publication":  true,
-		"/api-portals/acme-portal/apis/rest-api/ops-api/publication":             true,
+		"/api-portals/dap-abcde234/apis/rest-api/syn-api-abcde234-1/publication":   true,
+		"/api-portals/apip-test-acme/apis/rest-api/syn-api-abcde234-1/publication": true,
+		"/api-portals/apip-test-acme/apis/rest-api/ops-api/publication":            true,
 	}
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
@@ -5544,14 +5595,14 @@ func TestFinalizerEmptiesThePortalsAndNeverDeletesThePortalTheStarterBuilt(t *te
 	removed, err := finalizer.Finalize(context.Background())
 	require.NoError(t, err)
 	require.Contains(t, removed, "portal-publications/dap-abcde234/rest-api/syn-api-abcde234-1")
-	require.Contains(t, removed, "portal-publications/acme-portal/rest-api/syn-api-abcde234-1", "the run's listing leaves a portal it did not build")
+	require.Contains(t, removed, "portal-publications/apip-test-acme/rest-api/syn-api-abcde234-1", "the run's listing leaves a portal it did not build")
 	for _, id := range removed {
 		require.NotContains(t, id, "ops-api", "a listing the run did not create stays")
 		require.NotEqual(t, "managed-api-portals/dap-abcde234", id, "the starter's portal is emptied, never deleted")
-		require.NotEqual(t, "managed-api-portals/acme-portal", id)
+		require.NotEqual(t, "managed-api-portals/apip-test-acme", id)
 	}
 	for _, id := range stub.deleted {
-		require.False(t, strings.HasPrefix(id, "managed-api-portals/dap-") || id == "managed-api-portals/acme-portal", id)
+		require.False(t, strings.HasPrefix(id, "managed-api-portals/dap-") || id == "managed-api-portals/apip-test-acme", id)
 	}
 }
 

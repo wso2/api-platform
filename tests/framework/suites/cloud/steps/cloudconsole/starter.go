@@ -72,12 +72,12 @@ const gatewayPollInterval = 10 * time.Second
 // gatewayStatusActive is the status of a gateway that is connected and serves traffic.
 const gatewayStatusActive = "ACTIVE"
 
-// defaultPortalName is the base of the name and handle of the managed API Portal the starter
-// creates when the organisation has none. The portal stays after the run: the finalizer empties it
-// of what the run published and never deletes it, so later runs reuse it instead of building
-// another. It is a valid portal handle on its own: lower case letters, digits and dashes, between
-// 3 and 40 characters.
-const defaultPortalName = "dap"
+// defaultPortalName is the name and handle of the managed API Portal the starter creates when the
+// organisation has none named with the suite's prefix. The portal stays after the run: the
+// finalizer empties it of what the run published and never deletes it, so later runs reuse it
+// instead of building another. It is a valid portal handle: lower case letters, digits and dashes,
+// between 3 and 40 characters.
+const defaultPortalName = testResourcePrefix + "portal"
 
 // starterCreatesPortal is false while the cloud intermittently fails to create a managed API
 // Portal. With no active portal the starter does not build one: the apip-portal scenarios are
@@ -189,7 +189,7 @@ func (s *Starter) gatewayDisplayName() string {
 
 // portalName is the name, and so the handle, of the managed API Portal this starter creates.
 func (s *Starter) portalName() string {
-	return defaultPortalName + "-" + s.suffix
+	return defaultPortalName
 }
 
 // Suffix is the name suffix of the gateway and portal this starter creates. The finalizer does not
@@ -752,7 +752,7 @@ func ensureDefaultPortal(ctx context.Context, platform organisationAPI, name str
 	var building []string
 	for _, item := range items {
 		id, _ := item["id"].(string)
-		if id == "" {
+		if id == "" || !ownedPortal(item) {
 			continue
 		}
 		switch status, _ := item["status"].(string); status {
@@ -769,7 +769,7 @@ func ensureDefaultPortal(ctx context.Context, platform organisationAPI, name str
 	}
 
 	if !starterCreatesPortal {
-		return portalOutcome{}, errors.New("the organisation has no active managed API Portal, and the starter does not create one")
+		return portalOutcome{}, fmt.Errorf("the organisation has no active managed API Portal named with the prefix %q (such as %q), and the starter does not create one", testResourcePrefix, defaultPortalName)
 	}
 	id, err := createDefaultPortal(ctx, platform, name)
 	if err != nil {

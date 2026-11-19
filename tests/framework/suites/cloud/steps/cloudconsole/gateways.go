@@ -263,8 +263,13 @@ func (s *Steps) requestManagedGatewayScoped(ctx context.Context, values map[stri
 			return fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
 		}
 	}
-	if err := recordSyntheticGateway(ctx, id, environment); err != nil {
-		return err
+	// Only a gateway that lasts for the runner is numbered for the scenarios that come after: one a
+	// scenario cleans up itself, such as one a refused request built after all, must not take the
+	// number a later scenario expects its own gateway to have.
+	if scope == cleanup.RunnerScope {
+		if err := recordSyntheticGateway(ctx, id, environment); err != nil {
+			return err
+		}
 	}
 	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
 		return err

@@ -72,7 +72,7 @@ run.
 | `second-environment` | the platform lists a non-production environment the suite may select, besides the default gateway's, that no suite run created | not built: skipped, and the run **fails** | `ID_APIP_GATEWAY_006` and `_007` |
 | `pipeline-project@<project>` | the project is bound to a deployment pipeline named with the prefix `apip-test-` that the platform lists, with at least one promotion path | not built: skipped, and the run **fails** | the scenarios that start with `I find the pipeline-bound APIP project` |
 | `pipeline-chain-2@<project>`, `pipeline-chain-3@<project>` | that pipeline holds a promotion chain of 2 (3) environments the suite may select, each with an active regular gateway | not built: skipped, and the run **fails** | the promotion scenarios of `apip-test-project-2` (the chain of 3 is `ID_APIP_PROMOTION_006`), `ID_APIP_DEPLOY_011` of `apip-test-project-1`, `ID_APIP_PROJECT_009` |
-| `api-portal` | the organisation holds an active managed API Portal that no scenario created | not built while `starterCreatesPortal` is `false` (the cloud intermittently fails to build one): skipped and the run **fails**, so provide an active portal for these scenarios. Built and waited for until it is `active` once the constant is `true` | the scenarios that start with `I find an active managed API Portal` (the portal feature) |
+| `api-portal` | the organisation holds an active managed API Portal whose name starts with `apip-test-` (such as `apip-test-portal`) that no scenario created | not built while `starterCreatesPortal` is `false` (the cloud intermittently fails to build one): skipped and the run **fails**, so provide an active portal named with the prefix (such as `apip-test-portal`) for these scenarios. Built as `apip-test-portal` and waited for until it is `active` once the constant is `true` | the scenarios that start with `I find an active managed API Portal` (the portal feature) |
 
 The starter never creates an environment or a deployment pipeline, and never changes a project's
 pipeline: the WSO2 Cloud console manages them. A scenario never creates them either. The starter
@@ -102,7 +102,7 @@ chains) are not subject to this.
 Any other environment, pipeline or project is passed over, even when it has everything a scenario
 needs (a gateway in the environment, a promotion path in the pipeline): the precondition is not met
 and the scenarios that need it are skipped and the run fails. A promotion chain only runs through
-environments the suite may select. Gateways and portals are not selected by name: the starter finds or builds them
+environments the suite may select. Gateways are not selected by name: the starter finds or builds them
 under any name.
 
 ## What happens when a precondition is not met
