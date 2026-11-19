@@ -22,9 +22,9 @@ import { FormattedMessage } from 'react-intl';
 import { useBrandLogo } from './BrandLogoProvider';
 
 /**
- * The product mark with its name set in Oxygen typography: "API" bold,
- * "Management" regular. Shared by the app header and the login page so both
- * paint the same lockup, on-prem and cloud alike.
+ * The product mark with its name set in Oxygen typography, all in regular
+ * weight. Shared by the app header and the login page so both paint the same
+ * lockup, on-prem and cloud alike.
  */
 export function BrandLockup({ height }: { height: number }) {
   const brandLogo = useBrandLogo();
@@ -34,14 +34,13 @@ export function BrandLockup({ height }: { height: number }) {
       <ColorSchemeImage alt="" height={height} src={brandLogo} width="auto" />
       <Typography
         component="span"
-        sx={{ fontSize: height * 0.75, lineHeight: 1, whiteSpace: 'nowrap' }}
+        sx={{ fontSize: height * 0.75, fontWeight: 400, lineHeight: 1, whiteSpace: 'nowrap' }}
         variant="h6"
       >
         <FormattedMessage
-          defaultMessage="<bold>API</bold> Management"
-          description="Product name in the brand lockup. API is bold, Management regular — keep the bold tag around the equivalent of API."
+          defaultMessage="Choreo API Management"
+          description="Product name in the brand lockup. Choreo is a product name — leave it untranslated."
           id="branding.BrandLockup.name"
-          values={{ bold: (chunks) => <b>{chunks}</b> }}
         />
       </Typography>
     </Stack>

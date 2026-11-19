@@ -4426,6 +4426,25 @@
     "defaultMessage": "tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
     "description": "Token-count limit unit. {amount} and {timeUnit} describe the window."
   },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.graphql": {
+    "defaultMessage": "GraphQL APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.grpc": {
+    "defaultMessage": "gRPC APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.rest": {
+    "defaultMessage": "REST APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.supports": {
+    "defaultMessage": "Supports",
+    "description": "Lead-in to a rotating list of the API types the product supports."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.websocket": {
+    "defaultMessage": "WebSocket APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.websub": {
+    "defaultMessage": "WebSub APIs"
+  },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.back": {
     "defaultMessage": "Back to projects"
   },
@@ -4481,6 +4500,59 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.title": {
     "defaultMessage": "Create a project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.createApi": {
+    "defaultMessage": "Create API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayConnect": {
+    "defaultMessage": "Connect a gateway"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayCount": {
+    "defaultMessage": "{count, plural, one {# gateway} other {# gateways}}",
+    "description": "Chip showing how many gateways the organization has."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayDescription": {
+    "defaultMessage": "Deploy to a managed gateway or a self-hosted one in your own cluster."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayManage": {
+    "defaultMessage": "Manage gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayTitle": {
+    "defaultMessage": "Run on any gateway"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.greeting": {
+    "defaultMessage": "Hello, {name}",
+    "description": "{name} is the name the user is greeted by. Never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroDescription": {
+    "defaultMessage": "Turn any service into a managed API with OAuth2, rate limits, and policies. Import a definition or point to a backend URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroTitle": {
+    "defaultMessage": "Expose and secure APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.intro": {
+    "defaultMessage": "You're in the <strong>{projectName}</strong> project. It's empty for now, so start creating.",
+    "description": "{projectName} is the name of the project the user is in. Never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalCount": {
+    "defaultMessage": "{count, plural, one {# portal} other {# portals}}",
+    "description": "Chip showing how many developer portals exist."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalCreate": {
+    "defaultMessage": "Create a portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalDescription": {
+    "defaultMessage": "List APIs in a developer portal so consumers can subscribe and get keys."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalManage": {
+    "defaultMessage": "Manage portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalTitle": {
+    "defaultMessage": "Publish to developers"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.startHere": {
+    "defaultMessage": "Start here",
+    "description": "Small label above the main call to action on an empty project."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
@@ -6156,8 +6228,8 @@
     "defaultMessage": "Runtime logs for {apiHandler}."
   },
   "branding.BrandLockup.name": {
-    "defaultMessage": "<bold>API</bold> Management",
-    "description": "Product name in the brand lockup. API is bold, Management regular — keep the bold tag around the equivalent of API."
+    "defaultMessage": "Choreo API Management",
+    "description": "Product name in the brand lockup. Choreo is a product name — leave it untranslated."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."

@@ -17,11 +17,13 @@
  */
 
 import { Button, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
+import { useProjects } from '@/api/resources/projects';
+import { latestProjectId, readStoredScope } from '@/navigation/landing';
 import { AppPageContent } from '@/components/AppPageContent';
 import { AppPage } from '@/components/AppPage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -138,6 +140,9 @@ const notFoundMessages = defineMessages({
 /** How long to keep waiting for a first organization to appear, and how often to look. */
 const PROVISIONING_ATTEMPTS = 20;
 const PROVISIONING_INTERVAL_MS = 3000;
+// Projects read to pick where to land: enough that "the latest" and "still there"
+// are answered from the whole list for any ordinary organization.
+const LANDING_PROJECT_LIMIT = 100;
 
 export function OrganizationRedirectPage() {
   return (
@@ -157,7 +162,9 @@ function OrganizationRedirect() {
   // Where the session switches organizations, its own organization needs no
   // switch, so it is the one place the user can always land.
   const sessionLanding =
-    canSwitchOrganization && sessionHandle && !rejected.includes(sessionHandle) ? sessionHandle : undefined;
+    canSwitchOrganization && sessionHandle && !rejected.includes(sessionHandle)
+      ? sessionHandle
+      : undefined;
   const organizationsQuery = useOrganizations();
   const listed = organizationsQuery.data?.list;
   const organizations = listed?.filter((item) => !rejected.includes(item.id));
@@ -169,6 +176,54 @@ function OrganizationRedirect() {
     Boolean(sessionLanding) || organizationsQuery.isPending || Boolean(organization) || allRejected;
   const [attempt, setAttempt] = useState(0);
   const { refetch } = organizationsQuery;
+
+  // Users land on a project's home: the one the header last remembered when it
+  // is still there, else the organization's most recently changed project.
+  const stored = useMemo(readStoredScope, []);
+  const landingOrg = sessionLanding ?? organization?.id;
+  const projectsQuery = useProjects({ limit: LANDING_PROJECT_LIMIT }, { orgId: landingOrg });
+  // A remembered organization other than the one in hand is only honoured where
+  // the session can move between organizations, and only if it is one of theirs.
+  const storedElsewhere =
+    stored !== null &&
+    canSwitchOrganization &&
+    stored.organization !== landingOrg &&
+    Boolean(organizations?.some((item) => item.id === stored.organization));
+  const waitingForList =
+    stored !== null &&
+    canSwitchOrganization &&
+    stored.organization !== landingOrg &&
+    organizationsQuery.isPending;
+
+  const landOn = (orgHandle: string, state?: OrganizationPickerState) => {
+    if (waitingForList || (projectsQuery.isPending && !projectsQuery.error)) {
+      return <LoadingState label={intl.formatMessage(organizationRedirectMessages.loading)} />;
+    }
+    if (storedElsewhere && stored) {
+      return (
+        <Navigate
+          to={routes.projectHome(stored.organization, stored.project)}
+          replace
+          state={state}
+        />
+      );
+    }
+    const projects = projectsQuery.data?.list ?? [];
+    const remembered =
+      stored?.organization === orgHandle && projects.some((item) => item.id === stored.project)
+        ? stored.project
+        : undefined;
+    const projectId = remembered ?? latestProjectId(projects);
+    return (
+      <Navigate
+        to={
+          projectId ? routes.projectHome(orgHandle, projectId) : routes.organizationHome(orgHandle)
+        }
+        replace
+        state={state}
+      />
+    );
+  };
 
   // On a first sign-in the organization is still being created — by the provisioning
   // flow, or by this console's own registration — and an empty list at that moment
@@ -184,7 +239,7 @@ function OrganizationRedirect() {
   }, [attempt, refetch, settled]);
 
   if (sessionLanding) {
-    return <Navigate to={routes.organizationHome(sessionLanding)} replace />;
+    return landOn(sessionLanding);
   }
 
   if (organizationsQuery.isPending) {
@@ -220,7 +275,7 @@ function OrganizationRedirect() {
   const pickerState: OrganizationPickerState | undefined = rejected.length
     ? { rejectedOrganizations: rejected }
     : undefined;
-  return <Navigate to={routes.organizationHome(organization.id)} replace state={pickerState} />;
+  return landOn(organization.id, pickerState);
 }
 
 export function UnauthorizedPage() {

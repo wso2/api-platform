@@ -18,7 +18,7 @@
 
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -596,5 +596,92 @@ describe('ApiList — when the list fails to load', () => {
 
     expect(await screen.findByText('type statistics')).toBeInTheDocument();
     expect(screen.queryByText('Orders API')).not.toBeInTheDocument();
+  });
+});
+
+describe('ApiList — first-run replacement', () => {
+  function renderWithFirstRun(
+    props: Partial<Parameters<typeof ApiList>[0]> = {},
+  ) {
+    return renderWithProviders(
+      <ApiScopeProvider orgId={ORG} projectId={PROJECT}>
+        <Routes>
+          <Route
+            element={<ApiList {...props} />}
+            path="/organizations/:orgHandle/projects/:projectHandler/apis"
+          />
+        </Routes>
+      </ApiScopeProvider>,
+      {
+        route: `/organizations/${ORG}/projects/${PROJECT}/apis`,
+        scope: makeConsoleScope(),
+      },
+    );
+  }
+
+  it('shows the replacement, not the built-in prompt, for an empty project', async () => {
+    server.use(collection('/rest-apis', []));
+    renderWithFirstRun({ renderFirstRun: () => <div>welcome</div> });
+
+    expect(await screen.findByText('welcome')).toBeInTheDocument();
+    expect(screen.queryByText('Create your first API')).not.toBeInTheDocument();
+  });
+
+  it('hands the replacement the action that opens API creation', async () => {
+    server.use(collection('/rest-apis', []));
+    const { user } = renderWithProviders(
+      <ApiScopeProvider orgId={ORG} projectId={PROJECT}>
+        <Routes>
+          <Route
+            element={
+              <ApiList
+                renderFirstRun={(createApi) => <button onClick={createApi}>start</button>}
+              />
+            }
+            path="/organizations/:orgHandle/projects/:projectHandler/apis"
+          />
+          <Route element={<div>creation wizard</div>} path={routes.newApi()} />
+        </Routes>
+      </ApiScopeProvider>,
+      { route: `/organizations/${ORG}/projects/${PROJECT}/apis`, scope: makeConsoleScope() },
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'start' }));
+
+    expect(await screen.findByText('creation wizard')).toBeInTheDocument();
+  });
+
+  it('does not use the replacement for a project that has APIs', async () => {
+    server.use(collection('/rest-apis', apiFixtures));
+    renderWithFirstRun({ renderFirstRun: () => <div>welcome</div> });
+
+    expect(await screen.findByText('Orders API')).toBeInTheDocument();
+    expect(screen.queryByText('welcome')).not.toBeInTheDocument();
+  });
+
+  it('reports whether the replacement is showing, and not while still loading', async () => {
+    server.use(collection('/rest-apis', []));
+    const onFirstRunChange = vi.fn();
+    renderWithFirstRun({ onFirstRunChange, renderFirstRun: () => <div>welcome</div> });
+
+    await screen.findByText('welcome');
+
+    // Loading is not empty: the first report must not claim the replacement.
+    expect(onFirstRunChange.mock.calls[0]).toEqual([false]);
+    expect(onFirstRunChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('reports that it is gone when it unmounts', async () => {
+    server.use(collection('/rest-apis', []));
+    const onFirstRunChange = vi.fn();
+    const { unmount } = renderWithFirstRun({
+      onFirstRunChange,
+      renderFirstRun: () => <div>welcome</div>,
+    });
+    await screen.findByText('welcome');
+
+    unmount();
+
+    expect(onFirstRunChange).toHaveBeenLastCalledWith(false);
   });
 });

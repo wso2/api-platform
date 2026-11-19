@@ -16,9 +16,16 @@
  * under the License.
  */
 
-import { Chip, GlobalStyles, Header, HeaderBreadcrumbs } from '@wso2/oxygen-ui';
+import {
+  Chip,
+  GlobalStyles,
+  Header,
+  HeaderBreadcrumbs,
+  writeHeaderBreadcrumbsState,
+} from '@wso2/oxygen-ui';
 import type { HeaderBreadcrumbsItem, HeaderBreadcrumbsLevel } from '@wso2/oxygen-ui';
 import { Box, Building2, BoxesLinked } from '@wso2/oxygen-ui-icons-react';
+import { useEffect } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -303,6 +310,17 @@ export function HeaderScopeSwitchers() {
             },
           ]
         : [];
+
+  // Remember where the user is, in the place every app using Oxygen's header
+  // reads it (`oxygen-ui:header-breadcrumbs`), so the next visit, here or in
+  // another app, starts from the same organization and project. Only while a
+  // project is in scope: browsing organization-level pages keeps the last one.
+  const { orgHandle: scopedOrg, projectHandler: scopedProject } = params;
+  useEffect(() => {
+    if (scopedOrg && scopedProject) {
+      writeHeaderBreadcrumbsState({ organization: scopedOrg, project: scopedProject });
+    }
+  }, [scopedOrg, scopedProject]);
 
   if (!params.orgHandle) return null;
 
