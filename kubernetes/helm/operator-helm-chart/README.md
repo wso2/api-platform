@@ -294,7 +294,8 @@ EOF
 | `source` | How the gateway-controller receives the password. `env` (default) injects it as an environment variable from the Secret; `file` mounts the Secret key read-only and the controller reads it from the file, so the password never enters the pod environment. |
 
 - The operator passes only the Secret reference to the gateway chart (`gateway.config.controller.auth.basic.users[].passwordSecretRef`). The password never appears in Helm values, the gateway ConfigMap, or the Helm release.
-- `adminCredentials` replaces any basic-auth users in the `configRef` values. IDP settings there still apply.
+- **Several users:** the `adminCredentials` user is listed first. Any other basic-auth users in the `configRef` values are kept after it, each with its own `password` or `passwordSecretRef`. A `configRef` user with the same username is replaced, and the operator's default `admin`/`admin` user is not kept. IDP settings in the `configRef` still apply.
+- **Without `adminCredentials`:** the operator signs in as the first `configRef` user, so list a user with the `admin` role first. Admin-only resources such as LLM providers and LLM provider templates fail with 403 for a `developer` user.
 - The operator fails closed: if the Secret or key is missing or empty, the gateway is not deployed and no request is sent to it with `admin`/`admin`. Creating or fixing the Secret triggers a redeploy.
 - Changing the Secret rolls the gateway-controller pod, which reads the password only at startup.
 - Requires a gateway chart version that supports `passwordSecretRef` on basic-auth users. Gateways without `adminCredentials` behave as before.

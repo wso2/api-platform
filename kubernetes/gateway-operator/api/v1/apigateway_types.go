@@ -133,10 +133,12 @@ type GatewaySpec struct {
 
 	// AdminCredentials sets the gateway-controller's basic-auth admin user from a
 	// Kubernetes Secret. The operator configures the gateway with this user and uses
-	// the same credentials to call the gateway's management API. When set, it
-	// replaces any basic-auth users in the ConfigRef values, and the password never
-	// enters the Helm values or the gateway ConfigMap. When unset, the admin
-	// credentials come from the ConfigRef values, as before.
+	// the same credentials to call the gateway's management API; the password never
+	// enters the Helm values or the gateway ConfigMap. The admin user is listed first,
+	// followed by the other basic-auth users in the ConfigRef values (a ConfigRef user
+	// with the same username is replaced). The operator's default admin/admin user is
+	// not kept. When unset, the admin credentials come from the ConfigRef values, as
+	// before.
 	// +optional
 	AdminCredentials *GatewayAdminCredentials `json:"adminCredentials,omitempty"`
 }

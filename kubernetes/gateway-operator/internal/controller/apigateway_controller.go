@@ -856,7 +856,8 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 	}
 
 	// spec.adminCredentials is merged last so a ConfigMap cannot override the admin
-	// user. Only the Secret reference reaches Helm; the password stays in the Secret.
+	// user; the configRef's other basic-auth users are kept after it. Only the Secret
+	// reference reaches Helm; the password stays in the Secret.
 	if owner.Spec.AdminCredentials != nil {
 		// Fail before installing when the Secret is unusable: the operator could not
 		// authenticate to the gateway it is about to deploy.
@@ -867,7 +868,10 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		if err != nil {
 			return err
 		}
-		adminOverlay, err := buildAdminCredentialsOverlay(owner, secretVersion)
+		// valuesYAML holds only the CR overlay and the configRef ConfigMap at this point
+		// (the operator's base values file is merged later by the Helm client), so the
+		// users kept next to the admin user are exactly those the configRef lists.
+		adminOverlay, err := buildAdminCredentialsOverlay(owner, secretVersion, valuesYAML)
 		if err != nil {
 			return err
 		}

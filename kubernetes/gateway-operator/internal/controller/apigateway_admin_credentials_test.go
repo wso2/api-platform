@@ -77,7 +77,7 @@ func TestBuildAdminCredentialsOverlay_Sources(t *testing.T) {
 		{"", "env"}, // unset defaults to env, like the CRD default
 	} {
 		t.Run("source="+tc.source, func(t *testing.T) {
-			out, err := buildAdminCredentialsOverlay(adminCredsGateway(tc.source), "v1")
+			out, err := buildAdminCredentialsOverlay(adminCredsGateway(tc.source), "v1", "")
 			require.NoError(t, err)
 
 			users := basicUsers(t, out)
@@ -96,19 +96,22 @@ func TestBuildAdminCredentialsOverlay_Sources(t *testing.T) {
 }
 
 func TestBuildAdminCredentialsOverlay_Unset(t *testing.T) {
-	out, err := buildAdminCredentialsOverlay(&apiv1.APIGateway{}, "")
+	out, err := buildAdminCredentialsOverlay(&apiv1.APIGateway{}, "", "")
 	require.NoError(t, err)
 	assert.Empty(t, out)
 }
 
 func TestBuildAdminCredentialsOverlay_InvalidSource(t *testing.T) {
-	_, err := buildAdminCredentialsOverlay(adminCredsGateway("vault"), "v1")
+	_, err := buildAdminCredentialsOverlay(adminCredsGateway("vault"), "v1", "")
 	require.Error(t, err)
 }
 
 // The overlay is merged after the ConfigMap values, so it replaces their basic-auth
 // users (and plaintext password) while keeping unrelated settings and annotations.
-func TestAdminCredentialsOverlayWinsOverConfigMap(t *testing.T) {
+// The overlay is merged after the ConfigMap values. It puts the adminCredentials user
+// first and keeps the configRef's other basic-auth users after it, unchanged, while
+// keeping unrelated settings and annotations.
+func TestAdminCredentialsOverlayKeepsConfigRefUsers(t *testing.T) {
 	configMapValues := `
 gateway:
   config:
@@ -117,9 +120,15 @@ gateway:
         basic:
           enabled: true
           users:
-            - username: admin
-              password: admin
+            - username: ops-admin
+              passwordSecretRef: {name: multi-users, key: ops, source: file}
               roles: ["admin"]
+            - username: dev-user
+              passwordSecretRef: {name: multi-users, key: dev}
+              roles: ["developer"]
+            - username: viewer
+              password: viewer-plain
+              roles: ["developer"]
         idp:
           enabled: false
   controller:
@@ -127,17 +136,83 @@ gateway:
       podAnnotations:
         team: platform
 `
-	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "v1")
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "v1", configMapValues)
 	require.NoError(t, err)
 	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
 	require.NoError(t, err)
 
 	users := basicUsers(t, merged)
-	require.Len(t, users, 1)
-	assert.Equal(t, "gw1-admin", users[0].(map[string]interface{})["username"])
-	assert.NotContains(t, merged, "password: admin")
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		names = append(names, u.(map[string]interface{})["username"].(string))
+	}
+	assert.Equal(t, []string{"gw1-admin", "ops-admin", "dev-user", "viewer"}, names, "admin user first, configRef users kept in order")
+
+	ops := users[1].(map[string]interface{})
+	assert.Equal(t, map[string]interface{}{"name": "multi-users", "key": "ops", "source": "file"}, ops["passwordSecretRef"])
+	assert.Equal(t, []interface{}{"admin"}, ops["roles"])
+	assert.Equal(t, "viewer-plain", users[3].(map[string]interface{})["password"])
 	assert.Contains(t, merged, "team: platform")
 	assert.Contains(t, merged, "idp:")
+}
+
+// A configRef user with the admin's username is replaced by the adminCredentials user,
+// so a plaintext password for that name never reaches the gateway.
+func TestAdminCredentialsOverlayReplacesSameUsername(t *testing.T) {
+	configMapValues := `
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: gw1-admin
+              password: old-plaintext
+              roles: ["admin"]
+            - username: dev-user
+              password: dev-plain
+              roles: ["developer"]
+`
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceEnv), "v1", configMapValues)
+	require.NoError(t, err)
+	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
+	require.NoError(t, err)
+
+	users := basicUsers(t, merged)
+	require.Len(t, users, 2)
+	admin := users[0].(map[string]interface{})
+	assert.Equal(t, "gw1-admin", admin["username"])
+	assert.NotContains(t, admin, "password")
+	assert.Equal(t, "dev-user", users[1].(map[string]interface{})["username"])
+	assert.NotContains(t, merged, "old-plaintext")
+}
+
+// Without configRef users (no configRef, or none listed) only the admin user is set,
+// which also replaces the operator base values file's default admin/admin user.
+func TestAdminCredentialsOverlayWithoutConfigRefUsers(t *testing.T) {
+	for name, values := range map[string]string{
+		"no configRef":     "",
+		"no users listed":  "gateway:\n  config:\n    controller:\n      auth:\n        idp:\n          enabled: false\n",
+		"unrelated values": "commonLabels:\n  team: platform\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "v1", values)
+			require.NoError(t, err)
+			baseFile := "gateway:\n  config:\n    controller:\n      auth:\n        basic:\n          enabled: true\n          users:\n            - {username: admin, password: admin, roles: [admin]}\n"
+			merged, err := helm.MergeValuesYAML(baseFile, overlay)
+			require.NoError(t, err)
+			users := basicUsers(t, merged)
+			require.Len(t, users, 1)
+			assert.Equal(t, "gw1-admin", users[0].(map[string]interface{})["username"])
+			assert.NotContains(t, merged, "password: admin")
+		})
+	}
+}
+
+func TestAdminCredentialsOverlayRejectsInvalidConfigRefValues(t *testing.T) {
+	_, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "v1", "gateway: [unclosed")
+	require.Error(t, err)
 }
 
 func TestAdminCredentialsSecretVersion(t *testing.T) {

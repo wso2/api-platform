@@ -78,9 +78,13 @@ func gatewayConfigHash(configMapValues, adminSecretVersion string) string {
 // admin user from spec.adminCredentials, or "" when it is unset. It carries only the
 // Secret reference and delivery mode; the gateway chart turns them into an env var or
 // a read-only file mount. The password itself is never written into Helm values.
-// The caller merges it after the ConfigMap values, so it replaces any basic-auth users
-// configured there.
-func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, secretVersion string) (string, error) {
+//
+// The caller merges it after the ConfigMap values, and Helm values replace lists, so the
+// overlay carries the complete users list: the admin user first, then every basic-auth
+// user from configRefValues (the APIGateway's own configRef values) except one with the
+// admin's username. Users from the operator's base values file are not carried over, so
+// its default admin/admin user never comes back.
+func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, secretVersion, configRefValues string) (string, error) {
 	creds := gw.Spec.AdminCredentials
 	if creds == nil {
 		return "", nil
@@ -101,6 +105,31 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, secretVersion string) (s
 			apiv1.AdminCredentialsSourceEnv, apiv1.AdminCredentialsSourceFile, source)
 	}
 
+	users := []interface{}{
+		map[string]interface{}{
+			"username": username,
+			"passwordSecretRef": map[string]interface{}{
+				"name":   creds.PasswordSecretRef.Name,
+				"key":    creds.PasswordSecretRef.Key,
+				"source": source,
+			},
+			// The operator sends this password to the management
+			// API, so it must be stored in plain text, not hashed.
+			"password_hashed": false,
+			"roles":           []interface{}{"admin"},
+		},
+	}
+	extra, err := configRefBasicAuthUsers(configRefValues)
+	if err != nil {
+		return "", err
+	}
+	for _, u := range extra {
+		if m, ok := u.(map[string]interface{}); ok && fmt.Sprint(m["username"]) == username {
+			continue // spec.adminCredentials owns this username
+		}
+		users = append(users, u)
+	}
+
 	overlay := map[string]interface{}{
 		"gateway": map[string]interface{}{
 			"config": map[string]interface{}{
@@ -108,20 +137,7 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, secretVersion string) (s
 					"auth": map[string]interface{}{
 						"basic": map[string]interface{}{
 							"enabled": true,
-							"users": []interface{}{
-								map[string]interface{}{
-									"username": username,
-									"passwordSecretRef": map[string]interface{}{
-										"name":   creds.PasswordSecretRef.Name,
-										"key":    creds.PasswordSecretRef.Key,
-										"source": source,
-									},
-									// The operator sends this password to the management
-									// API, so it must be stored in plain text, not hashed.
-									"password_hashed": false,
-									"roles":           []interface{}{"admin"},
-								},
-							},
+							"users":   users,
 						},
 					},
 				},
@@ -166,4 +182,26 @@ func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj cl
 		})
 	}
 	return requests
+}
+
+// configRefBasicAuthUsers returns gateway.config.controller.auth.basic.users from Helm
+// values YAML, each entry unchanged, or nil when the values set none.
+func configRefBasicAuthUsers(valuesYAML string) ([]interface{}, error) {
+	if valuesYAML == "" {
+		return nil, nil
+	}
+	var values map[string]interface{}
+	if err := yaml.Unmarshal([]byte(valuesYAML), &values); err != nil {
+		return nil, fmt.Errorf("parse configRef values for basic-auth users: %w", err)
+	}
+	node := interface{}(values)
+	for _, key := range []string{"gateway", "config", "controller", "auth", "basic", "users"} {
+		m, ok := node.(map[string]interface{})
+		if !ok {
+			return nil, nil
+		}
+		node = m[key]
+	}
+	users, _ := node.([]interface{})
+	return users, nil
 }
