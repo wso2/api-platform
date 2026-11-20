@@ -688,14 +688,17 @@ func TestWaitingForAnotherFetchStopsAtTheTimeout(t *testing.T) {
 	}
 }
 
-// The error text keeps the SDK's error up to the first token field and withholds everything from it
-// on, however the body around the token is cut off or escaped. A JWT before it is redacted too, and
-// text without a token field is kept as it is.
+// The error text keeps the SDK's error up to the response body MSAL quotes, or up to the first token
+// field, and withholds everything from there on, however the body around the token is cut off or
+// escaped. A JWT before it is redacted too, and text without either is kept as it is.
 func TestErrorWithholdsEverythingFromATokenFieldOn(t *testing.T) {
 	const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJhcGk6Ly94In0.c2lnbmF0dXJl"
 	tests := []struct {
 		name, text, keep string
 	}{
+		{"the body MSAL quotes for a token request", "json decode error: bad\nraw message was: " + `{"\u0061ccess_token":"secret-1"}`, "json decode error: bad\nraw message was: "},
+		{"the body MSAL quotes for another request", "json decode error: bad\njson message bytes were: " + `{"token":"secret-1"}`, "json decode error: bad\njson message bytes were: "},
+		{"an upper-case field name", `body: {"ACCESS_TOKEN":"secret-1"}`, `body: {`},
 		{"a complete field", `decode error; body: {"access_token":"secret-1","expires_in":"x"}`, `decode error; body: {`},
 		{"a field cut off inside its value", `unexpected end of JSON input; body: {"token_type":"Bearer","access_token":"secret-1`, `body: {"token_type":"Bearer",`},
 		{"a body with escaped quotes", `body: "{\"token_type\":\"Bearer\",\"access_token\":\"secret-1\"}"`, `body: "{\"token_type\":\"Bearer\",`},
@@ -726,23 +729,39 @@ func TestErrorWithholdsEverythingFromATokenFieldOn(t *testing.T) {
 }
 
 // A token response that can't be decoded reaches the error text with its tokens withheld, from a
-// real failed fetch rather than a hand-made error.
+// real failed fetch rather than a hand-made error. That holds for a token that isn't a JWT under a
+// field name the SDK decodes as access_token but that isn't spelled that way.
 func TestAnUndecodableResponseDoesNotLeakItsTokens(t *testing.T) {
-	setWorkloadIdentityEnv(t, "federated-token")
 	const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJodHRwczovL2FpLmF6dXJlLmNvbSJ9.c2lnbmF0dXJl"
-	useFakeAzure(t, answer(http.StatusOK, map[string]any{
-		"token_type":   "Bearer",
-		"access_token": "access-token-secret",
-		"id_token":     jwt,
-		"expires_in":   map[string]any{"not": "a number"},
-	}))
+	tests := []struct {
+		name string
+		body any
+	}{
+		{"fields named as Entra ID names them", map[string]any{
+			"token_type":   "Bearer",
+			"access_token": "access-token-secret",
+			"id_token":     jwt,
+			"expires_in":   map[string]any{"not": "a number"},
+		}},
+		{"an upper-case field name", rawBody(`{"token_type":"Bearer","ACCESS_TOKEN":"access-token-secret","expires_in":{}}`)},
+		{"an escaped field name", rawBody(`{"token_type":"Bearer","\u0061ccess_token":"access-token-secret","expires_in":{}}`)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setWorkloadIdentityEnv(t, "federated-token")
+			useFakeAzure(t, answer(http.StatusOK, tt.body))
 
-	terr := mustFail(t, mustGet(t, Identity{Type: WorkloadIdentity}), "https://ai.azure.com/.default")
-	text := terr.Error()
-	for _, secret := range []string{"access-token-secret", jwt} {
-		if strings.Contains(text, secret) || strings.Contains(terr.Reason, secret) {
-			t.Errorf("the error has %q:\nreason: %s\nerror: %s", secret, terr.Reason, text)
-		}
+			terr := mustFail(t, mustGet(t, Identity{Type: WorkloadIdentity}), "https://ai.azure.com/.default")
+			text := terr.Error()
+			for _, secret := range []string{"access-token-secret", jwt} {
+				if strings.Contains(text, secret) || strings.Contains(terr.Reason, secret) {
+					t.Errorf("the error has %q:\nreason: %s\nerror: %s", secret, terr.Reason, text)
+				}
+			}
+			if !strings.Contains(text, "[REDACTED]") {
+				t.Errorf("Error() = %q, want it to say what it withheld", text)
+			}
+		})
 	}
 }
 

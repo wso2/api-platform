@@ -45,11 +45,17 @@ var (
 	// oauthErrorCodePattern matches an OAuth error code such as invalid_client.
 	oauthErrorCodePattern = regexp.MustCompile(`^[a-z_]{1,64}$`)
 
-	// tokenFieldPattern and jwtPattern find tokens in the SDK's error text: MSAL quotes a response
-	// body it couldn't decode, and that body may carry the token it was meant to deliver, cut off
-	// or with its quotes escaped. tokenFieldPattern finds a token field's name however many times
-	// its quotes are escaped.
-	tokenFieldPattern = regexp.MustCompile(`\\*"(?:access_token|refresh_token|id_token)\\*"`)
+	// responseBodyPattern finds where MSAL quotes a response body it couldn't decode: "raw message
+	// was:" for a token request and "json message bytes were:" for another. That body may carry the
+	// token it was meant to deliver, under any spelling the decoder accepts as the token field's
+	// name: escaped, or in another case. So everything from there on is withheld, however the body
+	// is encoded.
+	responseBodyPattern = regexp.MustCompile(`(?:raw message was|json message bytes were):`)
+
+	// tokenFieldPattern and jwtPattern find tokens in the rest of the SDK's error text, should it
+	// quote a body some other way. tokenFieldPattern finds a token field's name in any case, however
+	// many times its quotes are escaped.
+	tokenFieldPattern = regexp.MustCompile(`(?i)\\*"(?:access_token|refresh_token|id_token)\\*"`)
 	jwtPattern        = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*`)
 
 	// errNoToken is a token response that succeeded without a token, which MSAL's managed identity
@@ -163,9 +169,9 @@ type TokenError struct {
 	cause error // the SDK's error, which only Error gives, with tokens withheld
 }
 
-// Error is Reason followed by the SDK's error with everything from its first token field on
-// withheld and any JWT before it redacted. It is for logs only: the SDK's error can name the
-// tenant, the application and the resource.
+// Error is Reason followed by the SDK's error with any response body it quotes withheld, everything
+// from its first token field on withheld, and any JWT before them redacted. It is for logs only: the
+// SDK's error can name the tenant, the application and the resource.
 func (e *TokenError) Error() string {
 	if e.cause == nil {
 		return e.Reason
@@ -177,11 +183,15 @@ func (e *TokenError) Error() string {
 // the TokenError itself, never what Unwrap returns.
 func (e *TokenError) Unwrap() error { return e.cause }
 
-// loggable is the SDK's error text with everything after the first token field's name withheld,
-// and any JWT before it replaced by [REDACTED]. Withholding the rest, rather than the field's
-// value, holds for a body cut off inside the token, which has no closing quote to end the value at.
+// loggable is the SDK's error text with the response body MSAL quotes withheld, everything after
+// the first token field's name withheld, and any JWT before them replaced by [REDACTED].
+// Withholding the rest, rather than the field's value, holds for a body cut off inside the token,
+// which has no closing quote to end the value at.
 func (e *TokenError) loggable() string {
 	text := e.cause.Error()
+	if loc := responseBodyPattern.FindStringIndex(text); loc != nil {
+		text = text[:loc[1]] + " [REDACTED] (the response body is withheld)"
+	}
 	if loc := tokenFieldPattern.FindStringIndex(text); loc != nil {
 		text = text[:loc[1]] + ": [REDACTED] (the rest of the error is withheld)"
 	}
