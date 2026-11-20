@@ -36,6 +36,9 @@ policies:
     - name: cors
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/cors@v1
+    - name: cost-based-model-routing
+      version: v0.10.0
+      gomodule: github.com/wso2/gateway-controllers/policies/cost-based-model-routing@v0
     - name: dynamic-endpoint
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
@@ -48,6 +51,9 @@ policies:
     - name: host-rewrite
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
+    - name: intelligent-model-routing
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/intelligent-model-routing@v0
     - name: interceptor-service
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/interceptor-service@v1
@@ -90,6 +96,9 @@ policies:
     - name: mcp-spec-validation
       version: v0.10.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-spec-validation@v0
+    - name: mcp-tool-schema-validator
+      version: v0.10.0
+      gomodule: github.com/wso2/gateway-controllers/policies/mcp-tool-schema-validator@v0
     - name: model-round-robin
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v1
@@ -156,6 +165,9 @@ policies:
     - name: semantic-cache
       version: v1.3.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-cache@v1
+    - name: semantic-model-routing
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/semantic-model-routing@v0
     - name: semantic-prompt-guard
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v1
@@ -171,6 +183,9 @@ policies:
     - name: subscription-validation
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
+    - name: time-based-model-routing
+      version: v0.10.0
+      gomodule: github.com/wso2/gateway-controllers/policies/time-based-model-routing@v0
     - name: token-based-ratelimit
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
