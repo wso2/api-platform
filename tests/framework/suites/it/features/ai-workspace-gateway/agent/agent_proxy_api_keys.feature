@@ -175,6 +175,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And I generate a unique API context from "/agent-key-other" and store it as "otherContext"
     And I generate a unique resource name from "agent-key-pub" and store it as "publisherKey"
     And I generate a unique resource name from "agent-key-admin" and store it as "adminKey"
+    And I generate a unique value from "admin-rotated-api-key-0123456789" and store it as "adminRotatedKey"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
       | id          | ${CTX:agentHandle}                                   |
       | displayName | Owned Key Agent                                      |
@@ -244,7 +245,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And the JSON response array "list" should contain an item with "id" equal to "${CTX:adminKey}"
     When I send a "PUT" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:publisherKey}" with body:
       """
-      {"name": "${CTX:publisherKey}", "displayName": "Publisher key", "apiKey": "admin-rotated-0123456789abcdef0123456789"}
+      {"name": "${CTX:publisherKey}", "displayName": "Publisher key", "apiKey": "${CTX:adminRotatedKey}"}
       """
     Then the response status code should be 200
 
