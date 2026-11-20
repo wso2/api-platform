@@ -21,15 +21,57 @@ package goenv
 import (
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
-// credentialsInURL matches the userinfo part of a URL ("scheme://user:token@").
-var credentialsInURL = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.\-]*://)[^/@\s]+@`)
+var (
+	// credentialsInURL matches a URL's userinfo up to the last "@" before the path, so a
+	// raw "@" in the password ("https://user:p@ss@host") is redacted too.
+	credentialsInURL = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.\-]*://)[^/?#\s]+@`)
+	// queryInURL matches a URL's query string, which can carry an access token.
+	queryInURL = regexp.MustCompile(`://[^\s?#]*\?[^\s#]*`)
+	// settingEntry matches one entry of a comma-, pipe- or space-separated Go setting.
+	settingEntry = regexp.MustCompile(`[^,|\s]+`)
+)
 
-// RedactCredentials replaces the userinfo of every URL in text with a placeholder,
-// so a token embedded in a module proxy or repository URL never reaches the logs.
+// RedactCredentials replaces the userinfo and query string of every URL in text with
+// placeholders, so a token in a module proxy or repository URL never reaches the logs.
+// Go's harmless "?go-get=1" lookups are kept.
 func RedactCredentials(text string) string {
-	return credentialsInURL.ReplaceAllString(text, "${1}<redacted-credentials>@")
+	text = credentialsInURL.ReplaceAllString(text, "${1}<redacted-credentials>@")
+	return queryInURL.ReplaceAllStringFunc(text, func(m string) string {
+		base, query, _ := strings.Cut(m, "?")
+		suffix := ""
+		if trimmed, ok := strings.CutSuffix(query, ":"); ok { // "...?token=x: 401 Unauthorized"
+			query, suffix = trimmed, ":"
+		}
+		if query == "" || query == "go-get=1" {
+			return m
+		}
+		return base + "?<redacted-query>" + suffix
+	})
+}
+
+// redactSettingValue redacts every entry of a setting such as GOPROXY, including
+// scheme-less entries ("user:token@proxy.example.com") that Go accepts by adding https://.
+func redactSettingValue(value string) string {
+	return settingEntry.ReplaceAllStringFunc(value, func(entry string) string {
+		scheme, rest := "", entry
+		if i := strings.Index(entry, "://"); i >= 0 {
+			scheme, rest = entry[:i+3], entry[i+3:]
+		}
+		authority, tail := rest, ""
+		if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+			authority, tail = rest[:i], rest[i:]
+		}
+		if at := strings.LastIndex(authority, "@"); at >= 0 {
+			authority = "<redacted-credentials>" + authority[at:]
+		}
+		if i := strings.IndexAny(tail, "?#"); i >= 0 {
+			tail = tail[:i+1] + "<redacted>"
+		}
+		return scheme + authority + tail
+	})
 }
 
 // moduleSettingKeys are the Go settings that decide where and how modules are fetched.
@@ -45,7 +87,7 @@ func ModuleSettingsLogFields(getenv func(string) string, fileExists func(string)
 	fields := make([]any, 0, 2*(len(moduleSettingKeys)+2))
 	for _, key := range moduleSettingKeys {
 		if v := getenv(key); v != "" {
-			fields = append(fields, key, RedactCredentials(v))
+			fields = append(fields, key, redactSettingValue(v))
 		}
 	}
 	if getenv("GOAUTH") != "" {

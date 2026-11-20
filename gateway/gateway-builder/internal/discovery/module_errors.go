@@ -60,16 +60,25 @@ func modDownloadFailure(gomodule string, stdout, stderr []byte, runErr error) er
 // moduleAccessHint maps the usual private-module failures to the setting that fixes them.
 func moduleAccessHint(reason string) string {
 	lower := strings.ToLower(reason)
+	checksumDB := containsAny(lower, "verifying module", "verifying go.mod", "sum.golang.org", "checksum database")
 	switch {
-	// Checked first: when sum.golang.org cannot fetch a private module, Go quotes the
-	// server's own git error ("could not read Username"), which credentials cannot fix.
-	case containsAny(lower,
-		"verifying module",
-		"verifying go.mod",
-		"sum.golang.org",
-		"checksum database"):
+	// Checked before everything else: the module's content changed after it was
+	// published, or the download was tampered with. Never suggest turning the check off.
+	case containsAny(lower, "checksum mismatch", "security error"):
+		return "the downloaded module does not match the checksum recorded for this version: it was " +
+			"changed after it was published, or the download was tampered with. Do not set GOPRIVATE, " +
+			"GONOSUMDB or GOSUMDB=off to get past this. Check the module's source; if the change is " +
+			"legitimate, publish it as a new version."
+	// The public checksum database answered "not found": the module is private. Checked
+	// before credentials because Go quotes the database's own git error ("could not read
+	// Username"), which credentials cannot fix.
+	case checksumDB && containsAny(lower, "404", "410", "not found"):
 		return "the module was checked against the public checksum database, which cannot see " +
 			"private modules. Set GOPRIVATE (or GONOSUMDB) to a pattern matching the module path."
+	case checksumDB:
+		return "the builder could not reach the checksum database. Check that the builder container can " +
+			"reach sum.golang.org, or the database set in GOSUMDB; turning the check off does not fix a " +
+			"network problem."
 	// git reports a rejected token the same way as a missing one.
 	case containsAny(lower,
 		"terminal prompts disabled",

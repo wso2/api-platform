@@ -34,7 +34,9 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // netrcMountTarget is where git and the go command look for credentials in the
@@ -200,18 +202,23 @@ func validateSumDB(key, value string) error {
 		return err
 	}
 	fields := strings.Fields(value)
-	switch {
-	case len(fields) == 1:
-		return nil
-	case len(fields) == 2:
-		return validateServiceURL(fields[1])
-	default:
+	if len(fields) == 0 || len(fields) > 2 {
 		return fmt.Errorf("expected \"off\", a database name, or a name followed by its URL")
 	}
+	// The first field is a name or name+key, never a URL. Refusing URL shapes keeps a
+	// credential out of the printed settings.
+	if strings.Contains(fields[0], "://") || strings.ContainsAny(fields[0], "@?#") {
+		return fmt.Errorf("the database name must be a name or name+key, not a URL; put credentials in a --netrc file")
+	}
+	if len(fields) == 2 {
+		return validateServiceURL(fields[1])
+	}
+	return nil
 }
 
-// validateServiceURL accepts an http(s) URL without embedded credentials.
-// Credentials belong in the netrc file, which is not printed or logged.
+// validateServiceURL accepts an http(s) URL with no credentials in its userinfo,
+// query string or fragment. Credentials belong in the netrc file, which is not
+// printed or logged.
 func validateServiceURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
@@ -219,6 +226,9 @@ func validateServiceURL(raw string) error {
 	}
 	if u.User != nil {
 		return fmt.Errorf("URLs must not contain credentials; put them in a --netrc file or use --git-credential")
+	}
+	if strings.ContainsAny(raw, "?#") {
+		return fmt.Errorf("URLs must not contain a query string or fragment; put credentials in a --netrc file or use --git-credential")
 	}
 	return nil
 }
@@ -357,7 +367,9 @@ func (a BuilderAccess) prepare(scratchParent string, baseEnv []string) (args []s
 
 	netrc := a.NetrcFile
 	if len(a.GitCredentials) > 0 {
-		dir, err := os.MkdirTemp(scratchParent, "builder-credentials-*") // created 0700
+		// The owner's process ID in the name lets a later run tell a live build's folder
+		// from a leftover one (sweepStaleCredentialDirs).
+		dir, err := os.MkdirTemp(scratchParent, fmt.Sprintf("%spid%d-*", credentialDirPrefix, os.Getpid())) // created 0700
 		if err != nil {
 			return nil, nil, cleanup, fmt.Errorf("failed to create a private directory for builder credentials: %w", err)
 		}
@@ -377,6 +389,42 @@ func (a BuilderAccess) prepare(scratchParent string, baseEnv []string) (args []s
 		args = append(args, "--mount", mount)
 	}
 	return args, env, cleanup, nil
+}
+
+const (
+	credentialDirPrefix = "builder-credentials-"
+	// staleCredentialDirAge is how old a credentials folder must be before it is removed
+	// even though its owner looks alive (process ID reuse) or cannot be identified.
+	staleCredentialDirAge = 24 * time.Hour
+)
+
+// sweepStaleCredentialDirs removes credentials folders left in parent by ap runs that
+// ended before they could delete them (a hard kill, a crash). A folder whose owning
+// process is still running belongs to a concurrent build and is kept.
+func sweepStaleCredentialDirs(parent string, alive func(pid int) bool, now time.Time) {
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		rest, ok := strings.CutPrefix(entry.Name(), credentialDirPrefix)
+		if !ok || !entry.IsDir() { // IsDir is false for symlinks, which are never followed
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		old := now.Sub(info.ModTime()) > staleCredentialDirAge
+		pid := 0
+		if digits, ok := strings.CutPrefix(rest, "pid"); ok {
+			digits, _, _ = strings.Cut(digits, "-")
+			pid, _ = strconv.Atoi(digits)
+		}
+		if old || (pid > 0 && !alive(pid)) {
+			_ = os.RemoveAll(filepath.Join(parent, entry.Name()))
+		}
+	}
 }
 
 // writeNetrc writes the credentials to a new 0600 file in dir and returns its path.

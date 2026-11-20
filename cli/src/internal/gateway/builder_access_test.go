@@ -21,6 +21,7 @@ package gateway
 import (
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func lookupFrom(env map[string]string) func(string) (string, bool) {
@@ -131,6 +133,12 @@ func TestResolveGoEnv_Rejects(t *testing.T) {
 		{name: "proxy scheme", flags: []string{"GOPROXY=file:///srv/goproxy"}, wantErr: "expected an http(s) URL"},
 		{name: "sumdb credentials", flags: []string{"GOSUMDB=sum.acme.com https://bot:s3cret@sum.acme.com"}, wantErr: "must not contain credentials", mustNotIn: "s3cret"},
 		{name: "sumdb shape", flags: []string{"GOSUMDB=a b c"}, wantErr: "expected \"off\""},
+		{name: "sumdb name is a URL with credentials", flags: []string{"GOSUMDB=https://bot:s3cret@sum.acme.com"}, wantErr: "not a URL", mustNotIn: "s3cret"},
+		{name: "sumdb name with userinfo", flags: []string{"GOSUMDB=bot:s3cret@sum.acme.com"}, wantErr: "not a URL", mustNotIn: "s3cret"},
+		{name: "proxy query token", flags: []string{"GOPROXY=https://goproxy.acme.com?access_token=s3cret,direct"}, wantErr: "query string or fragment", mustNotIn: "s3cret"},
+		{name: "proxy query token copied by bare --go-env", flags: []string{"GOPROXY"}, env: map[string]string{"GOPROXY": "https://goproxy.acme.com/?access_token=s3cret"}, wantErr: "query string or fragment", mustNotIn: "s3cret"},
+		{name: "proxy fragment", flags: []string{"GOPROXY=https://goproxy.acme.com#s3cret"}, wantErr: "query string or fragment", mustNotIn: "s3cret"},
+		{name: "sumdb URL query token", flags: []string{"GOSUMDB=sum.acme.com+k https://sum.acme.com?token=s3cret"}, wantErr: "query string or fragment", mustNotIn: "s3cret"},
 		{name: "pattern given as URL", flags: []string{"GOPRIVATE=https://github.com/acme"}, wantErr: "not URLs"},
 		{name: "control character", flags: []string{"GOVCS=private:git\nGOFLAGS=x"}, wantErr: "control character"},
 		{name: "invalid value in environment", env: map[string]string{"GOPRIVATE": "https://github.com/acme"}, wantErr: "GOPRIVATE from your environment"},
@@ -154,12 +162,20 @@ func TestResolveGoEnv_AcceptsValidValues(t *testing.T) {
 		"GOSUMDB=sum.acme.com+abc123 https://sum.acme.com",
 		"GOINSECURE=git.internal.acme.com",
 		"GOVCS=private:git,public:git|hg",
+		"GONOPROXY=none", // documented way to send GOPRIVATE modules through GOPROXY
 	}
 	if _, err := ResolveGoEnv(flags, lookupFrom(nil)); err != nil {
 		t.Fatalf("ResolveGoEnv() error = %v", err)
 	}
 	if _, err := ResolveGoEnv([]string{"GOSUMDB=off", "GOPROXY=off"}, lookupFrom(nil)); err != nil {
 		t.Fatalf("ResolveGoEnv(off) error = %v", err)
+	}
+	// Verifier keys are base64 and may contain "+", "/" and "=".
+	if _, err := ResolveGoEnv([]string{"GOSUMDB=sum.golang.org+033de0ae+Ac4zctda0e5eza+HJyk9SxEdh+s3Ux18htTTAD8OuAn8"}, lookupFrom(nil)); err != nil {
+		t.Fatalf("ResolveGoEnv(sumdb key) error = %v", err)
+	}
+	if _, err := ResolveGoEnv([]string{"GOSUMDB=sum.acme.com+abc/d= https://sum.acme.com/"}, lookupFrom(nil)); err != nil {
+		t.Fatalf("ResolveGoEnv(sumdb key with slash) error = %v", err)
 	}
 }
 
@@ -374,6 +390,15 @@ func TestPrepare_GitCredentialsBecomeAPrivateNetrc(t *testing.T) {
 		}
 	}
 
+	if want := fmt.Sprintf("builder-credentials-pid%d-", os.Getpid()); !strings.HasPrefix(filepath.Base(filepath.Dir(netrc)), want) {
+		t.Fatalf("credentials folder %s should start with %s", filepath.Dir(netrc), want)
+	}
+	// A sweep by a concurrent build must keep this live build's folder.
+	sweepStaleCredentialDirs(scratch, processAlive, time.Now())
+	if _, err := os.Stat(netrc); err != nil {
+		t.Fatalf("sweep removed a live build's credentials: %v", err)
+	}
+
 	cleanup()
 	if _, err := os.Stat(filepath.Dir(netrc)); !os.IsNotExist(err) {
 		t.Fatalf("credentials directory still exists after cleanup: %v", err)
@@ -398,5 +423,83 @@ func TestNetrcMountHint(t *testing.T) {
 	}
 	if hint := netrcMountHint(errors.New("not an exit error"), withNetrc); hint != "" {
 		t.Errorf("non-exit error: hint = %q, want none", hint)
+	}
+}
+
+func TestSweepStaleCredentialDirs(t *testing.T) {
+	parent := t.TempDir()
+	now := time.Now()
+	mkdir := func(name string, age time.Duration) string {
+		t.Helper()
+		dir := filepath.Join(parent, name)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "netrc-1"), []byte("machine h login u password p\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		at := now.Add(-age)
+		if err := os.Chtimes(dir, at, at); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	const livePID = 1111
+	alive := func(pid int) bool { return pid == livePID }
+
+	removed := []string{
+		mkdir("builder-credentials-pid2222-a1", time.Minute),  // owner no longer running
+		mkdir("builder-credentials-pid1111-b2", 25*time.Hour), // owner's ID reused long after
+		mkdir("builder-credentials-123456", 25*time.Hour),     // older name format, abandoned
+		mkdir("builder-credentials-pidjunk-c3", 25*time.Hour), // unparseable, abandoned
+	}
+	kept := []string{
+		mkdir("builder-credentials-pid1111-d4", time.Minute), // a concurrent build
+		mkdir("builder-credentials-654321", time.Minute),     // older name format, recent
+		mkdir("gateway-image-build-42", 48*time.Hour),        // not a credentials folder
+	}
+	plainFile := filepath.Join(parent, "builder-credentials-pid2222-file")
+	if err := os.WriteFile(plainFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kept = append(kept, plainFile)
+
+	sweepStaleCredentialDirs(parent, alive, now)
+
+	for _, p := range removed {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s should have been removed (err=%v)", filepath.Base(p), err)
+		}
+	}
+	for _, p := range kept {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s should have been kept: %v", filepath.Base(p), err)
+		}
+	}
+}
+
+func TestSweepStaleCredentialDirsNeverFollowsSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating symlinks needs extra privileges on Windows")
+	}
+	parent, outside := t.TempDir(), t.TempDir()
+	precious := filepath.Join(outside, "keep-me")
+	if err := os.WriteFile(precious, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(parent, "builder-credentials-pid2222-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	sweepStaleCredentialDirs(parent, func(int) bool { return false }, time.Now().Add(48*time.Hour))
+
+	if _, err := os.Stat(precious); err != nil {
+		t.Fatalf("sweep followed a symlink and removed %s: %v", precious, err)
+	}
+}
+
+func TestProcessAliveForThisProcess(t *testing.T) {
+	if !processAlive(os.Getpid()) {
+		t.Fatal("processAlive(own pid) = false")
 	}
 }

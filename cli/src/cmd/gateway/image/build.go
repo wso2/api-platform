@@ -49,7 +49,7 @@ export GOPRIVATE='github.com/acme/*'
 ap gateway image build --git-credential github.com=<github-username>:POLICY_TOKEN
 
 # Build with a netrc file and a private module proxy
-ap gateway image build --netrc ~/.netrc --go-env GOPROXY=https://goproxy.acme.com,direct`
+ap gateway image build --netrc ~/.netrc-gateway-policies --go-env GOPROXY=https://goproxy.acme.com,direct`
 )
 
 var (
@@ -129,8 +129,8 @@ func resolveBuilderAccess() (gateway.BuilderAccess, error) {
 	return access, nil
 }
 
-// printBuilderAccess shows which Go settings and credentials reach the builder, and
-// warns about the two setups that are easy to get wrong.
+// printBuilderAccess shows which Go settings and credentials reach the builder,
+// followed by warnings for setups that are easy to get wrong.
 func printBuilderAccess(access gateway.BuilderAccess) {
 	if len(access.GoEnv) > 0 {
 		fmt.Println("  Go module settings for the builder:")
@@ -138,30 +138,51 @@ func printBuilderAccess(access gateway.BuilderAccess) {
 			fmt.Printf("    • %-10s %s (%s)\n", s.Key, s.DisplayValue(), s.Source)
 		}
 	}
-	if !access.HasCredentials() {
-		if len(access.GoEnv) > 0 {
-			fmt.Println()
+	if access.HasCredentials() {
+		fmt.Println("  Builder credentials:")
+		if access.NetrcFile != "" {
+			fmt.Printf("    • netrc file %s (mounted read-only)\n", access.NetrcFile)
 		}
-		return
+		for _, c := range access.GitCredentials {
+			fmt.Printf("    • %s as %s (from --git-credential)\n", c.Host, c.Username)
+		}
 	}
+	defaultBuilder := fmt.Sprintf(utils.DefaultGatewayBuilder, gatewayVersion)
+	for _, line := range builderAccessWarnings(access, gatewayBuilder, defaultBuilder, gatewayVersion) {
+		fmt.Println(line)
+	}
+	if len(access.GoEnv) > 0 || access.HasCredentials() {
+		fmt.Println()
+	}
+}
 
-	fmt.Println("  Builder credentials:")
-	if access.NetrcFile != "" {
-		fmt.Printf("    • netrc file %s (mounted read-only)\n", access.NetrcFile)
+// builderAccessWarnings returns the warning lines printed under the builder settings.
+func builderAccessWarnings(access gateway.BuilderAccess, builder, defaultBuilder, version string) []string {
+	var lines []string
+	if access.GoEnvValue("GOSUMDB") == "off" {
+		lines = append(lines,
+			"  ! GOSUMDB=off turns off checksum verification for every module, including the public policies",
+			"    and any Go toolchain the builder downloads. To skip it only for private modules, set GOPRIVATE instead.")
 	}
-	for _, c := range access.GitCredentials {
-		fmt.Printf("    • %s as %s (from --git-credential)\n", c.Host, c.Username)
+	if !access.HasCredentials() {
+		return lines
 	}
-
-	if defaultBuilder := fmt.Sprintf(utils.DefaultGatewayBuilder, gatewayVersion); gatewayBuilder != defaultBuilder {
-		fmt.Printf("  ! Credentials will be passed to builder image %s, which is not the default for gateway %s (set in %s)\n",
-			gatewayBuilder, gatewayVersion, utils.DefaultBuildFile)
+	if builder != defaultBuilder {
+		lines = append(lines, fmt.Sprintf("  ! Credentials will be passed to builder image %s, which is not the default for gateway %s (set in %s)",
+			builder, version, utils.DefaultBuildFile))
+	}
+	// The go command sends credentials only over HTTPS; git sends them wherever it is asked.
+	if access.HasGoEnv("GOINSECURE") {
+		lines = append(lines,
+			"  ! GOINSECURE allows plain-HTTP downloads for matching modules, and git can then send the credentials",
+			"    for those hosts unencrypted. Use HTTPS for every host you pass credentials for.")
 	}
 	if !access.HasGoEnv("GOPRIVATE") && !access.HasGoEnv("GONOSUMDB") && access.GoEnvValue("GOSUMDB") != "off" {
-		fmt.Println("  ! GOPRIVATE is not set: private modules will fail verification against the public checksum database.")
-		fmt.Println("    Set GOPRIVATE to a pattern matching your module paths, for example: export GOPRIVATE='github.com/acme/*'")
+		lines = append(lines,
+			"  ! GOPRIVATE is not set: private modules will fail verification against the public checksum database.",
+			"    Set GOPRIVATE to a pattern matching your module paths, for example: export GOPRIVATE='github.com/acme/*'")
 	}
-	fmt.Println()
+	return lines
 }
 
 // initializeDefaults sets smart defaults for gateway name and constructs the image tag

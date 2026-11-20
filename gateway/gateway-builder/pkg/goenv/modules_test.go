@@ -55,6 +55,26 @@ func TestRedactCredentials(t *testing.T) {
 			in:   "https://proxy.golang.org/github.com/acme/p/@v/v1.0.0.zip",
 			want: "https://proxy.golang.org/github.com/acme/p/@v/v1.0.0.zip",
 		},
+		{
+			name: "raw at sign in the password",
+			in:   "https://user:p@ss@host.example.com/x",
+			want: "https://<redacted-credentials>@host.example.com/x",
+		},
+		{
+			name: "email-style username",
+			in:   "https://ci@example.com:s3cret@proxy.example.com/github.com/acme/p/@v/list",
+			want: "https://<redacted-credentials>@proxy.example.com/github.com/acme/p/@v/list",
+		},
+		{
+			name: "query token in a Go error line",
+			in:   "reading https://goproxy.acme.com/github.com/acme/p/@v/list?access_token=s3cret: 401 Unauthorized",
+			want: "reading https://goproxy.acme.com/github.com/acme/p/@v/list?<redacted-query>: 401 Unauthorized",
+		},
+		{
+			name: "go-get lookup is kept",
+			in:   "https://git.acme.com/acme/p?go-get=1: 404 Not Found",
+			want: "https://git.acme.com/acme/p?go-get=1: 404 Not Found",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -90,6 +110,38 @@ func TestModuleSettingsLogFields(t *testing.T) {
 	}
 	if fields[len(fields)-1] != true {
 		t.Errorf("netrc_present = %v, want true", fields[len(fields)-1])
+	}
+}
+
+func TestModuleSettingsLogFieldsRedactsEveryEntry(t *testing.T) {
+	env := map[string]string{
+		// scheme-less entry (Go adds https://), email-style username, query token, pipe and comma separators
+		"GOPROXY":   "bot:pw1@proxy.example.com,https://ci@example.com:pw2@other.example.com|https://goproxy.acme.com/?access_token=pw3,direct",
+		"GOSUMDB":   "sum.acme.com+k3y/b64= https://u:pw4@sum.acme.com",
+		"GOVCS":     "private:git|hg,public:git",
+		"GOPRIVATE": "github.com/acme/*,*.corp.example.com",
+	}
+	fields := ModuleSettingsLogFields(func(k string) string { return env[k] }, func(string) bool { return false })
+
+	got := map[string]any{}
+	for i := 0; i+1 < len(fields); i += 2 {
+		got[fields[i].(string)] = fields[i+1]
+	}
+	want := map[string]string{
+		"GOPROXY":   "<redacted-credentials>@proxy.example.com,https://<redacted-credentials>@other.example.com|https://goproxy.acme.com/?<redacted>,direct",
+		"GOSUMDB":   "sum.acme.com+k3y/b64= https://<redacted-credentials>@sum.acme.com",
+		"GOVCS":     "private:git|hg,public:git",
+		"GOPRIVATE": "github.com/acme/*,*.corp.example.com",
+	}
+	for key, w := range want {
+		if got[key] != w {
+			t.Errorf("%s logged as %q, want %q", key, got[key], w)
+		}
+	}
+	for _, secret := range []string{"pw1", "pw2", "pw3", "pw4"} {
+		if strings.Contains(fmt.Sprint(fields...), secret) {
+			t.Errorf("log fields leak %q: %v", secret, fields)
+		}
 	}
 }
 

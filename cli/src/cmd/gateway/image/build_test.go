@@ -24,6 +24,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/wso2/api-platform/cli/internal/gateway"
 )
 
 func TestGetDockerBuildLogPathUsesPersistentLogsDirectory(t *testing.T) {
@@ -101,5 +103,60 @@ func TestNetrcAndGitCredentialAreMutuallyExclusive(t *testing.T) {
 	}
 	if err := buildCmd.ValidateFlagGroups(); err == nil || !strings.Contains(err.Error(), "none of the others can be") {
 		t.Fatalf("ValidateFlagGroups() error = %v, want a mutually exclusive flags error", err)
+	}
+}
+
+func TestBuilderAccessWarnings(t *testing.T) {
+	const builder = "ghcr.io/wso2/api-platform/gateway-builder:2026.09.24"
+	setting := func(k, v string) gateway.GoEnvSetting { return gateway.GoEnvSetting{Key: k, Value: v} }
+	creds := []gateway.GitCredential{{Host: "github.com", Username: "acme"}}
+
+	tests := []struct {
+		name    string
+		access  gateway.BuilderAccess
+		builder string
+		want    []string // substrings that must appear
+		mustNot []string // substrings that must not appear
+	}{
+		{name: "nothing configured", builder: builder,
+			mustNot: []string{"!"}},
+		{name: "GOSUMDB=off without credentials still warns", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOSUMDB", "off")}},
+			want:    []string{"GOSUMDB=off turns off checksum verification for every module"},
+			mustNot: []string{"GOPRIVATE is not set"}},
+		{name: "GOSUMDB=off with credentials replaces the GOPRIVATE warning", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOSUMDB", "off")}, GitCredentials: creds},
+			want:    []string{"GOSUMDB=off turns off"},
+			mustNot: []string{"GOPRIVATE is not set"}},
+		{name: "GOINSECURE with credentials", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOINSECURE", "git.acme.com"), setting("GOPRIVATE", "git.acme.com")}, NetrcFile: "/home/u/netrc"},
+			want:    []string{"GOINSECURE allows plain-HTTP downloads", "credentials"},
+			mustNot: []string{"GOPRIVATE is not set"}},
+		{name: "GOINSECURE without credentials", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOINSECURE", "git.acme.com")}},
+			mustNot: []string{"GOINSECURE"}},
+		{name: "credentials without GOPRIVATE", builder: builder,
+			access: gateway.BuilderAccess{GitCredentials: creds},
+			want:   []string{"GOPRIVATE is not set"}},
+		{name: "non-default builder with credentials", builder: "registry.acme.com/gateway-builder:custom",
+			access: gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOPRIVATE", "github.com/acme/*")}, GitCredentials: creds},
+			want:   []string{"Credentials will be passed to builder image registry.acme.com/gateway-builder:custom"}},
+		{name: "non-default builder without credentials", builder: "registry.acme.com/gateway-builder:custom",
+			mustNot: []string{"Credentials will be passed"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := strings.Join(builderAccessWarnings(tt.access, tt.builder, builder, "2026.09.24"), "\n")
+			for _, w := range tt.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("warnings %q missing %q", got, w)
+				}
+			}
+			for _, w := range tt.mustNot {
+				if strings.Contains(got, w) {
+					t.Errorf("warnings %q unexpectedly contain %q", got, w)
+				}
+			}
+		})
 	}
 }

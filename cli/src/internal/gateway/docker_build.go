@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/wso2/api-platform/cli/internal/terminal"
 	"github.com/wso2/api-platform/cli/utils"
@@ -104,7 +105,9 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
 	// Credentials live next to the workspace, never inside it: the workspace output
 	// is copied into the gateway images and, with --output-dir, out to the user.
-	accessArgs, env, cleanup, err := config.BuilderAccess.prepare(filepath.Dir(config.TempDir), os.Environ())
+	scratchParent := filepath.Dir(config.TempDir)
+	sweepStaleCredentialDirs(scratchParent, processAlive, time.Now())
+	accessArgs, env, cleanup, err := config.BuilderAccess.prepare(scratchParent, os.Environ())
 	if err != nil {
 		return err
 	}
@@ -164,13 +167,13 @@ func netrcMountHint(err error, access BuilderAccess) string {
 		"but not every other host path."
 }
 
-// forwardSignals passes interrupt and terminate signals to p instead of letting
-// them end ap, so deferred cleanup still runs once p exits. The returned func
-// stops forwarding.
+// forwardSignals passes interrupt, terminate and hangup (terminal closed) signals to
+// p instead of letting them end ap, so deferred cleanup still runs once p exits. The
+// returned func stops forwarding.
 func forwardSignals(p *os.Process) (stop func()) {
 	sigs := make(chan os.Signal, 1)
 	done := make(chan struct{})
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	go func() {
 		for {
 			select {

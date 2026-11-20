@@ -19,6 +19,7 @@
 package discovery
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -64,6 +65,35 @@ func TestModDownloadFailure_ChecksumHintWinsOverQuotedGitError(t *testing.T) {
 
 	assert.Contains(t, err.Error(), "hint: the module was checked against the public checksum database")
 	assert.NotContains(t, err.Error(), "hint: the module host asked for credentials")
+}
+
+func TestModDownloadFailure_ChecksumMismatchIsNeverToldToBypass(t *testing.T) {
+	// Go 1.26.10's wording (cmd/go/internal/modfetch/fetch.go): a mismatch against the
+	// checksum database, and a mismatch against go.sum.
+	cases := map[string]string{
+		"checksum database": "github.com/acme/p@v1.0.0: verifying module: checksum mismatch\n\tdownloaded: h1:AAAA=\n\tsum.golang.org: h1:BBBB=\n\nSECURITY ERROR\nThis download does NOT match the one reported by the checksum server.\nThe bits may have been replaced on the origin server, or an attacker may\nhave intercepted the download attempt.\n\nFor more information, see 'go help module-auth'.",
+		"go.sum":            "verifying github.com/acme/p@v1.0.0: checksum mismatch\n\tdownloaded: h1:AAAA=\n\tgo.sum:     h1:BBBB=\n\nSECURITY ERROR\nThis download does NOT match an earlier download recorded in go.sum.",
+	}
+	for name, goErr := range cases {
+		t.Run(name, func(t *testing.T) {
+			stdout, _ := json.Marshal(map[string]string{"Error": goErr})
+
+			err := modDownloadFailure(module, stdout, nil, errExit)
+
+			assert.Contains(t, err.Error(), "hint: the downloaded module does not match the checksum recorded")
+			assert.Contains(t, err.Error(), "Do not set GOPRIVATE, GONOSUMDB or GOSUMDB=off")
+			assert.NotContains(t, err.Error(), "Set GOPRIVATE (or GONOSUMDB)")
+		})
+	}
+}
+
+func TestModDownloadFailure_UnreachableChecksumDatabaseIsNotTreatedAsPrivate(t *testing.T) {
+	stdout, _ := json.Marshal(map[string]string{"Error": `github.com/acme/p@v1.0.0: verifying module: github.com/acme/p@v1.0.0: Get "https://sum.golang.org/lookup/github.com/acme/p@v1.0.0": dial tcp: lookup sum.golang.org: no such host`})
+
+	err := modDownloadFailure(module, stdout, nil, errExit)
+
+	assert.Contains(t, err.Error(), "hint: the builder could not reach the checksum database")
+	assert.NotContains(t, err.Error(), "Set GOPRIVATE (or GONOSUMDB)")
 }
 
 func TestModDownloadFailure_RejectedTokenHint(t *testing.T) {
