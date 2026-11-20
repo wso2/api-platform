@@ -109,13 +109,23 @@ type ResourcesResult struct {
 	} `json:"result"`
 }
 
+// mcpSession is the state the server hands back during initialization: the
+// session id, which a stateless server leaves empty, and the protocol version it
+// negotiated. Every request after initialization must echo that version in the
+// MCP-Protocol-Version header, because a stateless server has nothing else to
+// identify the connection with.
+type mcpSession struct {
+	id              string
+	protocolVersion string
+}
+
 // Generate generates MCP configuration from the given URL
 func Generate(url string, outputDir string, headerName string, headerValue string) error {
 	fmt.Printf("Generating MCP configuration for server: %s\n", url)
 
 	// Step 1: initialize
 	fmt.Println("→ Sending initialize...")
-	sessionID, err := initializeMCPServer(url, headerName, headerValue)
+	session, err := initializeMCPServer(url, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to initialize MCP server: %w", err)
 	}
@@ -127,7 +137,7 @@ func Generate(url string, outputDir string, headerName string, headerValue strin
 		JSONRPC: JsonRpcVersion,
 		Method:  MethodInitialized,
 	}
-	_, err = postJSONRPCWithSession(url, notifyReq, sessionID, headerName, headerValue)
+	_, err = postJSONRPCWithSession(url, notifyReq, session, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
@@ -140,7 +150,7 @@ func Generate(url string, outputDir string, headerName string, headerValue strin
 		ID:      2,
 		Method:  MethodToolsList,
 	}
-	toolsResp, err := postJSONRPCWithSession(url, toolsReq, sessionID, headerName, headerValue)
+	toolsResp, err := postJSONRPCWithSession(url, toolsReq, session, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to get tools: %w", err)
 	}
@@ -161,7 +171,7 @@ func Generate(url string, outputDir string, headerName string, headerValue strin
 		ID:      3,
 		Method:  MethodPromptsList,
 	}
-	promptsResp, err := postJSONRPCWithSession(url, promptsReq, sessionID, headerName, headerValue)
+	promptsResp, err := postJSONRPCWithSession(url, promptsReq, session, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to get prompts: %w", err)
 	}
@@ -182,7 +192,7 @@ func Generate(url string, outputDir string, headerName string, headerValue strin
 		ID:      4,
 		Method:  MethodResourcesList,
 	}
-	resourcesResp, err := postJSONRPCWithSession(url, resourcesReq, sessionID, headerName, headerValue)
+	resourcesResp, err := postJSONRPCWithSession(url, resourcesReq, session, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to get resources: %w", err)
 	}
@@ -206,8 +216,9 @@ func Generate(url string, outputDir string, headerName string, headerValue strin
 	return nil
 }
 
-// postJSONRPCWithSession sends a JSON-RPC request with mcp-session-id header if provided
-func postJSONRPCWithSession(url string, req interface{}, sessionID string, headerName string, headerValue string) ([]byte, error) {
+// postJSONRPCWithSession sends a JSON-RPC request with the negotiated protocol
+// version and the mcp-session-id header, when the session has them
+func postJSONRPCWithSession(url string, req interface{}, session mcpSession, headerName string, headerValue string) ([]byte, error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -218,14 +229,19 @@ func postJSONRPCWithSession(url string, req interface{}, sessionID string, heade
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	if session.protocolVersion != "" {
+		httpReq.Header.Set("MCP-Protocol-Version", session.protocolVersion)
+	}
+	// The caller's --header goes on last, so an explicitly requested protocol
+	// version or content negotiation still wins over the defaults.
 	if headerName != "" {
 		lower := strings.ToLower(headerName)
 		if lower != "mcp-session-id" && lower != "content-type" && lower != "accept" {
 			httpReq.Header.Set(headerName, headerValue)
 		}
 	}
-	if sessionID != "" {
-		httpReq.Header.Set("mcp-session-id", sessionID)
+	if session.id != "" {
+		httpReq.Header.Set("mcp-session-id", session.id)
 	}
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -253,8 +269,8 @@ func postJSONRPCWithSession(url string, req interface{}, sessionID string, heade
 	return body, nil
 }
 
-// initializeMCPServer initializes the MCP server and returns the session ID
-func initializeMCPServer(url string, headerName string, headerValue string) (string, error) {
+// initializeMCPServer initializes the MCP server and returns the session state
+func initializeMCPServer(url string, headerName string, headerValue string) (mcpSession, error) {
 	initReq := JsonRPCRequest{
 		JSONRPC: JsonRpcVersion,
 		ID:      1,
@@ -267,11 +283,11 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	}
 	data, err := json.Marshal(initReq)
 	if err != nil {
-		return "", err
+		return mcpSession{}, err
 	}
 	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
 	if err != nil {
-		return "", fmt.Errorf("failed to create init request: %w", err)
+		return mcpSession{}, fmt.Errorf("failed to create init request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
@@ -286,12 +302,12 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("failed to reach MCP server for initialize: %w", err)
+		return mcpSession{}, fmt.Errorf("failed to reach MCP server for initialize: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+		return mcpSession{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Check if response is event stream and parse it
@@ -302,17 +318,30 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 		}
 	}
 
-	// Check for JSON-RPC error in response
+	// Check for JSON-RPC error in response and keep the negotiated version
 	var initResponse map[string]interface{}
+	protocolVersion := ""
 	if err := json.Unmarshal(body, &initResponse); err == nil {
 		if errObj, hasError := initResponse["error"]; hasError {
 			if errMap, ok := errObj.(map[string]interface{}); ok {
 				if msg, ok := errMap["message"].(string); ok {
-					return "", fmt.Errorf("initialize request returned an error: %s", msg)
+					return mcpSession{}, fmt.Errorf("initialize request returned an error: %s", msg)
 				}
 			}
-			return "", fmt.Errorf("initialize request returned an error: %v", errObj)
+			return mcpSession{}, fmt.Errorf("initialize request returned an error: %v", errObj)
 		}
+		if result, ok := initResponse["result"].(map[string]interface{}); ok {
+			if version, ok := result["protocolVersion"].(string); ok {
+				protocolVersion = version
+			}
+		}
+	}
+	if protocolVersion == "" {
+		// A server that reports no version has still been asked for one, so the
+		// proposal is the best value later requests can carry. Say so rather than
+		// sending it silently.
+		fmt.Printf("WARNING: The initialize response did not report a protocol version. Falling back to %s.\n", ProtocolVersion)
+		protocolVersion = ProtocolVersion
 	}
 
 	sessionID := getSessionIDFromResponse(resp)
@@ -321,7 +350,7 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	} else {
 		fmt.Printf("→ Captured Session ID: %s\n", sessionID)
 	}
-	return sessionID, nil
+	return mcpSession{id: sessionID, protocolVersion: protocolVersion}, nil
 }
 
 func getSessionIDFromResponse(resp *http.Response) string {
