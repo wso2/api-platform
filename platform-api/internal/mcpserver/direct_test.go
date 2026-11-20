@@ -166,7 +166,8 @@ func newRealDirect(t *testing.T) realDirect {
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
 	agentProxyRepo := repository.NewAgentProxyRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)
-	auditRepo := repository.NewAuditRepo(db)
+	auditRepo, err := service.NewAuditService(repository.NewAuditRepo(db), nil, config.Audit{Enabled: true}, slog.Default())
+	require.NoError(t, err)
 	graphqlAPIRepo := repository.NewGraphQLAPIRepo(db, registry)
 
 	templates, err := utils.LoadLLMProviderTemplatesFromDirectory("../../resources/default-llm-provider-templates")

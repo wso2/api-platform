@@ -109,7 +109,7 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	}
 
 	secretRepo := repository.NewSecretRepo(db)
-	secretSvc := service.NewSecretService(secretRepo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
+	secretSvc := service.NewSecretService(secretRepo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)), nil)
 
 	deploymentRepo := repository.NewDeploymentRepo(db, repository.NewArtifactTableRegistry())
 	gatewayRepo := repository.NewGatewayRepo(db)
