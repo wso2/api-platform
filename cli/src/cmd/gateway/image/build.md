@@ -10,17 +10,19 @@ ap gateway image build \
   [--push] \
   [--no-cache] \
   [--platform <platform>] \
-  [--output-dir <output_dir>]
+  [--output-dir <output_dir>] \
+  [--container-engine <docker|podman|buildah>]
 ```
 
 ### Optional Flags & Defaults
 - `--name`: Gateway name (defaults to directory name)
 - `--path` / `-p`: Current directory (`.`) - Directory containing `build.yaml`
-- `--repository`: `ghcr.io/wso2/api-platform` - Docker image repository
+- `--repository`: `ghcr.io/wso2/api-platform` - Image repository
 - `--platform`: Uses host platform - Target platform (e.g., linux/amd64)
 - `--push`: `false` - Push image to registry after build
 - `--no-cache`: `false` - Build without using cache
 - `--output-dir`: No output (empty) - Output directory for build artifacts
+- `--container-engine`: `$WSO2AP_CONTAINER_ENGINE`, else `docker` - Container engine used to run the gateway builder and build the images: `docker`, `podman` or `buildah`
 
 ### Directory Structure Requirements
 The `--path` flag must point to a directory containing:
