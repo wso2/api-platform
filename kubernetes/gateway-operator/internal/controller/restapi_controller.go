@@ -69,6 +69,9 @@ type APITrackingEntry struct {
 	RetryCount    int
 	LastRetryTime time.Time
 	NextRetryTime time.Time
+	// GatewayObserved is the target gateway's Programmed state when the latest
+	// deployment attempt started (see gatewayReprogrammedSinceFailure).
+	GatewayObserved gatewayObservation
 }
 
 // APITracker manages in-memory tracking of API deployment states
@@ -261,8 +264,12 @@ func (r *RestApiReconciler) decideAndProcess(
 		// was created.
 		if programmedCond != nil && programmedCond.Status == metav1.ConditionFalse &&
 			programmedCond.Reason == apiv1.APIProgrammedReasonDeploymentFailed {
+			var observed gatewayObservation
+			if hasTrackingEntry && trackingEntry != nil && trackingEntry.Generation == crGeneration {
+				observed = trackingEntry.GatewayObserved
+			}
 			if gw := r.findTargetGateway(apiConfig); gw != nil &&
-				gatewayReprogrammedSinceFailure(ctx, r.Client, gw, apiConfig.Status.LastUpdateTime) {
+				gatewayReprogrammedSinceFailure(ctx, r.Client, gw, observed, apiConfig.Status.LastUpdateTime) {
 				log.Info("Target gateway was programmed after this API failed; retrying deployment",
 					slog.String("name", apiConfig.Name),
 					slog.String("gateway", gw.Namespace+"/"+gw.Name),
@@ -370,6 +377,9 @@ func (r *RestApiReconciler) processDeployment(
 		Status:     TrackingStatusProcessing,
 		GatewayKey: gatewayKey,
 		RetryCount: retryCount,
+		// Recorded before the call, so a gateway that recovers while this attempt fails
+		// still counts as re-programmed afterwards.
+		GatewayObserved: observeGateway(ctx, r.Client, gateway),
 	}
 	r.apiTracker.Set(trackingKey, entry)
 

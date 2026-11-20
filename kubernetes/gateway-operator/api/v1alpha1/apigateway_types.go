@@ -145,10 +145,15 @@ type GatewaySpec struct {
 
 // GatewayAdminCredentials references the gateway-controller admin user's password
 // in a Kubernetes Secret.
+// +kubebuilder:validation:XValidation:rule="has(self.passwordSecretRef.name) && size(self.passwordSecretRef.name) > 0",message="passwordSecretRef.name must name the Secret that holds the admin password"
+// +kubebuilder:validation:XValidation:rule="self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$') && self.passwordSecretRef.key != '.' && self.passwordSecretRef.key != '..'",message="passwordSecretRef.key must be a Secret key name (letters, digits, '-', '_', '.')"
 type GatewayAdminCredentials struct {
-	// Username of the admin user.
+	// Username of the admin user. It cannot contain ':' (HTTP Basic authentication
+	// splits on the first ':') or control characters.
 	// +kubebuilder:default=admin
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[^:\x00-\x1f\x7f]+$`
 	// +optional
 	Username string `json:"username,omitempty"`
 

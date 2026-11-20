@@ -89,12 +89,26 @@ spec:
                     type: string
                   username:
                     default: admin
-                    description: Username of the admin user.
+                    description: |-
+                      Username of the admin user. It cannot contain ':' (HTTP Basic authentication
+                      splits on the first ':') or control characters.
+                    maxLength: 253
                     minLength: 1
+                    pattern: ^[^:\x00-\x1f\x7f]+$
                     type: string
                 required:
                 - passwordSecretRef
                 type: object
+                x-kubernetes-validations:
+                - message: passwordSecretRef.name must name the Secret that holds
+                    the admin password
+                  rule: has(self.passwordSecretRef.name) && size(self.passwordSecretRef.name)
+                    > 0
+                - message: passwordSecretRef.key must be a Secret key name (letters,
+                    digits, '-', '_', '.')
+                  rule: self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$') &&
+                    self.passwordSecretRef.key != '.' && self.passwordSecretRef.key
+                    != '..'
               apiSelector:
                 description: APISelector defines how this gateway selects which APIs
                   to route
@@ -1516,12 +1530,26 @@ spec:
                     type: string
                   username:
                     default: admin
-                    description: Username of the admin user.
+                    description: |-
+                      Username of the admin user. It cannot contain ':' (HTTP Basic authentication
+                      splits on the first ':') or control characters.
+                    maxLength: 253
                     minLength: 1
+                    pattern: ^[^:\x00-\x1f\x7f]+$
                     type: string
                 required:
                 - passwordSecretRef
                 type: object
+                x-kubernetes-validations:
+                - message: passwordSecretRef.name must name the Secret that holds
+                    the admin password
+                  rule: has(self.passwordSecretRef.name) && size(self.passwordSecretRef.name)
+                    > 0
+                - message: passwordSecretRef.key must be a Secret key name (letters,
+                    digits, '-', '_', '.')
+                  rule: self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$') &&
+                    self.passwordSecretRef.key != '.' && self.passwordSecretRef.key
+                    != '..'
               apiSelector:
                 description: APISelector defines how this gateway selects which APIs
                   to route

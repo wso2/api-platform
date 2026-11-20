@@ -296,8 +296,20 @@ gateway:
   operator manages the gateway (`APIGateway.spec.adminCredentials`): the operator needs the plain
   password to call the management API.
 - The `mountPath` rules above apply, and the Secret is mounted only while basic auth is enabled.
-- The password is read once at startup: restart the controller after rotating the Secret (the
-  operator does this for you).
+- A username cannot contain `:` (HTTP Basic authentication splits on the first `:`) or control
+  characters; the chart fails to render otherwise.
+- With `source: file`, trailing spaces, tabs and newlines are trimmed from the file, so a Secret
+  created with `kubectl create secret generic --from-file` works as is. With `source: env`, the
+  value is used exactly as stored.
+- The password is read once at startup, so the controller must restart after the Secret is rotated:
+  - With a plain Helm install, restart it yourself (`kubectl rollout restart deployment
+    <release>-gateway-controller`); Helm does not watch Secrets.
+  - For an `APIGateway` managed by the gateway operator, the operator rolls the controller pod when
+    any Secret referenced by `spec.adminCredentials` or by a `passwordSecretRef` in the
+    `spec.configRef` values changes.
+  - For a Kubernetes Gateway API `Gateway` managed by the operator, the operator does not roll the
+    pod: restart the controller yourself. Until then the operator, which signs in with the current
+    Secret value, gets 401 from the management API.
 
 ### Raw config passthrough (`gateway.config_toml`)
 

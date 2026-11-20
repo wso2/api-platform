@@ -221,13 +221,14 @@ func (r *GatewayReconciler) decideAndProcess(
 		}
 		configMapValues = values
 	}
-	// The admin credentials Secret's revision is part of the hash, so rotating the
-	// password redeploys the gateway (rolling its controller pod).
-	adminSecretVersion, err := adminCredentialsSecretVersion(ctx, r.Client, gatewayConfig)
+	// The revisions of the Secrets holding basic-auth passwords (spec.adminCredentials and
+	// configRef users' passwordSecretRef) are part of the hash, so rotating a password
+	// redeploys the gateway (rolling its controller pod).
+	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, gatewayConfig, configMapValues)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	currentConfigHash := gatewayConfigHash(configMapValues, adminSecretVersion)
+	currentConfigHash := gatewayConfigHash(configMapValues, secretsVersion)
 
 	// Check if config has changed
 	configChanged := currentConfigHash != gatewayConfig.Status.ConfigHash
@@ -824,11 +825,13 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		return fmt.Errorf("failed to build CR values overlay: %w", err)
 	}
 
+	configRefValues := ""
 	if owner.Spec.ConfigRef != nil {
 		configMapValues, err := configMapValuesYAML(ctx, r.Client, owner.Spec.ConfigRef.Name, namespace)
 		if err != nil {
 			return fmt.Errorf("failed to get ConfigMap values: %w", err)
 		}
+		configRefValues = configMapValues
 		// Merge order: CR overlay (base) → ConfigMap (higher priority).
 		// MergeValuesYAML delegates to deepMergeValues, which performs a recursive
 		// per-key merge: ConfigMap entries can add or override individual keys inside
@@ -864,14 +867,10 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		if _, _, err := auth.AdminCredentialsFromSecret(ctx, r.Client, owner); err != nil {
 			return fmt.Errorf("admin credentials unavailable: %w", err)
 		}
-		secretVersion, err := adminCredentialsSecretVersion(ctx, r.Client, owner)
-		if err != nil {
-			return err
-		}
 		// valuesYAML holds only the CR overlay and the configRef ConfigMap at this point
 		// (the operator's base values file is merged later by the Helm client), so the
 		// users kept next to the admin user are exactly those the configRef lists.
-		adminOverlay, err := buildAdminCredentialsOverlay(owner, secretVersion, valuesYAML)
+		adminOverlay, err := buildAdminCredentialsOverlay(owner, valuesYAML)
 		if err != nil {
 			return err
 		}
@@ -882,6 +881,24 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		log.Info("Configured gateway admin user from Secret",
 			slog.String("secret", owner.Spec.AdminCredentials.PasswordSecretRef.Name),
 			slog.String("source", owner.Spec.AdminCredentials.Source))
+	}
+
+	// Roll the gateway-controller pod when a Secret holding a basic-auth password
+	// changes: it reads passwords only at startup, while the operator signs in with the
+	// current Secret value right away.
+	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, owner, configRefValues)
+	if err != nil {
+		return err
+	}
+	checksumOverlay, err := basicAuthChecksumOverlay(secretsVersion)
+	if err != nil {
+		return err
+	}
+	if checksumOverlay != "" {
+		valuesYAML, err = helm.MergeValuesYAML(valuesYAML, checksumOverlay)
+		if err != nil {
+			return fmt.Errorf("failed to merge basic-auth checksum overlay: %w", err)
+		}
 	}
 
 	log.Info("Deploying gateway using Helm",

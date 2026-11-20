@@ -69,6 +69,9 @@ type ResourceTrackingEntry struct {
 	// so a failed Status().Update does not strand the tracker on Deployed with
 	// stale observedGeneration (see decideAndProcess + handleDeploymentSuccess).
 	GatewayDeploySucceeded bool
+	// GatewayObserved is the target gateway's Programmed state when the latest
+	// deployment attempt started (see gatewayReprogrammedSinceFailure).
+	GatewayObserved gatewayObservation
 }
 
 // ResourceTracker is the shared in-memory tracker used by the generic
@@ -316,8 +319,12 @@ func (r *GenericReconciler) decideAndProcess(
 	// after an admin credential rotation rolled out or a missing admin Secret was created.
 	if crGeneration == statusObservedGen && progCond != nil &&
 		progCond.Status == metav1.ConditionFalse && progCond.Reason == apiv1.ReasonDeploymentFailed {
+		var observed gatewayObservation
+		if hasEntry && entry != nil && entry.Generation == crGeneration {
+			observed = entry.GatewayObserved
+		}
 		if gw := r.findTargetGateway(obj); gw != nil &&
-			gatewayReprogrammedSinceFailure(ctx, r.Client, gw, r.Adapter.GetStatus(obj).LastUpdateTime) {
+			gatewayReprogrammedSinceFailure(ctx, r.Client, gw, observed, r.Adapter.GetStatus(obj).LastUpdateTime) {
 			log.Info("target gateway was programmed after this resource failed; retrying deployment",
 				slog.String("name", obj.GetName()),
 				slog.String("gateway", gw.Namespace+"/"+gw.Name),
@@ -414,6 +421,9 @@ func (r *GenericReconciler) processDeployment(ctx context.Context, obj client.Ob
 		GatewayKey: gatewayKey,
 		Id:         r.Adapter.GetStatus(obj).Id,
 		RetryCount: retryCount,
+		// Recorded before the call, so a gateway that recovers while this attempt fails
+		// still counts as re-programmed afterwards.
+		GatewayObserved: observeGateway(ctx, r.Client, gateway),
 	}
 	r.Tracker.Set(trackingKey, entry)
 

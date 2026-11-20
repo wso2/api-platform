@@ -60,20 +60,51 @@ func gatewayProgrammedAt(ctx context.Context, c client.Client, gw *registry.Gate
 	return cond.LastTransitionTime.Time, true
 }
 
+// gatewayObservation is the target gateway's Programmed state seen when a deployment
+// attempt started. It is kept in the in-memory tracker entry of the attempt.
+type gatewayObservation struct {
+	// Recorded is false when no attempt recorded an observation, for example after an
+	// operator restart cleared the tracker.
+	Recorded bool
+	// ProgrammedAt is the gateway's Programmed=True transition time, or zero when the
+	// gateway was not Programmed.
+	ProgrammedAt time.Time
+}
+
+// observeGateway records the target gateway's Programmed state at the start of a
+// deployment attempt.
+func observeGateway(ctx context.Context, c client.Client, gw *registry.GatewayInfo) gatewayObservation {
+	programmedAt, ok := gatewayProgrammedAt(ctx, c, gw)
+	if !ok {
+		programmedAt = time.Time{}
+	}
+	return gatewayObservation{Recorded: true, ProgrammedAt: programmedAt}
+}
+
 // gatewayReprogrammedSinceFailure reports whether a resource whose deployment ended in a
 // terminal failure (Programmed=False, reason DeploymentFailed, at its current generation)
-// should be deployed again because its target gateway became Programmed after that
-// failure. This covers failures the resource itself cannot fix: the gateway rejecting
-// the operator's credentials while a rotated admin password rolls out, the admin
-// credential Secret being missing until it is created, or the gateway being redeployed.
+// should be deployed again because its target gateway became Programmed after the
+// attempt that failed. This covers failures the resource itself cannot fix: the gateway
+// rejecting the operator's credentials while a rotated admin password rolls out, the
+// admin credential Secret being missing until it is created, or the gateway being
+// redeployed.
 //
-// failedAt is the resource's status.lastUpdateTime, written with the terminal
-// condition. A retry first resets the condition to Pending, which writes a newer
-// lastUpdateTime, so the same gateway transition triggers at most one retry.
-func gatewayReprogrammedSinceFailure(ctx context.Context, c client.Client, gw *registry.GatewayInfo, failedAt *metav1.Time) bool {
-	if failedAt == nil {
+// observed is what the failed attempt saw when it started. The gateway counts as
+// re-programmed when its current Programmed transition differs from that observation, so
+// a gateway that recovers after the attempt but before the failure status is written
+// still triggers a retry. The retried attempt records the new transition, so the same
+// transition triggers at most one retry.
+//
+// Without an observation (the tracker was cleared, for example by an operator restart)
+// the transition is compared with failedAt, the resource's status.lastUpdateTime written
+// with the terminal condition.
+func gatewayReprogrammedSinceFailure(ctx context.Context, c client.Client, gw *registry.GatewayInfo, observed gatewayObservation, failedAt *metav1.Time) bool {
+	programmedAt, ok := gatewayProgrammedAt(ctx, c, gw)
+	if !ok {
 		return false
 	}
-	programmedAt, ok := gatewayProgrammedAt(ctx, c, gw)
-	return ok && programmedAt.After(failedAt.Time)
+	if observed.Recorded {
+		return programmedAt.After(observed.ProgrammedAt)
+	}
+	return failedAt != nil && programmedAt.After(failedAt.Time)
 }

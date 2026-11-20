@@ -77,7 +77,7 @@ func TestBuildAdminCredentialsOverlay_Sources(t *testing.T) {
 		{"", "env"}, // unset defaults to env, like the CRD default
 	} {
 		t.Run("source="+tc.source, func(t *testing.T) {
-			out, err := buildAdminCredentialsOverlay(adminCredsGateway(tc.source), "v1", "")
+			out, err := buildAdminCredentialsOverlay(adminCredsGateway(tc.source), "")
 			require.NoError(t, err)
 
 			users := basicUsers(t, out)
@@ -90,19 +90,19 @@ func TestBuildAdminCredentialsOverlay_Sources(t *testing.T) {
 			assert.Equal(t, "gateway-1-admin", ref["name"])
 			assert.Equal(t, "password", ref["key"])
 			assert.Equal(t, tc.want, ref["source"])
-			assert.Contains(t, out, adminCredentialsChecksumAnnotation+": v1")
+			assert.NotContains(t, out, "podAnnotations", "the pod checksum comes from basicAuthChecksumOverlay")
 		})
 	}
 }
 
 func TestBuildAdminCredentialsOverlay_Unset(t *testing.T) {
-	out, err := buildAdminCredentialsOverlay(&apiv1.APIGateway{}, "", "")
+	out, err := buildAdminCredentialsOverlay(&apiv1.APIGateway{}, "")
 	require.NoError(t, err)
 	assert.Empty(t, out)
 }
 
 func TestBuildAdminCredentialsOverlay_InvalidSource(t *testing.T) {
-	_, err := buildAdminCredentialsOverlay(adminCredsGateway("vault"), "v1", "")
+	_, err := buildAdminCredentialsOverlay(adminCredsGateway("vault"), "")
 	require.Error(t, err)
 }
 
@@ -136,7 +136,7 @@ gateway:
       podAnnotations:
         team: platform
 `
-	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "v1", configMapValues)
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), configMapValues)
 	require.NoError(t, err)
 	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ gateway:
               password: dev-plain
               roles: ["developer"]
 `
-	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceEnv), "v1", configMapValues)
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceEnv), configMapValues)
 	require.NoError(t, err)
 	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func TestAdminCredentialsOverlayWithoutConfigRefUsers(t *testing.T) {
 		"unrelated values": "commonLabels:\n  team: platform\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "v1", values)
+			overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), values)
 			require.NoError(t, err)
 			baseFile := "gateway:\n  config:\n    controller:\n      auth:\n        basic:\n          enabled: true\n          users:\n            - {username: admin, password: admin, roles: [admin]}\n"
 			merged, err := helm.MergeValuesYAML(baseFile, overlay)
@@ -211,40 +211,114 @@ func TestAdminCredentialsOverlayWithoutConfigRefUsers(t *testing.T) {
 }
 
 func TestAdminCredentialsOverlayRejectsInvalidConfigRefValues(t *testing.T) {
-	_, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "v1", "gateway: [unclosed")
+	_, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "gateway: [unclosed")
 	require.Error(t, err)
 }
 
-func TestAdminCredentialsSecretVersion(t *testing.T) {
+const configRefSecretUsers = `
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: ops-admin
+              passwordSecretRef: {name: multi-users, key: ops, source: file}
+            - username: dev-user
+              passwordSecretRef: {name: multi-users, key: dev}
+            - username: second
+              passwordSecretRef: {name: another-secret}
+            - username: viewer
+              password: viewer-plain
+`
+
+func TestBasicAuthSecretNames(t *testing.T) {
+	names, err := basicAuthSecretNames(adminCredsGateway(apiv1.AdminCredentialsSourceFile), configRefSecretUsers)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"another-secret", "gateway-1-admin", "multi-users"}, names, "sorted, without duplicates")
+
+	names, err = basicAuthSecretNames(&apiv1.APIGateway{}, configRefSecretUsers)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"another-secret", "multi-users"}, names, "configRef users without adminCredentials")
+
+	names, err = basicAuthSecretNames(&apiv1.APIGateway{}, legacyPlainUserValues)
+	require.NoError(t, err)
+	assert.Empty(t, names, "plain passwords reference no Secret")
+
+	_, err = basicAuthSecretNames(&apiv1.APIGateway{}, "gateway: [unclosed")
+	require.Error(t, err)
+}
+
+const legacyPlainUserValues = `
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: admin
+              password: admin
+`
+
+func TestBasicAuthSecretsVersion(t *testing.T) {
 	ctx := context.Background()
-	gw := adminCredsGateway(apiv1.AdminCredentialsSourceFile)
 
-	// Missing Secret: a stable marker, so creating it later changes the hash.
-	v, err := adminCredentialsSecretVersion(ctx, adminCredsClient(t), gw)
-	require.NoError(t, err)
-	assert.Equal(t, "missing:gateway-1-admin", v)
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "gateway-1-admin", Namespace: "gw1", UID: "uid-1"},
-		Data:       map[string][]byte{"password": []byte("s3cret")},
+	cases := map[string]struct {
+		gw         *apiv1.APIGateway
+		values     string
+		secretName string
+	}{
+		"adminCredentials": {gw: adminCredsGateway(apiv1.AdminCredentialsSourceFile), secretName: "gateway-1-admin"},
+		"configRef user":   {gw: &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: "gw1"}}, values: configRefSecretUsers, secretName: "multi-users"},
 	}
-	c := adminCredsClient(t, secret)
-	v1, err := adminCredentialsSecretVersion(ctx, c, gw)
-	require.NoError(t, err)
-	assert.NotEmpty(t, v1)
-	assert.NotContains(t, v1, "s3cret")
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			c := adminCredsClient(t)
+			missing, err := basicAuthSecretsVersion(ctx, c, tc.gw, tc.values)
+			require.NoError(t, err)
+			assert.NotEmpty(t, missing, "a missing Secret still yields a version, so creating it changes the hash")
 
-	// Rotating the password bumps resourceVersion, which changes the version.
-	secret.Data["password"] = []byte("rotated")
-	require.NoError(t, c.Update(ctx, secret))
-	v2, err := adminCredentialsSecretVersion(ctx, c, gw)
-	require.NoError(t, err)
-	assert.NotEqual(t, v1, v2)
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: tc.secretName, Namespace: "gw1", UID: "uid-1"},
+				Data:       map[string][]byte{"password": []byte("s3cret")},
+			}
+			require.NoError(t, c.Create(ctx, secret))
+			v1, err := basicAuthSecretsVersion(ctx, c, tc.gw, tc.values)
+			require.NoError(t, err)
+			assert.NotEqual(t, missing, v1, "creating the Secret changes the version")
+			assert.NotContains(t, v1, "s3cret")
 
-	// No adminCredentials: nothing to track.
-	v, err = adminCredentialsSecretVersion(ctx, c, &apiv1.APIGateway{})
+			// Rotating the password bumps resourceVersion, which changes the version.
+			secret.Data["password"] = []byte("rotated")
+			require.NoError(t, c.Update(ctx, secret))
+			v2, err := basicAuthSecretsVersion(ctx, c, tc.gw, tc.values)
+			require.NoError(t, err)
+			assert.NotEqual(t, v1, v2)
+		})
+	}
+
+	// No Secret-backed user: nothing to track, so the legacy hash is kept.
+	v, err := basicAuthSecretsVersion(ctx, adminCredsClient(t), &apiv1.APIGateway{}, legacyPlainUserValues)
 	require.NoError(t, err)
 	assert.Empty(t, v)
+}
+
+func TestBasicAuthChecksumOverlay(t *testing.T) {
+	out, err := basicAuthChecksumOverlay("")
+	require.NoError(t, err)
+	assert.Empty(t, out)
+
+	out, err = basicAuthChecksumOverlay("v1")
+	require.NoError(t, err)
+	merged, err := helm.MergeValuesYAML("gateway:\n  controller:\n    deployment:\n      podAnnotations:\n        team: platform\n", out)
+	require.NoError(t, err)
+	var v map[string]interface{}
+	require.NoError(t, yaml.Unmarshal([]byte(merged), &v))
+	annotations := v["gateway"].(map[string]interface{})["controller"].(map[string]interface{})["deployment"].(map[string]interface{})["podAnnotations"].(map[string]interface{})
+	assert.Equal(t, map[string]interface{}{"team": "platform", basicAuthCredentialsChecksumAnnotation: "v1"}, annotations)
+	assert.True(t, strings.HasPrefix(basicAuthCredentialsChecksumAnnotation, "checksum/"))
 }
 
 func TestGatewayConfigHash(t *testing.T) {
@@ -266,16 +340,31 @@ func TestEnqueueGatewaysForSecret(t *testing.T) {
 	other := &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "no-creds", Namespace: "gw1"}}
 	elsewhere := adminCredsGateway(apiv1.AdminCredentialsSourceEnv)
 	elsewhere.Name, elsewhere.Namespace = "gateway-x", "gw2"
+	withConfigRef := &apiv1.APIGateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "configref-users", Namespace: "gw1"},
+		Spec:       apiv1.GatewaySpec{ConfigRef: &corev1.LocalObjectReference{Name: "users-values"}},
+	}
+	usersValues := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "users-values", Namespace: "gw1"},
+		Data:       map[string]string{"values.yaml": configRefSecretUsers},
+	}
+	missingConfigRef := &apiv1.APIGateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "missing-configref", Namespace: "gw1"},
+		Spec:       apiv1.GatewaySpec{ConfigRef: &corev1.LocalObjectReference{Name: "not-there"}},
+	}
 
-	r := &GatewayReconciler{Client: adminCredsClient(t, gw1, other, elsewhere)}
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1-admin", Namespace: "gw1"}}
+	r := &GatewayReconciler{Client: adminCredsClient(t, gw1, other, elsewhere, withConfigRef, usersValues, missingConfigRef)}
+	enqueued := func(secretName string) []string {
+		var names []string
+		for _, req := range r.enqueueGatewaysForSecret(context.Background(),
+			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: "gw1"}}) {
+			assert.Equal(t, "gw1", req.Namespace)
+			names = append(names, req.Name)
+		}
+		return names
+	}
 
-	reqs := r.enqueueGatewaysForSecret(context.Background(), secret)
-	require.Len(t, reqs, 1)
-	assert.Equal(t, "gateway-1", reqs[0].Name)
-	assert.Equal(t, "gw1", reqs[0].Namespace)
-
-	unrelated := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "something-else", Namespace: "gw1"}}
-	assert.Empty(t, r.enqueueGatewaysForSecret(context.Background(), unrelated))
-	assert.True(t, strings.HasPrefix(adminCredentialsChecksumAnnotation, "checksum/"))
+	assert.Equal(t, []string{"gateway-1"}, enqueued("gateway-1-admin"), "adminCredentials Secret")
+	assert.Equal(t, []string{"configref-users"}, enqueued("multi-users"), "configRef user's passwordSecretRef")
+	assert.Empty(t, enqueued("something-else"), "unrelated Secret")
 }

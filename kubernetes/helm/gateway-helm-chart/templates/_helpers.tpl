@@ -368,6 +368,9 @@ enabled = {{ $basic.enabled }}
 {{- if $basic.users }}
 {{- range $idx, $user := $basic.users }}
 {{- $s := get $secrets (toString $idx) }}
+{{- if regexMatch `[:\x00-\x1f\x7f]` (toString $user.username) }}
+{{- fail (printf "gateway.config.controller.auth.basic.users[%d].username cannot contain ':' or control characters." $idx) }}
+{{- end }}
 [[controller.auth.basic.users]]
 username = {{ $user.username | quote }}
 {{- if $s }}

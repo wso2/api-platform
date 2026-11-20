@@ -22,6 +22,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -35,43 +37,108 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 )
 
-// adminCredentialsChecksumAnnotation is set on the gateway-controller pod template.
-// It changes whenever the admin password Secret changes, so Helm rolls the pod:
-// the controller reads its password (env var or mounted file) only at startup.
-const adminCredentialsChecksumAnnotation = "checksum/admin-credentials"
+// basicAuthCredentialsChecksumAnnotation is set on the gateway-controller pod template.
+// It changes whenever a Secret holding a basic-auth password changes, so Helm rolls the
+// pod: the controller reads its passwords (env vars or mounted files) only at startup.
+const basicAuthCredentialsChecksumAnnotation = "checksum/basic-auth-credentials"
 
-// adminCredentialsSecretVersion identifies the current revision of the Secret named by
-// spec.adminCredentials.passwordSecretRef, without reading its data: a hash of the
-// Secret's UID and resourceVersion, or a marker when the Secret does not exist (so
-// creating it later changes the value). Returns "" when adminCredentials is unset.
-func adminCredentialsSecretVersion(ctx context.Context, c client.Client, gw *apiv1.APIGateway) (string, error) {
-	if gw.Spec.AdminCredentials == nil {
-		return "", nil
+// basicAuthSecretNames returns, sorted and without duplicates, the Secrets in the
+// gateway's namespace whose values the gateway-controller reads as basic-auth passwords:
+// spec.adminCredentials.passwordSecretRef and the passwordSecretRef of every basic-auth
+// user in configRefValues (the APIGateway's configRef values).
+func basicAuthSecretNames(gw *apiv1.APIGateway, configRefValues string) ([]string, error) {
+	names := map[string]struct{}{}
+	if gw.Spec.AdminCredentials != nil && gw.Spec.AdminCredentials.PasswordSecretRef.Name != "" {
+		names[gw.Spec.AdminCredentials.PasswordSecretRef.Name] = struct{}{}
 	}
-	name := gw.Spec.AdminCredentials.PasswordSecretRef.Name
-	secret := &corev1.Secret{}
-	if err := c.Get(ctx, types.NamespacedName{Namespace: gw.Namespace, Name: name}, secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return "missing:" + name, nil
+	users, err := configRefBasicAuthUsers(configRefValues)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		user, ok := u.(map[string]interface{})
+		if !ok {
+			continue
 		}
-		return "", fmt.Errorf("get admin credentials secret %s/%s: %w", gw.Namespace, name, err)
+		ref, ok := user["passwordSecretRef"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if name, ok := ref["name"].(string); ok && name != "" {
+			names[name] = struct{}{}
+		}
 	}
-	sum := sha256.Sum256([]byte(string(secret.UID) + "/" + secret.ResourceVersion))
-	return hex.EncodeToString(sum[:]), nil
+	out := make([]string, 0, len(names))
+	for name := range names {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
-// gatewayConfigHash is the value stored in status.configHash. Without adminCredentials
-// it is exactly the earlier ConfigMap-only hash, so existing gateways are not redeployed
-// on operator upgrade. With adminCredentials it also covers the Secret's revision, so a
-// password rotation triggers the existing "ConfigChanged" redeploy.
-func gatewayConfigHash(configMapValues, adminSecretVersion string) string {
-	if adminSecretVersion == "" {
+// basicAuthSecretsVersion identifies the current revision of every Secret named by
+// basicAuthSecretNames, without reading their data: a hash over each Secret's UID and
+// resourceVersion, with a marker for a Secret that does not exist (so creating it later
+// changes the value). Returns "" when no Secret is referenced.
+func basicAuthSecretsVersion(ctx context.Context, c client.Client, gw *apiv1.APIGateway, configRefValues string) (string, error) {
+	names, err := basicAuthSecretNames(gw, configRefValues)
+	if err != nil {
+		return "", err
+	}
+	if len(names) == 0 {
+		return "", nil
+	}
+	h := sha256.New()
+	for _, name := range names {
+		secret := &corev1.Secret{}
+		if err := c.Get(ctx, types.NamespacedName{Namespace: gw.Namespace, Name: name}, secret); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return "", fmt.Errorf("get basic-auth password secret %s/%s: %w", gw.Namespace, name, err)
+			}
+			fmt.Fprintf(h, "%s=missing\n", name)
+			continue
+		}
+		fmt.Fprintf(h, "%s=%s/%s\n", name, secret.UID, secret.ResourceVersion)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// gatewayConfigHash is the value stored in status.configHash. When no basic-auth
+// password comes from a Secret it is exactly the earlier ConfigMap-only hash, so
+// existing gateways are not redeployed on operator upgrade. Otherwise it also covers the
+// Secrets' revisions, so a password rotation triggers the existing "ConfigChanged"
+// redeploy.
+func gatewayConfigHash(configMapValues, secretsVersion string) string {
+	if secretsVersion == "" {
 		if configMapValues == "" {
 			return ""
 		}
 		return auth.CalculateConfigHash(configMapValues)
 	}
-	return auth.CalculateConfigHash(configMapValues + "\n# adminCredentials: " + adminSecretVersion)
+	return auth.CalculateConfigHash(configMapValues + "\n# basic-auth secrets: " + secretsVersion)
+}
+
+// basicAuthChecksumOverlay returns the Helm values that put secretsVersion on the
+// gateway-controller pod template, or "" when it is empty.
+func basicAuthChecksumOverlay(secretsVersion string) (string, error) {
+	if secretsVersion == "" {
+		return "", nil
+	}
+	out, err := yaml.Marshal(map[string]interface{}{
+		"gateway": map[string]interface{}{
+			"controller": map[string]interface{}{
+				"deployment": map[string]interface{}{
+					"podAnnotations": map[string]interface{}{
+						basicAuthCredentialsChecksumAnnotation: secretsVersion,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal basic-auth checksum overlay: %w", err)
+	}
+	return string(out), nil
 }
 
 // buildAdminCredentialsOverlay returns the Helm values that configure the gateway's
@@ -84,7 +151,7 @@ func gatewayConfigHash(configMapValues, adminSecretVersion string) string {
 // user from configRefValues (the APIGateway's own configRef values) except one with the
 // admin's username. Users from the operator's base values file are not carried over, so
 // its default admin/admin user never comes back.
-func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, secretVersion, configRefValues string) (string, error) {
+func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) (string, error) {
 	creds := gw.Spec.AdminCredentials
 	if creds == nil {
 		return "", nil
@@ -142,13 +209,6 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, secretVersion, configRef
 					},
 				},
 			},
-			"controller": map[string]interface{}{
-				"deployment": map[string]interface{}{
-					"podAnnotations": map[string]interface{}{
-						adminCredentialsChecksumAnnotation: secretVersion,
-					},
-				},
-			},
 		},
 	}
 	out, err := yaml.Marshal(overlay)
@@ -158,23 +218,41 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, secretVersion, configRef
 	return string(out), nil
 }
 
-// enqueueGatewaysForSecret enqueues every APIGateway whose spec.adminCredentials
-// references the changed Secret.
+// enqueueGatewaysForSecret enqueues every APIGateway that reads a basic-auth password
+// from the changed Secret, through spec.adminCredentials or a configRef user's
+// passwordSecretRef.
 func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
 		return nil
 	}
+	logger := log.FromContext(ctx)
 	gatewayList := &apiv1.APIGatewayList{}
 	if err := r.List(ctx, gatewayList, client.InNamespace(secret.Namespace)); err != nil {
-		log.FromContext(ctx).Error(err, "failed to list APIGateways for Secret event",
+		logger.Error(err, "failed to list APIGateways for Secret event",
 			"secret", secret.Name, "namespace", secret.Namespace)
 		return nil
 	}
 	var requests []reconcile.Request
 	for i := range gatewayList.Items {
 		gw := &gatewayList.Items[i]
-		if gw.Spec.AdminCredentials == nil || gw.Spec.AdminCredentials.PasswordSecretRef.Name != secret.Name {
+		configRefValues := ""
+		if gw.Spec.ConfigRef != nil {
+			values, err := configMapValuesYAML(ctx, r.Client, gw.Spec.ConfigRef.Name, gw.Namespace)
+			if err != nil {
+				// The gateway's own reconcile reports an unreadable ConfigMap; here only
+				// spec.adminCredentials can still be matched.
+				logger.V(1).Info("cannot read configRef values for Secret event",
+					"gateway", gw.Name, "namespace", gw.Namespace, "error", err.Error())
+			} else {
+				configRefValues = values
+			}
+		}
+		names, err := basicAuthSecretNames(gw, configRefValues)
+		if err != nil {
+			names, _ = basicAuthSecretNames(gw, "")
+		}
+		if !slices.Contains(names, secret.Name) {
 			continue
 		}
 		requests = append(requests, reconcile.Request{

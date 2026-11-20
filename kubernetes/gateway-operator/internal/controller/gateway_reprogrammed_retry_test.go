@@ -106,12 +106,29 @@ func TestGatewayReprogrammedSinceFailure(t *testing.T) {
 		return &registry.GatewayInfo{Name: name, Namespace: retryTestNS, FromGatewayAPI: fromGatewayAPI}
 	}
 
-	assert.True(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("after", false), &failedAt), "gateway programmed after the failure")
-	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("before", false), &failedAt), "gateway programmed before the failure")
-	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("down", false), &failedAt), "gateway not programmed")
-	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("missing", false), &failedAt), "gateway not found")
-	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("after", false), nil), "no failure time")
-	assert.True(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("k8s-gw", true), &failedAt), "Gateway API gateway programmed after the failure")
+	// Without an observation (tracker cleared) the failure time is the reference.
+	none := gatewayObservation{}
+	assert.True(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("after", false), none, &failedAt), "gateway programmed after the failure")
+	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("before", false), none, &failedAt), "gateway programmed before the failure")
+	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("down", false), none, &failedAt), "gateway not programmed")
+	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("missing", false), none, &failedAt), "gateway not found")
+	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("after", false), none, nil), "no failure time")
+	assert.True(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("k8s-gw", true), none, &failedAt), "Gateway API gateway programmed after the failure")
+
+	// With an observation, the transition the attempt saw is the reference, whatever
+	// the failure time.
+	seenBefore := gatewayObservation{Recorded: true, ProgrammedAt: failedAt.Add(-30 * time.Second)}
+	seenNotProgrammed := gatewayObservation{Recorded: true}
+	assert.True(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("after", false), seenBefore, &failedAt), "gateway re-programmed since the attempt")
+	assert.True(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("after", false), seenNotProgrammed, &failedAt), "gateway was not programmed during the attempt")
+	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("before", false), seenBefore, &failedAt), "same transition the attempt saw")
+	assert.False(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("down", false), seenNotProgrammed, &failedAt), "gateway still not programmed")
+	recoveredBeforeStatusWrite := gatewayObservation{Recorded: true, ProgrammedAt: failedAt.Add(-90 * time.Second)}
+	assert.True(t, gatewayReprogrammedSinceFailure(ctx, c, gwInfo("before", false), recoveredBeforeStatusWrite, &failedAt),
+		"gateway recovered after the attempt started but before the failure status was written")
+
+	assert.Equal(t, gatewayObservation{Recorded: true, ProgrammedAt: failedAt.Add(30 * time.Second)}, observeGateway(ctx, c, gwInfo("after", false)))
+	assert.Equal(t, gatewayObservation{Recorded: true}, observeGateway(ctx, c, gwInfo("down", false)))
 }
 
 // terminallyFailedRestApi is a RestApi whose deployment ended in DeploymentFailed at its
@@ -182,6 +199,52 @@ func TestRestApiKeepsTerminalFailureWhenGatewayNotReprogrammed(t *testing.T) {
 	gw := programmedGateway("gw-before", failedAt.Add(-30*time.Second))
 	registerRetryGateway(t, gw)
 	r := newRetryRestApiReconciler(retryTestClient(t, gw, terminallyFailedRestApi("gw-before", failedAt)))
+
+	after := decideRestApi(t, r, "api-retry")
+	cond := meta.FindStatusCondition(after.Status.Conditions, apiv1.APIConditionProgrammed)
+	require.NotNil(t, cond)
+	assert.Equal(t, apiv1.APIProgrammedReasonDeploymentFailed, cond.Reason)
+	assert.True(t, after.Status.LastUpdateTime.Equal(&failedAt))
+}
+
+// The gateway recovered after the failed attempt started but before its failure status
+// was written, so its transition is older than status.lastUpdateTime. The attempt's
+// own observation still shows it as re-programmed, so the deployment is retried, once.
+func TestRestApiRetriesWhenGatewayRecoveredBeforeFailureWasWritten(t *testing.T) {
+	failedAt := metav1.NewTime(time.Now().Add(-time.Minute).Truncate(time.Second))
+	gw := programmedGateway("gw-race", failedAt.Add(-time.Second))
+	registerRetryGateway(t, gw)
+	r := newRetryRestApiReconciler(retryTestClient(t, gw, terminallyFailedRestApi("gw-race", failedAt)))
+	trackingKey := types.NamespacedName{Namespace: retryTestNS, Name: "api-retry"}.String()
+	r.apiTracker.Set(trackingKey, &APITrackingEntry{
+		Generation: 2, Status: TrackingStatusDeployed,
+		GatewayObserved: gatewayObservation{Recorded: true}, // gateway was not Programmed when the attempt started
+	})
+
+	after := decideRestApi(t, r, "api-retry")
+	cond := meta.FindStatusCondition(after.Status.Conditions, apiv1.APIConditionProgrammed)
+	require.NotNil(t, cond)
+	assert.Equal(t, apiv1.APIProgrammedReasonRetrying, cond.Reason, "a new deployment attempt must have run")
+	entry, ok := r.apiTracker.Get(trackingKey)
+	require.True(t, ok)
+	assert.Equal(t, gatewayObservation{Recorded: true, ProgrammedAt: failedAt.Add(-time.Second)}, entry.GatewayObserved,
+		"the retried attempt records the transition it saw, so the same transition cannot retrigger it")
+}
+
+// Positive control's counterpart: the attempt already saw the gateway's current
+// transition, so even though that transition is newer than the failure time nothing has
+// changed and the terminal state is left alone.
+func TestRestApiKeepsTerminalFailureWhenAttemptSawCurrentTransition(t *testing.T) {
+	failedAt := metav1.NewTime(time.Now().Add(-time.Minute).Truncate(time.Second))
+	programmedAt := failedAt.Add(30 * time.Second)
+	gw := programmedGateway("gw-seen", programmedAt)
+	registerRetryGateway(t, gw)
+	r := newRetryRestApiReconciler(retryTestClient(t, gw, terminallyFailedRestApi("gw-seen", failedAt)))
+	trackingKey := types.NamespacedName{Namespace: retryTestNS, Name: "api-retry"}.String()
+	r.apiTracker.Set(trackingKey, &APITrackingEntry{
+		Generation: 2, Status: TrackingStatusDeployed,
+		GatewayObserved: gatewayObservation{Recorded: true, ProgrammedAt: programmedAt},
+	})
 
 	after := decideRestApi(t, r, "api-retry")
 	cond := meta.FindStatusCondition(after.Status.Conditions, apiv1.APIConditionProgrammed)
@@ -277,5 +340,44 @@ func TestGenericKeepsTerminalFailureWhenGatewayNotReprogrammed(t *testing.T) {
 	cond := meta.FindStatusCondition(after.Status.Conditions, apiv1.ConditionProgrammed)
 	require.NotNil(t, cond)
 	assert.Equal(t, apiv1.ReasonDeploymentFailed, cond.Reason)
+	assert.Equal(t, "Deployment failed: 401", cond.Message)
+}
+
+// Same race as TestRestApiRetriesWhenGatewayRecoveredBeforeFailureWasWritten, through the
+// generic reconciler, with its positive control: once the retry has recorded the
+// gateway's current transition, a later reconcile does not retry again.
+func TestGenericRetriesWhenGatewayRecoveredBeforeFailureWasWritten(t *testing.T) {
+	failedAt := metav1.NewTime(time.Now().Add(-time.Minute).Truncate(time.Second))
+	gw := programmedGateway("gw-generic-race", failedAt.Add(-time.Second))
+	registerRetryGateway(t, gw)
+	r := newRetryMcpReconciler(t, gw, terminallyFailedMcp("gw-generic-race", failedAt))
+	trackingKey := types.NamespacedName{Namespace: retryTestNS, Name: "mcp-retry"}.String()
+	r.Tracker.Set(trackingKey, &ResourceTrackingEntry{
+		Generation: 3, Status: ResourceStatusDeployed,
+		GatewayObserved: gatewayObservation{Recorded: true},
+	})
+
+	after := decideMcp(t, r)
+	require.NotNil(t, after.Status.LastUpdateTime)
+	assert.True(t, after.Status.LastUpdateTime.After(failedAt.Time), "a new deployment attempt must have run")
+	entry, ok := r.Tracker.Get(trackingKey)
+	require.True(t, ok)
+	assert.Equal(t, gatewayObservation{Recorded: true, ProgrammedAt: failedAt.Add(-time.Second)}, entry.GatewayObserved)
+
+	// Make the resource terminally failed again at the retried attempt's observation:
+	// with no new gateway transition, it stays failed.
+	failedAgain := terminallyFailedMcp("gw-generic-race", metav1.NewTime(failedAt.Add(-2*time.Second)))
+	current := &apiv1.Mcp{}
+	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Namespace: retryTestNS, Name: "mcp-retry"}, current))
+	current.Status = failedAgain.Status
+	require.NoError(t, r.Status().Update(context.Background(), current))
+	entry.Status = ResourceStatusDeployed
+	entry.NextRetryTime = time.Time{}
+	r.Tracker.Set(trackingKey, entry)
+
+	again := decideMcp(t, r)
+	cond := meta.FindStatusCondition(again.Status.Conditions, apiv1.ConditionProgrammed)
+	require.NotNil(t, cond)
+	assert.Equal(t, apiv1.ReasonDeploymentFailed, cond.Reason, "the same gateway transition must not retrigger a retry")
 	assert.Equal(t, "Deployment failed: 401", cond.Message)
 }

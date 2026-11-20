@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -79,10 +80,12 @@ type AuthUser struct {
 }
 
 // PasswordSecretRef names the Secret key that holds a basic-auth user's password.
-// Source and MountPath only affect how the gateway receives it, not the operator.
+// Source decides how the gateway receives it, and so how the operator must read it
+// (see PasswordAsGatewayReadsIt); MountPath only affects the gateway.
 type PasswordSecretRef struct {
-	Name string `yaml:"name"`
-	Key  string `yaml:"key"`
+	Name   string `yaml:"name"`
+	Key    string `yaml:"key"`
+	Source string `yaml:"source"`
 }
 
 // defaultPasswordSecretKey is the chart's default passwordSecretRef.key.
@@ -207,6 +210,18 @@ func GetDefaultBasicAuthCredentials() (username, password string) {
 	return "admin", "admin"
 }
 
+// PasswordAsGatewayReadsIt returns a Secret value as the gateway-controller sees it for
+// the given delivery source. In file mode the controller's {{ file }} interpolation
+// trims trailing spaces, tabs and newlines (a Secret made with --from-file usually ends
+// in a newline), so the operator trims the same characters. In env mode the value
+// reaches the controller unchanged, so it is returned unchanged.
+func PasswordAsGatewayReadsIt(value, source string) string {
+	if source == apiv1.AdminCredentialsSourceFile {
+		return strings.TrimRight(value, " \t\r\n")
+	}
+	return value
+}
+
 // DefaultAdminUsername is the admin username used when spec.adminCredentials.username
 // is empty (the CRD defaults it to the same value).
 const DefaultAdminUsername = "admin"
@@ -235,6 +250,7 @@ func AdminCredentialsFromSecret(ctx context.Context, k8sClient client.Client, ga
 	if err != nil {
 		return "", "", err
 	}
+	password = PasswordAsGatewayReadsIt(password, creds.Source)
 	if password == "" {
 		return "", "", fmt.Errorf("spec.adminCredentials.passwordSecretRef: key %q in secret %s/%s is empty",
 			ref.Key, gateway.Namespace, ref.Name)
@@ -311,6 +327,7 @@ func basicUserFromSecret(ctx context.Context, k8sClient client.Client, namespace
 	if err != nil {
 		return "", "", err
 	}
+	password = PasswordAsGatewayReadsIt(password, ref.Source)
 	if password == "" {
 		return "", "", fmt.Errorf("%s: key %q in secret %s/%s is empty", field, key, namespace, ref.Name)
 	}

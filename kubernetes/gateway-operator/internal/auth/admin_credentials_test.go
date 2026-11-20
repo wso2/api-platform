@@ -90,6 +90,41 @@ func TestResolveBasicCredentials_DefaultUsername(t *testing.T) {
 	assert.Equal(t, DefaultAdminUsername, user)
 }
 
+// The operator must send the password the gateway-controller holds: in file mode the
+// gateway's {{ file }} interpolation trims trailing whitespace (a Secret made with
+// --from-file ends in a newline), while in env mode the value is used unchanged.
+func TestResolveBasicCredentials_MatchesGatewayTrimming(t *testing.T) {
+	cases := map[string]struct {
+		source   string
+		value    string
+		wantPass string
+		wantErr  bool
+	}{
+		"file trims newline":         {source: apiv1.AdminCredentialsSourceFile, value: "s3cret-1\n", wantPass: "s3cret-1"},
+		"file trims crlf and blanks": {source: apiv1.AdminCredentialsSourceFile, value: "s3cret-1 \t\r\n", wantPass: "s3cret-1"},
+		"file keeps leading blanks":  {source: apiv1.AdminCredentialsSourceFile, value: "  s3cret-1\n", wantPass: "  s3cret-1"},
+		"file only newline is empty": {source: apiv1.AdminCredentialsSourceFile, value: "\n", wantErr: true},
+		"env keeps newline":          {source: apiv1.AdminCredentialsSourceEnv, value: "s3cret-1\n", wantPass: "s3cret-1\n"},
+		"unset source is env":        {source: "", value: "s3cret-1\n", wantPass: "s3cret-1\n"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password")
+			gw.Spec.AdminCredentials.Source = tc.source
+			c := newFakeClient(t, gw, passwordSecret("gateway-1-admin", map[string]string{"password": tc.value}))
+
+			_, pass, err := ResolveBasicCredentials(context.Background(), c, info())
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Empty(t, pass)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantPass, pass)
+		})
+	}
+}
+
 // With adminCredentials set, an unusable Secret is an error: the operator must never
 // fall back to admin/admin for such a gateway.
 func TestResolveBasicCredentials_FailsClosed(t *testing.T) {
@@ -240,6 +275,11 @@ gateway:
 		"key missing":     {values: refValues(""), secret: passwordSecret("values-admin-secret", map[string]string{"other": "x"}), wantErr: true},
 		"value empty":     {values: refValues(""), secret: passwordSecret("values-admin-secret", map[string]string{"password": ""}), wantErr: true},
 		"hashed password": {values: refValues("              password_hashed: true\n"), secret: passwordSecret("values-admin-secret", map[string]string{"password": "$2a$10$hash"}), wantErr: true},
+		// The gateway trims a file-mode password but passes an env-mode one unchanged.
+		"file mode trims newline":    {values: refValues("                source: file\n"), secret: passwordSecret("values-admin-secret", map[string]string{"password": "from-file\n"}), wantPass: "from-file"},
+		"env mode keeps newline":     {values: refValues("                source: env\n"), secret: passwordSecret("values-admin-secret", map[string]string{"password": "from-env\n"}), wantPass: "from-env\n"},
+		"default mode keeps newline": {values: refValues(""), secret: passwordSecret("values-admin-secret", map[string]string{"password": "from-env\n"}), wantPass: "from-env\n"},
+		"file mode only whitespace":  {values: refValues("                source: file\n"), secret: passwordSecret("values-admin-secret", map[string]string{"password": " \n"}), wantErr: true},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
