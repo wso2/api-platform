@@ -77,6 +77,26 @@ func TestRedactCredentials(t *testing.T) {
 			want: `golang.org/x/text@v0.3.0: parse "https://<redacted-credentials>@proxy.example.com": invalid port "<redacted>" after host`,
 		},
 		{
+			name: "raw slash in the password, second URL of a comma-separated list",
+			in:   "https://public.example.com/proxy,https://bot:abc/def@private.example.com",
+			want: "https://public.example.com/proxy,https://<redacted-credentials>@private.example.com",
+		},
+		{
+			name: "raw slash in the password, second URL of a pipe-separated list",
+			in:   "https://public.example.com/proxy|https://bot:abc/def@private.example.com/x",
+			want: "https://public.example.com/proxy|https://<redacted-credentials>@private.example.com/x",
+		},
+		{
+			name: "raw slash in the password, quoted list",
+			in:   `reading "https://public.example.com/proxy,https://bot:abc/def@private.example.com"`,
+			want: `reading "https://public.example.com/proxy,https://<redacted-credentials>@private.example.com"`,
+		},
+		{
+			name: "raw slash in the password of a URL nested in a query string",
+			in:   "https://host.example.com/x?next=https://bot:abc/def@other.example.com/y",
+			want: "https://host.example.com/x?<redacted-query>",
+		},
+		{
 			name: "host with a port and a /@v/ path is kept",
 			in:   "reading https://proxy.example.com:8443/github.com/acme/p/@v/list: 404 Not Found",
 			want: "reading https://proxy.example.com:8443/github.com/acme/p/@v/list: 404 Not Found",

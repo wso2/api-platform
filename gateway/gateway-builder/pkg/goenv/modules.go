@@ -77,6 +77,11 @@ func redactMalformedUserinfo(text string) string {
 		if end < 0 {
 			end = len(rest)
 		}
+		// A comma- or pipe-separated list has no spaces; stop at the next URL so each
+		// one is checked on its own.
+		if next := urlStart.FindStringIndex(rest[:end]); next != nil {
+			end = next[0]
+		}
 		u := rest[:end]
 		if at := malformedUserinfoEnd(u); at > 0 {
 			u = "<redacted-credentials>" + u[at:]
