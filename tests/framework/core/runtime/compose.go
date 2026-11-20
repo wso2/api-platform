@@ -86,8 +86,9 @@ type ComposeStack struct {
 	// the block is capturing container output.
 	stopLogProducers []func() error
 
-	// stopped holds the services StopService stopped on purpose, such as coverage collection
-	// before teardown, so teardown reports only services that exited on their own.
+	// stopped maps each service StopService stopped on purpose, such as for coverage collection
+	// before teardown, to the exit time Docker recorded for that stop, so only an exit that
+	// differs from it is reported.
 	stopped sync.Map
 }
 
@@ -589,11 +590,8 @@ func (c *ComposeStack) Stop(ctx context.Context) error {
 	}
 	if c.stack != nil {
 		for _, svc := range c.services() {
-			if _, deliberate := c.stopped.Load(svc); deliberate {
-				continue
-			}
 			if container, err := c.stack.ServiceContainer(ctx, svc); err == nil {
-				warnIfExited(ctx, svc, container)
+				warnIfExited(ctx, svc, container, c.stoppedAt(svc))
 			}
 		}
 	}
@@ -750,17 +748,22 @@ func (c *ComposeStack) StopService(ctx context.Context, service string) error {
 	if err != nil {
 		return err
 	}
-	// Stopping an already exited service succeeds, so a service that exited on its own is
-	// reported now: once stopped on purpose, teardown no longer checks it.
-	if _, deliberate := c.stopped.Load(service); !deliberate {
-		warnIfExited(ctx, service, container)
-	}
+	// Stopping an already exited service succeeds, so an exit of its own is reported before the
+	// deliberate stop is recorded over it.
+	warnIfExited(ctx, service, container, c.stoppedAt(service))
 	timeout := 30 * time.Second
 	if err := container.Stop(ctx, &timeout); err != nil {
 		return fmt.Errorf("runtime: stopping service %q: %w", service, err)
 	}
-	c.stopped.Store(service, true)
+	c.stopped.Store(service, exitTime(ctx, container))
 	return nil
+}
+
+// stoppedAt returns the exit time recorded when StopService last stopped service, or "".
+func (c *ComposeStack) stoppedAt(service string) string {
+	v, _ := c.stopped.Load(service)
+	s, _ := v.(string)
+	return s
 }
 
 // StartService starts a stopped service and refreshes its published ports.
@@ -769,16 +772,9 @@ func (c *ComposeStack) StartService(ctx context.Context, service string) error {
 	if err != nil {
 		return err
 	}
-	before := startedAt(ctx, container)
 	if err := container.Start(ctx); err != nil {
-		// A start can fail after Docker began a new execution, in a readiness hook. That
-		// execution is no longer the one StopService stopped, so teardown checks it again.
-		if startedAt(ctx, container) != before {
-			c.stopped.Delete(service)
-		}
 		return fmt.Errorf("runtime: starting service %q: %w", service, err)
 	}
-	c.stopped.Delete(service)
 	return c.RefreshPorts(ctx)
 }
 

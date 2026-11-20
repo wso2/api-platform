@@ -117,9 +117,9 @@ type Container struct {
 	Instance  *components.Instance
 	container testcontainers.Container
 	def       *components.Definition
-	// halted is set while Halt has stopped the container on purpose, so teardown does not
-	// report it as having exited on its own.
-	halted atomic.Bool
+	// stoppedAt holds the exit time Docker recorded when Halt last stopped the container on
+	// purpose, so only an exit that differs from it is reported. Empty when none is recorded.
+	stoppedAt atomic.Value
 }
 
 // Launch starts one instance and waits for its container-level readiness strategy.
@@ -391,9 +391,7 @@ func (c *Container) Stop(ctx context.Context) error {
 		return nil
 	}
 	inner := c.container
-	if !c.halted.Load() {
-		warnIfExited(ctx, c.def.Name, inner)
-	}
+	warnIfExited(ctx, c.def.Name, inner, recorded(&c.stoppedAt))
 	if err := inner.Terminate(ctx); err != nil {
 		return fmt.Errorf("runtime: terminating %s: %w", c.def, err)
 	}
@@ -401,22 +399,32 @@ func (c *Container) Stop(ctx context.Context) error {
 	return nil
 }
 
-// startedAt is the start time Docker records for the container's latest execution, or "" when it
-// cannot be read.
-func startedAt(ctx context.Context, c testcontainers.Container) string {
+// exitTime is the exit time Docker records for the container's latest execution, or "" when it
+// cannot be read. Recording "" leaves nothing to match, so a later exit is reported, not hidden.
+func exitTime(ctx context.Context, c testcontainers.Container) string {
 	state, err := c.State(ctx)
 	if err != nil {
 		return ""
 	}
-	return state.StartedAt
+	return state.FinishedAt
 }
 
-// warnIfExited logs a container that had already stopped when its block tears down, with its
-// exit code and whether it was killed for running out of memory. Without it, a container that
-// died mid-run leaves only connection errors in the scenarios that called it.
-func warnIfExited(ctx context.Context, name string, c testcontainers.Container) {
+// recorded returns the exit time a deliberate stop stored in v, or "" when none was stored.
+func recorded(v *atomic.Value) string {
+	s, _ := v.Load().(string)
+	return s
+}
+
+// warnIfExited logs a container that is no longer running, with its exit code and whether it
+// was killed for running out of memory, unless its exit is the deliberate stop whose exit time
+// is deliberate. Without it, a container that died mid-run leaves only connection errors in the
+// scenarios that called it. A container whose state cannot be read is not reported.
+func warnIfExited(ctx context.Context, name string, c testcontainers.Container, deliberate string) {
 	state, err := c.State(ctx)
 	if err != nil || state.Running {
+		return
+	}
+	if deliberate != "" && state.FinishedAt == deliberate {
 		return
 	}
 	slog.Warn("container had exited before teardown", "container", name, "status", state.Status,
@@ -430,15 +438,13 @@ func (c *Container) Halt(ctx context.Context) error {
 	if c == nil || c.container == nil {
 		return fmt.Errorf("runtime: no container to halt")
 	}
-	// Stopping an already exited container succeeds, so a container that exited on its own is
-	// reported now: once halted, teardown no longer checks it.
-	if !c.halted.Load() {
-		warnIfExited(ctx, c.def.Name, c.container)
-	}
+	// Stopping an already exited container succeeds, so an exit of its own is reported before
+	// the deliberate stop is recorded over it.
+	warnIfExited(ctx, c.def.Name, c.container, recorded(&c.stoppedAt))
 	if err := c.container.Stop(ctx, nil); err != nil {
 		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
 	}
-	c.halted.Store(true)
+	c.stoppedAt.Store(exitTime(ctx, c.container))
 	return nil
 }
 
@@ -448,16 +454,9 @@ func (c *Container) Resume(ctx context.Context) error {
 	if c == nil || c.container == nil {
 		return fmt.Errorf("runtime: no container to resume")
 	}
-	before := startedAt(ctx, c.container)
 	if err := c.container.Start(ctx); err != nil {
-		// A start can fail after Docker began a new execution, in a readiness hook. That
-		// execution is no longer the one Halt stopped, so teardown checks it again.
-		if startedAt(ctx, c.container) != before {
-			c.halted.Store(false)
-		}
 		return fmt.Errorf("runtime: resuming %s: %w", c.def, err)
 	}
-	c.halted.Store(false)
 	if c.Instance == nil || c.def == nil {
 		return nil
 	}
