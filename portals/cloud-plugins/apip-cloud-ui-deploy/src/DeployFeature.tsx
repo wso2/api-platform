@@ -83,8 +83,16 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost, trackFeature } =
-    port;
+  const {
+    apiFetch,
+    projectHandle,
+    apiHandle,
+    notify,
+    gatewayVersions,
+    gatewayControlPlaneHost,
+    trackFeature,
+    resources,
+  } = port;
   const artifactKind = featureArtifactKind(kind);
   const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
@@ -270,6 +278,8 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       setBusy(true);
       try {
         await action();
+        // The host caches this API's gateways and deployments, and this call went around it.
+        resources?.invalidate('apiDeployments');
         notify(success, 'success');
         await load({ quiet: true });
       } catch (actionError) {
@@ -278,7 +288,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         setBusy(false);
       }
     },
-    [client, load, notify]
+    [client, load, notify, resources]
   );
 
   /**

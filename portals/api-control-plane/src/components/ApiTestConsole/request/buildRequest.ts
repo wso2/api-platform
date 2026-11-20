@@ -203,7 +203,12 @@ export const buildSendRequest = ({
       new URLSearchParams(typedQuery).forEach((value, name) => {
         if (autoQueryNames.has(name) || editorQueryNames.has(name)) return;
         query.push([name, value]);
-        if (value.trim() !== '') typedQueryNames.add(name);
+        if (value.trim() === '') return;
+        // A typed value meets the same constraints as one typed on the Params tab.
+        const declared = operation.parameters.find((p) => p.in === 'query' && p.name === name);
+        const problem = declared ? parameterProblem(declared, value) : undefined;
+        if (declared && problem) problems[paramProblemKey(declared)] = problem;
+        typedQueryNames.add(name);
       });
     }
   }

@@ -558,4 +558,24 @@ describe('buildSendRequest — typed path', () => {
     expect(build('GET /files/*', draft()).request?.path).toBe('/files/');
     expect(build('GET /*', draft()).preview.path).toBe('/');
   });
+
+  it('holds a typed query value to the parameter’s declared type', () => {
+    const bad = build('GET /search', draft({ pathOverride: '/search?q=needle&page=abc' }));
+    expect(bad.request).toBeUndefined();
+    expect(bad.problems[paramProblemKey({ in: 'query', name: 'page' })]).toEqual({
+      code: 'integer',
+    });
+
+    const good = build('GET /search', draft({ pathOverride: '/search?q=needle&page=3' }));
+    expect(good.problems).toEqual({});
+    expect(good.request?.query).toEqual([
+      ['q', 'needle'],
+      ['page', '3'],
+    ]);
+  });
+
+  it('leaves a typed name the operation does not declare unchecked', () => {
+    const result = build('GET /search', draft({ pathOverride: '/search?q=x&extra=anything' }));
+    expect(result.problems).toEqual({});
+  });
 });
