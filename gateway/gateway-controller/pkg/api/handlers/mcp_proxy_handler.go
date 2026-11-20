@@ -225,7 +225,7 @@ func (s *APIServer) GetMCPProxyById(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(mcp, cfg))
+	writeResource(w, r, http.StatusOK, buildResourceResponseFromStored(mcp, cfg))
 }
 
 // UpdateMCPProxy implements ServerInterface.UpdateMCPProxy

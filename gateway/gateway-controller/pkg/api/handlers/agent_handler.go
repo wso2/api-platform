@@ -159,7 +159,7 @@ func (h *AgentHandler) GetAgentById(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, response)
+	writeResource(w, r, http.StatusOK, response)
 }
 
 // UpdateAgent implements ServerInterface.UpdateAgent

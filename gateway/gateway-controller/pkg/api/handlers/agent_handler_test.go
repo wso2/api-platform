@@ -27,6 +27,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -167,6 +168,31 @@ func TestAgentHandler_RedactsUpstreamCredential(t *testing.T) {
 	require.NotNil(t, source.Spec.Upstream.Auth)
 	require.NotNil(t, source.Spec.Upstream.Auth.Value)
 	assert.Equal(t, "super-secret-upstream-key", *source.Spec.Upstream.Auth.Value)
+}
+
+// A YAML GET is negotiated from Accept and withholds the upstream credential
+// exactly as the JSON GET does: both encode the same redacted response.
+func TestAgentHandler_GetYAMLRedactsUpstreamCredential(t *testing.T) {
+	server := createTestAPIServer()
+
+	rec := postAgent(t, server, agentArtifactYAML)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	req := httptest.NewRequest(http.MethodGet, "/agents/weather-agent-v1-0", nil)
+	req.Header.Set("Accept", "application/yaml")
+	getRec := httptest.NewRecorder()
+	server.GetAgentById(getRec, req, "weather-agent-v1-0")
+	require.Equal(t, http.StatusOK, getRec.Code, "body: %s", getRec.Body.String())
+	assert.Equal(t, "application/yaml", getRec.Header().Get("Content-Type"))
+	assert.NotContains(t, getRec.Body.String(), "super-secret-upstream-key", "YAML get response leaked the upstream credential")
+
+	var body map[string]any
+	require.NoError(t, yaml.Unmarshal(getRec.Body.Bytes(), &body))
+	assert.Equal(t, "Agent", body["kind"])
+	auth := body["spec"].(map[string]any)["upstream"].(map[string]any)["auth"].(map[string]any)
+	assert.Equal(t, "api-key", auth["type"])
+	_, hasValue := auth["value"]
+	assert.False(t, hasValue, "auth.value must be absent, not blank")
 }
 
 func TestAgentHandler_List(t *testing.T) {

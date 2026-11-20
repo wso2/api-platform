@@ -127,7 +127,7 @@ func (s *APIServer) GetLLMProviderTemplateById(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, buildTemplateResourceResponse(template))
+	writeResource(w, r, http.StatusOK, buildTemplateResourceResponse(template))
 }
 
 // UpdateLLMProviderTemplate implements ServerInterface.UpdateLLMProviderTemplate
