@@ -40,7 +40,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     Given I generate a unique resource name from "agent-keys" and store it as "agentHandle"
     And I generate a unique API context from "/agent-keys" and store it as "agentContext"
     And I generate a unique resource name from "agent-key" and store it as "keyId"
-    And I generate a unique value from "agent-key-rotated" and store it as "rotatedKey"
+    And I generate a unique value from "agent-key-rotated-api-key-0123456789" and store it as "rotatedKey"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
       | id                            | ${CTX:agentHandle}                                                                                  |
       | displayName                   | Key Agent                                                                                           |
@@ -135,7 +135,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     Given I generate a unique resource name from "agent-key-ids" and store it as "agentHandle"
     And I generate a unique API context from "/agent-key-ids" and store it as "agentContext"
     And I generate a unique resource name from "agent-key-taken" and store it as "keyId"
-    And I generate a unique value from "agent-key-injected" and store it as "injectedKey"
+    And I generate a unique value from "agent-key-injected-api-key-0123456789" and store it as "injectedKey"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
       | id          | ${CTX:agentHandle}                               |
       | displayName | Key Id Agent                                     |
@@ -212,7 +212,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And the JSON response array "list" should not contain an item with "id" equal to "${CTX:adminKey}"
     When I send a "PUT" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:adminKey}" as "publisher" with body:
       """
-      {"name": "${CTX:adminKey}", "displayName": "Taken over", "apiKey": "publisher-takeover-0123456789"}
+      {"name": "${CTX:adminKey}", "displayName": "Taken over", "apiKey": "publisher-takeover-0123456789abcdef0123456789"}
       """
     Then the response status code should be 403
     And the JSON response field "code" should be "REST_API_API_KEY_FORBIDDEN"
@@ -229,7 +229,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And the JSON response field "code" should be "FORBIDDEN"
     When I send a "PUT" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:publisherKey}" as "developer" with body:
       """
-      {"name": "${CTX:publisherKey}", "displayName": "Denied", "apiKey": "developer-denied-0123456789"}
+      {"name": "${CTX:publisherKey}", "displayName": "Denied", "apiKey": "developer-denied-0123456789abcdef0123456789"}
       """
     Then the response status code should be 403
     And the JSON response field "code" should be "FORBIDDEN"
@@ -244,7 +244,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And the JSON response array "list" should contain an item with "id" equal to "${CTX:adminKey}"
     When I send a "PUT" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:publisherKey}" with body:
       """
-      {"name": "${CTX:publisherKey}", "displayName": "Publisher key", "apiKey": "admin-rotated-0123456789"}
+      {"name": "${CTX:publisherKey}", "displayName": "Publisher key", "apiKey": "admin-rotated-0123456789abcdef0123456789"}
       """
     Then the response status code should be 200
 
@@ -284,7 +284,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
 
     When I send a "PUT" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:keyId}" with body:
       """
-      {"name": "${CTX:keyId}", "displayName": "Stranded key", "apiKey": "stranded-rotation-0123456789"}
+      {"name": "${CTX:keyId}", "displayName": "Stranded key", "apiKey": "stranded-rotation-0123456789abcdef0123456789"}
       """
     Then the response status code should be 503
     And the JSON response field "code" should be "GATEWAY_CONNECTION_UNAVAILABLE"
@@ -304,6 +304,12 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
       """
     Then the response status code should be 400
     And the JSON response field "code" should be "VALIDATION_FAILED"
+    When I send a "POST" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys" with body:
+      """
+      {"displayName": "Weak key", "apiKey": "aaaa"}
+      """
+    Then the response status code should be 400
+    And the JSON response field "code" should be "VALIDATION_FAILED"
     When I send a "POST" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys" with header "Content-Type" set to "application/x-www-form-urlencoded" with body:
       """
       {"displayName": "Form key"}
@@ -317,7 +323,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And the JSON response field "code" should be "VALIDATION_FAILED"
     When I send a "PUT" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:keyId}" with body:
       """
-      {"name": "${CTX:keyId}-renamed", "displayName": "Renamed", "apiKey": "renamed-value-0123456789"}
+      {"name": "${CTX:keyId}-renamed", "displayName": "Renamed", "apiKey": "renamed-value-0123456789abcdef0123456789"}
       """
     Then the response status code should be 400
     And the JSON response field "code" should be "VALIDATION_FAILED"

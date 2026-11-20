@@ -515,8 +515,9 @@ func TestAgentProxyAPIKey_UpdateRejectionContract(t *testing.T) {
 
 	for name, body := range map[string]string{
 		"missing key value":  `{"displayName": "K"}`,
-		"conflicting name":   `{"name": "renamed-key", "displayName": "K", "apiKey": "new-value-0123456789"}`,
-		"new expiry in past": fmt.Sprintf(`{"displayName": "K", "apiKey": "new-value-0123456789", "expiresAt": %q}`, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)),
+		"weak key value":     `{"displayName": "K", "apiKey": "aaaa"}`,
+		"conflicting name":   `{"name": "renamed-key", "displayName": "K", "apiKey": "new-value-0123456789abcdef0123456789abcdef"}`,
+		"new expiry in past": fmt.Sprintf(`{"displayName": "K", "apiKey": "new-value-0123456789abcdef0123456789abcdef", "expiresAt": %q}`, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)),
 		"malformed JSON":     `{"displayName": `,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -526,11 +527,11 @@ func TestAgentProxyAPIKey_UpdateRejectionContract(t *testing.T) {
 	}
 
 	t.Run("unknown key", func(t *testing.T) {
-		rec := callAgentProxy(t, env.handler, http.MethodPut, agentKeyPath(env.proxy, "no-such-key"), updateKeyBody("new-value-0123456789", "K"))
+		rec := callAgentProxy(t, env.handler, http.MethodPut, agentKeyPath(env.proxy, "no-such-key"), updateKeyBody("new-value-0123456789abcdef0123456789abcdef", "K"))
 		assertAgentProxyError(t, rec, http.StatusNotFound, apperror.CodeRESTAPIAPIKeyNotFound)
 	})
 	t.Run("unknown agent proxy", func(t *testing.T) {
-		rec := callAgentProxy(t, env.handler, http.MethodPut, agentKeyPath("no-such-agent", "consumer-key"), updateKeyBody("new-value-0123456789", "K"))
+		rec := callAgentProxy(t, env.handler, http.MethodPut, agentKeyPath("no-such-agent", "consumer-key"), updateKeyBody("new-value-0123456789abcdef0123456789abcdef", "K"))
 		assertAgentProxyError(t, rec, http.StatusNotFound, apperror.CodeAgentProxyNotFound)
 	})
 
@@ -584,7 +585,7 @@ func TestAgentProxyAPIKey_UpdateNeedsAGatewayButDeleteDoesNot(t *testing.T) {
 	createAgentKey(t, env.handler, "weather-agent", `{"id": "consumer-key", "displayName": "Consumer Key"}`)
 	before := readAgentKey(t, env, "weather-agent", "consumer-key")
 
-	rec := callAgentProxy(t, env.handler, http.MethodPut, agentKeyPath("weather-agent", "consumer-key"), updateKeyBody("new-value-0123456789", "K"))
+	rec := callAgentProxy(t, env.handler, http.MethodPut, agentKeyPath("weather-agent", "consumer-key"), updateKeyBody("new-value-0123456789abcdef0123456789abcdef", "K"))
 	assertAgentProxyError(t, rec, http.StatusServiceUnavailable, apperror.CodeGatewayConnectionUnavailable)
 	if after := readAgentKey(t, env, "weather-agent", "consumer-key"); after != before {
 		t.Fatalf("a refused update changed the key: before %+v, after %+v", before, after)
@@ -675,7 +676,7 @@ func TestAgentProxyAPIKey_OwnershipIsCreatorScopedUnlessKeyAdmin(t *testing.T) {
 		t.Fatalf("key admin list = %v, want both keys", list)
 	}
 	decodeAgentProxyJSON(t, callAsKeyAdmin(t, env.handler, http.MethodPut, agentKeyPath(env.proxy, "authors-key"),
-		updateKeyBody("admin-rotated-0123456789", "Author's Key")), http.StatusOK)
+		updateKeyBody("admin-rotated-0123456789abcdef0123456789abcdef", "Author's Key")), http.StatusOK)
 	decodeAgentProxyJSON(t, callAsKeyAdmin(t, env.handler, http.MethodDelete, agentKeyPath(env.proxy, "authors-key"), ""), http.StatusNoContent)
 	if agentKeyExists(t, env.agentProxyTestEnv, env.proxy, "authors-key") {
 		t.Fatal("key admin delete left the key stored")
@@ -871,10 +872,10 @@ func TestAgentProxyAPIKey_ResponsesConformToThePublicSpec(t *testing.T) {
 		{"create for unknown agent", http.MethodPost, agentKeysPath("no-such-agent"), `{"displayName": "K"}`, http.StatusNotFound, false},
 		{"list", http.MethodGet, keys, "", http.StatusOK, false},
 		{"user key listing", http.MethodGet, constants.APIBasePath + "/me/api-keys?type=AgentProxy", "", http.StatusOK, false},
-		{"update", http.MethodPut, key, updateKeyBody("rotated-value-0123456789", "Renamed"), http.StatusOK, false},
-		{"update unknown key", http.MethodPut, agentKeyPath(env.proxy, "no-such-key"), updateKeyBody("rotated-value-0123456789", "K"), http.StatusNotFound, false},
-		{"update another user's key", http.MethodPut, key, updateKeyBody("rotated-value-0123456789", "K"), http.StatusForbidden, true},
-		{"update without a gateway", http.MethodPut, agentKeyPath("undeployed-agent", "idle-key"), updateKeyBody("rotated-value-0123456789", "K"), http.StatusServiceUnavailable, false},
+		{"update", http.MethodPut, key, updateKeyBody("rotated-value-0123456789abcdef0123456789abcdef", "Renamed"), http.StatusOK, false},
+		{"update unknown key", http.MethodPut, agentKeyPath(env.proxy, "no-such-key"), updateKeyBody("rotated-value-0123456789abcdef0123456789abcdef", "K"), http.StatusNotFound, false},
+		{"update another user's key", http.MethodPut, key, updateKeyBody("rotated-value-0123456789abcdef0123456789abcdef", "K"), http.StatusForbidden, true},
+		{"update without a gateway", http.MethodPut, agentKeyPath("undeployed-agent", "idle-key"), updateKeyBody("rotated-value-0123456789abcdef0123456789abcdef", "K"), http.StatusServiceUnavailable, false},
 		{"revoke another user's key", http.MethodDelete, key, "", http.StatusForbidden, true},
 		{"revoke", http.MethodDelete, key, "", http.StatusNoContent, false},
 	}

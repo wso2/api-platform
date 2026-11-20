@@ -48,6 +48,11 @@ const (
 	// a parsed gateway allow-list — so an over-length value is rejected, not truncated.
 	apiKeyIssuerMaxLength         = 255
 	apiKeyAllowedTargetsMaxLength = 255
+
+	// apiKeyValueMinLength / apiKeyValueMaxLength bound a caller-supplied key value, matching
+	// the gateway's default api_key.min_key_length / max_key_length.
+	apiKeyValueMinLength = 36
+	apiKeyValueMaxLength = 128
 )
 
 var (
@@ -68,6 +73,18 @@ func validateAPIKeyIssuerAndTargets(issuer *string, allowedTargets string) error
 	}
 	if len(allowedTargets) > apiKeyAllowedTargetsMaxLength {
 		return apperror.ValidationFailed.New("allowedTargets must be at most 255 characters.")
+	}
+	return nil
+}
+
+// validateSuppliedAPIKey rejects a caller-supplied key value outside the allowed length. Keys
+// are stored and broadcast as unsalted SHA-256, so a short value could be guessed. Generated
+// keys (64 hex characters) always pass.
+func validateSuppliedAPIKey(plainAPIKey string) error {
+	if n := len(plainAPIKey); n < apiKeyValueMinLength || n > apiKeyValueMaxLength {
+		return apperror.ValidationFailed.New(fmt.Sprintf(
+			"API key value must be %d to %d characters long. Omit the apiKey field to have one generated.",
+			apiKeyValueMinLength, apiKeyValueMaxLength))
 	}
 	return nil
 }
@@ -539,6 +556,9 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 			return nil, apperror.ValidationFailed.New("API key value cannot be empty. Omit the apiKey field to have one generated.").
 				WithLogMessage(fmt.Sprintf("blank apiKey supplied for API key creation on API %s in org %s", apiHandle, orgId))
 		}
+		if err := validateSuppliedAPIKey(plainAPIKey); err != nil {
+			return nil, err
+		}
 	}
 
 	// Hash the API key with all configured algorithms before storage and broadcast
@@ -680,6 +700,10 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateway deployments found for API", "apiHandle", apiHandle)
 		return apperror.GatewayConnectionUnavailable.New()
+	}
+
+	if err := validateSuppliedAPIKey(strings.TrimSpace(req.ApiKey)); err != nil {
+		return err
 	}
 
 	// Hash the API key with all configured algorithms before storage and broadcast

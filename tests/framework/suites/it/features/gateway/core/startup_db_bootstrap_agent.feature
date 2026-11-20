@@ -30,7 +30,7 @@ Feature: Startup database bootstrap of Agents
     Given I generate a unique resource name from "startup-db-agent" and store it as "agentName"
     Given I generate a unique API context from "/startup-db-agent" and store it as "agentContext"
     Given I generate a unique value from "startup-db-agent-key" and store it as "agentKeyName"
-    Given I generate a unique value from "startup-db-agent-secret" and store it as "agentKey"
+    Given I generate a unique value from "startup-db-agent-secret-api-key-0123456789" and store it as "agentKey"
 
     # The Agent carries an auth policy and managed public and protected cards, because restoring
     # its routes is not the same as restoring what hangs off them: a route restored with an empty
