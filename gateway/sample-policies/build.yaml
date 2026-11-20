@@ -3,7 +3,8 @@ gateway:
   version: 1.2.1
 policies:
   - name: set-headers
-    gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
+    gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1.2.0
+    checksum: h1:n85hJYWBYFRGo7UConZWxXd+Bbt55BILaTlXsKZK5wI=
   # Transform payload case Policy
   - name: transform-payload-case
     filePath: ./transform-payload-case

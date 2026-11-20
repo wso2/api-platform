@@ -384,6 +384,9 @@ func SetupTempGatewayWorkspace(buildFilePath string) (string, error) {
 			FilePath   string `yaml:"filePath,omitempty"`
 			Gomodule   string `yaml:"gomodule,omitempty"`
 			PipPackage string `yaml:"pipPackage,omitempty"`
+			// Checksum pins remote policy content; it must survive the rewrite
+			// below or the gateway builder will reject the entry.
+			Checksum string `yaml:"checksum,omitempty"`
 		} `yaml:"policies"`
 	}
 	if err := yaml.Unmarshal(buildFileData, &buildFile); err != nil {

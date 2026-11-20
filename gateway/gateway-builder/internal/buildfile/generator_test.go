@@ -335,6 +335,34 @@ policies:
 	assert.Contains(t, string(content), "v1.0.0")
 }
 
+func TestWriteBuildManifestWithVersions_RecordsChecksum(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	buildFileContent := `version: v1
+policies:
+  - name: ratelimit
+    gomodule: github.com/example/ratelimit@v1.0.0
+    checksum: h1:2YdNqRZ0DqUAXN1YoMm3UZ0fYtnb3wE7T8Yq1mQf7ac=
+`
+	buildFilePath := filepath.Join(tmpDir, "build.yaml")
+	testutils.WriteFile(t, buildFilePath, buildFileContent)
+
+	policyDir := filepath.Join(tmpDir, "policies", "ratelimit")
+	testutils.CreateDir(t, policyDir)
+	testutils.WriteGoMod(t, policyDir, "github.com/example/ratelimit")
+
+	discovered := []*types.DiscoveredPolicy{
+		{Name: "ratelimit", Version: "v1.0.0", Path: policyDir, GoModPath: filepath.Join(policyDir, "go.mod")},
+	}
+
+	require.NoError(t, WriteBuildManifestWithVersions(buildFilePath, discovered))
+
+	content, err := os.ReadFile(filepath.Join(tmpDir, "build-manifest.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "gomodule: github.com/example/ratelimit@v1.0.0")
+	assert.Contains(t, string(content), "checksum: h1:2YdNqRZ0DqUAXN1YoMm3UZ0fYtnb3wE7T8Yq1mQf7ac=")
+}
+
 func TestWriteBuildManifestWithVersions_GomoduleWithoutVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 

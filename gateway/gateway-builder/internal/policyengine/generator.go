@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/discovery"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
@@ -136,7 +137,9 @@ func generatePythonExecutorBase(srcDir string, outputDir string) error {
 		return fmt.Errorf("failed to copy Python executor source: %w", err)
 	}
 
-	return nil
+	// Always emit the requirement files the Docker build expects, even when the
+	// build has no Python policies.
+	return writePythonRequirementFiles(pythonOutputDir, nil)
 }
 
 // GeneratePythonArtifacts generates Python-specific build artifacts.
@@ -144,7 +147,7 @@ func generatePythonExecutorBase(srcDir string, outputDir string) error {
 //  1. Copy each local policy's Python source into output/python-executor/policies/<name>_<major>/
 //     (the module name carries the major version; pip policies are skipped — they are installed by pip in the python-deps Docker stage)
 //  2. Generate python_policy_registry.py
-//  3. Merge requirements.txt files
+//  3. Write the policy requirement files (see writePythonRequirementFiles)
 func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPolicy, outputDir string) error {
 	slog.Info("Generating Python artifacts",
 		"policyCount", len(pythonPolicies),
@@ -190,29 +193,10 @@ func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPo
 
 	slog.Debug("Generated python_policy_registry.py", "path", registryPath)
 
-	// 3. Merge requirements.txt files (including base requirements)
-	baseReqPath := filepath.Join(pythonOutputDir, "requirements.txt")
-	baseRequirements := ""
-	data, err := os.ReadFile(baseReqPath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to read base requirements.txt: %w", err)
-		}
-	} else {
-		baseRequirements = string(data)
+	// 3. Write the requirement files used by the python-deps Docker stage
+	if err := writePythonRequirementFiles(pythonOutputDir, pythonPolicies); err != nil {
+		return err
 	}
-
-	requirements, err := mergeRequirements(pythonPolicies, baseRequirements)
-	if err != nil {
-		return fmt.Errorf("failed to merge requirements.txt: %w", err)
-	}
-
-	reqPath := filepath.Join(pythonOutputDir, "requirements.txt")
-	if err := os.WriteFile(reqPath, []byte(requirements), 0644); err != nil {
-		return fmt.Errorf("failed to write requirements.txt: %w", err)
-	}
-
-	slog.Debug("Generated requirements.txt", "path", reqPath, "content", requirements)
 
 	slog.Info("Generated Python artifacts successfully",
 		"policies", len(pythonPolicies),
@@ -264,37 +248,144 @@ func generatePythonRegistry(policies []*types.DiscoveredPolicy) string {
 	return sb.String()
 }
 
-// mergeRequirements merges all policy requirements with base requirements.
+// Requirement files written to output/python-executor. The python-deps Docker
+// stage installs them in this order:
+//
+//  1. BaseRequirementsFile: the executor's own dependencies, a fully pinned lock
+//     with a sha256 for every artifact, installed with --require-hashes.
+//  2. HashedPolicyRequirementsFile: indexed policy packages pinned with a
+//     checksum in the build file, installed with --require-hashes --no-deps.
+//  3. PolicyRequirementsFile: everything else the policies need (git policy
+//     packages pinned to a commit SHA, the indexed packages again so their
+//     dependencies are resolved, and local policies' requirements.txt lines),
+//     installed with BaseConstraintsFile as constraints so the verified base
+//     packages cannot be replaced.
+//
+// The files are kept apart because pip's hash-checking mode applies to a whole
+// install and cannot verify git checkouts.
+const (
+	BaseRequirementsFile         = "requirements.txt"
+	BaseConstraintsFile          = "base-constraints.txt"
+	PolicyRequirementsFile       = "policy-requirements.txt"
+	HashedPolicyRequirementsFile = "policy-requirements-hashed.txt"
+)
+
+// writePythonRequirementFiles writes the constraints and policy requirement
+// files next to the base requirements lock in pythonOutputDir.
+func writePythonRequirementFiles(pythonOutputDir string, policies []*types.DiscoveredPolicy) error {
+	baseRequirements := ""
+	data, err := os.ReadFile(filepath.Join(pythonOutputDir, BaseRequirementsFile))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to read base %s: %w", BaseRequirementsFile, err)
+		}
+	} else {
+		baseRequirements = string(data)
+	}
+
+	policyRequirements, err := mergeRequirements(policies)
+	if err != nil {
+		return fmt.Errorf("failed to merge policy requirements: %w", err)
+	}
+
+	files := map[string]string{
+		BaseConstraintsFile:          baseConstraints(baseRequirements),
+		PolicyRequirementsFile:       policyRequirements,
+		HashedPolicyRequirementsFile: hashedPolicyRequirements(policies),
+	}
+	for name, content := range files {
+		path := filepath.Join(pythonOutputDir, name)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", name, err)
+		}
+		slog.Debug("Generated Python requirement file", "path", path, "content", content)
+	}
+	return nil
+}
+
+// baseConstraints turns a hash-pinned requirements lock into a pip constraints
+// file holding just the "name==version[; marker]" lines, so a later install can
+// add packages without changing any locked version.
+func baseConstraints(lock string) string {
+	var out []string
+	for _, line := range strings.Split(lock, "\n") {
+		// Requirement lines start in column 0; hash continuations and pip-compile
+		// "# via" comments are indented.
+		if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '#' || line[0] == '-' {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), "\\"))
+		if strings.Contains(line, "==") {
+			out = append(out, line)
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return strings.Join(out, "\n") + "\n"
+}
+
+// hashedPolicyRequirements renders the indexed policy packages that carry a
+// checksum in the build file in pip's hash-checking form.
+func hashedPolicyRequirements(policies []*types.DiscoveredPolicy) string {
+	var indexURLs, lines []string
+	seenIndex := map[string]bool{}
+	seen := map[string]bool{}
+	for _, p := range policies {
+		if !p.IsPipPackage || p.PipChecksum == "" {
+			continue
+		}
+		spec, indexURL := splitIndexedPipSpec(p)
+		line := discovery.HashedPipRequirement(spec, p.PipChecksum)
+		if !seen[line] {
+			seen[line] = true
+			lines = append(lines, line)
+		}
+		if indexURL != "" && !seenIndex[indexURL] {
+			seenIndex[indexURL] = true
+			indexURLs = append(indexURLs, "--extra-index-url "+indexURL)
+		}
+	}
+	all := append(indexURLs, lines...)
+	if len(all) == 0 {
+		return ""
+	}
+	return strings.Join(all, "\n") + "\n"
+}
+
+// splitIndexedPipSpec returns the "name==version" part of an indexed pip
+// policy spec and its index URL, if any.
+func splitIndexedPipSpec(p *types.DiscoveredPolicy) (spec, indexURL string) {
+	spec = p.PipSpec
+	if p.PipIndexURL != "" {
+		spec = strings.TrimSuffix(spec, "@"+p.PipIndexURL)
+	}
+	return spec, p.PipIndexURL
+}
+
+// mergeRequirements merges the requirements of all Python policies.
 // For local (filePath) policies, it reads requirements.txt from the source directory.
 // For pip policies, it adds the pip spec directly (pip handles transitive deps).
-func mergeRequirements(policies []*types.DiscoveredPolicy, baseRequirements string) (string, error) {
+// The executor's base requirements are installed separately (see BaseRequirementsFile).
+func mergeRequirements(policies []*types.DiscoveredPolicy) (string, error) {
 	var allRequirements []string
 	seen := make(map[string]bool)
 	var extraIndexURLs []string
 	seenIndexURLs := make(map[string]bool)
 
-	// First add base requirements
-	if baseRequirements != "" {
-		lines := strings.Split(baseRequirements, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			if !seen[line] {
-				seen[line] = true
-				allRequirements = append(allRequirements, line)
-			}
-		}
-	}
-
 	for _, p := range policies {
 		if p.IsPipPackage {
 			// For pip packages, add the pip spec directly.
 			// pip will resolve all transitive dependencies from the package metadata.
-			if !seen[p.PipSpec] {
-				seen[p.PipSpec] = true
-				allRequirements = append(allRequirements, p.PipSpec)
+			spec := p.PipSpec
+			if p.PipIndexURL != "" {
+				// The index is passed with --extra-index-url below; keep the
+				// requirement itself in plain "name==version" form.
+				spec, _ = splitIndexedPipSpec(p)
+			}
+			if !seen[spec] {
+				seen[spec] = true
+				allRequirements = append(allRequirements, spec)
 			}
 			if p.PipIndexURL != "" && !seenIndexURLs[p.PipIndexURL] {
 				seenIndexURLs[p.PipIndexURL] = true
@@ -338,8 +429,11 @@ func mergeRequirements(policies []*types.DiscoveredPolicy, baseRequirements stri
 		result = append(result, fmt.Sprintf("--extra-index-url %s", url))
 	}
 	result = append(result, allRequirements...)
+	if len(result) == 0 {
+		return "", nil
+	}
 
-	return strings.Join(result, "\n"), nil
+	return strings.Join(result, "\n") + "\n", nil
 }
 
 // localPythonModuleName is the module a local (filePath) Python policy is copied to and registered

@@ -158,28 +158,60 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Copy local SDK source (always available; used only when PYTHON_SDK_SOURCE=local)
 COPY --from=sdk-python . /tmp/sdk-python
 
-COPY --from=policy-compiler /api-platform/output/python-executor/requirements.txt /tmp/requirements.txt
+# Requirement files written by gateway-builder (see the gateway-builder README):
+#   requirements.txt               executor base dependencies, exact versions + sha256 hashes
+#   base-constraints.txt           the same versions as pip constraints (no hashes)
+#   policy-requirements-hashed.txt indexed policy packages pinned with a checksum
+#   policy-requirements.txt        git policy packages (pinned to a commit SHA) and policy deps
+COPY --from=policy-compiler \
+    /api-platform/output/python-executor/requirements.txt \
+    /api-platform/output/python-executor/base-constraints.txt \
+    /api-platform/output/python-executor/policy-requirements-hashed.txt \
+    /api-platform/output/python-executor/policy-requirements.txt \
+    /tmp/python-reqs/
 
 # Upgrade pip and setuptools so PEP 621 (pyproject.toml) and recent git dependencies are supported
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install Python dependencies.
-# - "pypi" mode (default): install everything from requirements.txt (SDK from PyPI).
-# - "local" mode: install SDK from monorepo source + remaining deps in one transaction.
-#   pip resolves the local SDK against the apip-sdk-core constraint in requirements.txt,
-#   so version conflicts fail-fast rather than silently diverging.
+# Install into an empty venv rather than with --target: pip --target ignores what is
+# already installed, so a second install would re-download (unverified) copies of the
+# hash-checked base packages. pip runs from the system install via --python, so the
+# venv's site-packages holds only the installed dependencies.
+RUN python3 -m venv --without-pip /opt/python-deps
+
+# 1. Executor base dependencies. Every artifact must match a sha256 recorded in
+#    requirements.txt; --no-deps because the lock already lists the full dependency set.
+RUN pip3 --python /opt/python-deps/bin/python install --no-cache-dir \
+        --require-hashes --no-deps -r /tmp/python-reqs/requirements.txt
+
+# 2. Indexed policy packages pinned with a checksum in build.yaml (hash-checked).
+RUN if [ -s /tmp/python-reqs/policy-requirements-hashed.txt ]; then \
+        pip3 --python /opt/python-deps/bin/python install --no-cache-dir \
+            --require-hashes --no-deps -r /tmp/python-reqs/policy-requirements-hashed.txt; \
+    fi
+
+# 3. Policy packages from git (pinned to a commit SHA) and the policies' own
+#    dependencies. The base constraints stop this step from replacing any verified
+#    base package; a conflicting policy requirement fails the build.
+RUN if [ -s /tmp/python-reqs/policy-requirements.txt ]; then \
+        pip3 --python /opt/python-deps/bin/python install --no-cache-dir \
+            -c /tmp/python-reqs/base-constraints.txt -r /tmp/python-reqs/policy-requirements.txt; \
+    fi
+
+# 4. "local" SDK mode (development only): replace the locked apip-sdk-core with the
+#    monorepo source. "pypi" mode (default) keeps the hash-verified release.
 RUN if [ "$PYTHON_SDK_SOURCE" = "local" ]; then \
-        pip3 install --no-cache-dir --target /app/python-libs \
-            /tmp/sdk-python -r /tmp/requirements.txt; \
-    elif [ "$PYTHON_SDK_SOURCE" = "pypi" ]; then \
-        pip3 install --no-cache-dir --target /app/python-libs \
-            -r /tmp/requirements.txt; \
-    else \
+        pip3 --python /opt/python-deps/bin/python install --no-cache-dir \
+            --no-deps --force-reinstall /tmp/sdk-python; \
+    elif [ "$PYTHON_SDK_SOURCE" != "pypi" ]; then \
         echo "ERROR: invalid PYTHON_SDK_SOURCE=$PYTHON_SDK_SOURCE; expected 'local' or 'pypi'" >&2; \
         exit 1; \
     fi
 
-# Generate locked requirements with exact installed versions.
+RUN mkdir -p /app/python-libs && \
+    cp -a /opt/python-deps/lib/python3*/site-packages/. /app/python-libs/
+
+# Record the exact installed versions.
 # pip freeze --path reports only packages in the specified directory,
 RUN pip3 freeze --path /app/python-libs > /app/python-libs/requirements-lock.txt
 

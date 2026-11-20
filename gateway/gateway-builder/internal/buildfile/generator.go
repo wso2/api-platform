@@ -122,6 +122,7 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 		FilePath   string `yaml:"filePath,omitempty"`
 		Gomodule   string `yaml:"gomodule,omitempty"`
 		PipPackage string `yaml:"pipPackage,omitempty"`
+		Checksum   string `yaml:"checksum,omitempty"`
 	}
 
 	lock := struct {
@@ -135,7 +136,7 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 	buildFileDir := filepath.Dir(buildFilePath)
 
 	for _, me := range bf.Policies {
-		entry := lockEntry{Name: me.Name, FilePath: me.FilePath, Gomodule: me.Gomodule, PipPackage: me.PipPackage}
+		entry := lockEntry{Name: me.Name, FilePath: me.FilePath, Gomodule: me.Gomodule, PipPackage: me.PipPackage, Checksum: me.Checksum}
 
 		candidates := discoveredByName[me.Name]
 		var found *types.DiscoveredPolicy

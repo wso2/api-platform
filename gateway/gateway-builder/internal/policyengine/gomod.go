@@ -161,3 +161,71 @@ func UpdateGoMod(srcDir string, policies []*types.DiscoveredPolicy) error {
 
 	return nil
 }
+
+// VerifyPinnedGoModules checks that the policy engine module in srcDir builds
+// exactly the remote policy versions pinned in the build file: go.mod must
+// require the pinned version of each remote policy module (so neither 'go get'
+// nor 'go mod tidy' moved it), and go.sum must record the pinned h1: hash for
+// it. Policies without a recorded GoModuleSum (local filePath entries) are skipped.
+func VerifyPinnedGoModules(srcDir string, policies []*types.DiscoveredPolicy) error {
+	goModPath := filepath.Join(srcDir, "go.mod")
+	data, err := os.ReadFile(goModPath)
+	if err != nil {
+		return fmt.Errorf("failed to read go.mod: %w", err)
+	}
+	modFile, err := modfile.Parse(goModPath, data, nil)
+	if err != nil {
+		return fmt.Errorf("failed to parse go.mod: %w", err)
+	}
+	required := make(map[string]string, len(modFile.Require))
+	for _, r := range modFile.Require {
+		required[r.Mod.Path] = r.Mod.Version
+	}
+
+	sums, err := readGoSum(filepath.Join(srcDir, "go.sum"))
+	if err != nil {
+		return err
+	}
+
+	for _, p := range policies {
+		if p.IsFilePathEntry || p.GoModuleSum == "" {
+			continue
+		}
+		got, ok := required[p.GoModulePath]
+		if !ok {
+			return fmt.Errorf("policy %s: go.mod does not require %s", p.Name, p.GoModulePath)
+		}
+		if got != p.GoModuleVersion {
+			return fmt.Errorf("policy %s: go.mod selects %s@%s but the build file pins %s",
+				p.Name, p.GoModulePath, got, p.GoModuleVersion)
+		}
+		key := p.GoModulePath + " " + p.GoModuleVersion
+		sum, ok := sums[key]
+		if !ok {
+			return fmt.Errorf("policy %s: go.sum has no entry for %s", p.Name, key)
+		}
+		if sum != p.GoModuleSum {
+			return fmt.Errorf("policy %s: go.sum records %s for %s but the build file pins %s",
+				p.Name, sum, key, p.GoModuleSum)
+		}
+	}
+	return nil
+}
+
+// readGoSum returns the module zip hashes in a go.sum file keyed by
+// "<path> <version>". The "/go.mod" hash lines are ignored.
+func readGoSum(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read go.sum: %w", err)
+	}
+	sums := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 || strings.HasSuffix(fields[1], "/go.mod") {
+			continue
+		}
+		sums[fields[0]+" "+fields[1]] = fields[2]
+	}
+	return sums, nil
+}

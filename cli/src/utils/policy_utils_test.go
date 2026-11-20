@@ -21,6 +21,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -52,5 +53,33 @@ func TestSetupTempGatewayWorkspaceCreatesSharedTempDirectories(t *testing.T) {
 		if got := info.Mode().Perm(); got != 0755 {
 			t.Fatalf("expected %s permissions to be 0755, got %03o", dir, got)
 		}
+	}
+}
+
+func TestSetupTempGatewayWorkspacePreservesPolicyChecksums(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	const sum = "h1:1nauKAXc49y0Z+GxnyKMtQMVGMEumTYCOfAeal5r0ns="
+	buildFilePath := filepath.Join(t.TempDir(), "build.yaml")
+	content := "version: v1\npolicies:\n" +
+		"  - name: basic-auth\n" +
+		"    gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1.1.0\n" +
+		"    checksum: " + sum + "\n"
+	if err := os.WriteFile(buildFilePath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write build file: %v", err)
+	}
+
+	workspaceDir, err := SetupTempGatewayWorkspace(buildFilePath)
+	if err != nil {
+		t.Fatalf("SetupTempGatewayWorkspace() failed: %v", err)
+	}
+	defer os.RemoveAll(workspaceDir)
+
+	data, err := os.ReadFile(filepath.Join(workspaceDir, "build.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read rewritten build file: %v", err)
+	}
+	if !strings.Contains(string(data), "checksum: "+sum) {
+		t.Fatalf("rewritten build file lost the policy checksum:\n%s", data)
 	}
 }

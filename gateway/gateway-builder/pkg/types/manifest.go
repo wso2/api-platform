@@ -30,4 +30,9 @@ type BuildEntry struct {
 	FilePath   string `yaml:"filePath,omitempty"`
 	Gomodule   string `yaml:"gomodule,omitempty"`
 	PipPackage string `yaml:"pipPackage,omitempty"`
+	// Checksum pins the content of a remote policy. For gomodule entries it is
+	// the module's go.sum hash ("h1:..."); for indexed pipPackage entries it is
+	// the wheel's "sha256:..." digest. Git pipPackage references are pinned by
+	// their commit SHA instead.
+	Checksum string `yaml:"checksum,omitempty"`
 }

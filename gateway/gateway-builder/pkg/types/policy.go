@@ -36,6 +36,7 @@ type DiscoveredPolicy struct {
 	Definition       *policy.PolicyDefinition
 	GoModulePath     string // The actual Go module path (from go.mod or gomodule field)
 	GoModuleVersion  string // Resolved version for gomodule entries (e.g., "v0.1.0")
+	GoModuleSum      string // Verified go.sum hash ("h1:...") for gomodule entries
 	IsFilePathEntry  bool   // True if from filePath manifest entry (needs replace directive)
 
 	// Runtime is auto-detected: "go" or "python"
@@ -47,6 +48,7 @@ type DiscoveredPolicy struct {
 	OriginalPipSpec      string // Original pipPackage value from build.yaml before resolution
 	PipSpec              string // Full pip specifier (e.g., "my-gateway-policy==1.0.0")
 	PipIndexURL          string // Optional custom PyPI index URL
+	PipChecksum          string // Verified wheel hash ("sha256:...") for indexed pip packages
 	PythonTopLevelModule string // Python module name from wheel's top_level.txt
 }
 

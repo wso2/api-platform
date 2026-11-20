@@ -780,6 +780,7 @@ func TestDiscoverPoliciesFromBuildFile_GomoduleEntry_InvalidModule(t *testing.T)
 policies:
   - name: remote-policy
     gomodule: github.com/nonexistent-org-12345/fake-policy@v1.0.0
+    checksum: h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 `
 	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
