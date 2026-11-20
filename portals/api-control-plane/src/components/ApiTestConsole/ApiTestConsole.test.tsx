@@ -356,12 +356,22 @@ describe('ApiTestConsole — typed path', () => {
     const { user } = renderConsole(transport);
 
     const field = screen.getByRole('textbox', { name: /url/i });
-    await user.clear(field);
-    await user.type(field, '/books/42');
+    await user.type(field, '/42');
     await user.click(sendButton());
 
     await waitFor(() => expect(transport).toHaveBeenCalled());
     expect(transport.mock.calls[0][0].path).toBe('/books/42');
+  });
+
+  it('does not let an edit reach into the gateway address', async () => {
+    const { user } = renderConsole(vi.fn());
+    const field = screen.getByRole('textbox', { name: 'Request URL' });
+
+    // Clearing, or deleting a character of the address, changes nothing.
+    await user.clear(field);
+    expect(field).toHaveValue('https://gw.example.com/p/books');
+    await user.type(field, '{Home}{Delete}');
+    expect(field).toHaveValue('https://gw.example.com/p/books');
   });
 
   it('shows the whole request URL, gateway address first', () => {
@@ -400,8 +410,8 @@ describe('ApiTestConsole — typed path', () => {
     const { user } = renderConsole(transport);
 
     const field = screen.getByRole('textbox', { name: /url/i });
-    await user.clear(field);
-    await user.type(field, 'books');
+    // Delete "/books", leaving the gateway address, then type a path without its leading slash.
+    await user.type(field, '{Backspace}'.repeat('/books'.length) + 'books');
     await user.click(sendButton());
 
     expect((await screen.findAllByText(/path cannot be called/i)).length).toBeGreaterThan(0);

@@ -1204,10 +1204,11 @@ export function RequestPanel({
                     : undefined
               }
               onChange={(event) => {
-                // The gateway address is fixed; what follows it is the path and query to send.
+                // The gateway address is fixed: what follows it is the path and query to send.
+                // An edit that reaches into the address is ignored, so it cannot be mangled.
                 const typed = event.target.value;
-                const target =
-                  baseUrl !== '' && typed.startsWith(baseUrl) ? typed.slice(baseUrl.length) : typed;
+                if (baseUrl !== '' && !typed.startsWith(baseUrl)) return;
+                const target = typed.slice(baseUrl.length);
                 onDraft((current) => ({ ...current, pathOverride: target }));
               }}
               size="small"
