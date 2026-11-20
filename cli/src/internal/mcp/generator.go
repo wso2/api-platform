@@ -223,6 +223,15 @@ func postJSONRPCWithSession(url string, req interface{}, session mcpSession, hea
 	if err != nil {
 		return nil, err
 	}
+	// Match the response by its id: a server may write notifications on the same
+	// stream before the answer, so the first data event is not always ours.
+	var envelope struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, err
+	}
 	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
@@ -256,14 +265,38 @@ func postJSONRPCWithSession(url string, req interface{}, session mcpSession, hea
 		return nil, err
 	}
 
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		// A non-2xx answer is not a result, even when the body looks like one.
+		if message, ok := responseErrorMessage(body, envelope.ID, isEventStream(resp)); ok {
+			return nil, fmt.Errorf("%s request returned an error: %s", envelope.Method, message)
+		}
+		return nil, fmt.Errorf("%s request failed with status %s", envelope.Method, resp.Status)
+	}
+
 	// Check if response is event stream
 	if isEventStream(resp) {
-		// Extract JSON data from event stream
-		data, err := parseEventStream(body)
+		if len(envelope.ID) == 0 {
+			// A notification has no answer to wait for, so the stream is all there is.
+			return body, nil
+		}
+		// Extract the event that answers this request from the event stream
+		data, err := parseEventStreamResponse(body, envelope.ID)
 		if err != nil {
-			return body, nil // Return original body if parsing fails
+			return nil, fmt.Errorf("failed to read the response from the event stream: %w", err)
 		}
 		return data, nil
+	}
+
+	if len(envelope.ID) > 0 {
+		var response struct {
+			ID json.RawMessage `json:"id"`
+		}
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to read the %s response: %w", envelope.Method, err)
+		}
+		if len(response.ID) > 0 && !bytes.Equal(compactJSON(response.ID), compactJSON(envelope.ID)) {
+			return nil, fmt.Errorf("%s response does not answer request id %s", envelope.Method, compactJSON(envelope.ID))
+		}
 	}
 
 	return body, nil
@@ -284,6 +317,10 @@ func initializeMCPServer(url string, headerName string, headerValue string) (mcp
 	data, err := json.Marshal(initReq)
 	if err != nil {
 		return mcpSession{}, err
+	}
+	idJSON, err := json.Marshal(initReq.ID)
+	if err != nil {
+		return mcpSession{}, fmt.Errorf("failed to encode the initialize request id: %w", err)
 	}
 	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
 	if err != nil {
@@ -310,31 +347,55 @@ func initializeMCPServer(url string, headerName string, headerValue string) (mcp
 		return mcpSession{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		// A failed initialize is not a server that merely omits the version: a
+		// session is only worth creating when the call itself succeeded.
+		if message, ok := responseErrorMessage(body, idJSON, isEventStream(resp)); ok {
+			return mcpSession{}, fmt.Errorf("initialize request returned an error: %s", message)
+		}
+		return mcpSession{}, fmt.Errorf("initialize request failed with status %s", resp.Status)
+	}
+
 	// Check if response is event stream and parse it
 	if isEventStream(resp) {
-		data, err := parseEventStream(body)
-		if err == nil {
-			body = data
+		data, err := parseEventStreamResponse(body, idJSON)
+		if err != nil {
+			return mcpSession{}, fmt.Errorf("failed to read the initialize response: %w", err)
 		}
+		body = data
 	}
 
 	// Check for JSON-RPC error in response and keep the negotiated version
 	var initResponse map[string]interface{}
 	protocolVersion := ""
-	if err := json.Unmarshal(body, &initResponse); err == nil {
-		if errObj, hasError := initResponse["error"]; hasError {
-			if errMap, ok := errObj.(map[string]interface{}); ok {
-				if msg, ok := errMap["message"].(string); ok {
-					return mcpSession{}, fmt.Errorf("initialize request returned an error: %s", msg)
-				}
-			}
-			return mcpSession{}, fmt.Errorf("initialize request returned an error: %v", errObj)
+	if message, isError := jsonRPCErrorMessage(body); isError {
+		return mcpSession{}, fmt.Errorf("initialize request returned an error: %s", message)
+	}
+	// A 2xx body is not necessarily a response: a notification, an empty object
+	// or broken JSON carries no result, and a session built on that has no server
+	// capabilities behind it.
+	if err := json.Unmarshal(body, &initResponse); err != nil {
+		return mcpSession{}, fmt.Errorf("initialize response was not readable JSON: %w", err)
+	}
+	if got, hasID := initResponse["id"]; hasID {
+		gotID, err := json.Marshal(got)
+		if err != nil {
+			return mcpSession{}, fmt.Errorf("initialize response carried an unreadable id: %w", err)
 		}
-		if result, ok := initResponse["result"].(map[string]interface{}); ok {
-			if version, ok := result["protocolVersion"].(string); ok {
-				protocolVersion = version
-			}
+		if !bytes.Equal(compactJSON(gotID), compactJSON(idJSON)) {
+			return mcpSession{}, fmt.Errorf("initialize response does not answer request id %s", compactJSON(idJSON))
 		}
+	}
+	result, hasResult := initResponse["result"].(map[string]interface{})
+	if !hasResult {
+		return mcpSession{}, fmt.Errorf("initialize response carried no result")
+	}
+	if raw, hasVersion := result["protocolVersion"]; hasVersion {
+		version, isString := raw.(string)
+		if !isString {
+			return mcpSession{}, fmt.Errorf("initialize response carried a protocolVersion that is not a string: %T", raw)
+		}
+		protocolVersion = version
 	}
 	if protocolVersion == "" {
 		// A server that reports no version has still been asked for one, so the
@@ -357,19 +418,101 @@ func getSessionIDFromResponse(resp *http.Response) string {
 	return resp.Header.Get("mcp-session-id")
 }
 
-// parseEventStream extracts JSON data from event stream response
-func parseEventStream(body []byte) ([]byte, error) {
-	lines := bytes.Split(body, []byte("\n"))
-	for _, line := range lines {
-		if bytes.HasPrefix(line, []byte("data: ")) {
-			data := bytes.TrimPrefix(line, []byte("data: "))
-			data = bytes.TrimSpace(data)
-			if len(data) > 0 && !bytes.Equal(data, []byte("{}")) {
-				return data, nil
-			}
+// parseEventStreamResponse extracts the data event that answers the request with
+// the given JSON-RPC id. A server may emit notifications (a logging message, a
+// progress update) on the same stream before the response, and the first data
+// event is then not the answer to the request. When no event carries an id at all,
+// the first data event is returned, which is what a stream without ids produces.
+//
+// The id is compared as raw JSON so a string id matches as well as a number, and
+// a data event split over several lines is read as one payload.
+func parseEventStreamResponse(body []byte, id json.RawMessage) ([]byte, error) {
+	want := compactJSON(id)
+	var first []byte
+	for _, event := range eventStreamData(body) {
+		event = bytes.TrimSpace(event)
+		if len(event) == 0 || bytes.Equal(event, []byte("{}")) {
+			continue
+		}
+		var envelope struct {
+			ID     json.RawMessage `json:"id"`
+			Result json.RawMessage `json:"result"`
+			Error  json.RawMessage `json:"error"`
+		}
+		if err := json.Unmarshal(event, &envelope); err != nil {
+			continue
+		}
+		// Only a response carries a result or an error. A server-to-client request
+		// can repeat the id a client chose, and a notification has no result, so
+		// neither is the answer to this call.
+		if len(envelope.Result) == 0 && len(envelope.Error) == 0 {
+			continue
+		}
+		if first == nil {
+			first = event
+		}
+		if len(want) > 0 && bytes.Equal(compactJSON(envelope.ID), want) {
+			return event, nil
 		}
 	}
+	if len(want) > 0 {
+		// Answering with some other event would hand the caller a result for a
+		// different request, which is worse than saying the stream had none.
+		return nil, fmt.Errorf("no event in the stream answers request id %s", want)
+	}
+	if first != nil {
+		return first, nil
+	}
 	return nil, fmt.Errorf("no data found in event stream")
+}
+
+// eventStreamData returns the data payload of every event in the stream. The
+// lines of one event are concatenated with a newline until a blank line ends it,
+// as the event stream format specifies; event:, id: and retry: lines carry no
+// payload.
+func eventStreamData(body []byte) [][]byte {
+	var events [][]byte
+	var current []byte
+	hasData := false
+	flush := func() {
+		if hasData {
+			events = append(events, current)
+			current = nil
+			hasData = false
+		}
+	}
+	for _, line := range bytes.Split(body, []byte("\n")) {
+		line = bytes.TrimSuffix(line, []byte("\r"))
+		if len(line) == 0 {
+			flush()
+			continue
+		}
+		if !bytes.HasPrefix(line, []byte("data:")) {
+			continue
+		}
+		data := bytes.TrimPrefix(bytes.TrimPrefix(line, []byte("data:")), []byte(" "))
+		if hasData {
+			current = append(current, '\n')
+		}
+		hasData = true
+		current = append(current, data...)
+	}
+	flush()
+	return events
+}
+
+// compactJSON returns value without its insignificant whitespace, so two ids
+// that differ only in formatting still compare equal. An unusable value becomes
+// empty, which no event id matches.
+func compactJSON(value []byte) []byte {
+	if len(value) == 0 {
+		return nil
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, value); err != nil {
+		return nil
+	}
+	return buf.Bytes()
 }
 
 // isEventStream checks if the response is an event stream
@@ -488,4 +631,53 @@ func generateMCPConfigFile(url string, toolsResult ToolsResult,
 
 	fmt.Printf("→ Generated MCP configuration YAML file: %s\n", outputPath)
 	return nil
+}
+
+// jsonRPCErrorMessage returns the message of a JSON-RPC error in body, if the
+// body carries one. A server that rejects a request usually explains why in the
+// error, which is more useful than the status code alone.
+func jsonRPCErrorMessage(body []byte) (string, bool) {
+	var response struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", false
+	}
+	if response.Error.Message == "" {
+		return "", false
+	}
+	return response.Error.Message, true
+}
+
+// responseErrorMessage returns the message a failed response carries: the
+// JSON-RPC error in the body, or in one of the events when the body is an event
+// stream. The status code alone loses the reason the server gave.
+func responseErrorMessage(body []byte, id json.RawMessage, stream bool) (string, bool) {
+	if message, ok := jsonRPCErrorMessage(body); ok {
+		return message, true
+	}
+	if !stream {
+		return "", false
+	}
+	want := compactJSON(id)
+	for _, event := range eventStreamData(body) {
+		var envelope struct {
+			ID    json.RawMessage `json:"id"`
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(event, &envelope); err != nil {
+			continue
+		}
+		if envelope.Error.Message == "" {
+			continue
+		}
+		if len(want) == 0 || bytes.Equal(compactJSON(envelope.ID), want) {
+			return envelope.Error.Message, true
+		}
+	}
+	return "", false
 }
