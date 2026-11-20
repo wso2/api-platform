@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@path-variants
+@path-variants @PATHV
 Feature: Path variants
   As an API developer
   I want a variant spelling of an operation's path to be refused
@@ -27,6 +27,7 @@ Feature: Path variants
     And I authenticate using basic auth as "admin"
 
 
+  @PATHV-001
   Scenario: A case variant of an operation's path gets 404 instead of reaching the wildcard operation
     Given I generate a unique value from "path-variants-2" and store it as "apiName2"
     And I generate a unique API context from "/path-variants-2" and store it as "apiContext2"
@@ -59,6 +60,7 @@ Feature: Path variants
     When I delete the API "${CTX:apiName2}"
     Then the response should be successful
 
+  @PATHV-002
   Scenario: Case variants of several operations are all refused while their parameters keep any case
     Given I generate a unique value from "path-variants-3" and store it as "apiName3"
     And I generate a unique API context from "/path-variants-3" and store it as "apiContext3"
@@ -97,6 +99,7 @@ Feature: Path variants
     When I delete the API "${CTX:apiName3}"
     Then the response should be successful
 
+  @PATHV-003
   Scenario: An operation spelt with capitals keeps its own route next to a lowercase one
     Given I generate a unique value from "path-variants-4" and store it as "apiName4"
     And I generate a unique API context from "/path-variants-4" and store it as "apiContext4"
@@ -126,6 +129,7 @@ Feature: Path variants
     When I delete the API "${CTX:apiName4}"
     Then the response should be successful
 
+  @PATHV-004
   Scenario: A case variant is refused only for the methods of the operation it names
     Given I generate a unique value from "path-variants-5" and store it as "apiName5"
     And I generate a unique API context from "/path-variants-5" and store it as "apiContext5"
@@ -151,6 +155,7 @@ Feature: Path variants
     When I delete the API "${CTX:apiName5}"
     Then the response should be successful
 
+  @PATHV-005
   Scenario: A case variant is refused when another API's wildcard operation would catch it
     Given I generate a unique value from "path-variants-outer" and store it as "outerName"
     And I generate a unique API context from "/path-variants-outer" and store it as "outerContext"
