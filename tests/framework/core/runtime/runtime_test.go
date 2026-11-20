@@ -1704,3 +1704,17 @@ func TestHaltOfAnExitedContainerWithAnUnreadableStateIsReported(t *testing.T) {
 		require.NoError(t, c.Stop(ctx))
 	}))
 }
+
+// A second deliberate stop whose state before it cannot be read keeps the first stop's record, so
+// a container still stopped from that first stop is not reported.
+func TestRepeatedHaltWithAnUnreadableStateKeepsTheEarlierStop(t *testing.T) {
+	ctx := context.Background()
+	// The first Halt reads the state before (read 1) and after (read 2) stopping; the second
+	// Halt's read before stopping (read 3) fails.
+	c := newFakeExitContainer(&fakeExitContainer{running: true, failReads: map[int]bool{3: true}})
+	require.Equal(t, 0, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}

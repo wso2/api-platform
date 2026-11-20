@@ -433,16 +433,6 @@ func warnIfExited(ctx context.Context, name string, c testcontainers.Container, 
 	return true
 }
 
-// deliberateExit is the exit time to record for a deliberate stop: the one Docker reports after
-// it, unless the state before it could not be read. Then the container may already have exited
-// on its own, so nothing is recorded and teardown reports it.
-func deliberateExit(ctx context.Context, c testcontainers.Container, readBefore bool) string {
-	if !readBefore {
-		return ""
-	}
-	return exitTime(ctx, c)
-}
-
 // Halt stops the container's processes without removing the container, so Resume can start
 // it again with its filesystem intact. The container stays owned by the block and is still
 // removed at teardown.
@@ -456,7 +446,11 @@ func (c *Container) Halt(ctx context.Context) error {
 	if err := c.container.Stop(ctx, nil); err != nil {
 		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
 	}
-	c.stoppedAt.Store(deliberateExit(ctx, c.container, readBefore))
+	// When the state before the stop could not be read, the container may already have exited
+	// on its own, so the stop is not recorded and the earlier record, if any, stands.
+	if readBefore {
+		c.stoppedAt.Store(exitTime(ctx, c.container))
+	}
 	return nil
 }
 

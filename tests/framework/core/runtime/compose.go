@@ -755,7 +755,11 @@ func (c *ComposeStack) StopService(ctx context.Context, service string) error {
 	if err := container.Stop(ctx, &timeout); err != nil {
 		return fmt.Errorf("runtime: stopping service %q: %w", service, err)
 	}
-	c.stopped.Store(service, deliberateExit(ctx, container, readBefore))
+	// When the state before the stop could not be read, the service may already have exited on
+	// its own, so the stop is not recorded and the earlier record, if any, stands.
+	if readBefore {
+		c.stopped.Store(service, exitTime(ctx, container))
+	}
 	return nil
 }
 
