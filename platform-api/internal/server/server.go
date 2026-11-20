@@ -795,6 +795,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			projectService.RegisterDeletionGuard(guard)
 		}
 	}
+	// Plugins' hooks on a gateway's artifact push (DP->CP import).
+	artifactImportService.SetGatewayImportHooks(wiring.importAdmitters, wiring.importObservers)
 
 	// Register the control-plane webhook receiver (API Portal -> Platform API) when enabled.
 	// Authenticity is established by HMAC signature; the route is excluded from JWT/IDP auth via

@@ -54,6 +54,20 @@ type pluginWiring struct {
 	overrides map[string]routeOverride
 	// mcpTools are the MCP tools plugins add, in plugin order.
 	mcpTools []pdk.MCPTool
+	// importAdmitters and importObservers are the plugins' hooks on a gateway's
+	// artifact push, in plugin order (see pdk.GatewayImportAdmitter).
+	importAdmitters []pdk.GatewayImportAdmitter
+	importObservers []pdk.GatewayImportObserver
+}
+
+// pluginImpl returns the underlying value that implements a plugin's optional
+// pdk interfaces, unwrapping externalPlugin when necessary. This supports
+// interface assertions for both plugin tiers without wrapper forwarding methods.
+func pluginImpl(p plugin.Plugin) any {
+	if ep, ok := p.(*externalPlugin); ok {
+		return ep.p
+	}
+	return p
 }
 
 // routeOverride is one plugin's claim on a core route pattern.
@@ -192,6 +206,17 @@ func initPlugins(
 		// externalPlugin forwards pdk.MCPToolProvider, so this covers both tiers.
 		if tp, ok := p.(pdk.MCPToolProvider); ok {
 			w.mcpTools = append(w.mcpTools, tp.MCPTools()...)
+		}
+
+		// Hooks on a gateway's artifact push. Asserted on the plugin itself (see
+		// pluginImpl), so an internal plugin can implement them as well.
+		if a, ok := pluginImpl(p).(pdk.GatewayImportAdmitter); ok {
+			w.importAdmitters = append(w.importAdmitters, a)
+			slogger.Info("Plugin admits gateway artifact imports", "name", p.Name())
+		}
+		if o, ok := pluginImpl(p).(pdk.GatewayImportObserver); ok {
+			w.importObservers = append(w.importObservers, o)
+			slogger.Info("Plugin observes gateway artifact imports", "name", p.Name())
 		}
 	}
 

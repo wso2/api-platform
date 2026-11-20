@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -31,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"github.com/wso2/api-platform/platform-api/pdk"
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
@@ -107,6 +109,21 @@ type ArtifactImportService struct {
 	apiRepo        repository.APIRepository
 	cfg            *config.Server
 	slogger        *slog.Logger
+
+	// importAdmitters and importObservers are the plugins' hooks on a gateway push
+	// (see pdk.GatewayImportAdmitter and pdk.GatewayImportObserver), in plugin order.
+	// Set once at startup by SetGatewayImportHooks, before the server serves, and only
+	// read afterwards.
+	importAdmitters []pdk.GatewayImportAdmitter
+	importObservers []pdk.GatewayImportObserver
+}
+
+// SetGatewayImportHooks installs the plugins' admitters and observers for gateway pushes.
+// It is called once at startup, after the plugins are initialized and before the server
+// accepts requests; with none installed, ImportArtifacts behaves exactly as without plugins.
+func (s *ArtifactImportService) SetGatewayImportHooks(admitters []pdk.GatewayImportAdmitter, observers []pdk.GatewayImportObserver) {
+	s.importAdmitters = admitters
+	s.importObservers = observers
 }
 
 // NewArtifactImportService builds the import service and registers an importer for
@@ -170,7 +187,12 @@ func storedArtifactKind(gatewayKind string) string {
 // is recorded against that artifact's dpid and does not abort the rest. The returned response
 // maps each artifact's dpid to its per-artifact result (a non-empty Error marks a failure)
 // alongside total/success/failed counts.
-func (s *ArtifactImportService) ImportArtifacts(orgID, gatewayID string, reqs []dto.ImportGatewayArtifactRequest) *dto.ImportGatewayArtifactsResponse {
+//
+// Plugins take part through the hooks SetGatewayImportHooks installs: the admitters decide,
+// before anything is written, which of the artifacts the push would create may be created
+// (a refused artifact fails with the admitter's code and message), and the observers are told
+// afterwards which artifacts were created. ctx is the push request's context, handed to both.
+func (s *ArtifactImportService) ImportArtifacts(ctx context.Context, orgID, gatewayID string, reqs []dto.ImportGatewayArtifactRequest) *dto.ImportGatewayArtifactsResponse {
 	ordered := make([]dto.ImportGatewayArtifactRequest, len(reqs))
 	copy(ordered, reqs)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -183,12 +205,43 @@ func (s *ArtifactImportService) ImportArtifacts(orgID, gatewayID string, reqs []
 	}
 	// Resolve and validate the gateway once for the whole batch; each artifact reuses it
 	_, gwErr := s.getGatewayForOrg(orgID, gatewayID)
+	var rejected map[string]pdk.GatewayImportRejection
+	if gwErr == nil {
+		rejected = s.admitImports(ctx, orgID, gatewayID, ordered)
+	}
+	var created []pdk.GatewayImportedArtifact
 	for i := range ordered {
 		req := ordered[i]
+		if rejection, ok := rejected[req.DPID]; ok {
+			s.slogger.Info("Gateway artifact not imported: refused by a plugin admitter",
+				"dpid", req.DPID, "kind", req.Configuration.Kind, "handle", utils.ImportHandle(req.Configuration),
+				"gatewayId", gatewayID, "orgId", orgID, "code", rejection.Code, "reason", rejection.Message)
+			resp.Failed++
+			resp.Artifacts[req.DPID] = dto.ImportGatewayArtifactResponse{
+				Status:    utils.ImportStatusFailed,
+				Origin:    constants.OriginDP,
+				Error:     rejection.Message,
+				ErrorCode: rejection.Code,
+			}
+			continue
+		}
 		var result *dto.ImportGatewayArtifactResponse
+		var createdID string
 		err := gwErr
 		if err == nil {
-			result, err = s.importValidated(orgID, gatewayID, req)
+			result, createdID, err = s.importValidated(orgID, gatewayID, req)
+		}
+		// Reported even when a later step failed: the artifact exists in the control plane
+		// either way, and the next push only updates it. Only the kinds offered for admission
+		// are reported, since an LLM provider template is not an artifacts-table kind and its
+		// importer cannot be told apart as a create here.
+		if createdID != "" && offeredForAdmission(req.Configuration.Kind) {
+			created = append(created, pdk.GatewayImportedArtifact{
+				DPID:   req.DPID,
+				ID:     createdID,
+				Kind:   storedArtifactKind(req.Configuration.Kind),
+				Handle: utils.ImportHandle(req.Configuration),
+			})
 		}
 		if err != nil {
 			s.slogger.Warn("Failed to import gateway artifact in bulk push",
@@ -204,12 +257,16 @@ func (s *ArtifactImportService) ImportArtifacts(orgID, gatewayID string, reqs []
 		resp.Success++
 		resp.Artifacts[req.DPID] = *result
 	}
+	s.notifyImported(ctx, orgID, gatewayID, created)
 	return resp
 }
 
-// Import is the entry point for the DP->CP push. It authenticates the gateway,
+// Import imports a single gateway-pushed artifact. It authenticates the gateway,
 // resolves the importer by kind, resolves the project when required, delegates to
 // the importer, and persists deployment/status for deployable kinds.
+//
+// It does not consult the plugins' import hooks: those govern a gateway's push, which
+// the endpoint serves through ImportArtifacts.
 func (s *ArtifactImportService) Import(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, error) {
 	if orgID == "" || gatewayID == "" || req.DPID == "" {
 		return nil, apperror.ValidationFailed.New("The organization, gateway and artifact id are required.")
@@ -218,7 +275,8 @@ func (s *ArtifactImportService) Import(orgID, gatewayID string, req dto.ImportGa
 	if _, err := s.getGatewayForOrg(orgID, gatewayID); err != nil {
 		return nil, err
 	}
-	return s.importValidated(orgID, gatewayID, req)
+	resp, _, err := s.importValidated(orgID, gatewayID, req)
+	return resp, err
 }
 
 // getGatewayForOrg resolves the gateway and verifies it belongs to the org. ImportArtifacts
@@ -241,15 +299,19 @@ const importConflictMaxRetries = 3
 
 // importValidated imports a single artifact, assuming the gateway has already been resolved
 // and validated for the org (so a batch validates the gateway once instead of per artifact).
-func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, error) {
+//
+// createdID is the control-plane UUID of an artifact created by this call; it is empty when an
+// existing artifact is updated. It may accompany an error because the artifact is committed
+// before the deployment record, allowing the next push to find and update it.
+func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, string, error) {
 	if req.DPID == "" {
-		return nil, apperror.ValidationFailed.New("The artifact id is required.")
+		return nil, "", apperror.ValidationFailed.New("The artifact id is required.")
 	}
 	kind := req.Configuration.Kind
 	importer, ok := s.importers[kind]
 	if !ok {
 		s.slogger.Warn("Unsupported artifact kind for gateway import", "kind", kind, "artifactId", req.DPID)
-		return nil, apperror.ValidationFailed.New(fmt.Sprintf("Unsupported artifact kind %q.", kind))
+		return nil, "", apperror.ValidationFailed.New(fmt.Sprintf("Unsupported artifact kind %q.", kind))
 	}
 
 	// An "undeployed" push means the artifact was deleted from the gateway. The control
@@ -258,7 +320,8 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 	// push (re-deploy) takes the normal path below, creating a fresh deployment and
 	// updating metadata when this push wins the last-in-wins race.
 	if req.Status == utils.ImportStatusUndeployed {
-		return s.handleUndeploy(orgID, gatewayID, req)
+		resp, err := s.handleUndeploy(orgID, gatewayID, req)
+		return resp, "", err
 	}
 
 	ictx := &ImportContext{
@@ -281,11 +344,11 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 			// project-scoped kinds; a push without one is a contract violation.
 			s.slogger.Error("Project is required for gateway-imported artifact but was not provided",
 				"kind", kind, "artifactId", req.DPID)
-			return nil, apperror.ValidationFailed.New(fmt.Sprintf("A project is required for artifact kind %q.", kind))
+			return nil, "", apperror.ValidationFailed.New(fmt.Sprintf("A project is required for artifact kind %q.", kind))
 		}
 		project, err := s.projectRepo.GetProjectByHandleAndOrgID(ictx.ProjectHandle, orgID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve project %q: %w", ictx.ProjectHandle, err)
+			return nil, "", fmt.Errorf("failed to resolve project %q: %w", ictx.ProjectHandle, err)
 		}
 		if project == nil {
 			// The project was provided but does not exist in this organization. Reject the
@@ -293,7 +356,7 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 			// the artifact is not created in the control plane.
 			s.slogger.Error("Project is not available in the organization; gateway artifact not imported",
 				"kind", kind, "artifactId", req.DPID, "projectHandle", ictx.ProjectHandle, "orgId", orgID)
-			return nil, apperror.ProjectNotFound.New().WithLogMessage(
+			return nil, "", apperror.ProjectNotFound.New().WithLogMessage(
 				fmt.Sprintf("project with handle %q does not exist in org %q", ictx.ProjectHandle, orgID))
 		}
 		ictx.ProjectID = project.ID
@@ -314,13 +377,18 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 				"kind", kind, "handle", handle, "orgId", orgID, "attempt", attempt+1)
 			continue
 		}
-		return nil, err
+		return nil, "", err
+	}
+	// The last resolve decided it: no existing artifact means the importer created one.
+	createdID := ""
+	if ictx.Existing == nil {
+		createdID = result.ID
 	}
 
 	// Persist deployment + status for deployable kinds (everything except templates).
 	if result.Deployable {
 		if err := s.writeDeployment(ictx, result.ID); err != nil {
-			return nil, err
+			return nil, createdID, err
 		}
 	}
 
@@ -332,7 +400,7 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 		UpdatedAt:       req.UpdatedAt,
 		DeployedAt:      req.DeployedAt,
 		DeployedVersion: result.DeployedVersion,
-	}, nil
+	}, createdID, nil
 }
 
 // resolveAndImport resolves the existing artifact by handle, computes the last-in-wins

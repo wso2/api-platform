@@ -249,7 +249,7 @@ func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(w http.ResponseWriter
 		}
 	}
 
-	resp := h.artifactImportService.ImportArtifacts(orgID, gatewayID, reqs)
+	resp := h.artifactImportService.ImportArtifacts(r.Context(), orgID, gatewayID, reqs)
 	h.slogger.Info("Imported gateway artifacts batch",
 		"gatewayID", gatewayID, "total", resp.Total, "success", resp.Success, "failed", resp.Failed)
 	httputil.WriteJSON(w, http.StatusOK, resp)
