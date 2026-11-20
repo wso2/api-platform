@@ -36,6 +36,9 @@ import (
 // GraphQLAPIService handles business logic for GraphQL API operations.
 // GraphQL is a core artifact kind (like RestApi/LlmProvider/LlmProxy/Mcp)
 type GraphQLAPIService struct {
+	// unpublisher removes the artifact's API Portal listings before it is deleted;
+	// nil in a build without API Portals.
+	unpublisher          ArtifactUnpublisher
 	repo                 repository.GraphQLAPIRepository
 	projectRepo          repository.ProjectRepository
 	auditRepo            repository.AuditRepository
@@ -47,6 +50,12 @@ type GraphQLAPIService struct {
 	secretService        *SecretService
 	slogger              *slog.Logger
 	maxSDLFetchBytes     int64
+}
+
+// SetArtifactUnpublisher sets what unpublishes the artifact from every API Portal
+// before Delete removes it.
+func (s *GraphQLAPIService) SetArtifactUnpublisher(u ArtifactUnpublisher) {
+	s.unpublisher = u
 }
 
 // NewGraphQLAPIService creates a new GraphQLAPIService instance.
@@ -834,6 +843,12 @@ func (s *GraphQLAPIService) Delete(orgUUID, handle, deletedBy string) error {
 	}
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, existing.Origin, existing.ID, orgUUID); err != nil {
+		return err
+	}
+
+	// Take the API off every API Portal first. Deleting the artifact cascades away
+	// its publication rows, so a portal left out now could never be told to drop it.
+	if err := unpublishBeforeDelete(s.unpublisher, "graphql-api", existing.Handle, existing.ID, orgUUID, deletedBy); err != nil {
 		return err
 	}
 

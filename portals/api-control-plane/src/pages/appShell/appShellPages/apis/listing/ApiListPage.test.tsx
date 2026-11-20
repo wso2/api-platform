@@ -122,6 +122,10 @@ beforeEach(() => {
       apiUrl('/apis/:apiType/:apiId/thumbnail'),
       () => new HttpResponse(null, { status: 204 }),
     ),
+    // The delete dialog reads the API's portals; by default it is on none.
+    http.get(apiUrl('/api-publications'), () =>
+      HttpResponse.json({ count: 0, list: [], pagination: { limit: 100, offset: 0, total: 0 } }),
+    ),
   );
   serveNoGraphQLApis();
 });
@@ -325,6 +329,48 @@ describe('ApiListPage', () => {
     // effect must fall back to the last page that still does.
     expect(await screen.findByText('API 1')).toBeInTheDocument();
     expect(screen.queryByText('API 11')).not.toBeInTheDocument();
+  });
+
+  it('says the delete undeploys the API and unpublishes it from its live portals', async () => {
+    server.use(
+      collection('/rest-apis', apiFixtures),
+      http.get(apiUrl('/api-publications'), () =>
+        HttpResponse.json({
+          count: 3,
+          list: [
+            { apiPortalId: 'public', status: 'PUBLISHED' },
+            { apiPortalId: 'partners', status: 'DEPRECATED' },
+            { apiPortalId: 'internal', status: 'NOT_PUBLISHED' },
+          ],
+          pagination: { limit: 100, offset: 0, total: 3 },
+        }),
+      ),
+    );
+    const { user } = renderPage();
+
+    await screen.findByText('Orders API');
+    await user.click(screen.getByRole('button', { name: 'Delete Orders API' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/removes it from every gateway it is deployed on/)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/unpublished from 2 API Portals/)).toBeInTheDocument();
+  });
+
+  it('says nothing about portals when the API is on none', async () => {
+    let asked = false;
+    server.use(
+      collection('/rest-apis', apiFixtures),
+      http.get(apiUrl('/api-publications'), () => {
+        asked = true;
+        return HttpResponse.json({ count: 0, list: [], pagination: { limit: 100, offset: 0, total: 0 } });
+      }),
+    );
+    const { user } = renderPage();
+
+    await screen.findByText('Orders API');
+    await user.click(screen.getByRole('button', { name: 'Delete Orders API' }));
+    const dialog = screen.getByRole('dialog');
+    await waitFor(() => expect(asked).toBe(true));
+    expect(within(dialog).queryByText(/API Portal/)).not.toBeInTheDocument();
   });
 
   it('opens an API from the keyboard in both views', async () => {

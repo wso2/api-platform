@@ -637,7 +637,7 @@ curl -X DELETE https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServer
 
 ```
 
-Deletes MCP server metadata when the MCP server has no active subscriptions.
+Deletes MCP server metadata when the MCP server has no subscriptions and no active API keys; otherwise refuses with 409. With `force=true`, it removes them first, as `DELETE /apis/{apiId}?force=true` does.
 
 ### Authentication
 
@@ -652,6 +652,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server:delete`, 
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|force|query|boolean|false|Remove the MCP server's subscriptions and revoke its active API keys instead of refusing the delete. Paid subscriptions still refuse it.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses

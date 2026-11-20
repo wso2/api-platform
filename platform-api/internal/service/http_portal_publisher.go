@@ -241,6 +241,17 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 // converges. Any other 4xx (most commonly 409, when active subscriptions or API
 // keys are still attached) is returned as a PortalConflictError.
 func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string) error {
+	return p.unpublish(ctx, portal, apiType, apiHandle, false)
+}
+
+// ForceUnpublish implements ForceUnpublisher: Unpublish with ?force=true, which has the
+// portal remove the listing's subscriptions and revoke its active API keys instead of
+// refusing. The portal still refuses (409) while a paid subscription exists.
+func (p *HTTPPortalPublisher) ForceUnpublish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string) error {
+	return p.unpublish(ctx, portal, apiType, apiHandle, true)
+}
+
+func (p *HTTPPortalPublisher) unpublish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, force bool) error {
 	listing, err := portalListingFor(apiType)
 	if err != nil {
 		return err
@@ -250,7 +261,11 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, listingURL(portal, listing, apiHandle), nil)
+	target := listingURL(portal, listing, apiHandle)
+	if force {
+		target += "?force=true"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, target, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build portal unpublish request: %w", err)
 	}
