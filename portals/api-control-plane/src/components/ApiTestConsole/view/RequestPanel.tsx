@@ -406,6 +406,8 @@ export type RequestPanelProps = {
   /** Path and query as far as they are filled in. */
   preview: { path: string; query: [string, string][] };
   autoHeaders: readonly ConsoleAutoParam[];
+  /** Console-supplied query parameters; credentials among them are masked in the URL shown. */
+  autoQuery: readonly ConsoleAutoParam[];
   tab: RequestTab;
   onTab: (tab: RequestTab) => void;
   sending: boolean;
@@ -1105,6 +1107,7 @@ export function RequestPanel({
   baseUrl,
   preview,
   autoHeaders,
+  autoQuery,
   tab,
   onTab,
   sending,
@@ -1127,6 +1130,18 @@ export function RequestPanel({
   const bodyErrors = problemKeys.filter((key) => key === 'body' || key.startsWith('field:')).length;
 
   const activeTab: RequestTab = tab === 'body' && !hasBody ? 'params' : tab;
+
+  // The URL as shown: credentials masked. What is copied reveals them. Once the user has
+  // typed a target, that text stands as typed.
+  const maskedQuery = preview.query
+    .map(([name, value]) => {
+      const secret = autoQuery.some((q) => q.name === name && q.secret);
+      return `${encodeURIComponent(name)}=${encodeURIComponent(secret ? MASKED_VALUE : value)}`;
+    })
+    .join('&');
+  const shownUrl = `${baseUrl}${
+    draft.pathOverride ?? `${preview.path}${maskedQuery === '' ? '' : `?${maskedQuery}`}`
+  }`;
 
   const tabLabel = (label: ReactNode, errors: number, count?: number): ReactNode => (
     <Stack alignItems="center" direction="row" spacing={1}>
@@ -1174,8 +1189,11 @@ export function RequestPanel({
                 problems[PATH_PROBLEM_KEY] ? intl.formatMessage(messages.problemPath) : undefined
               }
               onChange={(event) => {
+                // The gateway address is fixed; what follows it is the path and query to send.
                 const typed = event.target.value;
-                onDraft((current) => ({ ...current, pathOverride: typed }));
+                const target =
+                  baseUrl !== '' && typed.startsWith(baseUrl) ? typed.slice(baseUrl.length) : typed;
+                onDraft((current) => ({ ...current, pathOverride: target }));
               }}
               size="small"
               sx={{ '& .MuiOutlinedInput-root': { pl: 0.5 } }}
@@ -1195,7 +1213,6 @@ export function RequestPanel({
                         {operation.method}
                       </Typography>
                       <Divider flexItem orientation="vertical" />
-                      {baseUrl !== '' && <SecondaryText variant="body2">{baseUrl}</SecondaryText>}
                     </InputAdornment>
                   ),
                   endAdornment: (
@@ -1216,7 +1233,7 @@ export function RequestPanel({
                   ),
                 },
               }}
-              value={draft.pathOverride ?? preview.path}
+              value={shownUrl}
             />
             <Tooltip
               title={

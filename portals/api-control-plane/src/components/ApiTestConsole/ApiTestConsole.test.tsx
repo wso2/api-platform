@@ -364,6 +364,28 @@ describe('ApiTestConsole — typed path', () => {
     expect(transport.mock.calls[0][0].path).toBe('/books/42');
   });
 
+  it('shows the whole request URL, gateway address first', () => {
+    renderConsole(vi.fn());
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue(
+      'https://gw.example.com/p/books',
+    );
+  });
+
+  it('keeps the gateway address when the user types after it', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/all?x=1');
+    await user.click(sendButton());
+
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    expect(transport.mock.calls[0][0]).toMatchObject({
+      baseUrl: 'https://gw.example.com/p',
+      path: '/books/all',
+      query: [['x', '1']],
+    });
+  });
+
   it('flags a typed path that cannot be called and does not send it', async () => {
     const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
     const { user } = renderConsole(transport);
@@ -392,7 +414,9 @@ describe('ApiTestConsole — typed path and path parameters', () => {
     await user.click(screen.getByRole('button', { name: 'Restore generated path' }));
 
     expect(screen.getByRole('textbox', { name: 'id' })).toBeEnabled();
-    expect(screen.getByRole('textbox', { name: /url/i })).toHaveValue('/books/42');
+    expect(screen.getByRole('textbox', { name: /url/i })).toHaveValue(
+      'https://gw.example.com/p/books/42',
+    );
     await user.click(sendButton());
     await waitFor(() => expect(transport).toHaveBeenCalled());
     expect(transport.mock.calls[0][0].path).toBe('/books/42');
