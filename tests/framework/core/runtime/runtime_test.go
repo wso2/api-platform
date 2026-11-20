@@ -23,14 +23,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1542,4 +1545,102 @@ func TestFlushRunnerOutputRestoresABlockingPipe(t *testing.T) {
 	require.True(t, pipeNonblock(t, w), "precondition: the os.Pipe write end is non-blocking")
 	require.NoError(t, flushRunnerOutput(w, "block/runner", bytes.NewBufferString("report")))
 	require.False(t, pipeNonblock(t, w), "flushRunnerOutput must restore blocking mode")
+}
+
+// fakeExitContainer stands in for a Docker container in the teardown-warning tests: it records
+// whether it runs, its exit code and the start time of its latest execution.
+type fakeExitContainer struct {
+	testcontainers.Container
+	running   bool
+	exitCode  int
+	starts    int
+	startedAt string
+	// startErr fails Start; startRuns says whether a new execution began (and exited) first,
+	// as when a readiness hook fails after Docker started the container.
+	startErr  error
+	startRuns bool
+}
+
+func (f *fakeExitContainer) State(context.Context) (*dockercontainer.State, error) {
+	status := "exited"
+	if f.running {
+		status = "running"
+	}
+	return &dockercontainer.State{Status: dockercontainer.ContainerState(status), Running: f.running, ExitCode: f.exitCode, StartedAt: f.startedAt}, nil
+}
+
+func (f *fakeExitContainer) Stop(context.Context, *time.Duration) error {
+	f.running = false
+	return nil
+}
+
+func (f *fakeExitContainer) Start(context.Context) error {
+	if f.startErr != nil && !f.startRuns {
+		return f.startErr
+	}
+	f.starts++
+	f.startedAt = fmt.Sprintf("start-%d", f.starts)
+	f.running = f.startErr == nil
+	return f.startErr
+}
+
+func (f *fakeExitContainer) Terminate(context.Context, ...testcontainers.TerminateOption) error {
+	return nil
+}
+
+// exitWarnings runs fn with slog captured and returns how many teardown warnings it logged.
+func exitWarnings(t *testing.T, fn func()) int {
+	t.Helper()
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(previous)
+	fn()
+	return strings.Count(logs.String(), "container had exited before teardown")
+}
+
+func newFakeExitContainer(f *fakeExitContainer) *Container {
+	return &Container{container: f, def: &components.Definition{Name: "fake"}}
+}
+
+func TestHaltReportsAContainerThatHadAlreadyExited(t *testing.T) {
+	ctx := context.Background()
+	c := newFakeExitContainer(&fakeExitContainer{running: false, exitCode: 137, startedAt: "start-0"})
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}), "the exit before Halt is reported once, and not again at teardown")
+}
+
+func TestHaltedContainerIsNotReportedAtTeardown(t *testing.T) {
+	ctx := context.Background()
+	c := newFakeExitContainer(&fakeExitContainer{running: true, startedAt: "start-0"})
+	require.Equal(t, 0, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+func TestResumeThatFailsBeforeStartingKeepsTheHalt(t *testing.T) {
+	ctx := context.Background()
+	c := newFakeExitContainer(&fakeExitContainer{running: true, startedAt: "start-0"})
+	require.Equal(t, 0, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		c.container.(*fakeExitContainer).startErr = errors.New("docker refused the start")
+		require.Error(t, c.Resume(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+func TestResumeThatFailsAfterStartingIsReportedWhenItExits(t *testing.T) {
+	ctx := context.Background()
+	f := &fakeExitContainer{running: true, startedAt: "start-0"}
+	c := newFakeExitContainer(f)
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		f.startErr, f.startRuns, f.exitCode = errors.New("readiness failed"), true, 1
+		require.Error(t, c.Resume(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
 }

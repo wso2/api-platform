@@ -70,11 +70,11 @@ func TestStopReportsAContainerThatHadAlreadyExited(t *testing.T) {
 	ctx := context.Background()
 
 	nw := newTestNetwork(t, ctx, "exited-probe")
-	t.Cleanup(func() { _ = nw.Remove(context.Background()) })
+	t.Cleanup(func() { reportCleanup(t, "removing the exited-probe network", nw.Remove(context.Background())) })
 
 	c, err := Launch(ctx, probeDef("exited-probe"), Options{Network: nw, Replicas: 1})
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = c.Stop(context.Background()) })
+	t.Cleanup(func() { reportCleanup(t, "stopping the exited-probe container", c.Stop(context.Background())) })
 	// Stopped behind the framework's back, as a crash would, not through Halt.
 	require.NoError(t, c.container.Stop(ctx, nil))
 
@@ -93,11 +93,11 @@ func TestStopDoesNotReportAHaltedContainer(t *testing.T) {
 	ctx := context.Background()
 
 	nw := newTestNetwork(t, ctx, "halted-probe")
-	t.Cleanup(func() { _ = nw.Remove(context.Background()) })
+	t.Cleanup(func() { reportCleanup(t, "removing the halted-probe network", nw.Remove(context.Background())) })
 
 	c, err := Launch(ctx, probeDef("halted-probe"), Options{Network: nw, Replicas: 1})
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = c.Stop(context.Background()) })
+	t.Cleanup(func() { reportCleanup(t, "stopping the halted-probe container", c.Stop(context.Background())) })
 	require.NoError(t, c.Halt(ctx))
 
 	var logs bytes.Buffer
@@ -107,4 +107,12 @@ func TestStopDoesNotReportAHaltedContainer(t *testing.T) {
 
 	require.NoError(t, c.Stop(ctx))
 	require.NotContains(t, logs.String(), "container had exited before teardown")
+}
+
+// reportCleanup fails the test when a cleanup step failed, since that leaves a resource behind.
+func reportCleanup(t *testing.T, what string, err error) {
+	t.Helper()
+	if err != nil {
+		t.Errorf("%s: %v", what, err)
+	}
 }

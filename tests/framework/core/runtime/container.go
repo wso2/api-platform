@@ -401,6 +401,16 @@ func (c *Container) Stop(ctx context.Context) error {
 	return nil
 }
 
+// startedAt is the start time Docker records for the container's latest execution, or "" when it
+// cannot be read.
+func startedAt(ctx context.Context, c testcontainers.Container) string {
+	state, err := c.State(ctx)
+	if err != nil {
+		return ""
+	}
+	return state.StartedAt
+}
+
 // warnIfExited logs a container that had already stopped when its block tears down, with its
 // exit code and whether it was killed for running out of memory. Without it, a container that
 // died mid-run leaves only connection errors in the scenarios that called it.
@@ -420,6 +430,11 @@ func (c *Container) Halt(ctx context.Context) error {
 	if c == nil || c.container == nil {
 		return fmt.Errorf("runtime: no container to halt")
 	}
+	// Stopping an already exited container succeeds, so a container that exited on its own is
+	// reported now: once halted, teardown no longer checks it.
+	if !c.halted.Load() {
+		warnIfExited(ctx, c.def.Name, c.container)
+	}
 	if err := c.container.Stop(ctx, nil); err != nil {
 		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
 	}
@@ -433,7 +448,13 @@ func (c *Container) Resume(ctx context.Context) error {
 	if c == nil || c.container == nil {
 		return fmt.Errorf("runtime: no container to resume")
 	}
+	before := startedAt(ctx, c.container)
 	if err := c.container.Start(ctx); err != nil {
+		// A start can fail after Docker began a new execution, in a readiness hook. That
+		// execution is no longer the one Halt stopped, so teardown checks it again.
+		if startedAt(ctx, c.container) != before {
+			c.halted.Store(false)
+		}
 		return fmt.Errorf("runtime: resuming %s: %w", c.def, err)
 	}
 	c.halted.Store(false)
