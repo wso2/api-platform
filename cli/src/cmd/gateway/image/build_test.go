@@ -122,7 +122,7 @@ func TestBuilderAccessWarnings(t *testing.T) {
 			mustNot: []string{"!"}},
 		{name: "GOSUMDB=off without credentials still warns", builder: builder,
 			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOSUMDB", "off")}},
-			want:    []string{"GOSUMDB=off turns off checksum verification for every module"},
+			want:    []string{"GOSUMDB=off turns off checksum verification for every module", "GOSUMDB=off also makes Go toolchain downloads fail"},
 			mustNot: []string{"GOPRIVATE is not set"}},
 		{name: "GOSUMDB=off with credentials replaces the GOPRIVATE warning", builder: builder,
 			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOSUMDB", "off")}, GitCredentials: creds},

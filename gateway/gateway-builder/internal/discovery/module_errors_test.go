@@ -126,6 +126,17 @@ func TestModDownloadFailure_RedactsCredentials(t *testing.T) {
 	assert.Contains(t, err.Error(), "unreachable", "stderr should still be reported")
 }
 
+func TestModDownloadFailure_RedactsPasswordWithRawSlash(t *testing.T) {
+	// Captured from Go 1.26.10 with GOPROXY=https://bot:abc/def@proxy.example.com.
+	stdout := []byte(`{"Path":"golang.org/x/text","Version":"v0.3.0","Error":"golang.org/x/text@v0.3.0: parse \"https://bot:abc/def@proxy.example.com\": invalid port \":abc\" after host"}`)
+
+	err := modDownloadFailure(module, stdout, nil, errExit)
+
+	assert.Contains(t, err.Error(), `parse "https://<redacted-credentials>@proxy.example.com"`)
+	assert.NotContains(t, err.Error(), "abc")
+	assert.NotContains(t, err.Error(), "def@")
+}
+
 func TestModDownloadFailure_KeepsPercentSigns(t *testing.T) {
 	stdout := []byte(`{"Error":"reading https://proxy.example.com/github.com/%21acme/p/@v/list: 410 Gone"}`)
 

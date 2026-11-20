@@ -71,6 +71,22 @@ func TestRedactCredentials(t *testing.T) {
 			want: "reading https://goproxy.acme.com/github.com/acme/p/@v/list?<redacted-query>: 401 Unauthorized",
 		},
 		{
+			// Go 1.26.10's error for GOPROXY=https://bot:abc/def@proxy.example.com
+			name: "raw slash in the password, as Go quotes it",
+			in:   `golang.org/x/text@v0.3.0: parse "https://bot:abc/def@proxy.example.com": invalid port ":abc" after host`,
+			want: `golang.org/x/text@v0.3.0: parse "https://<redacted-credentials>@proxy.example.com": invalid port "<redacted>" after host`,
+		},
+		{
+			name: "host with a port and a /@v/ path is kept",
+			in:   "reading https://proxy.example.com:8443/github.com/acme/p/@v/list: 404 Not Found",
+			want: "reading https://proxy.example.com:8443/github.com/acme/p/@v/list: 404 Not Found",
+		},
+		{
+			name: "checksum database lookup URL is kept",
+			in:   "reading https://sum.golang.org/lookup/github.com/acme/p@v1.0.0: 404 Not Found",
+			want: "reading https://sum.golang.org/lookup/github.com/acme/p@v1.0.0: 404 Not Found",
+		},
+		{
 			name: "go-get lookup is kept",
 			in:   "https://git.acme.com/acme/p?go-get=1: 404 Not Found",
 			want: "https://git.acme.com/acme/p?go-get=1: 404 Not Found",
@@ -141,6 +157,27 @@ func TestModuleSettingsLogFieldsRedactsEveryEntry(t *testing.T) {
 	for _, secret := range []string{"pw1", "pw2", "pw3", "pw4"} {
 		if strings.Contains(fmt.Sprint(fields...), secret) {
 			t.Errorf("log fields leak %q: %v", secret, fields)
+		}
+	}
+}
+
+func TestModuleSettingsLogFieldsMasksAmbiguousEntries(t *testing.T) {
+	// A raw "/" in the password hides where the credentials end; the whole entry is masked.
+	for value, want := range map[string]string{
+		"https://bot:abc/def@proxy.example.com,direct": "https://<redacted>,direct",
+		"bot:abc/def@proxy.example.com|direct":         "<redacted>|direct",
+	} {
+		fields := ModuleSettingsLogFields(func(k string) string {
+			if k == "GOPROXY" {
+				return value
+			}
+			return ""
+		}, func(string) bool { return false })
+		if fields[1] != want {
+			t.Errorf("GOPROXY=%q logged as %q, want %q", value, fields[1], want)
+		}
+		if got := fmt.Sprint(fields...); strings.Contains(got, "abc") || strings.Contains(got, "def") {
+			t.Errorf("GOPROXY=%q leaks the password: %v", value, fields)
 		}
 	}
 }

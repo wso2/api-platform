@@ -48,8 +48,8 @@ ap gateway image build --name my-gateway --platform linux/amd64
 export GOPRIVATE='github.com/acme/*'
 ap gateway image build --git-credential github.com=<github-username>:POLICY_TOKEN
 
-# Build with a netrc file and a private module proxy
-ap gateway image build --netrc ~/.netrc-gateway-policies --go-env GOPROXY=https://goproxy.acme.com,direct`
+# Build with a netrc file and a private module proxy (GONOPROXY=none sends GOPRIVATE modules through the proxy too)
+ap gateway image build --netrc ~/.netrc-gateway-policies --go-env GOPROXY=https://goproxy.acme.com,direct --go-env GONOPROXY=none`
 )
 
 var (
@@ -161,8 +161,10 @@ func builderAccessWarnings(access gateway.BuilderAccess, builder, defaultBuilder
 	var lines []string
 	if access.GoEnvValue("GOSUMDB") == "off" {
 		lines = append(lines,
-			"  ! GOSUMDB=off turns off checksum verification for every module, including the public policies",
-			"    and any Go toolchain the builder downloads. To skip it only for private modules, set GOPRIVATE instead.")
+			"  ! GOSUMDB=off turns off checksum verification for every module, including the public policies.",
+			"    To skip it only for private modules, set GOPRIVATE instead.",
+			"  ! GOSUMDB=off also makes Go toolchain downloads fail (Go never runs an unverified toolchain), so a",
+			"    policy that needs a newer Go version than the builder's cannot be built.")
 	}
 	if !access.HasCredentials() {
 		return lines

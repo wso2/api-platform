@@ -138,7 +138,7 @@ The file is mounted read-only into the builder container. The command refuses a 
 
 Git and the go command both read the netrc file (Go through its default `GOAUTH=netrc`), so it covers direct repository access, module proxies, and the `?go-get=1` lookups that self-hosted Git servers need. If you set `GOAUTH` with `--go-env`, include `netrc` in its list, or Go stops reading the file.
 
-Credentials are passed to the builder container only. They are never written into the build workspace or the gateway images, and they are never read from `build.yaml`. Because `build.yaml` can choose the builder image, the command warns when credentials are about to be passed to an image other than the default one for the gateway version. It also warns when `GOINSECURE` is set together with credentials, because git can then send them to those hosts over plain HTTP, and when `GOSUMDB=off` is passed, because that turns off checksum verification for every module, including the public policies.
+Credentials are passed to the builder container only. They are never written into the build workspace or the gateway images, and they are never read from `build.yaml`. Because `build.yaml` can choose the builder image, the command warns when credentials are about to be passed to an image other than the default one for the gateway version. It also warns when `GOINSECURE` is set together with credentials, because git can then send them to those hosts over plain HTTP, and when `GOSUMDB=off` is passed, because that turns off checksum verification for every module, including the public policies, and makes Go toolchain downloads fail, so a policy that needs a newer Go version than the builder's cannot be built.
 
 ### What can read the credentials
 
