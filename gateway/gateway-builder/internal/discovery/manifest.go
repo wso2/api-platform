@@ -497,7 +497,7 @@ func discoverGoPolicy(entry types.BuildEntry, baseDir string) (*types.Discovered
 		modInfo, err := resolveModuleInfo(entry.Gomodule)
 		if err != nil {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("failed to resolve gomodule for %s: %v", entry.Name, err),
+				fmt.Sprintf("failed to resolve gomodule for %s", entry.Name), // err is appended by Error()
 				err,
 			)
 		}
@@ -629,7 +629,7 @@ func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("timed out while running 'go mod download -json %s'", gomodule)
 		}
-		return nil, fmt.Errorf("failed to run 'go mod download -json %s': %w; stderr: %s", gomodule, err, stderr.String())
+		return nil, modDownloadFailure(gomodule, out, stderr.Bytes(), err)
 	}
 
 	var info struct {

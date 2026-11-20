@@ -19,10 +19,14 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/wso2/api-platform/cli/internal/terminal"
 	"github.com/wso2/api-platform/cli/utils"
@@ -42,6 +46,7 @@ type DockerBuildConfig struct {
 	Push                       bool
 	LogFilePath                string
 	OutputCopyDir              string
+	BuilderAccess              BuilderAccess // Go settings and credentials for the builder container
 }
 
 // BuildGatewayImages executes the docker build process for gateway images
@@ -98,12 +103,25 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 
 // runGatewayBuilder runs the gateway-builder container
 func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
-	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace", config.GatewayBuilder,
+	// Credentials live next to the workspace, never inside it: the workspace output
+	// is copied into the gateway images and, with --output-dir, out to the user.
+	scratchParent := filepath.Dir(config.TempDir)
+	sweepStaleCredentialDirs(scratchParent, processAlive, time.Now())
+	accessArgs, env, cleanup, err := config.BuilderAccess.prepare(scratchParent, os.Environ())
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace"}
+	args = append(args, accessArgs...)
+	args = append(args, config.GatewayBuilder,
 		"-gateway-controller-base-image", config.GatewayControllerBaseImage,
 		"-gateway-runtime-base-image", config.GatewayRuntimeBaseImage,
-	}
+	)
 
 	cmd := exec.Command("docker", args...)
+	cmd.Env = env
 
 	// Setup scrolling output - auto-detects TTY internally, falls back to file-only if not TTY
 	scroller := terminal.NewScrollingLogger(terminal.ScrollingLoggerConfig{
@@ -115,13 +133,61 @@ func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
 	scroller.Start()
 	defer scroller.Stop()
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("docker command failed: %w", err)
+	}
+	if len(config.BuilderAccess.GitCredentials) > 0 {
+		// Without this, Ctrl-C would kill ap before the deferred cleanup removes
+		// the generated credentials file.
+		defer forwardSignals(cmd.Process)()
+	}
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("docker command failed: %w%s", err, netrcMountHint(err, config.BuilderAccess))
 	}
 
 	// Clear the scrolled logs before returning success
 	scroller.ClearDisplay()
 	return nil
+}
+
+// dockerRunCreateFailed is the exit code `docker run` returns when the container
+// cannot be created, for example when a bind mount source does not exist.
+const dockerRunCreateFailed = 125
+
+// netrcMountHint explains the usual reason a --netrc mount fails: Docker Desktop
+// and Colima share only some host directories (the home directory by default)
+// with their VM, so a file elsewhere does not exist from the daemon's side.
+func netrcMountHint(err error, access BuilderAccess) string {
+	var exitErr *exec.ExitError
+	if access.NetrcFile == "" || !errors.As(err, &exitErr) || exitErr.ExitCode() != dockerRunCreateFailed {
+		return ""
+	}
+	return "\n\nDocker could not create the builder container. If the log says the bind source path does not exist, " +
+		"move the --netrc file under your home directory: Docker Desktop and Colima share it with their VM by default, " +
+		"but not every other host path."
+}
+
+// forwardSignals passes interrupt, terminate and hangup (terminal closed) signals to
+// p instead of letting them end ap, so deferred cleanup still runs once p exits. The
+// returned func stops forwarding.
+func forwardSignals(p *os.Process) (stop func()) {
+	sigs := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		for {
+			select {
+			case sig := <-sigs:
+				_ = p.Signal(sig)
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() {
+		signal.Stop(sigs)
+		close(done)
+	}
 }
 
 // buildWithBuildx builds images using docker buildx for cross-platform
