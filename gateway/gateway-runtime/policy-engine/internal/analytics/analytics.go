@@ -428,7 +428,18 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	operation := dto.Operation{}
 	// operation.APIResourceTemplate = keyValuePairsFromMetadata[APIResourceTemplateKey]
 	if request != nil {
-		operation.APIResourceTemplate = originalPath
+		// Envoy sets the original path only when a route rewrite occurred. A request
+		// that a policy refuses never reaches the upstream, so it is never rewritten
+		// and the original path is empty. Fall back to the request's own path, which
+		// is already query-stripped, so refused requests still report the path the
+		// client called.
+		resourcePath := originalPath
+
+		if resourcePath == "" {
+			resourcePath = requestPath
+		}
+
+		operation.APIResourceTemplate = resourcePath
 		operation.APIMethod = logEntry.Request.GetRequestMethod().String()
 	}
 

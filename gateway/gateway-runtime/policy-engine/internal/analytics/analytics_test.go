@@ -1617,13 +1617,15 @@ func TestPrepareAnalyticEvent_APIResourceTemplateDropsQueryString(t *testing.T) 
 		path         string
 		want         string
 	}{
-		"no query":              {"/petstore/pet/12345", "/pet/12345", "/petstore/pet/12345"},
-		"single param":          {"/petstore/pet/12345?apikey=secret", "/pet/12345", "/petstore/pet/12345"},
-		"multiple params":       {"/search?q=cat&token=abc123", "/search", "/search"},
-		"empty query":           {"/petstore/pet?", "/pet", "/petstore/pet"},
-		"query only":            {"?apikey=secret", "/pet", ""},
-		"absent original path":  {"", "/pet/12345", ""},
-		"encoded question mark": {"/pet/a%3Fb", "/a%3Fb", "/pet/a%3Fb"},
+		"no query":        {"/petstore/pet/12345", "/pet/12345", "/petstore/pet/12345"},
+		"single param":    {"/petstore/pet/12345?apikey=secret", "/pet/12345", "/petstore/pet/12345"},
+		"multiple params": {"/search?q=cat&token=abc123", "/search", "/search"},
+		"empty query":     {"/petstore/pet?", "/pet", "/petstore/pet"},
+		"query only":      {"?apikey=secret", "/pet", "/pet"},
+		"absent original path falls back to request path": {"", "/pet/12345", "/pet/12345"},
+		"absent original path fallback drops query":       {"", "/pet/12345?apikey=secret", "/pet/12345"},
+		"both paths absent":                               {"", "", ""},
+		"encoded question mark":                           {"/pet/a%3Fb", "/a%3Fb", "/pet/a%3Fb"},
 		// The reviewer's case: the rewritten Path is clean while the pre-rewrite
 		// OriginalPath still carries the credential.
 		"query only on original path": {"/petstore/pet?apikey=secret", "/pet", "/petstore/pet"},
