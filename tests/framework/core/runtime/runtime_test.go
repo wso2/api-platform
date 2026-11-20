@@ -23,14 +23,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1542,4 +1545,176 @@ func TestFlushRunnerOutputRestoresABlockingPipe(t *testing.T) {
 	require.True(t, pipeNonblock(t, w), "precondition: the os.Pipe write end is non-blocking")
 	require.NoError(t, flushRunnerOutput(w, "block/runner", bytes.NewBufferString("report")))
 	require.False(t, pipeNonblock(t, w), "flushRunnerOutput must restore blocking mode")
+}
+
+// fakeExitContainer stands in for a Docker container in the teardown-warning tests: it records
+// whether it runs, its exit code and the exit time of its latest execution, and can fail
+// chosen State reads.
+type fakeExitContainer struct {
+	testcontainers.Container
+	running    bool
+	exitCode   int
+	finishedAt string
+	executions int
+	// startErr fails Start; startRuns says whether a new execution began (and exited) first,
+	// as when a readiness hook fails after Docker started the container.
+	startErr  error
+	startRuns bool
+	// failReads lists the State calls, counted from 1, that fail.
+	failReads map[int]bool
+	reads     int
+}
+
+func (f *fakeExitContainer) State(context.Context) (*dockercontainer.State, error) {
+	f.reads++
+	if f.failReads[f.reads] {
+		return nil, errors.New("docker did not answer")
+	}
+	status := "exited"
+	if f.running {
+		status = "running"
+	}
+	return &dockercontainer.State{Status: dockercontainer.ContainerState(status), Running: f.running, ExitCode: f.exitCode, FinishedAt: f.finishedAt}, nil
+}
+
+// Stop stops a running container and, like Docker, does nothing to one that already exited.
+func (f *fakeExitContainer) Stop(context.Context, *time.Duration) error {
+	if f.running {
+		f.running = false
+		f.executions++
+		f.finishedAt = fmt.Sprintf("stopped-%d", f.executions)
+	}
+	return nil
+}
+
+func (f *fakeExitContainer) Start(context.Context) error {
+	if f.startErr != nil && !f.startRuns {
+		return f.startErr
+	}
+	f.executions++
+	f.running = f.startErr == nil
+	if !f.running {
+		f.finishedAt = fmt.Sprintf("exited-after-start-%d", f.executions)
+	}
+	return f.startErr
+}
+
+func (f *fakeExitContainer) Terminate(context.Context, ...testcontainers.TerminateOption) error {
+	return nil
+}
+
+// exitWarnings runs fn with slog captured and returns how many teardown warnings it logged.
+func exitWarnings(t *testing.T, fn func()) int {
+	t.Helper()
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(previous)
+	fn()
+	return strings.Count(logs.String(), "container had exited before teardown")
+}
+
+func newFakeExitContainer(f *fakeExitContainer) *Container {
+	return &Container{container: f, def: &components.Definition{Name: "fake"}}
+}
+
+func TestHaltReportsAContainerThatHadAlreadyExited(t *testing.T) {
+	ctx := context.Background()
+	c := newFakeExitContainer(&fakeExitContainer{running: false, exitCode: 137, finishedAt: "crashed"})
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}), "the exit before Halt is reported once, and not again at teardown")
+}
+
+func TestHaltedContainerIsNotReportedAtTeardown(t *testing.T) {
+	ctx := context.Background()
+	c := newFakeExitContainer(&fakeExitContainer{running: true})
+	require.Equal(t, 0, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+func TestResumeThatFailsBeforeStartingKeepsTheHalt(t *testing.T) {
+	ctx := context.Background()
+	f := &fakeExitContainer{running: true}
+	c := newFakeExitContainer(f)
+	require.Equal(t, 0, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		f.startErr = errors.New("docker refused the start")
+		require.Error(t, c.Resume(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+func TestResumeThatFailsAfterStartingIsReportedWhenItExits(t *testing.T) {
+	ctx := context.Background()
+	f := &fakeExitContainer{running: true}
+	c := newFakeExitContainer(f)
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		f.startErr, f.startRuns, f.exitCode = errors.New("readiness failed"), true, 1
+		require.Error(t, c.Resume(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+func TestResumedContainerThatLaterExitsIsReported(t *testing.T) {
+	ctx := context.Background()
+	f := &fakeExitContainer{running: true}
+	c := newFakeExitContainer(f)
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Resume(ctx))
+		f.running, f.exitCode, f.finishedAt = false, 2, "crashed-after-resume"
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+// A deliberate stop whose exit time could not be read records nothing, so the stopped container
+// is reported at teardown rather than possibly hiding an exit of its own.
+func TestDeliberateStopWithAnUnreadableExitTimeIsReported(t *testing.T) {
+	ctx := context.Background()
+	// Halt reads the state before stopping (read 1) and after (read 2); read 2 fails.
+	c := newFakeExitContainer(&fakeExitContainer{running: true, failReads: map[int]bool{2: true}})
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+func TestUnreadableStateAtTeardownIsNotReported(t *testing.T) {
+	ctx := context.Background()
+	c := newFakeExitContainer(&fakeExitContainer{running: false, exitCode: 1, finishedAt: "crashed", failReads: map[int]bool{1: true}})
+	require.Equal(t, 0, exitWarnings(t, func() {
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+// When the state before a deliberate stop cannot be read, an exit that had already happened is
+// not recorded as deliberate, so teardown still reports it.
+func TestHaltOfAnExitedContainerWithAnUnreadableStateIsReported(t *testing.T) {
+	ctx := context.Background()
+	// Halt's read before stopping (read 1) fails; the container had already crashed.
+	c := newFakeExitContainer(&fakeExitContainer{running: false, exitCode: 137, finishedAt: "crashed", failReads: map[int]bool{1: true}})
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
+
+// A second deliberate stop whose state before it cannot be read keeps the first stop's record, so
+// a container still stopped from that first stop is not reported.
+func TestRepeatedHaltWithAnUnreadableStateKeepsTheEarlierStop(t *testing.T) {
+	ctx := context.Background()
+	// The first Halt reads the state before (read 1) and after (read 2) stopping; the second
+	// Halt's read before stopping (read 3) fails.
+	c := newFakeExitContainer(&fakeExitContainer{running: true, failReads: map[int]bool{3: true}})
+	require.Equal(t, 0, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
 }
