@@ -286,3 +286,64 @@ func TestAzureOpenAITokenFailureSendsNoRequest(t *testing.T) {
 		t.Fatalf("server hits = %d", n)
 	}
 }
+
+// redirectingAzureServer answers every request with a 307 to elsewhere.
+func redirectingAzureServer(t *testing.T, elsewhere string) *httptest.Server {
+	t.Helper()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere+r.URL.RequestURI(), http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
+func TestAzureOpenAIRefusesRedirects(t *testing.T) {
+	for _, mode := range []string{AuthenticationTypeAPIKey, azureauthentication.WorkloadIdentity} {
+		t.Run(mode, func(t *testing.T) {
+			useFakeAzureIdentity(t, &fakeAzureTokens{}, nil)
+			elsewhere := newAzureServer(t)
+			listed := redirectingAzureServer(t, elsewhere.URL)
+			p := &AzureOpenAIEmbeddingProvider{}
+			if err := p.Init(identityConfig(listed.URL, mode)); err != nil {
+				t.Fatal(err)
+			}
+			_, err1 := p.GetEmbedding("x")
+			_, err2 := p.GetEmbeddings([]string{"x"})
+			for name, err := range map[string]error{"GetEmbedding": err1, "GetEmbeddings": err2} {
+				var serr *StatusError
+				if !errors.As(err, &serr) || serr.StatusCode != http.StatusTemporaryRedirect {
+					t.Errorf("%s err = %v, want a StatusError with status 307", name, err)
+				}
+			}
+			if n := elsewhere.hits.Load(); n != 0 {
+				t.Fatalf("the redirect target was hit %d times", n)
+			}
+		})
+	}
+}
+
+func TestAzureOpenAIReportsTheStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"code":"PermissionDenied"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	p := &AzureOpenAIEmbeddingProvider{}
+	if err := p.Init(azureConfig(srv.URL)); err != nil {
+		t.Fatal(err)
+	}
+	_, err1 := p.GetEmbedding("x")
+	_, err2 := p.GetEmbeddings([]string{"x"})
+	for name, err := range map[string]error{"GetEmbedding": err1, "GetEmbeddings": err2} {
+		var serr *StatusError
+		if !errors.As(err, &serr) {
+			t.Fatalf("%s err = %v, want a StatusError", name, err)
+		}
+		if serr.StatusCode != http.StatusForbidden || serr.Body != `{"error":{"code":"PermissionDenied"}}` {
+			t.Errorf("%s StatusError = %+v", name, serr)
+		}
+		if want := `Azure OpenAI API error: status 403, body: {"error":{"code":"PermissionDenied"}}`; err.Error() != want {
+			t.Errorf("%s err = %q, want %q", name, err, want)
+		}
+	}
+}

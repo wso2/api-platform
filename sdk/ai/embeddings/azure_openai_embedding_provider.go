@@ -30,6 +30,17 @@ var getTokenSource = func(id azureauthentication.Identity) (tokenSource, error) 
 	return cred, nil
 }
 
+// StatusError is the error for a non-200 answer from Azure OpenAI, so callers can tell, for
+// example, a refused credential (401 or 403) from other failures.
+type StatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("Azure OpenAI API error: status %d, body: %s", e.StatusCode, e.Body)
+}
+
 // AzureOpenAIEmbeddingProvider implements the EmbeddingProvider interface for Azure OpenAI
 type AzureOpenAIEmbeddingProvider struct {
 	authHeaderName string
@@ -67,6 +78,12 @@ func (a *AzureOpenAIEmbeddingProvider) Init(config EmbeddingProviderConfig) erro
 
 	a.client = &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
+		// Refuse every redirect: on a redirect to another host Go keeps custom headers such as
+		// api-key, so following one could send the credential to a resource nobody configured.
+		// The 3xx comes back as the response and fails as any other non-200 does.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	return nil
 }
@@ -123,7 +140,7 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbedding(input string) ([]float32, er
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Azure OpenAI API error: status %d, body: %s", resp.StatusCode, string(respBody))
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var response map[string]interface{}
@@ -189,7 +206,7 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbeddings(inputs []string) ([][]float
 
 	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Azure OpenAI API error: status %d, body: %s", resp.StatusCode, string(respBody))
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var response map[string]interface{}
