@@ -468,3 +468,47 @@ describe('buildSendRequest query arrays and values', () => {
     expect(result.request?.body).toBeUndefined();
   });
 });
+
+describe('buildSendRequest — typed path', () => {
+  it('sends the typed path instead of the operation’s', () => {
+    const result = build('GET /books/{id}', draft({ pathOverride: '/books/42/extra' }));
+    expect(result.problems).toEqual({});
+    expect(result.request?.path).toBe('/books/42/extra');
+  });
+
+  it('does not ask for a path parameter the typed path replaces', () => {
+    const typed = build('GET /books/{id}', draft({ pathOverride: '/books/7' }));
+    expect(typed.request?.path).toBe('/books/7');
+  });
+
+  it('adds a typed query string to the others', () => {
+    const result = build(
+      'GET /books/{id}',
+      draft({ params: { 'query:limit': '5' }, pathOverride: '/books/1?q=a%20b' }),
+    );
+    expect(result.request?.path).toBe('/books/1');
+    expect(result.request?.query).toEqual([
+      ['q', 'a b'],
+      ['limit', '5'],
+    ]);
+  });
+
+  it.each(['', 'books', '//evil.example/x', '/a/../b', '/a#frag', '/a?x=1#frag'])(
+    'refuses the typed path %j',
+    (typed) => {
+      const result = build('GET /books/{id}', draft({ pathOverride: typed }));
+      expect(result.request).toBeUndefined();
+      expect(result.problems.path).toEqual({ code: 'path' });
+    },
+  );
+
+  it('lets a console-owned credential replace the same name typed into the path', () => {
+    const result = build('GET /books/{id}', draft({ pathOverride: '/books/1?api_key=mine&q=1' }), {
+      autoQuery: [{ name: 'api_key', secret: true, value: 'console-secret' }],
+    });
+    expect(result.request?.query).toEqual([
+      ['q', '1'],
+      ['api_key', 'console-secret'],
+    ]);
+  });
+});

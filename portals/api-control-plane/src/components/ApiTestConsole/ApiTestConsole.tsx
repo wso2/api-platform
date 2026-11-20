@@ -378,7 +378,6 @@ export function ApiTestConsole({
               <>
                 <RequestPanel
                   autoHeaders={autoHeaders}
-                  autoQuery={autoQuery}
                   baseUrl={baseUrl.trim().replace(/\/+$/, '')}
                   copied={copiedKey === 'url'}
                   copyableUrl={displayUrl(

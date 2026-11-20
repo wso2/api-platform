@@ -397,7 +397,6 @@ export type RequestPanelProps = {
   /** Path and query as far as they are filled in. */
   preview: { path: string; query: [string, string][] };
   autoHeaders: readonly ConsoleAutoParam[];
-  autoQuery: readonly ConsoleAutoParam[];
   tab: RequestTab;
   onTab: (tab: RequestTab) => void;
   sending: boolean;
@@ -1078,7 +1077,6 @@ export function RequestPanel({
   baseUrl,
   preview,
   autoHeaders,
-  autoQuery,
   tab,
   onTab,
   sending,
@@ -1101,15 +1099,6 @@ export function RequestPanel({
   const bodyErrors = problemKeys.filter((key) => key === 'body' || key.startsWith('field:')).length;
 
   const activeTab: RequestTab = tab === 'body' && !hasBody ? 'params' : tab;
-
-  // The URL as shown: credentials masked. What is copied reveals them.
-  const maskedQuery = preview.query
-    .map(([name, value]) => {
-      const secret = autoQuery.some((q) => q.name === name && q.secret);
-      return `${encodeURIComponent(name)}=${encodeURIComponent(secret ? MASKED_VALUE : value)}`;
-    })
-    .join('&');
-  const shownUrl = `${baseUrl}${preview.path}${maskedQuery === '' ? '' : `?${maskedQuery}`}`;
 
   const tabLabel = (label: ReactNode, errors: number, count?: number): ReactNode => (
     <Stack alignItems="center" direction="row" spacing={1}>
@@ -1151,7 +1140,15 @@ export function RequestPanel({
 
           <Stack alignItems="flex-start" direction={{ sm: 'row', xs: 'column' }} spacing={1.5}>
             <TextField
+              error={problems[PATH_PROBLEM_KEY] !== undefined}
               fullWidth
+              helperText={
+                problems[PATH_PROBLEM_KEY] ? intl.formatMessage(messages.problemPath) : undefined
+              }
+              onChange={(event) => {
+                const typed = event.target.value;
+                onDraft((current) => ({ ...current, pathOverride: typed }));
+              }}
               size="small"
               sx={{ '& .MuiOutlinedInput-root': { pl: 0.5 } }}
               slotProps={{
@@ -1170,6 +1167,7 @@ export function RequestPanel({
                         {operation.method}
                       </Typography>
                       <Divider flexItem orientation="vertical" />
+                      {baseUrl !== '' && <SecondaryText variant="body2">{baseUrl}</SecondaryText>}
                     </InputAdornment>
                   ),
                   endAdornment: (
@@ -1188,10 +1186,9 @@ export function RequestPanel({
                       </Tooltip>
                     </InputAdornment>
                   ),
-                  readOnly: true,
                 },
               }}
-              value={shownUrl}
+              value={draft.pathOverride ?? preview.path}
             />
             <Tooltip
               title={

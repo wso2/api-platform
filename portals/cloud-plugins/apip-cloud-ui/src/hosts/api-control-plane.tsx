@@ -19,7 +19,8 @@ import {
   PORTAL_OPERATIONS,
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
 import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
-import { ManageProjectButton, SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
+// TODO: add SettingsButton back to this import when the header settings icon returns.
+import { ManageProjectButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
 import {
   EntitlementsGate,
@@ -203,8 +204,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     ],
   }),
   defineCloudPlugin({
-    // The header's settings icon, which opens the WSO2 Cloud console's organization
-    // pages. Console-only: it is registered in this host and not in the AI Workspace
+    // (The header settings icon is currently hidden; see the TODO below.) It opens the
+    // WSO2 Cloud console's organization pages. Console-only: it is registered in this host and not in the AI Workspace
     // one, so that portal's header is unchanged. Ordered after the trial badge, and
     // the header lays its action slot out ahead of the theme switcher, so the icon
     // sits between them.
@@ -215,12 +216,14 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     id: 'settings',
     version: '0.1.0',
     extensions: [
-      {
-        id: 'settings-button',
-        slot: HEADER_ACTIONS_SLOT,
-        order: 20,
-        render: () => <SettingsButton />,
-      },
+      // TODO: the header settings icon is hidden for now. Restore this entry (and the
+      // SettingsButton import, and un-skip SettingsButton.test.tsx) once it is reviewed.
+      // {
+      //   id: 'settings-button',
+      //   slot: HEADER_ACTIONS_SLOT,
+      //   order: 20,
+      //   render: () => <SettingsButton />,
+      // },
       {
         id: 'manage-project-button',
         slot: PROJECT_HEADER_ACTIONS_SLOT,

@@ -41,6 +41,11 @@ export type DraftHeader = { id: string; name: string; value: string };
 export type RequestDraft = {
   /** Values by `in:name`. */
   params: Record<string, string>;
+  /**
+   * The path (and optional `?query`) the user typed into the URL bar. When set, it is sent
+   * instead of the operation's path with its `{placeholders}` filled in.
+   */
+  pathOverride?: string;
   headers: DraftHeader[];
   bodyMediaType: string;
   bodyText: string;
@@ -169,11 +174,26 @@ export const buildSendRequest = ({
   const headers: [string, string][] = [];
   let path = operation.path;
 
-  if (!isSafePath(operation.path)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
-
   // Console-owned credentials replace anything the user typed under the same name.
   const autoHeaderNames = new Set(autoHeaders.map((h) => h.name.toLowerCase()));
   const autoQueryNames = new Set(autoQuery.map((q) => q.name));
+
+  // A path typed into the URL bar replaces the operation's own; its query joins the others.
+  const override = draft.pathOverride;
+  if (override !== undefined) {
+    const split = override.indexOf('?');
+    path = split === -1 ? override : override.slice(0, split);
+    const typedQuery = split === -1 ? '' : override.slice(split + 1);
+    // eslint-disable-next-line no-control-regex
+    if (/[#\u0000-\u001f\u007f]/.test(typedQuery)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
+    else {
+      new URLSearchParams(typedQuery).forEach((value, name) => {
+        if (!autoQueryNames.has(name)) query.push([name, value]);
+      });
+    }
+  }
+
+  if (!isSafePath(path)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
 
   operation.parameters.forEach((parameter) => {
     // The console supplies these itself, so what the user typed (or left blank) is moot.
@@ -181,6 +201,9 @@ export const buildSendRequest = ({
     if (parameter.in === 'header' && autoHeaderNames.has(parameter.name.toLowerCase())) return;
     // Content-Type is owned by the body editor's media-type choice.
     if (parameter.in === 'header' && parameter.name.toLowerCase() === 'content-type') return;
+
+    // The typed path already carries whatever the placeholders stood for.
+    if (parameter.in === 'path' && override !== undefined) return;
 
     // Blank is judged on the trimmed text; typed values are validated exactly as they are sent.
     const value = own(draft.params, paramKey(parameter)) ?? '';

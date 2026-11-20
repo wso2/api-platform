@@ -350,6 +350,34 @@ describe('ApiTestConsole — credentials', () => {
   });
 });
 
+describe('ApiTestConsole — typed path', () => {
+  it('sends the path the user typed into the URL bar', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+
+    const field = screen.getByRole('textbox', { name: /url/i });
+    await user.clear(field);
+    await user.type(field, '/books/42');
+    await user.click(sendButton());
+
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    expect(transport.mock.calls[0][0].path).toBe('/books/42');
+  });
+
+  it('flags a typed path that cannot be called and does not send it', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+
+    const field = screen.getByRole('textbox', { name: /url/i });
+    await user.clear(field);
+    await user.type(field, 'books');
+    await user.click(sendButton());
+
+    expect((await screen.findAllByText(/path cannot be called/i)).length).toBeGreaterThan(0);
+    expect(transport).not.toHaveBeenCalled();
+  });
+});
+
 describe('ApiTestConsole — mirroring', () => {
   it('reports the latest valid request so another view can follow it', async () => {
     const onRequestChange = vi.fn<(request: ConsoleSendRequest) => void>();
