@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@api-key-value-length
+@api-key-value-length @APIKEY
 Feature: API key value length
   As an API administrator
   I want a custom API key value that is too short to be refused
@@ -26,6 +26,7 @@ Feature: API key value length
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
+  @APIKEY-GW-001
   Scenario: A custom API key value shorter than the minimum is refused
     Given I generate a unique value from "weak-key-api" and store it as "weakKeyApi"
     And I generate a unique API context from "/weak-key" and store it as "weakKeyCtx"

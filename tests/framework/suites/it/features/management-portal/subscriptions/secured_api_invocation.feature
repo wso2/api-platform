@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-secured-invocation
+@platform-api-secured-invocation @APIKEY
 Feature: Platform-API-issued subscription credentials authorize gateway invocation
   As an API platform operator
   I want an API key and subscription created entirely through platform-api to authorize a
@@ -54,7 +54,7 @@ Feature: Platform-API-issued subscription credentials authorize gateway invocati
     And I send a "GET" request to "${CTX:apiContext}/"
     Then the response status code should be 401
 
-  @secured
+  @secured @APIKEY-PA-001
   Scenario: A weak custom API key is refused by platform-api and cannot invoke the API
     Given I generate a unique resource name from "papi-weak-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
