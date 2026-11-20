@@ -29,6 +29,7 @@ import (
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/secretsource"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -184,6 +185,77 @@ func GetBasicAuthCredentials(authConfig *AuthSettings) (username, password strin
 // Default: username="admin", password="admin"
 func GetDefaultBasicAuthCredentials() (username, password string) {
 	return "admin", "admin"
+}
+
+// DefaultAdminUsername is the admin username used when spec.adminCredentials.username
+// is empty (the CRD defaults it to the same value).
+const DefaultAdminUsername = "admin"
+
+// AdminCredentialsFromSecret returns the username and password from an APIGateway's
+// spec.adminCredentials. It fails closed: a missing Secret, a missing key, or an empty
+// value is an error, never the default admin/admin. The error names the Secret and
+// key but never the value.
+func AdminCredentialsFromSecret(ctx context.Context, k8sClient client.Client, gateway *apiv1.APIGateway) (username, password string, err error) {
+	creds := gateway.Spec.AdminCredentials
+	if creds == nil {
+		return "", "", fmt.Errorf("gateway %s/%s has no spec.adminCredentials", gateway.Namespace, gateway.Name)
+	}
+	ref := creds.PasswordSecretRef.DeepCopy()
+	if ref.Name == "" {
+		return "", "", fmt.Errorf("spec.adminCredentials.passwordSecretRef.name is empty")
+	}
+	if ref.Key == "" {
+		return "", "", fmt.Errorf("spec.adminCredentials.passwordSecretRef.key is empty")
+	}
+	// The admin password is never optional: a missing Secret must fail the call,
+	// not resolve to an empty password.
+	ref.Optional = nil
+	password, err = secretsource.Resolve(ctx, k8sClient, "spec.adminCredentials.passwordSecretRef",
+		apiv1.SecretValueSource{ValueFrom: ref}, gateway.Namespace)
+	if err != nil {
+		return "", "", err
+	}
+	if password == "" {
+		return "", "", fmt.Errorf("spec.adminCredentials.passwordSecretRef: key %q in secret %s/%s is empty",
+			ref.Key, gateway.Namespace, ref.Name)
+	}
+	username = creds.Username
+	if username == "" {
+		username = DefaultAdminUsername
+	}
+	return username, password, nil
+}
+
+// ResolveBasicCredentials returns the basic-auth credentials the operator sends to a
+// registered gateway's management API.
+//
+// An APIGateway with spec.adminCredentials reads them from the referenced Secret and
+// fails closed (see AdminCredentialsFromSecret). Any other gateway keeps the earlier
+// behaviour: the first plain-text basic-auth user in its values ConfigMap, otherwise
+// the default admin/admin.
+func ResolveBasicCredentials(ctx context.Context, k8sClient client.Client, info *registry.GatewayInfo) (username, password string, err error) {
+	if info != nil && info.HelmValuesConfigMapName == "" {
+		gateway := &apiv1.APIGateway{}
+		getErr := k8sClient.Get(ctx, types.NamespacedName{Namespace: info.Namespace, Name: info.Name}, gateway)
+		switch {
+		case getErr == nil && gateway.Spec.AdminCredentials != nil:
+			return AdminCredentialsFromSecret(ctx, k8sClient, gateway)
+		case getErr != nil && !apierrors.IsNotFound(getErr):
+			return "", "", getErr
+		}
+	}
+
+	authConfig, err := GetAuthSettingsForRegistryGateway(ctx, k8sClient, info)
+	if err != nil {
+		return "", "", err
+	}
+	if authConfig != nil {
+		if username, password, ok := GetBasicAuthCredentials(authConfig); ok {
+			return username, password, nil
+		}
+	}
+	username, password = GetDefaultBasicAuthCredentials()
+	return username, password, nil
 }
 
 // EncodeBasicAuth encodes username and password for HTTP Basic Authentication

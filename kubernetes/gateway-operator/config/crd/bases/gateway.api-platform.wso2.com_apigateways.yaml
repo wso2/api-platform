@@ -39,6 +39,60 @@ spec:
           spec:
             description: GatewaySpec defines the desired state of APIGateway
             properties:
+              adminCredentials:
+                description: |-
+                  AdminCredentials sets the gateway-controller's basic-auth admin user from a
+                  Kubernetes Secret. The operator configures the gateway with this user and uses
+                  the same credentials to call the gateway's management API. When set, it
+                  replaces any basic-auth users in the ConfigRef values, and the password never
+                  enters the Helm values or the gateway ConfigMap. When unset, the admin
+                  credentials come from the ConfigRef values, as before.
+                properties:
+                  passwordSecretRef:
+                    description: |-
+                      PasswordSecretRef selects the key holding the plaintext admin password in a
+                      Secret in the APIGateway's namespace.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  source:
+                    default: env
+                    description: |-
+                      Source is how the gateway-controller receives the password: "env" injects it
+                      as an environment variable from the Secret, "file" mounts the Secret key
+                      read-only and the controller reads it from the file, so the value never
+                      enters the pod environment.
+                    enum:
+                    - env
+                    - file
+                    type: string
+                  username:
+                    default: admin
+                    description: Username of the admin user.
+                    minLength: 1
+                    type: string
+                required:
+                - passwordSecretRef
+                type: object
               apiSelector:
                 description: APISelector defines how this gateway selects which APIs
                   to route
@@ -1410,6 +1464,60 @@ spec:
           spec:
             description: GatewaySpec defines the desired state of APIGateway
             properties:
+              adminCredentials:
+                description: |-
+                  AdminCredentials sets the gateway-controller's basic-auth admin user from a
+                  Kubernetes Secret. The operator configures the gateway with this user and uses
+                  the same credentials to call the gateway's management API. When set, it
+                  replaces any basic-auth users in the ConfigRef values, and the password never
+                  enters the Helm values or the gateway ConfigMap. When unset, the admin
+                  credentials come from the ConfigRef values, as before.
+                properties:
+                  passwordSecretRef:
+                    description: |-
+                      PasswordSecretRef selects the key holding the plaintext admin password in a
+                      Secret in the APIGateway's namespace.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  source:
+                    default: env
+                    description: |-
+                      Source is how the gateway-controller receives the password: "env" injects it
+                      as an environment variable from the Secret, "file" mounts the Secret key
+                      read-only and the controller reads it from the file, so the value never
+                      enters the pod environment.
+                    enum:
+                    - env
+                    - file
+                    type: string
+                  username:
+                    default: admin
+                    description: Username of the admin user.
+                    minLength: 1
+                    type: string
+                required:
+                - passwordSecretRef
+                type: object
               apiSelector:
                 description: APISelector defines how this gateway selects which APIs
                   to route

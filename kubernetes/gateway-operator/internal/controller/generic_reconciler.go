@@ -440,19 +440,9 @@ func (r *GenericReconciler) findTargetGateway(obj client.Object) *registry.Gatew
 
 func (r *GenericReconciler) buildAuthFn(gateway *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
 	return func(ctx context.Context, req *http.Request) error {
-		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gateway)
+		username, password, err := auth.ResolveBasicCredentials(ctx, r.Client, gateway)
 		if err != nil {
-			return fmt.Errorf("retrieve auth config for gateway %q: %w", gateway.Name, err)
-		}
-		var username, password string
-		if authConfig != nil {
-			var ok bool
-			username, password, ok = auth.GetBasicAuthCredentials(authConfig)
-			if !ok {
-				username, password = auth.GetDefaultBasicAuthCredentials()
-			}
-		} else {
-			username, password = auth.GetDefaultBasicAuthCredentials()
+			return fmt.Errorf("resolve admin credentials for gateway %q: %w", gateway.Name, err)
 		}
 		req.Header.Set("Authorization", "Basic "+auth.EncodeBasicAuth(username, password))
 		return nil

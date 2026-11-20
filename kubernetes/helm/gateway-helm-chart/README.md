@@ -261,6 +261,44 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
 - Like the env var, the file is read once at startup: restart the controller after rotating the
   Secret.
 
+#### Admin users with a password from a Secret
+
+A basic-auth user in `gateway.config.controller.auth.basic.users` can take its password from a
+Kubernetes Secret through `passwordSecretRef` instead of `password`, so the password never appears
+in the ConfigMap or the Helm release. It takes the same `source` switch as the secrets above:
+
+```yaml
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: gw-admin
+              passwordSecretRef:
+                name: gateway-admin   # required
+                key: password         # default "password"
+                source: file          # env (default) | file
+              roles: ["admin"]
+```
+
+| `source` | How the controller receives the password |
+|---|---|
+| `env` | Env var `APIP_GW_CONTROLLER_AUTH_BASIC_USER_<index>_PASSWORD` from the Secret, read by a `{{ env }}` token in `config.toml` |
+| `file` | The key mounted read-only at `<mountPath>/<key>` (default `mountPath`: `/secrets/gateway-controller/basic-auth/user-<index>`), read by a `{{ file }}` token |
+
+- A user sets `password` or `passwordSecretRef`, never both; the chart fails to render otherwise.
+- When any user uses `source: file`, the whole `[controller.auth.basic]` block, every user included,
+  is rendered into `controller-secrets.toml` instead of `config.toml`. The second `-config` file
+  replaces arrays rather than merging them, so the users list has to stay together.
+- Set `password_hashed: true` if the Secret holds a bcrypt hash. Leave it `false` when the gateway
+  operator manages the gateway (`APIGateway.spec.adminCredentials`): the operator needs the plain
+  password to call the management API.
+- The `mountPath` rules above apply, and the Secret is mounted only while basic auth is enabled.
+- The password is read once at startup: restart the controller after rotating the Secret (the
+  operator does this for you).
+
 ### Raw config passthrough (`gateway.config_toml`)
 
 For configuration the chart doesn't model as structured `gateway.config.*` values, use

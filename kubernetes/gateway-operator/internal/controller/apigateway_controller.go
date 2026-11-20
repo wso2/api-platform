@@ -209,7 +209,7 @@ func (r *GatewayReconciler) decideAndProcess(
 	log := r.Logger.With(slog.String("controller", "APIGateway"), slog.String("name", gatewayConfig.Name))
 
 	// Calculate current config hash
-	currentConfigHash := ""
+	configMapValues := ""
 	if gatewayConfig.Spec.ConfigRef != nil {
 		values, err := configMapValuesYAML(ctx, r.Client, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
 		if err != nil {
@@ -219,8 +219,15 @@ func (r *GatewayReconciler) decideAndProcess(
 			// For now, let's treat it as error so we can retry
 			return ctrl.Result{}, fmt.Errorf("failed to get config map values: %w", err)
 		}
-		currentConfigHash = auth.CalculateConfigHash(values)
+		configMapValues = values
 	}
+	// The admin credentials Secret's revision is part of the hash, so rotating the
+	// password redeploys the gateway (rolling its controller pod).
+	adminSecretVersion, err := adminCredentialsSecretVersion(ctx, r.Client, gatewayConfig)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	currentConfigHash := gatewayConfigHash(configMapValues, adminSecretVersion)
 
 	// Check if config has changed
 	configChanged := currentConfigHash != gatewayConfig.Status.ConfigHash
@@ -848,6 +855,31 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 			slog.String("values_file", valuesFilePath))
 	}
 
+	// spec.adminCredentials is merged last so a ConfigMap cannot override the admin
+	// user. Only the Secret reference reaches Helm; the password stays in the Secret.
+	if owner.Spec.AdminCredentials != nil {
+		// Fail before installing when the Secret is unusable: the operator could not
+		// authenticate to the gateway it is about to deploy.
+		if _, _, err := auth.AdminCredentialsFromSecret(ctx, r.Client, owner); err != nil {
+			return fmt.Errorf("admin credentials unavailable: %w", err)
+		}
+		secretVersion, err := adminCredentialsSecretVersion(ctx, r.Client, owner)
+		if err != nil {
+			return err
+		}
+		adminOverlay, err := buildAdminCredentialsOverlay(owner, secretVersion)
+		if err != nil {
+			return err
+		}
+		valuesYAML, err = helm.MergeValuesYAML(valuesYAML, adminOverlay)
+		if err != nil {
+			return fmt.Errorf("failed to merge admin credentials overlay: %w", err)
+		}
+		log.Info("Configured gateway admin user from Secret",
+			slog.String("secret", owner.Spec.AdminCredentials.PasswordSecretRef.Name),
+			slog.String("source", owner.Spec.AdminCredentials.Source))
+	}
+
 	log.Info("Deploying gateway using Helm",
 		slog.String("chart_name", r.Config.Gateway.HelmChartName),
 		slog.String("version", r.Config.Gateway.HelmChartVersion),
@@ -1001,6 +1033,10 @@ func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueGatewaysForConfigMap),
 			builder.WithPredicates(configMapPred)).
+		// Admin credentials Secrets: creation matters too, so a gateway waiting on a
+		// missing Secret deploys as soon as it appears.
+		Watches(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueGatewaysForSecret)).
 		Complete(r)
 }
 

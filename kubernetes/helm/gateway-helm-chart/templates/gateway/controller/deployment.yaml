@@ -139,6 +139,15 @@ spec:
                   name: {{ $controller.sqlserver.passwordSecretRef.name }}
                   key: {{ $controller.sqlserver.passwordSecretRef.key | default "password" }}
             {{- end }}
+            {{- range (include "gateway-operator.basicAuthUserSecrets" $ | fromYaml).list }}
+            {{- if eq .source "env" }}
+            - name: {{ .envVar }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}

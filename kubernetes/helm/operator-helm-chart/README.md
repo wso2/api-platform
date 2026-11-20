@@ -166,6 +166,10 @@ spec:
     type: sqlite
   # controlPlane: { host: "...", tls: { enabled: true } }
   # configRef: { name: my-gateway-values }   # ConfigMap with gateway Helm values
+  # adminCredentials:                         # admin password from a Secret, see "Admin Credentials from a Secret"
+  #   username: gw-admin
+  #   source: file                            # env (default) | file
+  #   passwordSecretRef: { name: gw-admin, key: password }
 ```
 
 ### 2. RestApi
@@ -252,6 +256,46 @@ data:
           type: LoadBalancer
 EOF
 ```
+
+### Admin Credentials from a Secret
+
+By default the operator calls each gateway's management API with the first plain-text basic-auth user in the gateway's `configRef` values, falling back to `admin`/`admin`. To keep the admin password out of ConfigMaps and Helm values, reference a Secret with `spec.adminCredentials`:
+
+```bash
+kubectl create secret generic gateway-1-admin -n gw1 \
+  --from-literal=password="$(openssl rand -base64 24)"
+
+kubectl apply -f - <<EOF
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: APIGateway
+metadata:
+  name: gateway-1
+  namespace: gw1
+spec:
+  apiSelector:
+    scope: LabelSelector
+    matchLabels:
+      gateway.api-platform.wso2.com/target: gateway-1
+  adminCredentials:
+    username: gw1-admin          # default "admin"
+    source: file                 # env (default) | file
+    passwordSecretRef:
+      name: gateway-1-admin      # Secret in the APIGateway's namespace
+      key: password
+EOF
+```
+
+| Field | Description |
+|---|---|
+| `username` | Admin username. Defaults to `admin`. |
+| `passwordSecretRef` | `name` and `key` of the plain-text password in a Secret in the APIGateway's namespace. |
+| `source` | How the gateway-controller receives the password. `env` (default) injects it as an environment variable from the Secret; `file` mounts the Secret key read-only and the controller reads it from the file, so the password never enters the pod environment. |
+
+- The operator passes only the Secret reference to the gateway chart (`gateway.config.controller.auth.basic.users[].passwordSecretRef`). The password never appears in Helm values, the gateway ConfigMap, or the Helm release.
+- `adminCredentials` replaces any basic-auth users in the `configRef` values. IDP settings there still apply.
+- The operator fails closed: if the Secret or key is missing or empty, the gateway is not deployed and no request is sent to it with `admin`/`admin`. Creating or fixing the Secret triggers a redeploy.
+- Changing the Secret rolls the gateway-controller pod, which reads the password only at startup.
+- Requires a gateway chart version that supports `passwordSecretRef` on basic-auth users. Gateways without `adminCredentials` behave as before.
 
 ### Deploy an API
 
