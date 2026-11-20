@@ -41,6 +41,8 @@ type ConfigureMCPStepProps = {
   selectedProjectId: string;
   onProjectChange: (id: string) => void;
   serverName: string;
+  /** Why the name cannot be used, shown under the field; unset when it is fine. */
+  nameError?: string;
   serverVersion: string;
   serverDescription: string;
   serverContext: string;
@@ -73,6 +75,7 @@ export default function ConfigureMCPStep({
   selectedProjectId,
   onProjectChange,
   serverName,
+  nameError,
   serverVersion,
   serverDescription,
   serverContext,
@@ -136,6 +139,8 @@ export default function ConfigureMCPStep({
                 placeholder="Acme MCP Server"
                 value={serverName}
                 onChange={(event) => onNameChange(event.target.value)}
+                error={Boolean(nameError)}
+                helperText={nameError}
               />
             </FormControl>
           </Grid>

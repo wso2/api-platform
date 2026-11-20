@@ -24,7 +24,11 @@ import AgentProxiesNew from './AgentProxiesNew';
 import { agentProxiesApis } from '../../../../apis/agent/agentProxiesApis';
 
 vi.mock('../../../../apis/agent/agentProxiesApis', () => ({
-  agentProxiesApis: { fetchAgentCard: vi.fn(), createAgentProxy: vi.fn() },
+  agentProxiesApis: {
+    fetchAgentCard: vi.fn(),
+    createAgentProxy: vi.fn(),
+    agentProxyExists: vi.fn(),
+  },
 }));
 vi.mock('../../../../contexts/AppShellContext', () => ({
   useAppShell: () => ({
@@ -72,6 +76,7 @@ const probeThenContinue = async (url: string) => {
 
 beforeEach(() => {
   vi.mocked(agentProxiesApis.fetchAgentCard).mockReset();
+  vi.mocked(agentProxiesApis.agentProxyExists).mockReset();
   createAgentProxy.mockReset();
 });
 
@@ -246,5 +251,133 @@ describe('creating the proxy', () => {
 
     await waitFor(() => expect(createAgentProxy).toHaveBeenCalled());
     expect(screen.getByPlaceholderText('Trip Planning Agent')).toBeInTheDocument();
+  });
+});
+
+describe('when the name is already used', () => {
+  const NAME_PLACEHOLDER = 'Trip Planning Agent';
+
+  /** Reaches the create step with the name field holding exactly `name`. */
+  const openCreateStep = async (name: string) => {
+    vi.mocked(agentProxiesApis.fetchAgentCard).mockResolvedValue(
+      cardWith([{ protocolBinding: 'JSONRPC', url: 'https://agent.test/rpc' }]) as never
+    );
+    const view = await probeThenContinue('https://agent.test');
+    const field = await waitFor(() => screen.getByPlaceholderText(NAME_PLACEHOLDER));
+    await view.user.clear(field);
+    await view.user.type(field, name);
+    return view;
+  };
+
+  const createButton = () => screen.getByRole('button', { name: 'Create' });
+
+  it('creates under the plain identifier first, with no lookup', async () => {
+    createAgentProxy.mockResolvedValue({ id: 'my-agent' });
+    const view = await openCreateStep('My Agent');
+
+    await view.user.click(createButton());
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalledTimes(1));
+    expect(createAgentProxy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'my-agent', context: '/proj-1/my-agent' })
+    );
+    expect(agentProxiesApis.agentProxyExists).not.toHaveBeenCalled();
+  });
+
+  it('retries under the next free identifier, and the context follows it', async () => {
+    createAgentProxy
+      .mockRejectedValueOnce({ code: 'AGENT_PROXY_EXISTS' })
+      .mockResolvedValueOnce({ id: 'my-agent-2' });
+    vi.mocked(agentProxiesApis.agentProxyExists).mockResolvedValue(false);
+    const view = await openCreateStep('My Agent');
+
+    await view.user.click(createButton());
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalledTimes(2));
+    expect(createAgentProxy).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: 'my-agent' })
+    );
+    expect(createAgentProxy).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ id: 'my-agent-2', context: '/proj-1/my-agent-2' })
+    );
+    // The failed identifier is never asked about again.
+    expect(agentProxiesApis.agentProxyExists).toHaveBeenCalledWith('my-agent-2', expect.any(String));
+    expect(agentProxiesApis.agentProxyExists).not.toHaveBeenCalledWith('my-agent', expect.any(String));
+  });
+
+  it('skips identifiers that are taken too', async () => {
+    createAgentProxy
+      .mockRejectedValueOnce({ code: 'AGENT_PROXY_EXISTS' })
+      .mockResolvedValueOnce({ id: 'my-agent-3' });
+    vi.mocked(agentProxiesApis.agentProxyExists).mockImplementation(
+      async (candidate: string) => candidate === 'my-agent-2'
+    );
+    const view = await openCreateStep('My Agent');
+
+    await view.user.click(createButton());
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalledTimes(2));
+    expect(createAgentProxy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'my-agent-3' })
+    );
+  });
+
+  it('keeps a context the user typed instead of deriving one from the identifier', async () => {
+    createAgentProxy
+      .mockRejectedValueOnce({ code: 'AGENT_PROXY_EXISTS' })
+      .mockResolvedValueOnce({ id: 'my-agent-2' });
+    vi.mocked(agentProxiesApis.agentProxyExists).mockResolvedValue(false);
+    const view = await openCreateStep('My Agent');
+    const contextField = screen.getByDisplayValue('/proj-1/my-agent');
+    await view.user.clear(contextField);
+    await view.user.type(contextField, '/custom/path');
+
+    await view.user.click(createButton());
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalledTimes(2));
+    expect(createAgentProxy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'my-agent-2', context: '/custom/path' })
+    );
+  });
+
+  it('does not retry for any other failure', async () => {
+    createAgentProxy.mockRejectedValue({ code: 'VALIDATION_FAILED' });
+    const view = await openCreateStep('My Agent');
+
+    await view.user.click(createButton());
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalledTimes(1));
+    expect(agentProxiesApis.agentProxyExists).not.toHaveBeenCalled();
+  });
+
+  it('gives up after the retries are used up and stays on the form', async () => {
+    createAgentProxy.mockRejectedValue({ code: 'AGENT_PROXY_EXISTS' });
+    vi.mocked(agentProxiesApis.agentProxyExists).mockResolvedValue(false);
+    const view = await openCreateStep('My Agent');
+
+    await view.user.click(createButton());
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalledTimes(3));
+    expect(screen.getByPlaceholderText(NAME_PLACEHOLDER)).toBeInTheDocument();
+  });
+});
+
+describe('a name that cannot produce an identifier', () => {
+  it('explains why and keeps Create disabled', async () => {
+    vi.mocked(agentProxiesApis.fetchAgentCard).mockResolvedValue(
+      cardWith([{ protocolBinding: 'JSONRPC', url: 'https://agent.test/rpc' }]) as never
+    );
+    const view = await probeThenContinue('https://agent.test');
+    const field = await waitFor(() => screen.getByPlaceholderText('Trip Planning Agent'));
+    await view.user.clear(field);
+    await view.user.type(field, '!!!');
+
+    expect(
+      screen.getByText('Use at least one letter or number (a-z, 0-9) in the name.')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+    expect(createAgentProxy).not.toHaveBeenCalled();
   });
 });
