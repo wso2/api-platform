@@ -88,4 +88,7 @@ type ImportGatewayArtifactResponse struct {
 	DeployedVersion string     `json:"deployedVersion,omitempty"`
 	// Error is the failure reason when this artifact could not be imported; empty on success.
 	Error string `json:"error,omitempty"`
+	// ErrorCode is a machine-readable failure reason (for example, "quota_exceeded").
+	// It is set when an import admitter refuses creation and is empty otherwise.
+	ErrorCode string `json:"errorCode,omitempty"`
 }

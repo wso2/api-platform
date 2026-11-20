@@ -19,6 +19,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -1084,7 +1085,7 @@ func TestAgentImport_BulkPushIsContinueOnError(t *testing.T) {
 		bad,
 		restImportRequest("c3333333-3333-3333-3333-333333333333", "a-rest-api", "A REST API"),
 	}
-	resp := d.svc.ImportArtifacts(importTestOrgID, importTestGatewayID, reqs)
+	resp := d.svc.ImportArtifacts(context.Background(), importTestOrgID, importTestGatewayID, reqs)
 	if resp.Total != 3 || resp.Success != 2 || resp.Failed != 1 {
 		t.Fatalf("bulk result total/success/failed = %d/%d/%d, want 3/2/1", resp.Total, resp.Success, resp.Failed)
 	}
