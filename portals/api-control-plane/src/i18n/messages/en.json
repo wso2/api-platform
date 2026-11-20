@@ -940,6 +940,9 @@
     "defaultMessage": "Params",
     "description": "Tab for the request parameters."
   },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.pathOverridden": {
+    "defaultMessage": "The path was edited in the URL bar, so the path parameters below are not used."
+  },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.problemBoolean": {
     "defaultMessage": "Must be true or false"
   },
@@ -1001,6 +1004,9 @@
   "apiControlPlane.components.ApiTestConsole.RequestPanel.reset": {
     "defaultMessage": "Reset to example",
     "description": "Button that restores the body to the documented example. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.restorePath": {
+    "defaultMessage": "Restore generated path"
   },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.schema": {
     "defaultMessage": "Schema",

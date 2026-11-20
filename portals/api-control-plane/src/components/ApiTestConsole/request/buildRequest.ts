@@ -172,13 +172,26 @@ export const buildSendRequest = ({
   const problems: Record<string, Problem> = {};
   const query: [string, string][] = [];
   const headers: [string, string][] = [];
-  let path = operation.path;
+  // A wildcard route (`/*`, `/files/*`) names every path below it; the request goes to the
+  // route's base, so the `*` is dropped rather than sent literally.
+  let path = operation.path.replace(/\/\*$/, '/');
 
   // Console-owned credentials replace anything the user typed under the same name.
   const autoHeaderNames = new Set(autoHeaders.map((h) => h.name.toLowerCase()));
   const autoQueryNames = new Set(autoQuery.map((q) => q.name));
 
   // A path typed into the URL bar replaces the operation's own; its query joins the others.
+  // Names the user filled in on the Params tab win over the typed ones, and the console's own
+  // credentials win over both, so no name is sent twice.
+  const editorQueryNames = new Set(
+    operation.parameters
+      .filter(
+        (parameter) =>
+          parameter.in === 'query' && (own(draft.params, paramKey(parameter)) ?? '').trim() !== '',
+      )
+      .map((parameter) => parameter.name),
+  );
+  const typedQueryNames = new Set<string>();
   const override = draft.pathOverride;
   if (override !== undefined) {
     const split = override.indexOf('?');
@@ -188,7 +201,9 @@ export const buildSendRequest = ({
     if (/[#\u0000-\u001f\u007f]/.test(typedQuery)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
     else {
       new URLSearchParams(typedQuery).forEach((value, name) => {
-        if (!autoQueryNames.has(name)) query.push([name, value]);
+        if (autoQueryNames.has(name) || editorQueryNames.has(name)) return;
+        query.push([name, value]);
+        if (value.trim() !== '') typedQueryNames.add(name);
       });
     }
   }
@@ -207,6 +222,10 @@ export const buildSendRequest = ({
 
     // Blank is judged on the trimmed text; typed values are validated exactly as they are sent.
     const value = own(draft.params, paramKey(parameter)) ?? '';
+    // A required query value the typed path already supplies is not missing.
+    if (parameter.in === 'query' && value.trim() === '' && typedQueryNames.has(parameter.name)) {
+      return;
+    }
     const problem = parameterProblem(parameter, value);
     if (problem) {
       problems[paramProblemKey(parameter)] = problem;

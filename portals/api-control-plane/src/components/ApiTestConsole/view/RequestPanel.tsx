@@ -156,6 +156,15 @@ const messages = defineMessages({
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.noFile',
     defaultMessage: 'No file chosen',
   },
+  pathOverridden: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.pathOverridden',
+    defaultMessage:
+      'The path was edited in the URL bar, so the path parameters below are not used.',
+  },
+  restorePath: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.restorePath',
+    defaultMessage: 'Restore generated path',
+  },
   noParams: {
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.noParams',
     defaultMessage: 'This endpoint takes no parameters.',
@@ -438,11 +447,14 @@ function ParameterRow({
   parameter,
   value,
   problem,
+  disabled = false,
   onChange,
 }: {
   parameter: ConsoleParameter;
   value: string;
   problem: Problem | undefined;
+  /** The value is not used, so it cannot be edited. */
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   const intl = useIntl();
@@ -481,7 +493,7 @@ function ParameterRow({
       <TableCell>
         <Stack spacing={0.75}>
           {isEnum || isBoolean ? (
-            <FormControl error={Boolean(problem)} fullWidth size="small">
+            <FormControl disabled={disabled} error={Boolean(problem)} fullWidth size="small">
               <FormLabel id={`${labelId}-select`} sx={visuallyHidden}>
                 {parameter.name}
               </FormLabel>
@@ -506,6 +518,7 @@ function ParameterRow({
             </FormControl>
           ) : (
             <TextField
+              disabled={disabled}
               error={Boolean(problem)}
               fullWidth
               onChange={(event) => onChange(event.target.value)}
@@ -534,13 +547,17 @@ function ParamsTab({
   draft,
   problems,
   onChange,
+  onRestorePath,
 }: {
   operation: ConsoleOperation;
   draft: RequestDraft;
   problems: Record<string, Problem>;
   onChange: (key: string, value: string) => void;
+  onRestorePath: () => void;
 }) {
   const pathProblem = problems[PATH_PROBLEM_KEY];
+  const pathOverridden = draft.pathOverride !== undefined;
+  const hasPathParams = operation.parameters.some((parameter) => parameter.in === 'path');
   if (operation.parameters.length === 0 && !pathProblem) {
     return (
       <SecondaryText variant="body2">
@@ -551,6 +568,16 @@ function ParamsTab({
   return (
     <Stack spacing={1}>
       {pathProblem && <ProblemText problem={pathProblem} />}
+      {pathOverridden && hasPathParams && (
+        <Stack alignItems="center" direction="row" flexWrap="wrap" gap={1}>
+          <SecondaryText variant="body2">
+            <FormattedMessage {...messages.pathOverridden} />
+          </SecondaryText>
+          <Button onClick={onRestorePath} size="small">
+            <FormattedMessage {...messages.restorePath} />
+          </Button>
+        </Stack>
+      )}
       {operation.parameters.length > 0 && (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small" sx={{ '& .MuiTableCell-root': { borderColor: 'divider' } }}>
@@ -567,6 +594,7 @@ function ParamsTab({
             <TableBody>
               {operation.parameters.map((parameter) => (
                 <ParameterRow
+                  disabled={pathOverridden && parameter.in === 'path'}
                   key={paramKey(parameter)}
                   onChange={(value) => onChange(paramKey(parameter), value)}
                   parameter={parameter}
@@ -1258,6 +1286,9 @@ export function RequestPanel({
                     ...current,
                     params: { ...current.params, [key]: value },
                   }))
+                }
+                onRestorePath={() =>
+                  onDraft((current) => ({ ...current, pathOverride: undefined }))
                 }
                 operation={operation}
                 problems={problems}

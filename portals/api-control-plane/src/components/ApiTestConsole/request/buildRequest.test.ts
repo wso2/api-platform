@@ -50,6 +50,21 @@ const SPEC = {
         responses: {},
       },
     },
+    '/*': {
+      get: { responses: {} },
+    },
+    '/files/*': {
+      get: { responses: {} },
+    },
+    '/search': {
+      get: {
+        parameters: [
+          { in: 'query', name: 'q', required: true, schema: { type: 'string' } },
+          { in: 'query', name: 'page', schema: { type: 'integer' } },
+        ],
+        responses: {},
+      },
+    },
     '/form': {
       post: {
         requestBody: {
@@ -510,5 +525,37 @@ describe('buildSendRequest — typed path', () => {
       ['q', '1'],
       ['api_key', 'console-secret'],
     ]);
+  });
+
+  it('counts a required query value typed into the path as supplied', () => {
+    const result = build('GET /search', draft({ pathOverride: '/search?q=needle' }));
+    expect(result.problems).toEqual({});
+    expect(result.request?.query).toEqual([['q', 'needle']]);
+  });
+
+  it('still asks for a required query value that neither source supplies', () => {
+    const blank = build('GET /search', draft({ pathOverride: '/search' }));
+    expect(blank.problems[paramProblemKey({ in: 'query', name: 'q' })]).toEqual({
+      code: 'required',
+    });
+    const empty = build('GET /search', draft({ pathOverride: '/search?q=' }));
+    expect(empty.request).toBeUndefined();
+  });
+
+  it('prefers the value on the Params tab over the same name typed into the path', () => {
+    const result = build(
+      'GET /search',
+      draft({ params: { 'query:q': 'from-tab' }, pathOverride: '/search?q=typed&page=2' }),
+    );
+    expect(result.request?.query).toEqual([
+      ['page', '2'],
+      ['q', 'from-tab'],
+    ]);
+  });
+
+  it('drops the trailing wildcard of a catch-all route instead of sending it', () => {
+    expect(build('GET /*', draft()).request?.path).toBe('/');
+    expect(build('GET /files/*', draft()).request?.path).toBe('/files/');
+    expect(build('GET /*', draft()).preview.path).toBe('/');
   });
 });

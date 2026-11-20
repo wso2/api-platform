@@ -378,6 +378,27 @@ describe('ApiTestConsole — typed path', () => {
   });
 });
 
+describe('ApiTestConsole — typed path and path parameters', () => {
+  it('disables the path parameter editors once the path is typed, until it is restored', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+    await user.click(screen.getByRole('button', { name: /Get a book/ }));
+    await user.type(screen.getByRole('textbox', { name: 'id' }), '42');
+
+    const bar = screen.getByRole('textbox', { name: /url/i });
+    await user.type(bar, '?x=1');
+
+    expect(screen.getByRole('textbox', { name: 'id' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Restore generated path' }));
+
+    expect(screen.getByRole('textbox', { name: 'id' })).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: /url/i })).toHaveValue('/books/42');
+    await user.click(sendButton());
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    expect(transport.mock.calls[0][0].path).toBe('/books/42');
+  });
+});
+
 describe('ApiTestConsole — mirroring', () => {
   it('reports the latest valid request so another view can follow it', async () => {
     const onRequestChange = vi.fn<(request: ConsoleSendRequest) => void>();
