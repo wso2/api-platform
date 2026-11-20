@@ -262,6 +262,8 @@ EOF
 By default the operator calls each gateway's management API with the first plain-text basic-auth user in the gateway's `configRef` values, falling back to `admin`/`admin`. To keep the admin password out of ConfigMaps and Helm values, reference a Secret with `spec.adminCredentials`:
 
 ```bash
+kubectl create namespace gw1
+
 kubectl create secret generic gateway-1-admin -n gw1 \
   --from-literal=password="$(openssl rand -base64 24)"
 

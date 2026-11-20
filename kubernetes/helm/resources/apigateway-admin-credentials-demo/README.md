@@ -41,7 +41,10 @@ To test an unreleased operator and chart locally (the setup this demo was verifi
 
 ### 2. Create the namespaces and Secrets
 
+Step 1 runs from the repository root. The remaining steps use the manifests in this directory:
+
 ```bash
+cd kubernetes/helm/resources/apigateway-admin-credentials-demo
 kubectl apply -f 00-namespaces.yaml
 
 for n in 1 2; do

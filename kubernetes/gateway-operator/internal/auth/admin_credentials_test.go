@@ -1,18 +1,19 @@
 /*
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 
 package auth
 
@@ -174,4 +175,118 @@ func TestResolveBasicCredentials_LegacyDefault(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "admin", user)
 	assert.Equal(t, "admin", pass)
+}
+
+// An APIGateway registered with a configRef carries HelmValuesConfigMapName; its
+// spec.adminCredentials must still win over the ConfigMap's basic-auth users.
+func TestResolveBasicCredentials_AdminCredentialsWinOverConfigRef(t *testing.T) {
+	gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password")
+	gw.Spec.ConfigRef = &corev1.LocalObjectReference{Name: "gw-values"}
+	c := newFakeClient(t, gw,
+		passwordSecret("gateway-1-admin", map[string]string{"password": "s3cret-1"}),
+		valuesConfigMap("gw-values", legacyValues))
+
+	gwInfo := info()
+	gwInfo.HelmValuesConfigMapName = "gw-values"
+	user, pass, err := ResolveBasicCredentials(context.Background(), c, gwInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "gw1-admin", user)
+	assert.Equal(t, "s3cret-1", pass)
+}
+
+// Kubernetes Gateway API entries have no APIGateway: their credentials come only from
+// the values ConfigMap, even if an APIGateway of the same name happens to exist.
+func TestResolveBasicCredentials_GatewayAPIEntryUsesConfigMap(t *testing.T) {
+	gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password")
+	c := newFakeClient(t, gw,
+		passwordSecret("gateway-1-admin", map[string]string{"password": "s3cret-1"}),
+		valuesConfigMap("gw-values", legacyValues))
+
+	gwInfo := info()
+	gwInfo.FromGatewayAPI = true
+	gwInfo.HelmValuesConfigMapName = "gw-values"
+	user, pass, err := ResolveBasicCredentials(context.Background(), c, gwInfo)
+	require.NoError(t, err)
+	assert.Equal(t, "legacy", user)
+	assert.Equal(t, "legacy-pw", pass)
+}
+
+// A values-configured user with passwordSecretRef (the gateway chart's own field) is
+// resolved from the Secret, and fails closed instead of sending an empty password.
+func TestResolveBasicCredentials_ValuesPasswordSecretRef(t *testing.T) {
+	refValues := func(extra string) string {
+		return `
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: values-admin
+              passwordSecretRef:
+                name: values-admin-secret
+` + extra
+	}
+	cases := map[string]struct {
+		values   string
+		secret   *corev1.Secret
+		wantPass string
+		wantErr  bool
+	}{
+		"default key":     {values: refValues(""), secret: passwordSecret("values-admin-secret", map[string]string{"password": "from-secret"}), wantPass: "from-secret"},
+		"explicit key":    {values: refValues("                key: pw\n"), secret: passwordSecret("values-admin-secret", map[string]string{"pw": "from-pw"}), wantPass: "from-pw"},
+		"secret missing":  {values: refValues(""), wantErr: true},
+		"key missing":     {values: refValues(""), secret: passwordSecret("values-admin-secret", map[string]string{"other": "x"}), wantErr: true},
+		"value empty":     {values: refValues(""), secret: passwordSecret("values-admin-secret", map[string]string{"password": ""}), wantErr: true},
+		"hashed password": {values: refValues("              password_hashed: true\n"), secret: passwordSecret("values-admin-secret", map[string]string{"password": "$2a$10$hash"}), wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			objs := []client.Object{valuesConfigMap("gw-values", tc.values)}
+			if tc.secret != nil {
+				objs = append(objs, tc.secret)
+			}
+			c := newFakeClient(t, objs...)
+			gwInfo := info()
+			gwInfo.FromGatewayAPI = true
+			gwInfo.HelmValuesConfigMapName = "gw-values"
+
+			user, pass, err := ResolveBasicCredentials(context.Background(), c, gwInfo)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Empty(t, pass)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, "values-admin", user)
+			assert.Equal(t, tc.wantPass, pass)
+		})
+	}
+}
+
+// A plain user with an empty password is not usable; it is never sent as is.
+func TestGetBasicAuthCredentials_EmptyPasswordNotUsable(t *testing.T) {
+	settings := &AuthSettings{Basic: BasicAuthConfig{Enabled: true, Users: []AuthUser{{Username: "admin"}}}}
+	_, _, ok := GetBasicAuthCredentials(settings)
+	assert.False(t, ok)
+}
+
+const legacyValues = `
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: legacy
+              password: legacy-pw
+`
+
+func valuesConfigMap(name, values string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNS},
+		Data:       map[string]string{"values.yaml": values},
+	}
 }

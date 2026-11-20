@@ -144,8 +144,8 @@ spec:
             - name: {{ .envVar }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .name }}
-                  key: {{ .key }}
+                  name: {{ .name | quote }}
+                  key: {{ .key | quote }}
             {{- end }}
             {{- end }}
             {{- range $deployment.extraEnv }}
@@ -303,10 +303,10 @@ spec:
         {{- range $secretMounts }}
         - name: {{ .volume }}
           secret:
-            secretName: {{ .secretName }}
+            secretName: {{ .secretName | quote }}
             items:
-              - key: {{ .key }}
-                path: {{ .key }}
+              - key: {{ .key | quote }}
+                path: {{ .key | quote }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

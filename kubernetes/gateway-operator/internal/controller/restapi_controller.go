@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -252,6 +253,26 @@ func (r *RestApiReconciler) decideAndProcess(
 				slog.String("name", apiConfig.Name),
 				slog.Int64("generation", crGeneration))
 			return ctrl.Result{}, nil
+		}
+
+		// A terminal failure at the current generation is otherwise never retried. Retry
+		// it once when the target gateway has become Programmed since the failure, for
+		// example after an admin credential rotation rolled out or a missing admin Secret
+		// was created.
+		if programmedCond != nil && programmedCond.Status == metav1.ConditionFalse &&
+			programmedCond.Reason == apiv1.APIProgrammedReasonDeploymentFailed {
+			if gw := r.findTargetGateway(apiConfig); gw != nil &&
+				gatewayReprogrammedSinceFailure(ctx, r.Client, gw, apiConfig.Status.LastUpdateTime) {
+				log.Info("Target gateway was programmed after this API failed; retrying deployment",
+					slog.String("name", apiConfig.Name),
+					slog.String("gateway", gw.Namespace+"/"+gw.Name),
+					slog.Int64("generation", crGeneration))
+				r.apiTracker.Set(trackingKey, &APITrackingEntry{
+					Generation: crGeneration,
+					Status:     TrackingStatusRetrying,
+				})
+				return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
+			}
 		}
 	}
 
@@ -741,16 +762,24 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 	registryInstance := registry.GetGatewayRegistry()
 	matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
 
+	// Try every matched gateway, then report all failures so the finalizer stays and the
+	// deletion is retried: removing it would leave the API live on the gateway with no
+	// object left to retry from. A gateway that no longer holds the API answers 404,
+	// which counts as deleted, and a deleted gateway is unregistered and no longer
+	// matched, so neither blocks deletion.
+	var deleteErrs []error
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
 			log.Error("failed to delete API from gateway",
 				slog.Any("error", err),
 				slog.String("api", handle),
 				slog.String("gateway", gateway.Name))
-			// Continue with other gateways even if one fails
+			deleteErrs = append(deleteErrs, fmt.Errorf("%s/%s: %w", gateway.Namespace, gateway.Name, err))
 		}
 	}
-
+	if len(deleteErrs) > 0 {
+		return fmt.Errorf("cleanupAPIDeployments: %w", errors.Join(deleteErrs...))
+	}
 	return nil
 }
 

@@ -311,6 +311,26 @@ func (r *GenericReconciler) decideAndProcess(
 		return ctrl.Result{}, nil
 	}
 
+	// A terminal failure at the current generation is otherwise never retried. Retry it
+	// once when the target gateway has become Programmed since the failure, for example
+	// after an admin credential rotation rolled out or a missing admin Secret was created.
+	if crGeneration == statusObservedGen && progCond != nil &&
+		progCond.Status == metav1.ConditionFalse && progCond.Reason == apiv1.ReasonDeploymentFailed {
+		if gw := r.findTargetGateway(obj); gw != nil &&
+			gatewayReprogrammedSinceFailure(ctx, r.Client, gw, r.Adapter.GetStatus(obj).LastUpdateTime) {
+			log.Info("target gateway was programmed after this resource failed; retrying deployment",
+				slog.String("name", obj.GetName()),
+				slog.String("gateway", gw.Namespace+"/"+gw.Name),
+				slog.Int64("generation", crGeneration))
+			retry := &ResourceTrackingEntry{Generation: crGeneration, Status: ResourceStatusRetrying}
+			if hasEntry && entry != nil {
+				retry.Id = entry.Id
+			}
+			r.Tracker.Set(trackingKey, retry)
+			return r.processDeployment(ctx, obj, trackingKey, crGeneration)
+		}
+	}
+
 	if crGeneration > statusObservedGen {
 		if hasEntry {
 			if entry.Generation == crGeneration {
