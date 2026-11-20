@@ -359,12 +359,13 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 			PlanName:           plan.Name,
 			StopOnQuotaReach:   plan.StopOnQuotaReach,
 			ThrottleLimitCount: plan.ThrottleLimitCount,
-			ThrottleLimitUnit:  plan.ThrottleLimitUnit,
+			ThrottleLimitUnit:  gatewayThrottleUnit(plan.ThrottleLimitUnit),
 			ExpiryTime:         plan.ExpiryTime,
 			Status:             string(plan.Status),
 			CreatedAt:          plan.CreatedAt,
 			UpdatedAt:          plan.UpdatedAt,
 			Etag:               utils.GenerateDeterministicUUIDv7(plan.UUID, plan.UpdatedAt),
+			Conditions:         plan.Conditions,
 		}
 	}
 	return items, nil

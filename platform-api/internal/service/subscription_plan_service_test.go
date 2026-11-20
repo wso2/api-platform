@@ -115,37 +115,49 @@ func TestListAndCountPlans_PassSearchToRepo(t *testing.T) {
 	}
 }
 
+// requestLimit is a request-count condition of one window of count requests per unit.
+func requestLimit(count int, unit string) *model.SubscriptionPlanCondition {
+	c := model.NewRequestCountCondition([]model.ConditionWindow{{Count: count, TimeAmount: 1, TimeUnit: unit}}, true)
+	return &c
+}
+
 func TestUpdatePlan_LocksPortalValuesWhileInUse(t *testing.T) {
-	limit := 1000
 	newName, sameName, paddedName := "Gold Plus", "Gold", " Gold "
-	newCount, sameCount := 500, 1000
-	newUnit, sameUnit := "HOUR", "MINUTE"
+	description := "Now with a description"
 	inactive := model.SubscriptionPlanStatusInactive
 	inUse := model.SubscriptionPlanUsage{Publications: 1, Subscriptions: 2}
+	toolCalls := model.SubscriptionPlanCondition{Type: model.ConditionTypeToolCallCount,
+		Params: []byte(`{"limits":[{"count":10,"timeUnit":"MINUTE"}]}`)}
+	// The plan's current conditions, sent again in another order of fields and without defaults.
+	sameConditions := []model.SubscriptionPlanCondition{{Type: model.ConditionTypeRequestCount,
+		Params: []byte(`{"onExceed":"reject","limits":[{"timeUnit":"MINUTE","count":1000}]}`)}}
+	addedConditions := []model.SubscriptionPlanCondition{*requestLimit(1000, "MINUTE"), toolCalls}
 
 	tests := []struct {
 		name    string
-		limit   *int
+		limit   *model.SubscriptionPlanCondition
 		usage   model.SubscriptionPlanUsage
 		update  model.SubscriptionPlanUpdate
 		refused bool
 	}{
-		{"rename in use", &limit, inUse, model.SubscriptionPlanUpdate{Name: &newName}, true},
-		{"new limit count in use", &limit, inUse, model.SubscriptionPlanUpdate{Name: &sameName, ThrottleLimitCount: &newCount, ThrottleLimitUnit: &sameUnit}, true},
-		{"new limit unit in use", &limit, inUse, model.SubscriptionPlanUpdate{Name: &sameName, ThrottleLimitCount: &sameCount, ThrottleLimitUnit: &newUnit}, true},
-		{"limit cleared in use", &limit, inUse, model.SubscriptionPlanUpdate{Name: &sameName, ClearLimit: true}, true},
-		{"limit added in use", nil, inUse, model.SubscriptionPlanUpdate{Name: &sameName, ThrottleLimitCount: &newCount, ThrottleLimitUnit: &sameUnit}, true},
-		{"same values and a status change in use", &limit, inUse, model.SubscriptionPlanUpdate{Name: &sameName, ThrottleLimitCount: &sameCount, ThrottleLimitUnit: &sameUnit, Status: &inactive}, false},
+		{"rename in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &newName}, true},
+		{"new limit count in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &sameName, RequestLimit: requestLimit(500, "MINUTE")}, true},
+		{"new limit unit in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &sameName, RequestLimit: requestLimit(1000, "HOUR")}, true},
+		{"limit cleared in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &sameName, ClearLimit: true}, true},
+		{"limit added in use", nil, inUse, model.SubscriptionPlanUpdate{Name: &sameName, RequestLimit: requestLimit(500, "MINUTE")}, true},
+		{"condition added in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &sameName, Conditions: &addedConditions}, true},
+		{"same values and a status change in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &sameName, RequestLimit: requestLimit(1000, "MINUTE"), Status: &inactive}, false},
+		{"same conditions sent another way in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &sameName, Conditions: &sameConditions}, false},
+		{"description change in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &sameName, Description: &description}, false},
 		{"no limit kept in use", nil, inUse, model.SubscriptionPlanUpdate{Name: &sameName, ClearLimit: true}, false},
-		{"same name with surrounding spaces in use", &limit, inUse, model.SubscriptionPlanUpdate{Name: &paddedName, ThrottleLimitCount: &sameCount, ThrottleLimitUnit: &sameUnit}, false},
-		{"rename and new limit unused", &limit, model.SubscriptionPlanUsage{}, model.SubscriptionPlanUpdate{Name: &newName, ThrottleLimitCount: &newCount, ThrottleLimitUnit: &newUnit}, false},
+		{"same name with surrounding spaces in use", requestLimit(1000, "MINUTE"), inUse, model.SubscriptionPlanUpdate{Name: &paddedName, RequestLimit: requestLimit(1000, "MINUTE")}, false},
+		{"rename and new limit unused", requestLimit(1000, "MINUTE"), model.SubscriptionPlanUsage{}, model.SubscriptionPlanUpdate{Name: &newName, RequestLimit: requestLimit(500, "HOUR")}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			plan := &model.SubscriptionPlan{Handle: "gold", Name: "Gold", Status: model.SubscriptionPlanStatusActive}
 			if tt.limit != nil {
-				count := *tt.limit
-				plan.ThrottleLimitCount, plan.ThrottleLimitUnit = &count, "MINUTE"
+				plan.Conditions = []model.SubscriptionPlanCondition{*tt.limit}
 			}
 			repo := &fakePlanRepo{plan: plan, usage: tt.usage}
 			svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
@@ -170,6 +182,27 @@ func TestUpdatePlan_LocksPortalValuesWhileInUse(t *testing.T) {
 	}
 }
 
+// Request limits sent the old way change only the request-count condition; the plan's other
+// conditions stay, and the legacy request limit follows.
+func TestUpdatePlan_RequestLimitKeepsOtherConditions(t *testing.T) {
+	custom := model.SubscriptionPlanCondition{ID: "ip-ranges", Type: model.ConditionTypeCustom, Params: []byte(`{"cidr":"10.0.0.0/8"}`)}
+	repo := &fakePlanRepo{plan: &model.SubscriptionPlan{Handle: "gold", Name: "Gold",
+		Conditions: []model.SubscriptionPlanCondition{*requestLimit(1000, "MINUTE"), custom}}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+
+	name := "Gold"
+	got, err := svc.UpdatePlan("gold", "org-1", "actor", &model.SubscriptionPlanUpdate{Name: &name, RequestLimit: requestLimit(20, "HOUR")})
+	if err != nil {
+		t.Fatalf("UpdatePlan: %v", err)
+	}
+	if len(got.Conditions) != 2 || got.Conditions[0].Type != model.ConditionTypeRequestCount || got.Conditions[1].ID != "ip-ranges" {
+		t.Fatalf("conditions = %+v, want the new request limit then ip-ranges", got.Conditions)
+	}
+	if got.ThrottleLimitCount == nil || *got.ThrottleLimitCount != 20 || got.ThrottleLimitUnit != "HOUR" {
+		t.Fatalf("legacy limit = %v %q, want 20 HOUR", got.ThrottleLimitCount, got.ThrottleLimitUnit)
+	}
+}
+
 func TestUpdatePlan_InUseMessage(t *testing.T) {
 	name := "Gold Plus"
 	repo := &fakePlanRepo{
@@ -179,22 +212,21 @@ func TestUpdatePlan_InUseMessage(t *testing.T) {
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
 	_, err := svc.UpdatePlan("gold", "org-1", "actor", &model.SubscriptionPlanUpdate{Name: &name})
-	want := "The plan Gold is in use. To change its name or limit, create a new plan."
+	want := "The plan Gold is in use. To change its name or conditions, create a new plan."
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("UpdatePlan error = %v, want message %q", err, want)
 	}
 }
 
 func TestUpsertPlanFromWebhook_IgnoresTheLock(t *testing.T) {
-	limit := 1000
 	repo := &fakePlanRepo{
-		plan:  &model.SubscriptionPlan{Handle: "partner", Name: "Partner", ThrottleLimitCount: &limit, ThrottleLimitUnit: "MINUTE"},
+		plan:  &model.SubscriptionPlan{Handle: "partner", Name: "Partner", Conditions: []model.SubscriptionPlanCondition{*requestLimit(1000, "MINUTE")}},
 		usage: model.SubscriptionPlanUsage{Subscriptions: 3},
 	}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	newLimit := 2000
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "partner", "Partner Plus", &newLimit, "MINUTE", nil, time.Now()); err != nil {
+	windows := []model.ConditionWindow{{Count: 2000, TimeAmount: 1, TimeUnit: "MINUTE"}}
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "partner", "Partner Plus", "", nil, windows, nil, time.Now()); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	if repo.updated == nil || repo.updated.Name != "Partner Plus" || *repo.updated.ThrottleLimitCount != 2000 {

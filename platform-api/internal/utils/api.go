@@ -89,7 +89,7 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 			Upstream:          *u.UpstreamConfigAPIToModel(&restAPI.Upstream),
 			Policies:          u.PoliciesAPIToModel(restAPI.Policies),
 			Operations:        u.OperationsAPIToModel(restAPI.Operations),
-			SubscriptionPlans: stringSliceValue(restAPI.SubscriptionPlans),
+			SubscriptionPlans: PlanRefsToModel(restAPI.SubscriptionPlans),
 		},
 		Origin: constants.OriginCP,
 	}
@@ -132,7 +132,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API, projectHandle string) (*ap
 		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
 		ProjectId:         projectHandle,
 		ReadOnly:          BoolPtr(modelAPI.Origin == constants.OriginDP),
-		SubscriptionPlans: StringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
+		SubscriptionPlans: AttachedPlansToRefs(modelAPI.Configuration.SubscriptionPlans),
 		Transport:         StringSlicePtr(modelAPI.Configuration.Transport),
 		UpdatedAt:         TimePtrIfNotZero(modelAPI.UpdatedAt),
 		UpdatedBy:         StringPtrIfNotEmpty(modelAPI.UpdatedBy),
@@ -521,7 +521,7 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 	apiYAMLData.Version = apiModel.Version
 	apiYAMLData.Context = defaultStringPtr(apiModel.Configuration.Context)
 	apiYAMLData.Policies = u.PoliciesModelToDTO(apiModel.Configuration.Policies)
-	apiYAMLData.SubscriptionPlans = apiModel.Configuration.SubscriptionPlans
+	apiYAMLData.SubscriptionPlans = apiModel.Configuration.SubscriptionPlans.Handles()
 
 	// Only set upstream and operations for HTTP APIs
 	switch apiModel.Kind {

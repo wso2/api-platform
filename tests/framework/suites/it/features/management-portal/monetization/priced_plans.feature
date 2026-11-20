@@ -147,7 +147,7 @@ Feature: Priced subscription plans
       """
     Then the response status code should be 409
     And the JSON response field "code" should be "SUBSCRIPTION_PLAN_IN_USE"
-    And the JSON response field "message" should be "The plan Pro ${CTX:planId} is in use. To change its name or limit, create a new plan."
+    And the JSON response field "message" should be "The plan Pro ${CTX:planId} is in use. To change its name or conditions, create a new plan."
     When I send a "PUT" request to the control plane at "/subscription-plans/${CTX:planId}" with body:
       """
       {"id":"${CTX:planId}","displayName":"Pro ${CTX:planId}","status":"ACTIVE","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"MINUTE","limitCount":1200}]}

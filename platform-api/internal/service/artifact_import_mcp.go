@@ -19,6 +19,7 @@ package service
 
 import (
 	"fmt"
+
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -146,9 +147,10 @@ func mapMCPProxySpecToConfig(spec model.MCPProxyDeploymentSpec) model.MCPProxyCo
 		Vhost:   spec.Vhost,
 		// Folded here rather than in MCPProxyService: the importer writes through the
 		// repository directly, so the service layer never runs on this path.
-		SpecVersions: model.FoldSpecVersions(spec.SpecVersions, spec.SpecVersion),
-		Policies:     spec.Policies,
-		Upstream:     mapMCPUpstreamToModel(spec.Upstream),
+		SpecVersions:      model.FoldSpecVersions(spec.SpecVersions, spec.SpecVersion),
+		Policies:          spec.Policies,
+		Upstream:          mapMCPUpstreamToModel(spec.Upstream),
+		SubscriptionPlans: spec.SubscriptionPlans,
 	}
 	if spec.Context != "" {
 		context := spec.Context

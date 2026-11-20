@@ -120,6 +120,45 @@ func TestAPIRepo_CreateAndRead(t *testing.T) {
 	}
 }
 
+// An API's attached plans are saved with their details and read back unchanged; a configuration
+// that lists plain handle strings, as stored before, still reads.
+func TestAPIRepo_AttachedPlansRoundTrip(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	repo := NewAPIRepo(db)
+	orgUUID, projectUUID := "org-plans-001", "project-plans-001"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	at := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
+	plans := model.AttachedPlans{{Handle: "gold", DisplayName: "Gold", AttachedAt: &at}, {Handle: "silver"}}
+	api := &model.API{
+		Handle: "plans-api", Name: "Plans API", Version: "1.0.0", ProjectID: projectUUID, OrganizationID: orgUUID,
+		LifeCycleStatus: "CREATED",
+		Configuration:   model.RestAPIConfig{Name: "Plans API", Version: "1.0.0", SubscriptionPlans: plans},
+	}
+	if err := repo.CreateAPI(api); err != nil {
+		t.Fatalf("CreateAPI: %v", err)
+	}
+	got, err := repo.GetAPIByUUID(api.ID, orgUUID)
+	if err != nil || got == nil {
+		t.Fatalf("GetAPIByUUID: %v", err)
+	}
+	read := got.Configuration.SubscriptionPlans
+	if len(read) != 2 || read[0].DisplayName != "Gold" || read[0].AttachedAt == nil || !read[0].AttachedAt.Equal(at) || read[1].Handle != "silver" {
+		t.Fatalf("read back %+v", read)
+	}
+
+	// A row written before the details were kept lists handle strings.
+	if _, err := db.Exec(db.Rebind(`UPDATE rest_apis SET configuration = ? WHERE uuid = ?`),
+		[]byte(`{"name":"Plans API","version":"1.0.0","subscriptionPlans":["gold","silver"]}`), api.ID); err != nil {
+		t.Fatalf("seed legacy configuration: %v", err)
+	}
+	got, err = repo.GetAPIByUUID(api.ID, orgUUID)
+	if err != nil || got == nil || !reflect.DeepEqual(got.Configuration.SubscriptionPlans.Handles(), []string{"gold", "silver"}) {
+		t.Fatalf("legacy read = %+v, %v", got, err)
+	}
+}
+
 // TestAPIRepo_CreateAPI_SetsUpdatedBy guards against a prior gap where the
 // rest_apis INSERT omitted updated_by, leaving it NULL until the first update.
 func TestAPIRepo_CreateAPI_SetsUpdatedBy(t *testing.T) {

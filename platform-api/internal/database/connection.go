@@ -299,7 +299,67 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 		return fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
+	return db.addMissingSQLiteColumns()
+}
+
+// sqliteAddedColumns are columns added after a table's first release. SQLite has no
+// ADD COLUMN IF NOT EXISTS, so they are added here; the other schema files use guarded ALTERs.
+var sqliteAddedColumns = []struct{ table, column, definition string }{
+	{"subscription_plans", "description", "VARCHAR(1023)"},
+}
+
+// addMissingSQLiteColumns adds the sqliteAddedColumns the database lacks.
+func (db *DB) addMissingSQLiteColumns() error {
+	for _, c := range sqliteAddedColumns {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.column).Scan(&n); err != nil {
+			return fmt.Errorf("failed to read the columns of %s: %w", c.table, err)
+		}
+		if n > 0 {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", c.table, c.column, c.definition)); err != nil {
+			return fmt.Errorf("failed to add column %s.%s: %w", c.table, c.column, err)
+		}
+	}
 	return nil
+}
+
+// HasTable reports whether the table exists, resolving its unqualified name as a query does (the
+// PostgreSQL search path; SQL Server's default schema, then dbo). An error means the check itself
+// failed, not that the table is missing. table must be a fixed name, never user input.
+func (db *DB) HasTable(table string) (bool, error) {
+	query := `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`
+	switch {
+	case isPostgresDriver(db.driver):
+		query = `SELECT CASE WHEN to_regclass(CAST(? AS text)) IS NULL THEN 0 ELSE 1 END`
+	case isSQLServerDriver(db.driver):
+		query = `SELECT CASE WHEN OBJECT_ID(?, 'U') IS NULL THEN 0 ELSE 1 END`
+	}
+	var n int
+	if err := db.QueryRow(db.Rebind(query), table).Scan(&n); err != nil {
+		return false, fmt.Errorf("failed to check for table %s: %w", table, err)
+	}
+	return n > 0, nil
+}
+
+// HasColumn reports whether the column exists on the table its unqualified name resolves to, as in
+// HasTable. An error means the check itself failed. table and column must be fixed names, never user
+// input.
+func (db *DB) HasColumn(table, column string) (bool, error) {
+	query := `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`
+	switch {
+	case isPostgresDriver(db.driver):
+		query = `SELECT COUNT(*) FROM pg_attribute
+			WHERE attrelid = to_regclass(CAST(? AS text)) AND attname = ? AND attnum > 0 AND NOT attisdropped`
+	case isSQLServerDriver(db.driver):
+		query = `SELECT CASE WHEN COL_LENGTH(?, ?) IS NULL THEN 0 ELSE 1 END`
+	}
+	var n int
+	if err := db.QueryRow(db.Rebind(query), table, column).Scan(&n); err != nil {
+		return false, fmt.Errorf("failed to check for column %s.%s: %w", table, column, err)
+	}
+	return n > 0, nil
 }
 
 // InitSchemaSQL applies the given SQL DDL string against the database using the

@@ -33,6 +33,8 @@ type SubscriptionPlanCreatedEvent struct {
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
 	Status             string     `json:"status"`
+	// Conditions; the throttle fields above stay for older gateways.
+	Conditions []SubscriptionPlanCondition `json:"conditions"`
 }
 
 // SubscriptionPlanUpdatedEvent represents the payload for a subscriptionPlan.updated event.
@@ -49,6 +51,8 @@ type SubscriptionPlanUpdatedEvent struct {
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
 	Status             string     `json:"status"`
+	// Conditions; the throttle fields above stay for older gateways.
+	Conditions []SubscriptionPlanCondition `json:"conditions"`
 }
 
 // SubscriptionPlanDeletedEvent represents the payload for a subscriptionPlan.deleted event.
