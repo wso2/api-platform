@@ -371,6 +371,15 @@ describe('ApiTestConsole — typed path', () => {
     );
   });
 
+  it('says when a value on the Params tab replaces the same name typed into the URL', async () => {
+    const { user } = renderConsole(vi.fn());
+    await user.type(screen.getByRole('textbox', { name: 'limit' }), '10');
+
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '?limit=20');
+
+    expect(await screen.findByText(/limit typed here is replaced/i)).toBeInTheDocument();
+  });
+
   it('keeps the gateway address when the user types after it', async () => {
     const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
     const { user } = renderConsole(transport);

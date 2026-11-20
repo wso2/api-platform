@@ -382,7 +382,11 @@ describe('buildSendRequest — preview', () => {
       draft({ params: { 'path:id': '7', 'query:limit': 'nope', 'query:status': 'a' } }),
     );
     expect(result.request).toBeUndefined();
-    expect(result.preview).toEqual({ path: '/books/7', query: [['status', 'a']] });
+    expect(result.preview).toEqual({
+      path: '/books/7',
+      query: [['status', 'a']],
+      overriddenQuery: [],
+    });
   });
 });
 
@@ -577,5 +581,14 @@ describe('buildSendRequest — typed path', () => {
   it('leaves a typed name the operation does not declare unchecked', () => {
     const result = build('GET /search', draft({ pathOverride: '/search?q=x&extra=anything' }));
     expect(result.problems).toEqual({});
+  });
+
+  it('reports the typed query names that the Params tab or the console replaced', () => {
+    const result = build(
+      'GET /search',
+      draft({ params: { 'query:page': '2' }, pathOverride: '/search?q=x&page=9&api_key=mine' }),
+      { autoQuery: [{ name: 'api_key', secret: true, value: 'console-secret' }] },
+    );
+    expect(result.preview.overriddenQuery).toEqual(['page', 'api_key']);
   });
 });

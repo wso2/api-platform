@@ -156,6 +156,13 @@ const messages = defineMessages({
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.noFile',
     defaultMessage: 'No file chosen',
   },
+  queryOverridden: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.queryOverridden',
+    defaultMessage:
+      '{names} typed here {count, plural, one {is} other {are}} replaced by the Params tab or the console, so that value is sent instead.',
+    description:
+      'Helper text under the URL bar. {names} is a comma-separated list of query parameter names.',
+  },
   pathOverridden: {
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.pathOverridden',
     defaultMessage:
@@ -404,7 +411,7 @@ export type RequestPanelProps = {
   problems: Record<string, Problem>;
   baseUrl: string;
   /** Path and query as far as they are filled in. */
-  preview: { path: string; query: [string, string][] };
+  preview: { path: string; query: [string, string][]; overriddenQuery?: string[] };
   autoHeaders: readonly ConsoleAutoParam[];
   /** Console-supplied query parameters; credentials among them are masked in the URL shown. */
   autoQuery: readonly ConsoleAutoParam[];
@@ -1139,6 +1146,7 @@ export function RequestPanel({
       return `${encodeURIComponent(name)}=${encodeURIComponent(secret ? MASKED_VALUE : value)}`;
     })
     .join('&');
+  const overriddenQuery = draft.pathOverride === undefined ? [] : (preview.overriddenQuery ?? []);
   const shownUrl = `${baseUrl}${
     draft.pathOverride ?? `${preview.path}${maskedQuery === '' ? '' : `?${maskedQuery}`}`
   }`;
@@ -1186,7 +1194,14 @@ export function RequestPanel({
               error={problems[PATH_PROBLEM_KEY] !== undefined}
               fullWidth
               helperText={
-                problems[PATH_PROBLEM_KEY] ? intl.formatMessage(messages.problemPath) : undefined
+                problems[PATH_PROBLEM_KEY]
+                  ? intl.formatMessage(messages.problemPath)
+                  : overriddenQuery.length > 0
+                    ? intl.formatMessage(messages.queryOverridden, {
+                        count: overriddenQuery.length,
+                        names: overriddenQuery.join(', '),
+                      })
+                    : undefined
               }
               onChange={(event) => {
                 // The gateway address is fixed; what follows it is the path and query to send.

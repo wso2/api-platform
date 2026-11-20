@@ -985,6 +985,10 @@
   "apiControlPlane.components.ApiTestConsole.RequestPanel.problemXml": {
     "defaultMessage": "The body is not well-formed XML"
   },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.queryOverridden": {
+    "defaultMessage": "{names} typed here {count, plural, one {is} other {are}} replaced by the Params tab or the console, so that value is sent instead.",
+    "description": "Helper text under the URL bar. {names} is a comma-separated list of query parameter names."
+  },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.removeFile": {
     "defaultMessage": "Remove file",
     "description": "Accessible label of the button that clears a chosen file."

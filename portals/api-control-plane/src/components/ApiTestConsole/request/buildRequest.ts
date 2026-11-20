@@ -91,7 +91,12 @@ export const PATH_PROBLEM_KEY = 'path';
 export type BuildResult = {
   request?: ConsoleSendRequest;
   /** The target as far as it is filled in, for the URL bar. Valid parts only. */
-  preview: { path: string; query: [string, string][] };
+  preview: {
+    path: string;
+    query: [string, string][];
+    /** Query names typed into the URL bar that the Params tab or the console replaced. */
+    overriddenQuery: string[];
+  };
   problems: Record<string, Problem>;
   /** Lower-cased header names and exact query names whose values are credentials. */
   secretHeaders: ReadonlySet<string>;
@@ -192,6 +197,7 @@ export const buildSendRequest = ({
       .map((parameter) => parameter.name),
   );
   const typedQueryNames = new Set<string>();
+  const overriddenQuery: string[] = [];
   const override = draft.pathOverride;
   if (override !== undefined) {
     const split = override.indexOf('?');
@@ -201,7 +207,10 @@ export const buildSendRequest = ({
     if (/[#\u0000-\u001f\u007f]/.test(typedQuery)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
     else {
       new URLSearchParams(typedQuery).forEach((value, name) => {
-        if (autoQueryNames.has(name) || editorQueryNames.has(name)) return;
+        if (autoQueryNames.has(name) || editorQueryNames.has(name)) {
+          if (!overriddenQuery.includes(name)) overriddenQuery.push(name);
+          return;
+        }
         query.push([name, value]);
         if (value.trim() === '') return;
         // A typed value meets the same constraints as one typed on the Params tab.
@@ -361,7 +370,7 @@ export const buildSendRequest = ({
   );
   const secretQuery = new Set(autoQuery.filter((q) => q.secret).map((q) => q.name));
 
-  const preview = { path, query };
+  const preview = { path, query, overriddenQuery };
   if (Object.keys(problems).length > 0) return { preview, problems, secretHeaders, secretQuery };
 
   return {
