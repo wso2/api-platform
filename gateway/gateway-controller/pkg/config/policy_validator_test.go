@@ -1310,3 +1310,149 @@ func TestPolicyValidator_OperationLevelFaultPoliciesAreValidated(t *testing.T) {
 	}
 	assert.True(t, found, "the error must identify the operation and the entry index, got %+v", errs)
 }
+
+// host-rewrite only takes effect when every upstream it applies to sets
+// hostRewrite: manual; otherwise Envoy's auto_host_rewrite overwrites the Host
+// header it set, so the API is refused instead of deploying a no-op policy.
+func hostRewriteDefs() map[string]models.PolicyDefinition {
+	return map[string]models.PolicyDefinition{
+		"host-rewrite|v1.0.0": {
+			Name:    "host-rewrite",
+			Version: "v1.0.0",
+			Parameters: &map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{"host": map[string]interface{}{"type": "string"}},
+			},
+		},
+	}
+}
+
+func hostRewriteErrors(errs []ValidationError) []ValidationError {
+	var out []ValidationError
+	for _, e := range errs {
+		if strings.Contains(e.Message, "hostRewrite") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func TestPolicyValidator_HostRewriteRequiresManualUpstream(t *testing.T) {
+	validator := NewPolicyValidator(hostRewriteDefs(), nil)
+	hostRewrite := []api.Policy{{Name: "host-rewrite", Version: "v1", Params: &map[string]interface{}{"host": "backend.example.com"}}}
+	manual, auto := api.UpstreamHostRewriteManual, api.UpstreamHostRewriteAuto
+
+	tests := []struct {
+		name         string
+		operation    bool
+		main         *api.UpstreamHostRewrite
+		sandbox      *api.UpstreamHostRewrite
+		withSandbox  bool
+		wantErrField string
+	}{
+		{name: "api-level, unset", wantErrField: "spec.policies[0]"},
+		{name: "api-level, auto", main: &auto, wantErrField: "spec.policies[0]"},
+		{name: "api-level, manual", main: &manual},
+		{name: "operation-level, unset", operation: true, wantErrField: "spec.operations[0].policies[0]"},
+		{name: "operation-level, manual", operation: true, main: &manual},
+		{name: "main manual, sandbox auto", main: &manual, sandbox: &auto, withSandbox: true, wantErrField: "spec.policies[0]"},
+		{name: "main and sandbox manual", main: &manual, sandbox: &manual, withSandbox: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &api.RestAPI{Kind: api.RestAPIKindRestApi}
+			cfg.Spec.Context = "/test"
+			cfg.Spec.Upstream.Main.Url = api.Ptr("http://backend.example.com")
+			cfg.Spec.Upstream.Main.HostRewrite = tt.main
+			if tt.withSandbox {
+				cfg.Spec.Upstream.Sandbox = &api.Upstream{Url: api.Ptr("http://sandbox.example.com"), HostRewrite: tt.sandbox}
+			}
+			op := api.Operation{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/resource")}
+			if tt.operation {
+				op.Policies = &hostRewrite
+			} else {
+				cfg.Spec.Policies = &hostRewrite
+			}
+			cfg.Spec.Operations = []api.Operation{op}
+
+			errs := hostRewriteErrors(validator.ValidateRestAPIPolicies(cfg))
+			if tt.wantErrField == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1)
+			assert.Equal(t, tt.wantErrField, errs[0].Field)
+		})
+	}
+}
+
+func TestPolicyValidator_GraphQLHostRewriteRequiresManualUpstream(t *testing.T) {
+	validator := NewPolicyValidator(hostRewriteDefs(), nil)
+	manual := api.UpstreamHostRewriteManual
+
+	cfg := &api.GraphQLAPI{}
+	cfg.Spec.Policies = &[]api.Policy{{Name: "host-rewrite", Version: "v1", Params: &map[string]interface{}{"host": "backend.example.com"}}}
+	cfg.Spec.Upstream.Main.Url = api.Ptr("http://backend.example.com")
+
+	errs := hostRewriteErrors(validator.ValidateGraphQLAPIPolicies(cfg))
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.policies[0]", errs[0].Field)
+
+	cfg.Spec.Upstream.Main.HostRewrite = &manual
+	assert.Empty(t, hostRewriteErrors(validator.ValidateGraphQLAPIPolicies(cfg)))
+}
+
+// An Agent proxies operations, and a passthrough public card, to spec.upstream
+// with Envoy auto_host_rewrite unless hostRewrite is manual, so host-rewrite in
+// any of its three policy scopes is refused the same way as on a RestApi.
+// Fault policies are not checked: they run over the error response.
+func TestPolicyValidator_AgentHostRewriteRequiresManualUpstream(t *testing.T) {
+	validator := NewPolicyValidator(hostRewriteDefs(), nil)
+	manual, auto := api.AgentConfigDataUpstreamHostRewriteManual, api.AgentConfigDataUpstreamHostRewriteAuto
+
+	tests := []struct {
+		name         string
+		scope        string // "common", "operation", "card" or "fault"
+		hostRewrite  *api.AgentConfigDataUpstreamHostRewrite
+		wantErrField string
+	}{
+		{name: "operation-common, unset", scope: "common", wantErrField: "spec.a2a.operationConfigs.policies[0]"},
+		{name: "operation-common, auto", scope: "common", hostRewrite: &auto, wantErrField: "spec.a2a.operationConfigs.policies[0]"},
+		{name: "operation-common, manual", scope: "common", hostRewrite: &manual},
+		{name: "per-operation, unset", scope: "operation", wantErrField: "spec.a2a.operationConfigs.operations[0].policies[0]"},
+		{name: "per-operation, manual", scope: "operation", hostRewrite: &manual},
+		{name: "agent card, unset", scope: "card", wantErrField: "spec.a2a.agentCard.public.policies[0]"},
+		{name: "agent card, manual", scope: "card", hostRewrite: &manual},
+		{name: "fault policy, unset", scope: "fault"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policies := []api.Policy{{Name: "host-rewrite", Version: "v1", Params: &map[string]interface{}{"host": "agent.example.com"}}}
+			cfg := &api.AgentConfiguration{}
+			cfg.Spec.Upstream.Url = api.Ptr("http://agent.example.com")
+			cfg.Spec.Upstream.HostRewrite = tt.hostRewrite
+			ops := &cfg.Spec.A2a.OperationConfigs
+			switch tt.scope {
+			case "common":
+				ops.Policies = &policies
+			case "operation":
+				ops.Operations = &[]api.A2AOperationConfig{{Name: api.A2AOperationName("SendMessage"), Policies: &policies}}
+			case "card":
+				cfg.Spec.A2a.AgentCard = &api.A2AAgentCard{Public: &api.A2APublicAgentCard{Policies: &policies}}
+			case "fault":
+				ops.FaultPolicies = &policies
+			}
+
+			errs := hostRewriteErrors(validator.ValidateAgentPolicies(cfg))
+			if tt.wantErrField == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1)
+			assert.Equal(t, tt.wantErrField, errs[0].Field)
+			assert.Contains(t, errs[0].Message, "spec.upstream.hostRewrite is 'manual'")
+		})
+	}
+}
