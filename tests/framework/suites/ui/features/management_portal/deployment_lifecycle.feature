@@ -82,7 +82,8 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     And the Management Portal confirms a deployment started and stores its name as "live"
     And the deployment status on gateway "it-gateway" becomes "Active"
     And the gateway answers 200 to a "GET" request to "/${CTX:api}/health"
-    When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
+    When the user opens gateway "it-gateway" in the Management Portal
+    And the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
     And the gateway answers 404 to a "GET" request to "/${CTX:api}/health"
@@ -166,7 +167,8 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
       """
       {"query":"{ hello }"}
       """
-    When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
+    When the user opens gateway "it-gateway" in the Management Portal
+    And the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
     And the gateway answers 404 to a "POST" request to "/${CTX:api}" with body:
