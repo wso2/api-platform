@@ -20,7 +20,9 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -87,6 +89,20 @@ func TestMapUpstreamModelToAPI_DoesNotReturnTheAuthValue(t *testing.T) {
 	}
 	if got.Sandbox.Auth.Value != nil {
 		t.Errorf("sandbox auth value returned on read: got %q, want nil", *got.Sandbox.Auth.Value)
+	}
+
+	// The Go field being nil is not the contract; the contract is what goes on
+	// the wire. Assert the serialized form so dropping `omitempty` from the
+	// tag, or any other marshalling change, fails here too.
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("failed to marshal the upstream response: %v", err)
+	}
+	if strings.Contains(string(encoded), `"value"`) {
+		t.Errorf("upstream response carries a value field: %s", encoded)
+	}
+	if strings.Contains(string(encoded), storedCredential) {
+		t.Errorf("upstream response carries the stored credential: %s", encoded)
 	}
 }
 
@@ -256,6 +272,16 @@ func TestWebSubAPIService_UpdateDoesNotClearTheStoredCredential(t *testing.T) {
 	if savedAuth == nil || savedAuth.Value != storedCredential {
 		t.Errorf("update wiped the stored credential: got %v, want %q", savedAuth, storedCredential)
 	}
+
+	// Sandbox carries its own credential and goes through the same merge, so
+	// assert it at the write boundary too rather than trusting main to cover it.
+	savedSandbox := repo.saved.Configuration.Upstream.Sandbox
+	if savedSandbox == nil || savedSandbox.Auth == nil {
+		t.Fatal("sandbox auth block dropped on update")
+	}
+	if wantSandbox := storedCredential + "-sandbox"; savedSandbox.Auth.Value != wantSandbox {
+		t.Errorf("update wiped the stored sandbox credential: got %q, want %q", savedSandbox.Auth.Value, wantSandbox)
+	}
 }
 
 // nil and "" both mean "unchanged" — a client may round-trip either the
@@ -264,10 +290,13 @@ func TestPreserveWebSubUpstreamAuth_NilAndEmptyValueAreEquivalent(t *testing.T) 
 	withNil := preserveWebSubUpstreamAuth(storedUpstreamConfig(), api.Upstream{
 		Main: api.UpstreamDefinition{Auth: &api.UpstreamAuth{Type: authTypePtr(api.ApiKey)}},
 	})
+	// Not utils.StringPtrIfNotEmpty(""), which returns nil and would make this
+	// the same input as withNil rather than the other of the two.
+	emptyValue := ""
 	withEmpty := preserveWebSubUpstreamAuth(storedUpstreamConfig(), api.Upstream{
 		Main: api.UpstreamDefinition{Auth: &api.UpstreamAuth{
 			Type:  authTypePtr(api.ApiKey),
-			Value: utils.StringPtrIfNotEmpty(""),
+			Value: &emptyValue,
 		}},
 	})
 
@@ -332,5 +361,94 @@ func TestPreserveWebSubUpstreamAuth_OmittedTypeKeepsStoredSchemeWithoutCredentia
 	saved := mapUpstreamAPIToModel(updated)
 	if saved.Main.Auth.Type != string(api.Bearer) {
 		t.Errorf("stored auth type not kept: got %q, want %q", saved.Main.Auth.Type, api.Bearer)
+	}
+}
+
+// The request belongs to the caller. Restoring a credential must not write it
+// back onto the request's own auth blocks, where a later read of req would see
+// a secret the client never sent.
+func TestPreserveWebSubUpstreamAuth_DoesNotMutateTheRequest(t *testing.T) {
+	mainAuth := &api.UpstreamAuth{Type: authTypePtr(api.ApiKey)}
+	sandboxAuth := &api.UpstreamAuth{Type: authTypePtr(api.Bearer)}
+	req := api.Upstream{
+		Main:    api.UpstreamDefinition{Auth: mainAuth},
+		Sandbox: &api.UpstreamDefinition{Auth: sandboxAuth},
+	}
+
+	got := preserveWebSubUpstreamAuth(storedUpstreamConfig(), req)
+
+	if got.Main.Auth.Value == nil || *got.Main.Auth.Value != storedCredential {
+		t.Fatalf("the merge did not restore the credential: got %v", got.Main.Auth.Value)
+	}
+	if mainAuth.Value != nil {
+		t.Errorf("request main auth was mutated: got %q", *mainAuth.Value)
+	}
+	if sandboxAuth.Value != nil {
+		t.Errorf("request sandbox auth was mutated: got %q", *sandboxAuth.Value)
+	}
+	if req.Sandbox.Auth != sandboxAuth {
+		t.Error("request sandbox definition was mutated")
+	}
+}
+
+// A stored auth block with no credential is still configuration: the scheme
+// and the header name. An update that omits the block keeps it rather than
+// dropping it, so a deliberate "auth.type: none" survives the next save.
+func TestPreserveWebSubUpstreamAuth_OmittedBlockKeepsSchemeWithoutCredential(t *testing.T) {
+	stored := model.UpstreamConfig{
+		Main: &model.UpstreamEndpoint{
+			URL:  "https://backend.example.com/events",
+			Auth: &model.UpstreamAuth{Type: string(api.None)},
+		},
+	}
+
+	updated := preserveWebSubUpstreamAuth(stored, api.Upstream{
+		Main: api.UpstreamDefinition{Url: utils.StringPtrIfNotEmpty("https://backend.example.com/events")},
+	})
+
+	saved := mapUpstreamAPIToModel(updated)
+	if saved.Main.Auth == nil {
+		t.Fatal("stored auth block dropped by an update that did not mention it")
+	}
+	if saved.Main.Auth.Type != string(api.None) {
+		t.Errorf("stored auth type not kept: got %q, want %q", saved.Main.Auth.Type, api.None)
+	}
+	if saved.Main.Auth.Value != "" {
+		t.Errorf("credential invented where none was stored: got %q", saved.Main.Auth.Value)
+	}
+}
+
+// A credential-only update keeps the header of the unchanged scheme. Without
+// this the header name is blanked and an api-key credential is sent nowhere.
+func TestPreserveWebSubUpstreamAuth_OmittedHeaderKeepsStoredHeader(t *testing.T) {
+	updated := preserveWebSubUpstreamAuth(storedUpstreamConfig(), api.Upstream{
+		Main: api.UpstreamDefinition{Auth: &api.UpstreamAuth{
+			Value: utils.StringPtrIfNotEmpty("rotated-key"),
+		}},
+	})
+
+	saved := mapUpstreamAPIToModel(updated)
+	if saved.Main.Auth.Header != "X-API-Key" {
+		t.Errorf("stored auth header not kept: got %q, want %q", saved.Main.Auth.Header, "X-API-Key")
+	}
+	if saved.Main.Auth.Value != "rotated-key" {
+		t.Errorf("new credential not applied: got %q", saved.Main.Auth.Value)
+	}
+}
+
+// A header the request supplies wins over the stored one.
+func TestPreserveWebSubUpstreamAuth_SuppliedHeaderWins(t *testing.T) {
+	updated := preserveWebSubUpstreamAuth(storedUpstreamConfig(), api.Upstream{
+		Main: api.UpstreamDefinition{Auth: &api.UpstreamAuth{
+			Header: utils.StringPtrIfNotEmpty("X-Other-Key"),
+		}},
+	})
+
+	saved := mapUpstreamAPIToModel(updated)
+	if saved.Main.Auth.Header != "X-Other-Key" {
+		t.Errorf("request header not applied: got %q", saved.Main.Auth.Header)
+	}
+	if saved.Main.Auth.Value != storedCredential {
+		t.Errorf("credential not preserved alongside a header change: got %q", saved.Main.Auth.Value)
 	}
 }
