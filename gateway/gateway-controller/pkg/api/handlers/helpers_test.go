@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 )
 
 func TestUuidToOpenAPIUUID(t *testing.T) {
@@ -186,4 +187,20 @@ func TestMapRenderError_EnvAccessIsGeneric400(t *testing.T) {
 	assert.Contains(t, body, (&funcs.EnvAccessError{}).Error())
 	assert.NotContains(t, body, "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN")
 	assert.NotContains(t, body, "exfil-api")
+}
+
+func TestMapRenderError_AccessControlRefusalIs400WithFieldOnly(t *testing.T) {
+	refused := &upstreamguard.RefusedError{FieldPath: "spec.upstream.main.url"}
+	cause := fmt.Errorf("config %q (kind=RestApi) was refused: %w", "metadata-api", refused)
+	w := httptest.NewRecorder()
+
+	handled := mapRenderError(w, "create", &templateengine.RenderError{Cause: cause})
+
+	require.True(t, handled)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "network access control")
+	assert.Contains(t, body, "spec.upstream.main.url")
+	assert.NotContains(t, body, "metadata-api")
+	assert.NotContains(t, body, "169.254")
 }

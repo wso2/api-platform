@@ -415,6 +415,7 @@ search and view toggles report nothing.
 |              | `gateway.custom-policy-sync-click`                                                                               | Sync, on a custom policy in the Policies tab          | `sync_kind`                                                                  |
 |              | `policies.gateway-policies-view`                                                                                 | Policies tab, first open per visit                    | —                                                                            |
 | Organization | `admin.project-create-click` / `project-delete-click`                                                            | Create; delete confirm                                | —                                                                            |
+|              | `admin.landing-page-open`                                                                                        | landing page (organization home) after sign-in or return, once per visit | —                                                                            |
 |              | `security.service-account-create-click` / `-update-click` / `-enable-click` / `-disable-click` / `-delete-click` | create, edit, enable, disable confirm, delete confirm | —                                                                            |
 |              | `security.service-account-secret-regenerate-click`                                                               | regenerate confirm                                    | —                                                                            |
 |              | `security.service-account-test-token-get-click`                                                                  | Get token                                             | —                                                                            |
@@ -442,10 +443,31 @@ documentation links, and the test key minted automatically on page load.
 
 **Pages WSO2 Cloud replaces.** In the cloud build, the Gateways pages and both
 Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
-`page.graphqlApiDeploy`). The built-in pages above are tracked, but in WSO2
-Cloud the gateway features, `gateway-policies-view`, `api-deploy`, the
-`deployment-*` features and `deployment-history-view` only appear once the
-cloud plugins report them too.
+`page.graphqlApiDeploy`). They report the same features through the host port's
+`trackFeature(code, dimensions)` (`useTrackFeatureByName`, built into the port in
+`AppLayout`), which drops any code or value the taxonomy doesn't list. The
+cloud-only Portals and Insights pages report their own features the same way:
+
+| Cloud page                              | Reports                                                                                                  |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Gateways: open the add form            | `gateway-add-open` (`entry_point`: `gateways-list` or `gateways-empty-state`; `gateway_hosting` from a hosting card) |
+| Gateways: Add or Save                   | `gateway-register-click` (`gateway_hosting`, `gateway_type`), `gateway-update-click`                     |
+| Gateway overview                        | `gateway-setup-command-copy` (`install_method`, `setup_step`), `gateway-token-regenerate-click`          |
+| Deploy: Deploy or promote, Stop         | `api-deploy-click` (no `gateway_hosting`), `deployment-undeploy-click`                                   |
+| Deploy: add a gateway, its setup drawer | `gateway-register-click`, `gateway-setup-command-copy` (`quick-start`), `gateway-token-regenerate-click` |
+| Portals: open the add form              | `portal-add-open` (`entry_point`: `portals-list` or `portals-empty-state`)                               |
+| Portals: Add Portal                     | `portal-create-click` (`self_signup`)                                                                    |
+| Portals: Open Portal, Save, Delete      | `portal-open`, `portal-update-click` (`*_changed` yes/no per field), `portal-delete-click`               |
+| Gateways: Delete                        | `gateway-delete-click` (`gateway_hosting`)                                                               |
+| Gateways: Configure, its settings drawer | `gateway-settings-open`, `key-manager-discover-click`, `gateway-configuration-update-click` (`settings_changed`, `key_managers_changed`) |
+| Deploy: open the Deploy/Promote dialog  | `api-deploy-open` (`deploy_mode`: `deploy`, `build-and-deploy` or `promote`); Deploy/Promote also sends `deploy_mode` on `api-deploy-click` |
+| Deploy: delete a build                  | `build-delete-click`                                                                                     |
+| Insights (organization or project)      | `insights-open` (`scope`), once per visit                                                                |
+
+The cloud pages have no redeploy, restore, deployment delete or deployment
+history, and their gateway Policies tab shows no policies yet, so
+`deployment-redeploy-click`, `deployment-restore-click`, `deployment-delete-click`,
+`deployment-history-view` and `gateway-policies-view` never come from WSO2 Cloud.
 
 ---
 
@@ -458,7 +480,7 @@ cloud plugins report them too.
 | `taxonomy.generated.ts`      | Generated from the YAML (`npm run taxonomy:codegen`); never edit by hand         |
 | `taxonomy.ts`                | The console's features from the generated file, the types, and `featureMetadata` |
 | `policies.ts`                | `trackPolicyAttachment`: a policy name to its capability feature                 |
-| `useTrackFeature.ts`         | The hook UI code calls; attaches the user and organization                       |
+| `useTrackFeature.ts`         | The hook UI code calls, and `useTrackFeatureByName` for the host port            |
 | `actions.ts`                 | Builds each action from the allowlist; masks page URLs to route templates        |
 | `collector.ts`               | The enable switch, the queue, and the batched send to the collector route        |
 | `*.test.ts`                  | Unit tests                                                                       |

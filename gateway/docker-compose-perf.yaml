@@ -33,6 +33,13 @@ services:
       - path: api-platform.env
         required: true
         format: raw
+    environment:
+      # Health endpoints answer only allowed clients. The perf workflow polls the admin
+      # health endpoint from the host through the published port, so allow the Docker
+      # network ranges. The router value is read here because the controller builds the
+      # runtime's route config.
+      - APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+      - APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro

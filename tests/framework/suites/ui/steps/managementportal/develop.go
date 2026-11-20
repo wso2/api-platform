@@ -37,6 +37,7 @@ func (s *Steps) registerDevelopSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the API overview's "([^"]*)" card shows "([^"]*)"$`, s.overviewCardShows)
 	sc.Step(`^the documents page lists "([^"]*)" under "([^"]*)"$`, s.documentListedUnder)
 	sc.Step(`^the policy catalog's "([^"]*)" entry in the Management Portal can (be|not be) attached$`, s.catalogEntryAttachable)
+	sc.Step(`^the policy catalog's "([^"]*)" entry in the Management Portal shows "([^"]*)"$`, s.catalogEntryShows)
 	sc.Step(`^the gateway answers (\d+) to a "([^"]*)" request to "([^"]*)" as "([^"]*)" with password "([^"]*)"$`,
 		s.gatewayAnswersAs)
 }
@@ -123,9 +124,7 @@ func (s *Steps) catalogEntryAttachable(ctx context.Context, policy, can string) 
 	if err != nil {
 		return err
 	}
-	entry := page.Locator(".MuiCard-root").Filter(playwright.LocatorFilterOptions{
-		Has: page.GetByText(policy, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}),
-	}).Last()
+	entry := catalogEntry(page, policy)
 	attachable := can == "be"
 	if err := s.expect.Locator(entry).ToHaveAttribute("draggable", fmt.Sprint(attachable)); err != nil {
 		return fmt.Errorf("the catalog's %q entry can %s attached: %w", policy, can, err)
@@ -138,6 +137,29 @@ func (s *Steps) catalogEntryAttachable(ctx context.Context, policy, can string) 
 		return fmt.Errorf("the catalog's %q entry can %s attached: %w", policy, can, err)
 	}
 	return nil
+}
+
+func (s *Steps) catalogEntryShows(ctx context.Context, policy, text string) error {
+	resolved, err := uivalue.Expand(ctx, text)
+	if err != nil {
+		return err
+	}
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return err
+	}
+	shown := catalogEntry(page, policy).GetByText(resolved, playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)})
+	if err := s.expect.Locator(shown).ToBeVisible(); err != nil {
+		return fmt.Errorf("the catalog's %q entry never showed %q: %w", policy, resolved, err)
+	}
+	return nil
+}
+
+// catalogEntry is the policy catalog card that names policy.
+func catalogEntry(page playwright.Page, policy string) playwright.Locator {
+	return page.Locator(".MuiCard-root").Filter(playwright.LocatorFilterOptions{
+		Has: page.GetByText(policy, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}),
+	}).Last()
 }
 
 // card is the card whose heading reads heading.

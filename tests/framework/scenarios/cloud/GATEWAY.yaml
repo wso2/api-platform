@@ -75,13 +75,13 @@ scenarios:
         - feature: suites/cloud/features/apip_gateway.feature
           scenario: "A gateway requested with only a name and an environment is built, connects and reports its version, and the name can be used in another environment"
   - id: ID_APIP_GATEWAY_007
-    title: "A gateway created in a new environment is built and connects, and handles at the length limit still receive a routable service."
+    title: "A gateway created in another environment is built and connects, and handles at the length limit still receive a routable service."
     priority: P1
     cloud:
       status: automated
       refs:
         - feature: suites/cloud/features/apip_gateway.feature
-          scenario: "A gateway created in a new environment is built and connects, and handles at the length limit still receive a routable service"
+          scenario: "A gateway created in another environment is built and connects, and handles at the length limit still receive a routable service"
   - id: ID_APIP_GATEWAY_008
     title: "A gateway name already used in the environment is refused."
     priority: P1

@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -246,6 +247,23 @@ func TestComposeRuntimeBoundsItsShutdownDrain(t *testing.T) {
 	require.Equal(t, "30s", runtime["stop_grace_period"],
 		"gateway-runtime must raise stop_grace_period above the drain, so a later increase to "+
 			"ROUTER_DRAIN_TIME_SECONDS cannot silently reintroduce the mid-drain SIGKILL")
+}
+
+// A policy fetching keys from the testbench OIDC provider over HTTPS must verify the provider's
+// certificate, not skip verification, so the runtime has to trust it: the certificate is staged
+// next to the Jev one and mounted into the directory SSL_CERT_DIR names.
+func TestRuntimeTrustsTheTestbenchOIDCCertificate(t *testing.T) {
+	staged := gatewayGeneratedFiles()
+	require.Equal(t, shared.IdentityProviderTLS().CertPEM, staged["testbench-ca/oidc.pem"],
+		"the staged OIDC certificate must be the one the testbench identity provider serves")
+
+	doc := composeFile(t)
+	runtime := doc["services"].(map[string]any)["gateway-runtime"].(map[string]any)
+	require.Contains(t, runtime["volumes"],
+		"./testbench-ca/oidc.pem:/etc/testbench-ca/oidc.pem:ro",
+		"gateway-runtime does not mount the OIDC certificate into /etc/testbench-ca")
+	require.Contains(t, runtime["environment"], "SSL_CERT_DIR=/etc/ssl/certs:/etc/testbench-ca",
+		"gateway-runtime does not read extra trusted certificates from /etc/testbench-ca")
 }
 
 func TestPlatformGatewayCoverageEnvironmentFollowsRunMode(t *testing.T) {
@@ -538,7 +556,7 @@ func TestTwoControllerComposeOverride(t *testing.T) {
 	require.Contains(t, xds["ports"], fmt.Sprint(xdsControllerAdminPort))
 	require.Contains(t, xds["env_file"], "api-platform.env", "both controllers must read the same database settings")
 	require.Contains(t, xds["image"], "${"+EnvImagePGController)
-	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/health", xdsControllerAdminPort))
+	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/ready", xdsControllerAdminPort))
 
 	base := composeServiceEnv(t, svcController)
 	replica := composeServiceEnvIn(t, doc, svcXDSController)
@@ -917,4 +935,154 @@ func TestSigningKeysAreTheExpectedKeyTypes(t *testing.T) {
 	previous, ok := parse("previous", signingKeyPreviousPEM).(*rsa.PrivateKey)
 	require.True(t, ok, "the previous key is RSA")
 	require.Equal(t, 2048, previous.N.BitLen())
+}
+
+func TestPlatformGatewayWiringCustomPolicies(t *testing.T) {
+	spec := PlatformGateway().Wiring
+	for _, ok := range []string{"{customPolicies: true}", "{customPolicies: false}", "{customPolicies: true, signingKeys: true}",
+		"{customPolicies: true, controllers: 1}", "{customPolicies: false, controllers: 2}"} {
+		var node yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(ok), &node))
+		_, err := spec.Decode(node.Content[0])
+		require.NoError(t, err, ok)
+	}
+	for _, bad := range []string{"{customPolicies: maybe}", "{customPolicies: true, controllers: 2}"} {
+		var node yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(bad), &node))
+		_, err := spec.Decode(node.Content[0])
+		require.Error(t, err, bad)
+	}
+}
+
+func TestCustomPoliciesGatewayDefinition(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	registered := PlatformGateway().WithImageVersion("current")
+	got, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{CustomPolicies: true})
+	require.NoError(t, err)
+	require.NoError(t, got.Validate())
+
+	require.Equal(t, []string{customPoliciesComposeFile}, got.Compose.ComposeOverrideFiles)
+	require.Equal(t, customPoliciesSource, got.Compose.StagedFiles[customPoliciesStagedName])
+	for name, source := range registered.Compose.StagedFiles {
+		require.Equal(t, source, got.Compose.StagedFiles[name], name)
+	}
+	require.Len(t, got.Compose.StagedFiles, len(registered.Compose.StagedFiles)+1)
+	require.Equal(t, registered.Compose.Services, got.Compose.Services)
+	require.Equal(t, registered.Compose.Env, got.Compose.Env)
+	require.Equal(t, registered.DB, got.DB)
+
+	require.Empty(t, registered.Compose.ComposeOverrideFiles, "the registered definition must not change")
+	require.NotContains(t, registered.Compose.StagedFiles, customPoliciesStagedName)
+
+	unchanged, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{CustomPolicies: false})
+	require.NoError(t, err)
+	require.Same(t, registered, unchanged)
+}
+
+func TestCustomPoliciesWithSigningKeys(t *testing.T) {
+	registered := PlatformGateway()
+	got, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{SigningKeys: true, CustomPolicies: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{signingKeysComposeFile, customPoliciesComposeFile}, got.Compose.ComposeOverrideFiles)
+	require.Equal(t, signingKeyActivePEM, got.Compose.ProjectEnv[envSigningKeyActive])
+	require.Equal(t, customPoliciesSource, got.Compose.StagedFiles[customPoliciesStagedName])
+}
+
+func TestCustomPoliciesRejectWhatTheyCannotApply(t *testing.T) {
+	_, err := withCustomPolicies(nil)
+	require.Error(t, err)
+	noCompose := *PlatformGateway()
+	noCompose.Compose = nil
+	_, err = withCustomPolicies(&noCompose)
+	require.ErrorContains(t, err, "compose-backed")
+
+	once, err := withCustomPolicies(PlatformGateway())
+	require.NoError(t, err)
+	_, err = withCustomPolicies(once)
+	require.ErrorContains(t, err, "already loads the gateway custom policies")
+
+	twoControllers, err := withXDSController(PlatformGateway())
+	require.NoError(t, err)
+	_, err = withCustomPolicies(twoControllers)
+	require.ErrorContains(t, err, "two controllers")
+
+	noStaged := *PlatformGateway()
+	compose := *noStaged.Compose
+	compose.StagedFiles = nil
+	noStaged.Compose = &compose
+	got, err := withCustomPolicies(&noStaged)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{customPoliciesStagedName: customPoliciesSource}, got.Compose.StagedFiles)
+}
+
+// TestCustomPoliciesComposeOverride verifies that the override mounts the staged fixtures into
+// the controller only, at the paths the controller reads policy definitions and its build
+// manifest from.
+func TestCustomPoliciesComposeOverride(t *testing.T) {
+	doc := composeFileNamed(t, filepath.Base(customPoliciesComposeFile))
+	services, ok := doc["services"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []string{svcController}, keysOf(services))
+
+	var mounts []string
+	for _, raw := range services[svcController].(map[string]any)["volumes"].([]any) {
+		mounts = append(mounts, raw.(string))
+	}
+	require.Equal(t, []string{
+		"./" + customPoliciesStagedName + "/definitions:/app/default-policies/it-custom-policies:ro",
+		"./" + customPoliciesStagedName + "/build-manifest.yaml:/app/build-manifest.yaml:ro",
+	}, mounts)
+}
+
+// TestCustomPoliciesFixtures verifies that every definition loads on the gateway, which refuses
+// to start on a malformed version or a repeated name and version, and that the build manifest
+// lists every definition except it-builtin.
+func TestCustomPoliciesFixtures(t *testing.T) {
+	source := filepath.Join(unitRepoRoot(t), customPoliciesSource)
+	version := regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+
+	entries, err := os.ReadDir(filepath.Join(source, "definitions"))
+	require.NoError(t, err)
+	defined := map[string]bool{}
+	for _, entry := range entries {
+		raw, err := os.ReadFile(filepath.Join(source, "definitions", entry.Name()))
+		require.NoError(t, err)
+		var def struct {
+			Name        string         `yaml:"name"`
+			Version     string         `yaml:"version"`
+			DisplayName string         `yaml:"displayName"`
+			Parameters  map[string]any `yaml:"parameters"`
+		}
+		require.NoError(t, yaml.Unmarshal(raw, &def), entry.Name())
+		require.NotEmpty(t, def.Name, entry.Name())
+		require.Regexp(t, version, def.Version, entry.Name())
+		require.NotEmpty(t, def.DisplayName, entry.Name())
+		require.NotEmpty(t, def.Parameters, entry.Name())
+		require.Equal(t, def.Name+"-"+def.Version+".yaml", entry.Name())
+		key := def.Name + "|" + def.Version
+		require.False(t, defined[key], "%s is defined twice", key)
+		defined[key] = true
+	}
+
+	raw, err := os.ReadFile(filepath.Join(source, "build-manifest.yaml"))
+	require.NoError(t, err)
+	var manifest struct {
+		Policies []struct {
+			Name     string `yaml:"name"`
+			Version  string `yaml:"version"`
+			FilePath string `yaml:"filePath"`
+		} `yaml:"policies"`
+	}
+	require.NoError(t, yaml.Unmarshal(raw, &manifest))
+	listed := map[string]bool{}
+	for _, entry := range manifest.Policies {
+		key := entry.Name + "|" + entry.Version
+		require.True(t, defined[key], "the build manifest lists %s, which has no definition", key)
+		require.NotEmpty(t, entry.FilePath, key)
+		require.False(t, listed[key], "the build manifest lists %s twice", key)
+		listed[key] = true
+	}
+	for key := range defined {
+		require.Equal(t, !strings.HasPrefix(key, "it-builtin|"), listed[key], key)
+	}
 }

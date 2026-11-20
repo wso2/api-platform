@@ -5805,3 +5805,109 @@ GET /secrets/{id} response including decrypted `spec.value`.
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|Secret|
+
+## HealthResponse
+
+<a id="schemahealthresponse"></a>
+<a id="schema_HealthResponse"></a>
+<a id="tocShealthresponse"></a>
+<a id="tocshealthresponse"></a>
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2019-08-24T14:15:22Z",
+  "checks": {
+    "property1": {
+      "status": "up",
+      "error": "string",
+      "since": "2019-08-24T14:15:22Z",
+      "warning": "string"
+    },
+    "property2": {
+      "status": "up",
+      "error": "string",
+      "since": "2019-08-24T14:15:22Z",
+      "warning": "string"
+    }
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|true|none|Health status ("healthy" when every check is up, otherwise "unhealthy")|
+|timestamp|string(date-time)|true|none|Timestamp of the health check|
+|checks|object|false|none|Result of each dependency check, keyed by check name (for example `database`)|
+|» **additionalProperties**|[HealthCheck](#schemahealthcheck)|false|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|healthy|
+|status|unhealthy|
+
+## HealthForbiddenResponse
+
+<a id="schemahealthforbiddenresponse"></a>
+<a id="schema_HealthForbiddenResponse"></a>
+<a id="tocShealthforbiddenresponse"></a>
+<a id="tocshealthforbiddenresponse"></a>
+
+```json
+{
+  "status": "forbidden"
+}
+
+```
+
+Answer to a client outside the allowed set; it carries no check detail
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|forbidden|
+
+## HealthCheck
+
+<a id="schemahealthcheck"></a>
+<a id="schema_HealthCheck"></a>
+<a id="tocShealthcheck"></a>
+<a id="tocshealthcheck"></a>
+
+```json
+{
+  "status": "up",
+  "error": "string",
+  "since": "2019-08-24T14:15:22Z",
+  "warning": "string"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|true|none|Whether the dependency is usable|
+|error|string|false|none|Generic reason the check is down; present only when down|
+|since|string(date-time)|false|none|When the check started failing; present only when down|
+|warning|string|false|none|Generic note on a check that is up but under strain, such as an exhausted connection pool; present only while it applies, and never makes the check down|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|up|
+|status|down|

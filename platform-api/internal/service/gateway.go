@@ -23,12 +23,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -334,8 +336,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
 	if err != nil {
-		s.slogger.Error("failed to get gateway", slog.String("gateway_handle", gatewayHandle), slog.String("org_id", orgID), slog.String("error", err.Error()))
-		return nil, apperror.GatewayNotFound.New()
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
 		return nil, apperror.GatewayNotFound.New()
@@ -372,6 +373,9 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		s.slogger.Error("policy is not a custom policy", slog.String("gateway_id", gateway.ID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
 		return nil, apperror.PolicyInvalidState.New().
 			WithLogMessage(fmt.Sprintf("policy '%s' version '%s' is not a custom policy", policyName, version))
+	}
+	if err := checkSyncedPolicyText(found); err != nil {
+		return nil, err
 	}
 
 	var policyDefJSON json.RawMessage
@@ -446,6 +450,14 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		policy.UUID = sameMajorVersionedPolicy.UUID
 		policy.CreatedBy = sameMajorVersionedPolicy.CreatedBy
 		if err := s.customPolicyRepo.UpdateCustomPolicy(policy, sameMajorVersionedPolicy.Version); err != nil {
+			if errors.Is(err, repository.ErrCustomPolicyVersionChanged) {
+				return nil, apperror.PolicyVersionConflict.Wrap(err).
+					WithLogMessage(fmt.Sprintf("custom policy '%s' moved off version '%s' before it could be replaced with '%s'",
+						policyName, sameMajorVersionedPolicy.Version, version))
+			}
+			if errors.Is(err, repository.ErrCustomPolicyTextTooLong) {
+				return nil, policyTextTooLong(policyName, version, err)
+			}
 			s.slogger.Error("failed to update custom policy", slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("old_version", sameMajorVersionedPolicy.Version), slog.String("new_version", version))
 			return nil, fmt.Errorf("failed to update custom policy: %w", err)
 		}
@@ -464,6 +476,9 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		}
 		policy.UUID = policyID
 		if err := s.customPolicyRepo.InsertCustomPolicy(policy); err != nil {
+			if errors.Is(err, repository.ErrCustomPolicyTextTooLong) {
+				return nil, policyTextTooLong(policyName, version, err)
+			}
 			return nil, fmt.Errorf("failed to insert custom policy: %w", err)
 		}
 		s.slogger.Info("Custom policy created",
@@ -476,6 +491,9 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 
 	persisted, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgID, policyName, version)
 	if err != nil || persisted == nil {
+		s.slogger.Warn("synced custom policy could not be read back; returning the values written",
+			slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version),
+			slog.Any("error", err))
 		if s.auditRepo != nil {
 			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, createdBy)
 		}
@@ -491,6 +509,54 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		return nil, err
 	}
 	return persisted, nil
+}
+
+// The longest text each column of a custom policy record holds.
+const (
+	customPolicyNameMaxLen        = 255
+	customPolicyDisplayNameMaxLen = 255
+	customPolicyVersionMaxLen     = 30
+	customPolicyDescriptionMaxLen = 1023
+)
+
+// checkSyncedPolicyText refuses a gateway policy whose name, display name, version
+// or description is longer than its custom policy record holds.
+func checkSyncedPolicyText(p *GatewayPolicyDefinition) error {
+	var description string
+	if p.Description != nil {
+		description = *p.Description
+	}
+	fields := []struct {
+		label  string
+		value  string
+		maxLen int
+	}{
+		{"name", p.Name, customPolicyNameMaxLen},
+		{"display name", p.DisplayName, customPolicyDisplayNameMaxLen},
+		{"version", p.Version, customPolicyVersionMaxLen},
+		{"description", description, customPolicyDescriptionMaxLen},
+	}
+	for _, f := range fields {
+		if n := utf8.RuneCountInString(f.value); n > f.maxLen {
+			return apperror.ValidationFailed.New(fmt.Sprintf(
+				"The %s of policy '%s' version '%s' must be at most %d characters. "+
+					"Shorten it in the policy definition on the gateway, then sync again.",
+				f.label, p.Name, p.Version, f.maxLen)).
+				WithLogMessage(fmt.Sprintf("custom policy '%s' version '%s' %s is %d characters",
+					p.Name, p.Version, f.label, n))
+		}
+	}
+	return nil
+}
+
+// policyTextTooLong refuses a policy whose text the database found too long for its
+// column, which checkSyncedPolicyText cannot always foresee: SQL Server can limit a
+// VARCHAR column in bytes, depending on its collation.
+func policyTextTooLong(name, version string, cause error) error {
+	return apperror.ValidationFailed.Wrap(cause, fmt.Sprintf(
+		"The text of policy '%s' version '%s' is longer than its custom policy record holds. "+
+			"Shorten its name, display name or description in the policy definition on the gateway, then sync again.",
+		name, version))
 }
 
 // resolveCustomPolicyIdentity replaces the internal platform UUIDs held in a

@@ -46,6 +46,7 @@ import {
   type FieldErrors,
 } from '../config/validate';
 import type { AIWorkspaceHostPort } from '../hostPort';
+import { GATEWAY_CONFIGURATION_UPDATE_CLICK, KEY_MANAGER_DISCOVER_CLICK } from '../featureUsage';
 import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import type {
   ConfigStatus,
@@ -142,6 +143,9 @@ const PhaseChip: FC<{ status: ConfigStatus }> = ({ status }) => {
  */
 const POLL_INTERVAL_MS = 20_000;
 
+/** The DOM id of a setting's cell, which a failed save scrolls to. */
+const settingAnchor = (path: string) => `gateway-setting-${path}`;
+
 const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   open,
   onClose,
@@ -169,6 +173,21 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
+  /**
+   * Save sits in the footer while the banner tops the scrolled body, so a failed
+   * save is brought into view: the banner, else the first setting it rejected.
+   */
+  const saveErrorRef = useRef<HTMLDivElement>(null);
+  /** A new object per failed save, so the same failure twice still scrolls. */
+  const [failedSave, setFailedSave] = useState<{ path?: string } | null>(null);
+  useEffect(() => {
+    if (!failedSave) return;
+    const target = failedSave.path
+      ? document.getElementById(settingAnchor(failedSave.path))
+      : saveErrorRef.current;
+    // Optional: jsdom implements no scrollIntoView.
+    target?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  }, [failedSave]);
   /** The user's edited key manager list, `null` until edited; the saved one comes with `config`. */
   const [keyManagerDraft, setKeyManagerDraft] = useState<GatewayKeyManager[] | null>(null);
   /**
@@ -345,11 +364,17 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       keyManagerBase &&
       !sameKeyManagers(keyManagerBase, config.keyManagers ?? [])
     ) {
-      setSaveError(
-        'The key managers were changed elsewhere since you started editing them. Discard your changes and make them again.'
-      );
+      const message =
+        'The key managers were changed elsewhere since you started editing them. Discard your changes and make them again.';
+      setSaveError(message);
+      notify(message, 'error');
+      setFailedSave({});
       return;
     }
+    port.trackFeature?.(GATEWAY_CONFIGURATION_UPDATE_CLICK, {
+      settings_changed: Object.keys(patch).length > 0 ? 'yes' : 'no',
+      key_managers_changed: keyManagerChange ? 'yes' : 'no',
+    });
     // Invalidates any read still in flight: what the write returns is newer
     // than anything a GET started before it can report.
     const mine = ++generation.current;
@@ -384,18 +409,21 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
         error instanceof Error && error.message
           ? error.message
           : 'The configuration could not be saved.';
-      // A field-level message begins with the setting path it is about;
-      // anything else is form-level. Either way the platform's own sentence is
-      // user-presentable prose, so it is surfaced verbatim.
+      // A field-level message begins with the path of a setting the form shows;
+      // anything else, including a setting it hides, is form-level. Either way
+      // the platform's own sentence is user-presentable prose, so it is
+      // surfaced verbatim.
       const path = fieldForServerMessage(
         message,
-        config.editable.map((field) => field.path)
+        config.editable.filter((field) => !isTomlBlock(field)).map((field) => field.path)
       );
       // Under a field the path is dropped — the label already says which
       // setting this is. The banner keeps the full sentence, having no label
       // to lean on.
       if (path) setServerErrors({ [path]: withoutPathPrefix(message, path) });
       else setSaveError(message);
+      notify(message, 'error');
+      setFailedSave({ path: path ?? undefined });
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -428,9 +456,11 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
         saved={keyManagers ?? []}
         readOnly={locked}
         modified={keyManagerChange !== null}
-        discover={(issuer, wellKnownUrl) =>
-          discoverKeyManager(apiFetch, config.id, issuer, wellKnownUrl)
-        }
+        discover={(issuer, wellKnownUrl) => {
+          // Continue and Fetch again in the key manager dialog both land here.
+          port.trackFeature?.(KEY_MANAGER_DISCOVER_CLICK);
+          return discoverKeyManager(apiFetch, config.id, issuer, wellKnownUrl);
+        }}
         onChange={(next) => {
           if (keyManagerDraft === null) setKeyManagerBase(keyManagers);
           setKeyManagerDraft(next);
@@ -508,7 +538,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
           ) : null}
 
           {saveError ? (
-            <Alert severity="error" sx={{ mt: 3 }}>
+            <Alert ref={saveErrorRef} severity="error" sx={{ mt: 3 }}>
               {saveError}
             </Alert>
           ) : null}
@@ -574,7 +604,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
           {sections.map((section, index) => {
             const isJwt = section.fields.some((field) => field.path.startsWith(JWT_PATH_PREFIX));
             const cells = section.fields.map((field) => (
-              <SettingsCell key={field.path}>
+              <SettingsCell key={field.path} id={settingAnchor(field.path)}>
                 <SettingField
                   field={field}
                   value={currentValue(field)}

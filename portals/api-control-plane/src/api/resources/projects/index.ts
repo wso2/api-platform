@@ -37,6 +37,7 @@ export type { ProjectListFilters } from './projects.hooks';
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
+  useAllProjects,
   useCreateProject,
   useDeleteProject,
   useProject,

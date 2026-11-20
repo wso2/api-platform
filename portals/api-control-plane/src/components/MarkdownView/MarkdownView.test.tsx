@@ -33,6 +33,19 @@ describe('MarkdownView', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('step');
   });
 
+  it('draws no image when images are turned off, and shows its alt text instead', () => {
+    const { container } = renderWithProviders(
+      <MarkdownView
+        allowImages={false}
+        source={'![tracker](https://tracker.example/p.gif) <img src="https://tracker.example/q.gif" alt="raw">'}
+      />,
+    );
+
+    expect(container.querySelector('img')).toBeNull();
+    expect(container).toHaveTextContent('tracker');
+    expect(container).toHaveTextContent('raw');
+  });
+
   it('renders a markdown image with alt text', () => {
     const { container } = renderWithProviders(
       <MarkdownView source={'![logo](https://example.com/logo.png "WSO2")'} />

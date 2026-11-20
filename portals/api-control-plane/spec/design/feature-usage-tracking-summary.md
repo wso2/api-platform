@@ -197,7 +197,7 @@ features in §4.1.
 | `manage-apis.api-contract-validate`                                              | `ValidateOpenAPISpec`, `ValidateGraphQLSchema`                | `contract_type`, `contract_source` (body)         |
 | `manage-apis.api-thumbnail-upload` / `-remove`                                   | `UpsertAPIThumbnail`, `DeleteAPIThumbnail`                    | `api_type`                                        |
 | `manage-apis.api-document-create` / `-update` / `-delete`                        | `CreateAPIDocument`, `UpdateAPIDocument`, `DeleteAPIDocument` | `api_type`; `document_type` (body, create/update) |
-| `manage-apis.api-test-invoke`                                                    | `InvokeRESTAPIOnGateway` (test console, proxy mode)           | —                                                 |
+| `manage-apis.api-test-invoke`                                                    | `InvokeAPIOnGateway` (test console, proxy mode)               | —                                                 |
 | `security.api-key-create`                                                        | `CreateAPIKey`, `CreateGraphQLAPIKey`                         | `artifact_kind`                                   |
 | `security.api-key-revoke`                                                        | `RevokeAPIKey`, `RevokeGraphQLAPIKey`                         | `artifact_kind`                                   |
 | `security.service-account-create` / `-update` / `-delete` / `-secret-regenerate` | the service-account operations                                | `status` (body, update)                           |

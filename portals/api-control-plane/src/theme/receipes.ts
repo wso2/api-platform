@@ -246,9 +246,8 @@ export const overlayBarShadow = '0 -2px 10px rgba(0, 0, 0, 0.16)';
  *
  * Blurred, bordered and shadowed upward so the content scrolling underneath
  * stays readable behind it instead of colliding with it. It deliberately does
- * **not** set a `bottom` offset: the app footer shares this scroll area, so each
- * call site pairs this with `bottom: useFooterHeight()` rather than 0, or the bar
- * ends up behind the footer.
+ * **not** set a `bottom` offset; each call site chooses its own. The app footer
+ * scrolls with the page content, so it needs no offset of its own.
  */
 export const stickyBottomBarSx = (theme: Theme) =>
   ({

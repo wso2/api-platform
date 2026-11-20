@@ -1179,7 +1179,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
+	sc.Step(`^I wait for the analytics events for path "([^"]*)" to settle$`, g.waitForAnalyticsPathToSettle)
 	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
+	sc.Step(`^the analytics event for path "([^"]*)" with metadata field "([^"]*)" "([^"]*)" should have metadata fields:$`,
+		g.analyticsEventMetadataFields)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
@@ -1196,6 +1199,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsAIContextField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
 		g.analyticsCompanyID)
+	sc.Step(`^the analytics event for the logged request should have user id "([^"]*)"$`, g.analyticsUserID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
 	sc.Step(`^the lazy resources should contain template "([^"]*)" of type "([^"]*)"$`, g.lazyTemplatePresent)
 	sc.Step(`^the lazy resources should not contain template "([^"]*)"$`, g.lazyTemplateAbsent)
@@ -1268,6 +1272,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.assertCPArtifactID)
 
 	g.registerTimeoutSteps(sc)
+	g.registerConfigSteps(sc)
 }
 
 const elapsedTolerance = 0.05
@@ -2320,6 +2325,43 @@ func (g *Gateway) resetAnalyticsCollector(ctx context.Context) error {
 	}, "resetting the analytics collector")
 }
 
+// addAnalyticsEventsForPath adds the collector's events for path to seen, keyed by correlation id,
+// or by the whole event when it has none.
+func (g *Gateway) addAnalyticsEventsForPath(ctx context.Context, path string, seen map[string]bool) error {
+	url, err := g.serviceURL(ctx, "analytics", "/test/events")
+	if err != nil {
+		return err
+	}
+	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+	}, 0, 0)
+	if err != nil {
+		return retry.Transient(err)
+	}
+	if !resp.Succeeded() {
+		return retry.Transient(fmt.Errorf("analytics events returned %s", resp.Describe()))
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(resp.Body, &raw); err != nil {
+		return err
+	}
+	for _, item := range raw {
+		var event analyticsEvent
+		if err := json.Unmarshal(item, &event); err != nil {
+			return err
+		}
+		if !analyticsEventMatchesPath(event.Request.URI, path) {
+			continue
+		}
+		key, _ := event.Metadata["correlationId"].(string)
+		if key == "" {
+			key = string(item)
+		}
+		seen[key] = true
+	}
+	return nil
+}
+
 func (g *Gateway) analyticsEventCount(ctx context.Context) (int, error) {
 	url, err := g.serviceURL(ctx, "analytics", "/test/events/count")
 	if err != nil {
@@ -2406,6 +2448,38 @@ func (g *Gateway) waitForAnalyticsToSettle(ctx context.Context) error {
 	return err
 }
 
+// waitForAnalyticsPathToSettle waits until the number of events for path stops changing. The
+// collector holds the whole block's events, and in a block that runs runners in parallel the
+// others keep adding theirs, so a scenario that reads only its own path's events settles on those.
+func (g *Gateway) waitForAnalyticsPathToSettle(ctx context.Context, path string) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	quiet := analyticsQuietWindow
+	if isMTLSScenario(ctx) {
+		quiet = mtlsAnalyticsQuietWindow
+	}
+	// The collector keeps a bounded list per block, so other runners' events can evict this
+	// path's: counting the distinct events seen across polls keeps the count from dropping.
+	seen := map[string]bool{}
+	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, quiet,
+		func(ctx context.Context) (int, error) {
+			if err := g.addAnalyticsEventsForPath(ctx, resolved, seen); err != nil {
+				return 0, err
+			}
+			return len(seen), nil
+		})
+	if err != nil {
+		return err
+	}
+	if !settled.Quiet {
+		return fmt.Errorf("analytics events for path %q did not settle: last observed %d after %d sample(s)",
+			resolved, settled.Value, settled.Samples)
+	}
+	return nil
+}
+
 // waitForAnalyticsEvent waits until the collector holds an event for path with the response
 // status, such as a readiness call's, so a settle and reset that follow can't run before it lands.
 func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status int) error {
@@ -2418,6 +2492,44 @@ func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status
 			return analyticsEventMatchesPath(event.Request.URI, resolved) && event.Response.Status == status
 		})
 	return err
+}
+
+// analyticsEventMetadataFields selects the event for path whose metadata field has the value,
+// waiting for it to arrive, and checks the table's further fields (field, value) on that same
+// event. Requests that share a route, such as an MCP proxy's, publish events the "latest event
+// for path" steps cannot tell apart, and they reach the collector in no guaranteed order.
+func (g *Gateway) analyticsEventMetadataFields(ctx context.Context, path, field, want string, table *godog.Table) error {
+	resolvedPath, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	what := fmt.Sprintf("path %q with metadata field %q %q", resolvedPath, field, resolved)
+	event, err := g.latestMatchingAnalyticsEvent(ctx, what, func(event *analyticsEvent) bool {
+		value, ok := traverseJSON(event.Metadata, field)
+		return analyticsEventMatchesPath(event.Request.URI, resolvedPath) && ok && fmt.Sprintf("%v", value) == resolved
+	})
+	if err != nil {
+		return err
+	}
+	for _, row := range table.Rows {
+		name := row.Cells[0].Value
+		expected, err := stepscommon.Expand(ctx, row.Cells[1].Value)
+		if err != nil {
+			return err
+		}
+		value, ok := traverseJSON(event.Metadata, name)
+		if !ok {
+			return fmt.Errorf("analytics event for %s has no metadata field %q", what, name)
+		}
+		if got := fmt.Sprintf("%v", value); got != expected {
+			return fmt.Errorf("analytics event for %s has metadata field %q %q, want %q", what, name, got, expected)
+		}
+	}
+	return nil
 }
 
 // analyticsEventForPath resolves path's placeholders and returns the event latestAnalyticsEvent
@@ -2639,6 +2751,29 @@ func metadataFieldAwait(event *analyticsEvent, field string, absent bool, want s
 	default:
 		return fmt.Errorf("the latest analytics event has metadata field %q %q, want %q", field, got, want)
 	}
+}
+
+// analyticsUserID checks the user id of the analytics event for the request whose access log line
+// a step matched last: the subject of its authenticated AuthContext, or "anonymous" when it has
+// none. The correlation id singles out that request among others for the same API.
+func (g *Gateway) analyticsUserID(ctx context.Context, want string) error {
+	correlationID, err := stepscommon.Expand(ctx, "${CTX:"+keyLoggedCorrelationID+"}")
+	if err != nil {
+		return fmt.Errorf("no access log line matched before this step: %w", err)
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	event, err := g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("correlation id %q", correlationID),
+		func(event *analyticsEvent) bool { return event.Metadata["correlationId"] == correlationID })
+	if err != nil {
+		return err
+	}
+	if event.UserID != resolved {
+		return fmt.Errorf("analytics event for correlation id %q has user id %q, want %q", correlationID, event.UserID, resolved)
+	}
+	return nil
 }
 
 // companyIDAssert checks an event's company id: "have" a given one, or "not have" one at all.

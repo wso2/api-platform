@@ -1,0 +1,240 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: golden-apps-weighted-filters
+spec:
+  context: /
+  displayName: weighted-filters
+  operations:
+  - match:
+      headers:
+      - name: x-canary
+        type: Exact
+        value: "yes"
+      method: GET
+      path:
+        type: PathPrefix
+        value: /weighted/*
+    policies:
+    - name: set-headers
+      params:
+        request:
+          headers:
+          - name: x-route
+            value: weighted
+      version: v1
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: rule-0-weighted
+      version: v1
+  - match:
+      headers:
+      - name: x-canary
+        type: Exact
+        value: "yes"
+      method: POST
+      path:
+        type: PathPrefix
+        value: /weighted/*
+    policies:
+    - name: set-headers
+      params:
+        request:
+          headers:
+          - name: x-route
+            value: weighted
+      version: v1
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: rule-0-weighted
+      version: v1
+  - match:
+      headers:
+      - name: x-canary
+        type: Exact
+        value: "yes"
+      method: PUT
+      path:
+        type: PathPrefix
+        value: /weighted/*
+    policies:
+    - name: set-headers
+      params:
+        request:
+          headers:
+          - name: x-route
+            value: weighted
+      version: v1
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: rule-0-weighted
+      version: v1
+  - match:
+      headers:
+      - name: x-canary
+        type: Exact
+        value: "yes"
+      method: PATCH
+      path:
+        type: PathPrefix
+        value: /weighted/*
+    policies:
+    - name: set-headers
+      params:
+        request:
+          headers:
+          - name: x-route
+            value: weighted
+      version: v1
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: rule-0-weighted
+      version: v1
+  - match:
+      headers:
+      - name: x-canary
+        type: Exact
+        value: "yes"
+      method: DELETE
+      path:
+        type: PathPrefix
+        value: /weighted/*
+    policies:
+    - name: set-headers
+      params:
+        request:
+          headers:
+          - name: x-route
+            value: weighted
+      version: v1
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: rule-0-weighted
+      version: v1
+  - match:
+      headers:
+      - name: x-canary
+        type: Exact
+        value: "yes"
+      method: HEAD
+      path:
+        type: PathPrefix
+        value: /weighted/*
+    policies:
+    - name: set-headers
+      params:
+        request:
+          headers:
+          - name: x-route
+            value: weighted
+      version: v1
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: rule-0-weighted
+      version: v1
+  - match:
+      headers:
+      - name: x-canary
+        type: Exact
+        value: "yes"
+      method: OPTIONS
+      path:
+        type: PathPrefix
+        value: /weighted/*
+    policies:
+    - name: set-headers
+      params:
+        request:
+          headers:
+          - name: x-route
+            value: weighted
+      version: v1
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: rule-0-weighted
+      version: v1
+  - match:
+      method: GET
+      path:
+        type: PathPrefix
+        value: /*
+    policies:
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: golden-apps-echo-v2-8080
+      version: v1
+  - match:
+      method: POST
+      path:
+        type: PathPrefix
+        value: /*
+    policies:
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: golden-apps-echo-v2-8080
+      version: v1
+  - match:
+      method: PUT
+      path:
+        type: PathPrefix
+        value: /*
+    policies:
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: golden-apps-echo-v2-8080
+      version: v1
+  - match:
+      method: PATCH
+      path:
+        type: PathPrefix
+        value: /*
+    policies:
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: golden-apps-echo-v2-8080
+      version: v1
+  - match:
+      method: DELETE
+      path:
+        type: PathPrefix
+        value: /*
+    policies:
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: golden-apps-echo-v2-8080
+      version: v1
+  - match:
+      method: HEAD
+      path:
+        type: PathPrefix
+        value: /*
+    policies:
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: golden-apps-echo-v2-8080
+      version: v1
+  - match:
+      method: OPTIONS
+      path:
+        type: PathPrefix
+        value: /*
+    policies:
+    - name: dynamic-endpoint
+      params:
+        targetUpstream: golden-apps-echo-v2-8080
+      version: v1
+  upstream:
+    main:
+      hostRewrite: manual
+      ref: rule-0-weighted
+  upstreamDefinitions:
+  - name: golden-apps-echo-v2-8080
+    upstreams:
+    - url: http://echo-v2.golden-apps.svc.cluster.local:8080
+  - name: rule-0-weighted
+    upstreams:
+    - url: http://echo-v1.golden-apps.svc.cluster.local:8080
+      weight: 3
+    - url: http://echo-v2.golden-apps.svc.cluster.local:8080
+      weight: 1
+  version: v1.0

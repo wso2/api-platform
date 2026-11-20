@@ -51,7 +51,7 @@ const messages = defineMessages({
   },
   getStartedGuide: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide',
-    defaultMessage: 'Get Started with the WSO2 API Platform',
+    defaultMessage: 'Get Started with the Choreo API Management',
   },
   getStartedRestFromScratch: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedRestFromScratch',

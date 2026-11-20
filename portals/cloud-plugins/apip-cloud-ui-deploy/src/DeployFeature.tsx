@@ -17,9 +17,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { ChoreoLoader } from './components/ChoreoLoader';
 import DeployPage from './DeployPage';
 import { createDeployClient, gatewayTypeForKind, takesEndpointUrl, type ArtifactKind } from './deployApi';
+import {
+  API_DEPLOY_CLICK,
+  API_DEPLOY_OPEN,
+  BUILD_DELETE_CLICK,
+  DEPLOYMENT_UNDEPLOY_CLICK,
+  featureArtifactKind,
+  GATEWAY_REGISTER_CLICK,
+  type DeployMode,
+} from './featureUsage';
 import { createManagedGatewaysClient } from './managedGatewaysApi';
 import {
   createSelfHostedGatewaysClient,
@@ -73,7 +83,9 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost } = port;
+  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost, trackFeature } =
+    port;
+  const artifactKind = featureArtifactKind(kind);
   const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
 
@@ -282,6 +294,16 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
+    // A promotion is a deploy to the next environment, so it counts as one too;
+    // `deploy_mode` tells the three apart. No build named means the server builds one.
+    if (artifactKind) {
+      const deployMode: DeployMode = from ? 'promote' : buildId ? 'deploy' : 'build-and-deploy';
+      trackFeature?.(API_DEPLOY_CLICK, {
+        artifact_kind: artifactKind,
+        gateway_type: gatewayType,
+        deploy_mode: deployMode,
+      });
+    }
     void runAction(
       () =>
         client.deploy({
@@ -303,6 +325,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
    */
   const handleDeleteBuild = (buildId: string) => {
     if (!client) return;
+    if (artifactKind) trackFeature?.(BUILD_DELETE_CLICK, { artifact_kind: artifactKind });
     void runAction(
       () => client.deleteBuild(buildId),
       `Deleted build ${buildId}.`,
@@ -314,6 +337,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     if (busy || provisioning || selfHostedPending || ownership !== 'control-plane') return;
     const scope = scopeRef.current;
     const version = latestVersionFor(gatewayVersions, gatewayType);
+    trackFeature?.(GATEWAY_REGISTER_CLICK, { gateway_hosting: 'self-hosted', gateway_type: gatewayType });
     setBusy(true);
     setSelfHostedPending({ startedAt: Date.now() });
     selfHostedClient
@@ -341,6 +365,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const handleAddCloudGateway = (environment: string) => {
     if (busy || provisioning || selfHostedPending || ownership !== 'control-plane') return;
     const scope = scopeRef.current;
+    trackFeature?.(GATEWAY_REGISTER_CLICK, { gateway_hosting: 'managed', gateway_type: gatewayType });
     setProvisioning({ startedAt: Date.now(), environment });
     gatewaysClient.createDefaultGateway(environment, gatewayType).then(
       ({ id }) => {
@@ -416,6 +441,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const handleStop = (environment: Environment, gatewayId: string) => {
     const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
     if (!client || !gateway?.deploymentId) return;
+    if (artifactKind) trackFeature?.(DEPLOYMENT_UNDEPLOY_CLICK, { artifact_kind: artifactKind });
     void runAction(
       () => client.undeploy(environment.name, gatewayId, gateway.deploymentId!),
       `Stopping ${gateway.name}.`,
@@ -438,6 +464,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       onHasActiveToken={() => selfHostedClient.hasActiveToken(selfHosted.id)}
       onGenerateToken={() => selfHostedClient.generateToken(selfHosted.id)}
       onReconfigureToken={() => selfHostedClient.reconfigureToken(selfHosted.id)}
+      trackFeature={trackFeature}
       onError={(message) => notify(message, 'error')}
       onClose={() => setSelfHosted(null)}
     />
@@ -476,9 +503,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         <PageTitle sx={{ mb: 2 }}>
           <PageTitle.Header>Deploy</PageTitle.Header>
         </PageTitle>
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <ChoreoLoader />
       </PageContent>
     );
   }
@@ -532,6 +557,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onDeleteBuild={handleDeleteBuild}
+      onDialogOpen={(mode) => {
+        if (artifactKind) trackFeature?.(API_DEPLOY_OPEN, { artifact_kind: artifactKind, deploy_mode: mode });
+      }}
     />
     {setupDrawer}
     </>

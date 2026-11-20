@@ -1,0 +1,54 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: golden-apps-hostnames
+spec:
+  context: /
+  displayName: hostnames
+  operations:
+  - match:
+      method: GET
+      path:
+        type: PathPrefix
+        value: /v1/*
+  - match:
+      method: POST
+      path:
+        type: PathPrefix
+        value: /v1/*
+  - match:
+      method: PUT
+      path:
+        type: PathPrefix
+        value: /v1/*
+  - match:
+      method: PATCH
+      path:
+        type: PathPrefix
+        value: /v1/*
+  - match:
+      method: DELETE
+      path:
+        type: PathPrefix
+        value: /v1/*
+  - match:
+      method: HEAD
+      path:
+        type: PathPrefix
+        value: /v1/*
+  - match:
+      method: OPTIONS
+      path:
+        type: PathPrefix
+        value: /v1/*
+  upstream:
+    main:
+      hostRewrite: manual
+      url: http://echo-v1.golden-apps.svc.cluster.local:8080
+  upstreamDefinitions:
+  - name: golden-apps-echo-v1-8080
+    upstreams:
+    - url: http://echo-v1.golden-apps.svc.cluster.local:8080
+  version: v1.0
+  vhosts:
+    main: api.example.com

@@ -16,12 +16,14 @@
  * under the License.
  */
 
-import { Button, PageContent, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
-import { useEffect, useState } from 'react';
+import { Button, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
+import { useEffect, useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
+import { readStoredScope } from '@/navigation/landing';
+import { AppPageContent } from '@/components/AppPageContent';
 import { AppPage } from '@/components/AppPage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
@@ -148,7 +150,7 @@ export function OrganizationRedirectPage() {
 
 function OrganizationRedirect() {
   const intl = useIntl();
-  const { canSwitchOrganization, user } = useAuth();
+  const { canSwitchOrganization, organizations: memberships, user } = useAuth();
   const location = useLocation();
   // Organizations the session was refused are never picked again.
   const rejected = (location.state as OrganizationPickerState | null)?.rejectedOrganizations ?? [];
@@ -156,7 +158,9 @@ function OrganizationRedirect() {
   // Where the session switches organizations, its own organization needs no
   // switch, so it is the one place the user can always land.
   const sessionLanding =
-    canSwitchOrganization && sessionHandle && !rejected.includes(sessionHandle) ? sessionHandle : undefined;
+    canSwitchOrganization && sessionHandle && !rejected.includes(sessionHandle)
+      ? sessionHandle
+      : undefined;
   const organizationsQuery = useOrganizations();
   const listed = organizationsQuery.data?.list;
   const organizations = listed?.filter((item) => !rejected.includes(item.id));
@@ -168,6 +172,40 @@ function OrganizationRedirect() {
     Boolean(sessionLanding) || organizationsQuery.isPending || Boolean(organization) || allRejected;
   const [attempt, setAttempt] = useState(0);
   const { refetch } = organizationsQuery;
+
+  // Users land on a project's home, which the organization's landing step picks
+  // once the session is in the organization. The organization is the one the
+  // header last remembered where the session can move between organizations and
+  // the identity provider lists it for this user (its full membership, not a
+  // page of the Platform API's list); else the one in hand.
+  const stored = useMemo(readStoredScope, []);
+  const landingOrg = sessionLanding ?? organization?.id;
+  const remembersElsewhere =
+    stored !== null &&
+    canSwitchOrganization &&
+    stored.organization !== landingOrg &&
+    !rejected.includes(stored.organization);
+  const waitingForMemberships = remembersElsewhere && memberships === undefined;
+  const rememberedOrganization =
+    stored !== null &&
+    !rejected.includes(stored.organization) &&
+    (stored.organization === landingOrg ||
+      (remembersElsewhere && memberships?.some((item) => item.handle === stored.organization)))
+      ? stored.organization
+      : undefined;
+
+  const landOn = (orgHandle: string, state?: OrganizationPickerState) => {
+    if (waitingForMemberships) {
+      return <LoadingState label={intl.formatMessage(organizationRedirectMessages.loading)} />;
+    }
+    return (
+      <Navigate
+        to={routes.organizationLanding(rememberedOrganization ?? orgHandle)}
+        replace
+        state={state}
+      />
+    );
+  };
 
   // On a first sign-in the organization is still being created — by the provisioning
   // flow, or by this console's own registration — and an empty list at that moment
@@ -183,7 +221,7 @@ function OrganizationRedirect() {
   }, [attempt, refetch, settled]);
 
   if (sessionLanding) {
-    return <Navigate to={routes.organizationHome(sessionLanding)} replace />;
+    return landOn(sessionLanding);
   }
 
   if (organizationsQuery.isPending) {
@@ -219,7 +257,7 @@ function OrganizationRedirect() {
   const pickerState: OrganizationPickerState | undefined = rejected.length
     ? { rejectedOrganizations: rejected }
     : undefined;
-  return <Navigate to={routes.organizationHome(organization.id)} replace state={pickerState} />;
+  return landOn(organization.id, pickerState);
 }
 
 export function UnauthorizedPage() {
@@ -231,7 +269,7 @@ export function UnauthorizedPage() {
   useDocumentTitle(intl.formatMessage(unauthorizedMessages.title));
 
   return (
-    <PageContent>
+    <AppPageContent>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage {...unauthorizedMessages.title} />
@@ -248,7 +286,7 @@ export function UnauthorizedPage() {
           <FormattedMessage {...unauthorizedMessages.clearSession} />
         </Button>
       </Stack>
-    </PageContent>
+    </AppPageContent>
   );
 }
 
@@ -261,7 +299,7 @@ export function SessionExpiredPage() {
   useDocumentTitle(intl.formatMessage(sessionExpiredMessages.title));
 
   return (
-    <PageContent>
+    <AppPageContent>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage {...sessionExpiredMessages.title} />
@@ -279,7 +317,7 @@ export function SessionExpiredPage() {
       >
         <FormattedMessage {...sessionExpiredMessages.signIn} />
       </Button>
-    </PageContent>
+    </AppPageContent>
   );
 }
 
@@ -289,12 +327,12 @@ export function ServerErrorPage() {
   useDocumentTitle(intl.formatMessage(serverErrorMessages.title));
 
   return (
-    <PageContent>
+    <AppPageContent>
       <ErrorState
         title={intl.formatMessage(serverErrorMessages.title)}
         message={intl.formatMessage(serverErrorMessages.message)}
       />
-    </PageContent>
+    </AppPageContent>
   );
 }
 

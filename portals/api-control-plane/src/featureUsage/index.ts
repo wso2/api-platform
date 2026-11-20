@@ -16,7 +16,12 @@
  * under the License.
  */
 
-export { useTrackFeature, type TrackFeature } from './useTrackFeature';
+export {
+  useTrackFeature,
+  useTrackFeatureByName,
+  type TrackFeature,
+  type TrackFeatureByName,
+} from './useTrackFeature';
 export { trackPolicyAttachment, type PolicyAttachmentContext } from './policies';
 export {
   API_PLATFORM_FEATURES,

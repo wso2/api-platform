@@ -9,14 +9,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/common/webhooksecret"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
@@ -42,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage/observe"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
@@ -163,8 +162,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The health checker answers the admin health endpoints.
+	healthChecker, err := newHealthChecker(cfg, log)
+	if err != nil {
+		log.Error("Failed to set up health checks", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	// Shutdown signals are caught from here on, so one arriving while startup waits for
+	// the database stops the controller cleanly.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
+	}
+	// Authentication depends only on configuration, so it is built up front: the admin
+	// server needs it before anything that depends on the database starts.
+	authConfig, authMiddleWare, err := newAuthentication(cfg, log)
+	if err != nil {
+		log.Error("Failed to set up authentication", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	if cfg.Router.DownstreamTLS.ClientCertificateHeader.TrustAny {
@@ -183,9 +201,16 @@ func main() {
 		}
 	}
 
-	// Initialize storage based on type
+	// Initialize storage based on type. A network database is not connected to here;
+	// startup waits for it below, while health is already served.
+	// One window records the outcome of every database operation of the controller, on
+	// the main pool and on the EventHub pool, so the database health check judges the
+	// database from all of its traffic.
+	dbWindow := observe.NewWindow(cfg.Controller.Health.Database.FailureWindow, nil)
+	backendCfg := toBackendConfig(cfg)
+	backendCfg.Window = dbWindow
 	var db storage.Storage
-	db, err = storage.NewStorage(toBackendConfig(cfg), log)
+	db, err = storage.Open(backendCfg, log)
 	if err != nil {
 		if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
 			log.Error("Database is locked by another process",
@@ -199,12 +224,19 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	startup := &startupGate{}
+	controllerAdminServer, exitCode, ok := serveHealthWhileWaiting(cfg, log, healthChecker, db, dbWindow, startup,
+		authMiddleWare, quit)
+	if !ok {
+		os.Exit(exitCode)
+	}
 
 	// Initialize EventHub for multi-replica sync (requires persistent storage)
 	var eventHubInstance eventhub.EventHub
 	var eventHubStorage storage.Storage
 	// Create separate storage connection for EventHub (avoids SQLite lock contention)
 	ehBackendCfg := toBackendConfig(cfg)
+	ehBackendCfg.Window = dbWindow
 	// Apply the EventHub-specific pool sizing to whichever SQL backend is in use
 	// (a separate, smaller pool for the poller). Keep this in sync for every
 	// connection-pooled backend so the override isn't silently dropped.
@@ -363,6 +395,14 @@ func main() {
 	// Built early so the startup rehydration below can use it too.
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 
+	// Install network access control for artifact URLs before anything renders an
+	// artifact: every render (startup load, REST handlers, control-plane events, replica
+	// sync) then refuses an upstream or policy URL it does not permit.
+	if err := installArtifactAccessControl(cfg, policyDefinitions, log); err != nil {
+		log.Error("Invalid network access control configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// MCP proxies and LLM artifacts are stored in source form and need to be
 	// rehydrated into their derived RestAPI representations before startup
 	// snapshot and policy work.
@@ -491,6 +531,22 @@ func main() {
 		translator.SetEndpointSource(transform.NewEndpointClusterSource(configStore, log))
 	}
 
+	// Load runtime configs from existing API configurations on startup, before the
+	// initial router snapshot. Loading renders each stored artifact, and an artifact the
+	// gateway configuration now refuses (an environment variable outside
+	// policy_engine.env_access, or a URL network access control does not permit) is
+	// undeployed here, so the first snapshot the router receives never routes it.
+	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
+	// the initial snapshots below cover all of them.
+	runtimeStore := storage.NewRuntimeConfigStore()
+	log.Info("Loading runtime configs from existing API configurations")
+	if err := loadStartupRuntimeConfigs(configStore.GetAll(), runtimeStore, secretsService, transformerRegistry,
+		&cfg.Router, gatewayJWKSEnabled, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+		utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log), log); err != nil {
+		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -545,9 +601,8 @@ func main() {
 	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
-	// Initialize policy snapshot manager and runtime config store
+	// Initialize policy snapshot manager
 	policySnapshotManager := policyxds.NewSnapshotManager(log)
-	runtimeStore := storage.NewRuntimeConfigStore()
 	policySnapshotManager.SetRuntimeStore(runtimeStore)
 	policySnapshotManager.SetConfigStore(configStore)
 	if gatewayJWKSEnabled {
@@ -565,54 +620,6 @@ func main() {
 	// comment there for why that ordering is load-bearing rather than incidental) with the
 	// policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
-
-	// Load runtime configs from existing API configurations on startup.
-	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
-	// the single UpdateSnapshot call below covers all of them.
-	log.Info("Loading runtime configs from existing API configurations")
-	loadedAPIs := configStore.GetAll()
-	persistEnvRefusedUndeploy := utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log)
-	envRefusedUndeployed := 0
-	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
-		loadedAPIs,
-		runtimeStore,
-		secretsService,
-		transformerRegistry,
-		log,
-		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
-		func(c *models.StoredConfig) error {
-			envRefusedUndeployed++
-			return persistEnvRefusedUndeploy(c)
-		},
-	)
-	if err != nil {
-		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
-		os.Exit(1)
-	}
-	// The initial router snapshot above was built before the loader undeployed
-	// artifacts that read a refused environment variable; rebuild it so their
-	// routes are dropped along with their policy chains.
-	if envRefusedUndeployed > 0 {
-		log.Info("Refreshing xDS snapshot after undeploying artifacts that read refused environment variables",
-			slog.Int("undeployed", envRefusedUndeployed))
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
-			log.Warn("Failed to refresh xDS snapshot after startup undeploys", slog.Any("error", err))
-		}
-		cancel()
-	}
-	log.Info("Loaded runtime configs from API configurations",
-		slog.Int("total_apis", len(loadedAPIs)),
-		slog.Int("configs_loaded", loadedCount))
-	warnMtlsAPIsWithoutDedicatedHostname(loadedAPIs, &cfg.Router, log)
-	if gatewayJWKSEnabled {
-		if conflicts := transform.GatewayJWKSConflicts(runtimeStore.GetAll()); len(conflicts) > 0 {
-			log.Warn("Deployed routes use the gateway JWKS path and are shadowed by the gateway JWKS endpoint; "+
-				"move them to another path, or set [signing] jwks_endpoint_enabled = false to keep serving them",
-				slog.String("path", constants.GatewayJWKSPath),
-				slog.Any("routes", conflicts))
-		}
-	}
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
@@ -759,20 +766,6 @@ func main() {
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 	igw.SetEndpointService(endpointSvc)
 
-	authConfig, err := generateAuthConfig(cfg)
-	if err != nil {
-		log.Error("Failed to generate auth config", slog.Any("error", err))
-		os.Exit(1)
-	}
-	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
-		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
-			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
-	}
-	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
-	if err != nil {
-		log.Error("Failed to create auth middleware", slog.Any("error", err))
-		os.Exit(1)
-	}
 	// Per-route middlewares: auth runs first, then authz (needs r.Pattern set by mux).
 	// The generated wrapper applies middlewares via `handler = mw(handler)`, so the
 	// last entry in the slice is outermost and executes first. authMiddleWare must be
@@ -896,37 +889,14 @@ func main() {
 		outerMiddlewares = append(outerMiddlewares, middleware.MetricsMiddleware())
 	}
 	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
+	// The management API's health and readiness paths are answered ahead of every
+	// middleware above, by the same handler the admin server serves.
+	handler = withManagementHealth(handler, healthChecker.Handler())
 
-	// Enable block/mutex profiling sampling when pprof is enabled. These are the
-	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
-	// the sampling overhead is never paid unless pprof is deliberately turned on.
-	if cfg.Controller.AdminServer.Pprof.Enabled {
-		runtime.SetBlockProfileRate(cfg.Controller.AdminServer.Pprof.BlockProfileRate)
-		runtime.SetMutexProfileFraction(cfg.Controller.AdminServer.Pprof.MutexProfileFraction)
-	}
-
-	// Start controller admin server for debug endpoints if enabled.
-	var controllerAdminServer *adminserver.Server
-	if cfg.Controller.AdminServer.Enabled {
-		// Gate the admin/debug server behind the same authentication middleware as
-		// the management API, plus a deny-by-default admin-role authorization check.
-		// The health probe stays public; every other admin
-		// endpoint (config_dump, xds_sync_status, pprof) requires an authenticated
-		// caller from controller.auth.basic who also holds the "admin" role.
-		// Authentication runs first (outermost) to populate the auth context, then
-		// authorization consumes it — the same ordering the management API uses.
-		adminAuthz := authenticators.AuthorizationMiddleware(
-			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
-		adminProtect := func(next http.Handler) http.Handler {
-			return authMiddleWare(adminAuthz(next))
-		}
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
-		go func() {
-			if err := controllerAdminServer.Start(); err != nil {
-				log.Error("Controller admin server failed", slog.Any("error", err))
-				os.Exit(1)
-			}
-		}()
+	// The admin server has been serving health since startup; its debug endpoints
+	// become available now that the controller is running.
+	if controllerAdminServer != nil {
+		controllerAdminServer.SetAPIServer(apiServer)
 	}
 
 	// Start metrics server if enabled
@@ -973,9 +943,12 @@ func main() {
 			MaxHeaderBytes:    cfg.Controller.Server.MaxHeaderBytes,
 			TLSConfig:         tlsConfig,
 		}
+		// Bound before startup is marked complete, so readiness never reports the
+		// controller ready before the REST API accepts connections.
+		ln := listenOrExit(tlsSrv.Addr, "REST API TLS server", log)
 		go func() {
 			log.Info("Starting REST API TLS server", slog.Int("port", cfg.Controller.Server.TLS.Port))
-			if err := tlsSrv.ListenAndServeTLS(cfg.Controller.Server.TLS.CertPath, cfg.Controller.Server.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
+			if err := tlsSrv.ServeTLS(ln, cfg.Controller.Server.TLS.CertPath, cfg.Controller.Server.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
 				log.Error("REST API TLS server error", slog.Any("error", err))
 				os.Exit(1)
 			}
@@ -991,14 +964,19 @@ func main() {
 			IdleTimeout:       cfg.Controller.Server.IdleTimeout,
 			MaxHeaderBytes:    cfg.Controller.Server.MaxHeaderBytes,
 		}
+		// Bound before startup is marked complete, so readiness never reports the
+		// controller ready before the REST API accepts connections.
+		ln := listenOrExit(srv.Addr, "REST API server", log)
 		go func() {
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 				log.Error("Failed to start REST API server", slog.Any("error", err))
 				os.Exit(1)
 			}
 		}()
 	}
 
+	// Every server is running, so health may now report the controller healthy.
+	startup.markStarted()
 	log.Info("Gateway Controller started successfully")
 
 	// Print banner when both router and policy engine have sent their first ACK,
@@ -1020,10 +998,13 @@ func main() {
 	}()
 
 	// Wait for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	// Health reports the controller down from here on, so a probe during the shutdown
+	// below no longer sees it as ready. Shutdown does not wait for load balancers to
+	// notice; a drain delay, where one is needed, belongs in the deployment (for example
+	// a preStop hook).
+	startup.markStopping()
 	log.Info("Shutting down Gateway-Controller")
 
 	certSweepCancel()
@@ -1085,6 +1066,24 @@ func main() {
 	}
 
 	log.Info("Gateway-Controller stopped")
+}
+
+// newAuthentication builds the authentication configuration and middleware shared by the
+// management and admin APIs. It depends only on configuration.
+func newAuthentication(cfg *config.Config, log *slog.Logger) (commonmodels.AuthConfig, func(http.Handler) http.Handler, error) {
+	authConfig, err := generateAuthConfig(cfg)
+	if err != nil {
+		return commonmodels.AuthConfig{}, nil, fmt.Errorf("failed to generate auth config: %w", err)
+	}
+	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
+		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
+			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
+	}
+	authMiddleware, err := authenticators.AuthMiddleware(authConfig, log)
+	if err != nil {
+		return commonmodels.AuthConfig{}, nil, fmt.Errorf("failed to create auth middleware: %w", err)
+	}
+	return authConfig, authMiddleware, nil
 }
 
 func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) {

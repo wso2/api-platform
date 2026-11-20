@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -1011,6 +1012,57 @@ func TestAPIPortalService_CreateAPIPortalWithStatus_HonoursCallerStatus(t *testi
 	}
 	if got := portalRepo.createCapturedInput; got == nil || got.Status != constants.APIPortalStatusPending {
 		t.Errorf("caller-supplied status must land on the persisted row; got %+v", got)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatusAndID_UsesCallerID(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+	const id = "5b0c3f0e-7a51-4d7b-9c43-2f1e8a6d4b10"
+	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+	if _, err := svc.CreateAPIPortalWithStatusAndID(req, "org-1", "tester", constants.APIPortalStatusPending, " "+strings.ToUpper(id)+" "); err != nil {
+		t.Fatalf("CreateAPIPortalWithStatusAndID: %v", err)
+	}
+	got := portalRepo.createCapturedInput
+	if got == nil || got.ID != id || got.Status != constants.APIPortalStatusPending {
+		t.Errorf("the caller's id (canonical form) and status must land on the row; got %+v", got)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatus_GeneratesID(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+	if _, err := svc.CreateAPIPortalWithStatus(req, "org-1", "tester", constants.APIPortalStatusPending); err != nil {
+		t.Fatalf("CreateAPIPortalWithStatus: %v", err)
+	}
+	got := portalRepo.createCapturedInput
+	if got == nil {
+		t.Fatal("no row was created")
+	}
+	if _, err := uuid.Parse(got.ID); err != nil {
+		t.Errorf("a create without an id must still generate a UUID; got %q", got.ID)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatusAndID_RejectsNonUUID(t *testing.T) {
+	for _, id := range []string{"", "acme", "00000000-0000-0000-0000-000000000000"} {
+		portalRepo := &mockAPIPortalRepository{}
+		orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+		svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+		req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+		_, err := svc.CreateAPIPortalWithStatusAndID(req, "org-1", "tester", constants.APIPortalStatusPending, id)
+		if !apperror.ValidationFailed.Is(err) {
+			t.Errorf("id %q: want ValidationFailed, got %T %v", id, err, err)
+		}
+		if portalRepo.createCapturedInput != nil {
+			t.Errorf("id %q: no row may be written", id)
+		}
 	}
 }
 

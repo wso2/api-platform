@@ -25,8 +25,11 @@ import (
 	"testing"
 	"time"
 
+	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -182,5 +185,52 @@ func assertSnapshotContainsAPIs(t *testing.T, sm *SnapshotManager, expectedConte
 		if !found {
 			t.Errorf("snapshot after concurrent UpdateSnapshot is missing %s; got routes: %v", ctx, routePaths)
 		}
+	}
+}
+
+// TestUpdateSnapshotNotifiesWatchAfterCallerDeadline covers a caller whose
+// context has already expired by the time UpdateSnapshot reaches the cache
+// (the 10s budget spent waiting for sm.mu or translating). SetSnapshot
+// notifies open watches with a select on the watch channel and ctx.Done();
+// with an expired ctx Go picks either case at random, so before the fix about
+// half of the open Envoy watches were never told about the new snapshot and
+// Envoy kept its old config. Repeating makes a regression fail reliably.
+func TestUpdateSnapshotNotifiesWatchAfterCallerDeadline(t *testing.T) {
+	metrics.Init()
+
+	for i := 0; i < 50; i++ {
+		store := storage.NewConfigStore()
+		if err := store.Add(makeRestAPI("uuid-api-1", "api-one", "/api-one")); err != nil {
+			t.Fatalf("Add api-one: %v", err)
+		}
+		sm, err := NewSnapshotManager(store, createTestLogger(), testRouterConfig(), nil, testConfig())
+		if err != nil {
+			t.Fatalf("NewSnapshotManager: %v", err)
+		}
+
+		// An Envoy waiting on its listener watch, as after an ACK.
+		watch := make(chan cache.Response, 1)
+		req := &cache.Request{Node: &core.Node{Id: "router-node"}, TypeUrl: resource.ListenerType}
+		sub := stream.NewSotwSubscription(nil, true)
+		cancelWatch, err := sm.GetCache().CreateWatch(req, &sub, watch)
+		if err != nil {
+			t.Fatalf("CreateWatch: %v", err)
+		}
+
+		expired, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := sm.UpdateSnapshot(expired, "corr-expired"); err != nil {
+			t.Fatalf("iteration %d: UpdateSnapshot with an expired caller context: %v", i, err)
+		}
+
+		select {
+		case resp := <-watch:
+			if resp.GetResponseVersion() == "" {
+				t.Fatalf("iteration %d: watch notified without a version", i)
+			}
+		default:
+			t.Fatalf("iteration %d: open watch was not notified of the new snapshot", i)
+		}
+		cancelWatch()
 	}
 }

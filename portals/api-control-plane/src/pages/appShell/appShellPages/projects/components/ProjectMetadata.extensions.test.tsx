@@ -27,7 +27,7 @@ import { NO_RESOURCE_LIMITS, PortProvider, type CloudHostPort } from '@/hostPort
 import { aProject } from '@/test/msw';
 import { renderWithProviders, screen } from '@/test/utils';
 
-import { ProjectMetadata } from './ProjectMetadata';
+import { ProjectHeaderActions, ProjectMetadata } from './ProjectMetadata';
 
 const port: CloudHostPort = {
   orgHandle: 'acme',
@@ -39,6 +39,7 @@ const port: CloudHostPort = {
   resourceLimits: NO_RESOURCE_LIMITS,
   resources: { invalidate: () => {} },
   permissions: { canAny: () => true },
+  trackFeature: () => undefined,
 };
 
 const headingEntry: ApiControlPlaneHeaderAction = {
@@ -79,5 +80,26 @@ describe('ProjectMetadata cloud extensions', () => {
 
     expect(screen.getByText('Retail APIs')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Manage project' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectHeaderActions', () => {
+  it('renders the heading entries on their own, without the project heading', () => {
+    renderWithProviders(
+      <ExtensionsProvider extensions={[headingEntry]}>
+        <PortProvider value={port}>
+          <ProjectHeaderActions />
+        </PortProvider>
+      </ExtensionsProvider>
+    );
+
+    expect(screen.getByRole('link', { name: 'Manage project' })).toBeInTheDocument();
+    expect(screen.queryByText('Retail APIs')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing, and needs no Port, when no entry is registered', () => {
+    const { container } = renderWithProviders(<ProjectHeaderActions />);
+
+    expect(container).toBeEmptyDOMElement();
   });
 });

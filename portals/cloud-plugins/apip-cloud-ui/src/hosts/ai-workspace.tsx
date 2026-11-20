@@ -7,19 +7,14 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Boxes, Network, Workflow } from "@wso2/oxygen-ui-icons-react";
+import { Network } from "@wso2/oxygen-ui-icons-react";
 
-import { EnvironmentsFeature } from "@wso2-enterprise/apip-cloud-ui-environments-new";
 import { GatewaysFeature } from "@wso2-enterprise/apip-cloud-ui-gateways";
 import type { GatewayType } from "@wso2-enterprise/apip-cloud-ui-gateways";
 import {
   InsightsFeature,
   isInsightsMoesifConfigured,
 } from "@wso2-enterprise/apip-cloud-ui-insights";
-import {
-  PipelinesFeature,
-  ProjectPipelinesFeature,
-} from "@wso2-enterprise/apip-cloud-ui-pipelines";
 import type { BrandLogo } from "../../../../ai-workspace/src/branding/BrandLogoProvider";
 import {
   DeployFeature,
@@ -96,8 +91,8 @@ const AI_GATEWAY_VERSIONS = PLATFORM_GATEWAY_VERSIONS.map((entry) => ({
  * new one. Nothing under `ai-workspace/src/pages/appShell/appShellPages/gateways`
  * is touched by this. Every gateway in this workspace is an AI gateway, so it
  * registers `ai` as the only type and the create form shows no type picker.
- * It also carries nav placement so the entry sits between Environments and
- * Pipelines, suppressing the built-in item via `hides`.
+ * It also carries its own nav placement, suppressing the built-in item via
+ * `hides`.
  *
  * `insights` registers against `AI_WORKSPACE_INSIGHTS_SLOT` the same way —
  * see `InsightsRoute` in `ai-workspace/src/App.tsx` — so the built-in Insights
@@ -121,56 +116,16 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
       ],
     }),
     defineCloudPlugin({
-      id: "environments",
-      version: "0.1.0",
-      extensions: [
-        {
-          id: "environments",
-          slot: "sidebar.main",
-          order: 50,
-          path: "environments",
-          label: "Environments",
-          icon: <Boxes size={20} />,
-          render: (port: AIWorkspaceHostPort) => (
-            <EnvironmentsFeature port={port} />
-          ),
-        },
-      ],
-    }),
-    defineCloudPlugin({
-      id: "pipelines",
-      version: "0.1.0",
-      extensions: [
-        {
-          id: "pipelines",
-          slot: "sidebar.main",
-          order: 60,
-          path: "pipelines",
-          label: "Pipelines",
-          icon: <Workflow size={20} />,
-          // One scope-adaptive "Pipelines" item: the project binding view when a
-          // project is selected, the organization list/create/edit view otherwise.
-          render: (port: AIWorkspaceHostPort) =>
-            port.projectHandle ? (
-              <ProjectPipelinesFeature port={port} />
-            ) : (
-              <PipelinesFeature port={port} />
-            ),
-        },
-      ],
-    }),
-    defineCloudPlugin({
       id: "gateways",
       version: "0.1.0",
       extensions: [
         {
           id: "gateways",
           slot: AI_WORKSPACE_GATEWAYS_SLOT,
-          // Nav placement: between Environments (50) and Pipelines (60). The
-          // override carries it (rather than a second sidebar entry) so the
-          // gateways route keeps rendering here, while `hides` suppresses the
-          // built-in nav item that would otherwise appear higher up in its own
-          // category. Without `hides` both entries would show.
+          // The override carries the nav placement (rather than a second sidebar
+          // entry) so the gateways route keeps rendering here, while `hides`
+          // suppresses the built-in nav item that would otherwise appear higher up
+          // in its own category. Without `hides` both entries would show.
           order: 55,
           path: "gateways",
           label: "AI Gateways",

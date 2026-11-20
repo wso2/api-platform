@@ -23,7 +23,7 @@ Feature: Meters in the API Portal
   I want to define what a plan counts, and which properties its prices can filter on
   So that each plan I sell charges for exactly the calls or tokens it is meant to
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Meters are an administrator-only resource. Every refused create or change is followed by a
   # read that shows nothing was stored or changed.
 

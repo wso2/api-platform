@@ -63,6 +63,10 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-vhosts
+        tags: "~@known-issue"
+        features:
+          - features/management-portal/deployments/vhosts.feature
       - name: platform-api-build-deployment
         features:
           - features/management-portal/builds/build_deployment.feature
@@ -82,6 +86,9 @@ blocks:
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
         tags: "~@known-issue"
+      - name: platform-api-health
+        features:
+          - features/management-portal/core/health.feature
       - name: platform-api-paid-subscription-suspension
         features:
           - features/management-portal/monetization/paid_subscription_suspension.feature
@@ -307,6 +314,29 @@ blocks:
       - name: dp-to-cp-sync-disabled
         features:
           - features/gateway/control-plane/dp_to_cp_sync_disabled.feature
+
+  # Gateway custom policies: the gateway loads the integration-test policy definitions and reports
+  # most of them as custom (customPolicies: true), which every other block's gateway manifest must
+  # not show. The definitions have fixed names, so one runner syncs them at a time. The sync rules
+  # are stored per platform-api database engine.
+  - name: gateway-custom-policies
+    parallel: 1
+    components:
+      - name: platform-api
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+      - name: testbench
+    wiring:
+      platform-gateway:
+        customPolicies: true
+    runners:
+      # Scenarios GWCP (scenarios/on-prem/GWCP.yaml).
+      - name: gateway-custom-policy-sync
+        features:
+          - features/management-portal/gateway-policies/custom_policy_sync.feature
 
   # Two gateways (replicas: 2) connected to one Platform API.
   - name: multigateway

@@ -26,8 +26,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cucumber/godog"
-
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -45,10 +44,12 @@ const (
 	identityCallbackPath  = "/oauth2/auth/callback"
 
 	// The actions of the portal's sign-in and registration flows, as the platform defines them:
-	// the primary action submits the prompt's inputs, and the sign-up link moves from the sign-in
-	// prompt to the registration prompt.
-	flowActionSubmit = "action_001"
-	flowActionSignUp = "action_signup"
+	// the primary action submits the prompt's inputs, the sign-up link moves from the sign-in
+	// prompt to the registration prompt, and the continue action leaves the prompt that confirms
+	// a new account and signs the consumer in.
+	flowActionSubmit   = "action_001"
+	flowActionSignUp   = "action_signup"
+	flowActionContinue = "action_continue"
 
 	flowStatusComplete = "COMPLETE"
 	flowStatusError    = "ERROR"
@@ -90,14 +91,22 @@ func newPortalBrowser(client *httpx.Client, portal *url.URL) (*portalBrowser, er
 
 // send makes one request with the cookies for its URL and keeps the cookies the answer sets.
 func (b *portalBrowser) send(ctx context.Context, method, target string, body []byte) (*httpx.Response, error) {
+	return b.sendWith(ctx, method, target, body, nil)
+}
+
+// sendWith is send with extra request headers.
+func (b *portalBrowser) sendWith(ctx context.Context, method, target string, body []byte, extra map[string]string) (*httpx.Response, error) {
 	parsed, err := url.Parse(target)
 	if err != nil {
-		return nil, fmt.Errorf("the sign-in reached a URL that does not parse: %w", err)
+		return nil, fmt.Errorf("the portal request reached a URL that does not parse: %w", err)
 	}
 	if err := requireSecureURL(parsed); err != nil {
-		return nil, fmt.Errorf("the sign-in reached an insecure URL: %w", err)
+		return nil, fmt.Errorf("the portal request reached an insecure URL: %w", err)
 	}
-	headers := map[string]string{}
+	headers := make(map[string]string, len(extra)+2)
+	for name, value := range extra {
+		headers[name] = value
+	}
 	if cookies := b.jar.Cookies(parsed); len(cookies) > 0 {
 		pairs := make([]string, 0, len(cookies))
 		for _, cookie := range cookies {
@@ -105,7 +114,7 @@ func (b *portalBrowser) send(ctx context.Context, method, target string, body []
 		}
 		headers["Cookie"] = strings.Join(pairs, "; ")
 	}
-	request := httpx.Request{Method: method, URL: parsed.String(), Headers: headers, Body: body}
+	request := httpx.Request{Method: method, URL: parsed.String(), Headers: headers, Body: body, TLS: portalTLS(parsed)}
 	if body != nil {
 		request.ContentType = "application/json"
 		headers["Accept"] = "application/json"
@@ -171,9 +180,9 @@ func sameOrigin(a, b *url.URL) bool {
 	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Host, b.Host)
 }
 
-// openSignIn opens the portal's sign-in entry point in a new browser and follows the portal's
-// redirects until one leaves the portal for its identity provider. It returns the browser and the
-// answer that sent it there.
+// openSignIn opens the portal's sign-in entry point in a new browser for the scenario and follows
+// the portal's redirects until one leaves the portal for its identity provider. It returns the
+// browser and the answer that sent it there.
 func (s *Steps) openSignIn(ctx context.Context) (*portalBrowser, *httpx.Response, error) {
 	portal, err := portalBaseURL(ctx)
 	if err != nil {
@@ -186,26 +195,37 @@ func (s *Steps) openSignIn(ctx context.Context) (*portalBrowser, *httpx.Response
 	if err := tcontext.Set(ctx, keyPortalBrowser, browser); err != nil {
 		return nil, nil, err
 	}
-	target := portal.ResolveReference(&url.URL{Path: portalBasePath + "/login"})
+	resp, err := browser.openSignIn(ctx)
+	if err != nil && resp == nil {
+		return nil, nil, err
+	}
+	return browser, resp, err
+}
+
+// openSignIn follows the portal's sign-in entry point until a redirect leaves the portal for its
+// identity provider, and keeps that authorization request. It returns the answer that sent the
+// browser there.
+func (b *portalBrowser) openSignIn(ctx context.Context) (*httpx.Response, error) {
+	target := b.portal.ResolveReference(&url.URL{Path: portalBasePath + "/login"})
 	for range maxSignInHops {
-		resp, err := browser.send(ctx, http.MethodGet, target.String(), nil)
+		resp, err := b.send(ctx, http.MethodGet, target.String(), nil)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		next, err := redirectTarget(resp)
 		if err != nil {
-			return browser, resp, fmt.Errorf("the portal did not send the visitor to sign in: %w", err)
+			return resp, fmt.Errorf("the portal did not send the visitor to sign in: %w", err)
 		}
-		if org, view, ok := viewSignInPage(next.Path); ok && sameOrigin(next, portal) {
-			browser.org, browser.view = org, view
+		if org, view, ok := viewSignInPage(next.Path); ok && sameOrigin(next, b.portal) {
+			b.org, b.view = org, view
 		}
-		if !sameOrigin(next, portal) {
-			browser.authorize = next
-			return browser, resp, nil
+		if !sameOrigin(next, b.portal) {
+			b.authorize = next
+			return resp, nil
 		}
 		target = next
 	}
-	return nil, nil, fmt.Errorf("the portal redirected the visitor more than %d times without sending it to sign in", maxSignInHops)
+	return nil, fmt.Errorf("the portal redirected the visitor more than %d times without sending it to sign in", maxSignInHops)
 }
 
 // openSignInAsVisitor opens the portal's sign-in as a new visitor and publishes the answer that
@@ -277,6 +297,24 @@ type identityFlowStep struct {
 	Assertion      string            `json:"assertion,omitempty"`
 	FailureReason  string            `json:"failureReason,omitempty"`
 	SessionData    []identitySession `json:"sessionData,omitempty"`
+	Data           struct {
+		Actions []struct {
+			Ref string `json:"ref"`
+		} `json:"actions,omitempty"`
+	} `json:"data"`
+
+	// raw is the answer as the identity provider sent it, which holds the prompt's inputs.
+	raw []byte
+}
+
+// offers reports whether the step's prompt offers the action.
+func (s identityFlowStep) offers(action string) bool {
+	for _, offered := range s.Data.Actions {
+		if offered.Ref == action {
+			return true
+		}
+	}
+	return false
 }
 
 // identitySession is an SSO session the flow reports, which the callback carries back.
@@ -285,10 +323,22 @@ type identitySession struct {
 	SessionHandle  string `json:"sessionHandle"`
 }
 
-// flowAction is one action a consumer takes on a flow prompt.
+// flowAction is one action a consumer takes on a flow prompt. An optional action is taken only
+// when the prompt offers it.
 type flowAction struct {
-	action string
-	inputs map[string]string
+	action   string
+	inputs   map[string]string
+	optional bool
+}
+
+// onlyOptional reports whether every action is optional, which is also true of no action.
+func onlyOptional(actions []flowAction) bool {
+	for _, action := range actions {
+		if !action.optional {
+			return false
+		}
+	}
+	return true
 }
 
 // takeFlowAction takes one action on the flow's current prompt. A client error or an ERROR flow
@@ -320,6 +370,7 @@ func (b *portalBrowser) takeFlowAction(ctx context.Context, target string, curre
 	if answer.ExecutionID == "" {
 		answer.ExecutionID = current.ExecutionID
 	}
+	answer.raw = resp.Body
 	return answer, "", nil
 }
 
@@ -337,6 +388,48 @@ func joinURLPath(base *url.URL, path string) string {
 	return joined.String()
 }
 
+// beginFlow opens the portal's sign-in in a new browser, follows it to the identity provider and
+// starts the flow there. It returns the browser, the identity provider's base URL, the identifier
+// of the authorization request and the flow's first prompt.
+func (s *Steps) beginFlow(ctx context.Context) (*portalBrowser, *url.URL, string, identityFlowStep, error) {
+	browser, _, err := s.openSignIn(ctx)
+	if err != nil {
+		return nil, nil, "", identityFlowStep{}, err
+	}
+	base, authID, step, err := browser.beginFlow(ctx)
+	if err != nil {
+		return nil, nil, "", identityFlowStep{}, err
+	}
+	return browser, base, authID, step, nil
+}
+
+// beginFlow sends the authorization request openSignIn kept and starts the identity provider's
+// flow. It returns the identity provider's base URL, the identifier of the authorization request
+// and the flow's first prompt.
+func (b *portalBrowser) beginFlow(ctx context.Context) (*url.URL, string, identityFlowStep, error) {
+	if b.authorize == nil {
+		return nil, "", identityFlowStep{}, errors.New("the browser has not opened the portal's sign-in")
+	}
+	resp, err := b.send(ctx, http.MethodGet, b.authorize.String(), nil)
+	if err != nil {
+		return nil, "", identityFlowStep{}, err
+	}
+	started, err := redirectTarget(resp)
+	if err != nil {
+		return nil, "", identityFlowStep{}, fmt.Errorf("the identity provider did not start a sign-in: %w", err)
+	}
+	executionID, authID := started.Query().Get("executionId"), started.Query().Get("authId")
+	if executionID == "" || authID == "" {
+		return nil, "", identityFlowStep{}, fmt.Errorf("the identity provider started no sign-in flow: %s", resp.Describe())
+	}
+	base := identityBase(b.authorize)
+	var step identityFlowStep
+	if _, err := b.postJSON(ctx, joinURLPath(base, identityFlowPath), map[string]string{"executionId": executionID}, &step); err != nil {
+		return nil, "", identityFlowStep{}, err
+	}
+	return base, authID, step, nil
+}
+
 // signIn drives a consumer's sign-in, as the identity provider's sign-in page drives it: the
 // authorization request, the flow's prompts with the given actions, the callback that turns the
 // flow's assertion into the portal's code, and the portal's callback that turns the code into a
@@ -344,32 +437,31 @@ func joinURLPath(base *url.URL, path string) string {
 // the portal is not called back. The last answer is published.
 func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 	httpx.ClearPublished(ctx)
-	browser, _, err := s.openSignIn(ctx)
+	browser, base, authID, step, err := s.beginFlow(ctx)
 	if err != nil {
 		return err
 	}
-	resp, err := browser.send(ctx, http.MethodGet, browser.authorize.String(), nil)
-	if err != nil {
-		return err
-	}
-	started, err := redirectTarget(resp)
-	if err != nil {
-		return fmt.Errorf("the identity provider did not start a sign-in: %w", err)
-	}
-	executionID, authID := started.Query().Get("executionId"), started.Query().Get("authId")
-	if executionID == "" || authID == "" {
-		return fmt.Errorf("the identity provider started no sign-in flow: %s", resp.Describe())
-	}
-	base := identityBase(browser.authorize)
-	var step identityFlowStep
-	if _, err := browser.postJSON(ctx, joinURLPath(base, identityFlowPath), map[string]string{"executionId": executionID}, &step); err != nil {
-		return err
-	}
+	return browser.completeSignIn(ctx, base, authID, step, actions, func(landed *httpx.Response) error {
+		if s.funnel == nil {
+			return nil
+		}
+		return s.funnel.Publish(ctx, landed)
+	})
+}
+
+// completeSignIn takes the flow from its first prompt through the given actions to the portal's
+// session. A flow that ends without an assertion is a refusal, recorded on the browser. onLanded,
+// when set, receives the portal callback's answer.
+func (b *portalBrowser) completeSignIn(ctx context.Context, base *url.URL, authID string, step identityFlowStep,
+	actions []flowAction, onLanded func(*httpx.Response) error) error {
 	// The callback carries every SSO session the flow reported, and an empty list when none.
 	sessions := append([]identitySession{}, step.SessionData...)
 	for i, next := range actions {
-		last := i == len(actions)-1
-		answer, refusal, err := browser.takeFlowAction(ctx, joinURLPath(base, identityFlowPath), step, next)
+		if next.optional && !step.offers(next.action) {
+			continue
+		}
+		last := onlyOptional(actions[i+1:])
+		answer, refusal, err := b.takeFlowAction(ctx, joinURLPath(base, identityFlowPath), step, next)
 		if err != nil {
 			return err
 		}
@@ -377,42 +469,53 @@ func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 			if !last {
 				return fmt.Errorf("the identity provider ended the flow at action %q: %s", next.action, refusal)
 			}
-			browser.refusal = refusal
+			b.refusal = refusal
 			return nil
 		}
 		step = answer
 		sessions = append(sessions, step.SessionData...)
 	}
 	if step.FlowStatus != flowStatusComplete || step.Assertion == "" {
-		browser.refusal = step.FailureReason
-		if browser.refusal == "" {
-			browser.refusal = "the flow ended as " + step.FlowStatus
+		b.refusal = step.FailureReason
+		if b.refusal == "" {
+			b.refusal = "the flow ended as " + step.FlowStatus
 		}
 		return nil
 	}
-	browser.refusal = ""
+	b.refusal = ""
 	var callback struct {
 		RedirectURI string `json:"redirect_uri"`
 	}
-	if _, err := browser.postJSON(ctx, joinURLPath(base, identityCallbackPath),
+	if _, err := b.postJSON(ctx, joinURLPath(base, identityCallbackPath),
 		map[string]any{"authId": authID, "assertion": step.Assertion, "sessionData": sessions}, &callback); err != nil {
 		return err
 	}
 	portalCallback, err := url.Parse(callback.RedirectURI)
-	if err != nil || !sameOrigin(portalCallback, browser.portal) {
+	if err != nil || !sameOrigin(portalCallback, b.portal) {
 		return fmt.Errorf("the identity provider sends the consumer back to %q, not to the portal", callback.RedirectURI)
 	}
-	landed, err := browser.send(ctx, http.MethodGet, portalCallback.String(), nil)
+	landed, err := b.send(ctx, http.MethodGet, portalCallback.String(), nil)
 	if err != nil {
 		return err
 	}
-	if s.funnel != nil {
-		if err := s.funnel.Publish(ctx, landed); err != nil {
+	if onLanded != nil {
+		if err := onLanded(landed); err != nil {
 			return err
 		}
 	}
-	if _, err := redirectTarget(landed); err != nil {
+	next, err := redirectTarget(landed)
+	if err != nil {
 		return fmt.Errorf("the portal did not take the consumer's sign-in: %w", err)
+	}
+	// The callback's CSRF cookie belongs to the session it replaced; the landing page sets the new one.
+	if sameOrigin(next, b.portal) {
+		page, err := b.send(ctx, http.MethodGet, next.String(), nil)
+		if err != nil {
+			return fmt.Errorf("opening the page the sign-in lands on: %w", err)
+		}
+		if page.StatusCode >= http.StatusBadRequest {
+			return fmt.Errorf("the page the sign-in lands on answered %d", page.StatusCode)
+		}
 	}
 	return nil
 }
@@ -461,10 +564,19 @@ func (s *Steps) signUpConsumer(ctx context.Context) error {
 		{action: flowActionSubmit, inputs: map[string]string{
 			"username": username, "password": password, "email": username + "@example.com",
 		}},
+		{action: flowActionContinue, optional: true},
 	}); err != nil {
 		return err
 	}
-	return requireSignInAccepted(ctx)
+	if err := requireSignInAccepted(ctx); err != nil {
+		return err
+	}
+	if err := cleanup.RegisterRunner(ctx, cleanup.Resource{
+		Kind: kindConsumerLeftovers, ID: username, Actor: consumerActor, Description: "the portal items of consumer " + username,
+	}); err != nil {
+		return fmt.Errorf("registering the portal items of consumer %q for cleanup: %w", username, err)
+	}
+	return nil
 }
 
 // signInConsumer signs the runner's consumer in with its username and password.
@@ -640,15 +752,15 @@ func (s *Steps) signOutConsumer(ctx context.Context) error {
 
 // registerPortalSignInSteps binds the steps that sign a consumer up, in and out of a managed API
 // Portal.
-func (s *Steps) registerPortalSignInSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I open the sign-in page of the synthetic managed API Portal as a new visitor$`, s.openSignInAsVisitor)
+func (s *Steps) registerPortalSignInSteps(sc stepRegistrar) {
+	sc.Step(`^I open the sign-in page of the managed API Portal as a new visitor$`, s.openSignInAsVisitor)
 	sc.Step(`^the visitor should be sent to the portal's identity provider to sign in$`, s.assertSentToIdentityProvider)
-	sc.Step(`^I sign up on the synthetic managed API Portal as a new consumer$`, s.signUpConsumer)
-	sc.Step(`^I sign in to the synthetic managed API Portal as the consumer$`, s.signInConsumer)
-	sc.Step(`^I try to sign in to the synthetic managed API Portal as the consumer with a wrong password$`, s.trySignInWithWrongPassword)
+	sc.Step(`^I sign up on the managed API Portal as a new consumer$`, s.signUpConsumer)
+	sc.Step(`^I sign in to the managed API Portal as the consumer$`, s.signInConsumer)
+	sc.Step(`^I try to sign in to the managed API Portal as the consumer with a wrong password$`, s.trySignInWithWrongPassword)
 	sc.Step(`^the identity provider should refuse the sign-in$`, s.assertSignInRefused)
-	sc.Step(`^the consumer should be signed in to the synthetic managed API Portal$`, s.assertConsumerSignedIn)
-	sc.Step(`^the consumer should not be signed in to the synthetic managed API Portal$`, s.assertConsumerNotSignedIn)
+	sc.Step(`^the consumer should be signed in to the managed API Portal$`, s.assertConsumerSignedIn)
+	sc.Step(`^the consumer should not be signed in to the managed API Portal$`, s.assertConsumerNotSignedIn)
 	sc.Step(`^a visitor without the consumer's session should be sent to sign in$`, s.assertVisitorWithoutSessionSentToSignIn)
-	sc.Step(`^I sign out of the synthetic managed API Portal$`, s.signOutConsumer)
+	sc.Step(`^I sign out of the managed API Portal$`, s.signOutConsumer)
 }

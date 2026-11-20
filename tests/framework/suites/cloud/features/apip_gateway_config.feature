@@ -47,6 +47,7 @@ Feature: APIP cloud managed gateway configuration
       | gateway.controller.deployment.resources.requests.memory                   | "256Mi"                                         | is not an editable gateway setting |
       | gateway.controller.deployment.resources.limits.cpu                        | "500m"                                          | is not an editable gateway setting |
       | gateway.controller.deployment.resources.limits.memory                     | "512Mi"                                         | is not an editable gateway setting |
+      | gateway.config.controller.logging.level                                   | debug                                           | is not an editable gateway setting |
     Then every one of those writes should have been refused as invalid
 
   @TC_APIP_GWCFG_004 @ID_APIP_GATEWAY_CONFIG_003
@@ -56,9 +57,9 @@ Feature: APIP cloud managed gateway configuration
     And the active APIP gateway's configuration should be readable
     When I write each of these gateway configuration values separately:
       | path                                       | value   | message                                 |
-      | gateway.config.controller.logging.level    | verbose | must be one of debug, info, warn, error |
-      | gateway.config.controller.logging.level    | "DEBUG" | must be one of debug, info, warn, error |
-      | gateway.config.controller.logging.level    | 3       | must be one of debug, info, warn, error |
+      | gateway.config.policy_engine.logging.level | verbose | must be one of debug, info, warn, error |
+      | gateway.config.policy_engine.logging.level | "DEBUG" | must be one of debug, info, warn, error |
+      | gateway.config.policy_engine.logging.level | 3       | must be one of debug, info, warn, error |
       | gateway.config.policy_engine.logging.level | trace   | must be one of debug, info, warn, error |
     Then every one of those writes should have been refused as invalid
 
@@ -191,13 +192,13 @@ Feature: APIP cloud managed gateway configuration
     Given I work with the configuration of synthetic managed APIP gateway 1
     And the configuration of the selected gateway should become readable
     When I save the gateway configuration with:
-      | gateway.config.controller.logging.level   | debug |
-      | gateway.config.router.access_logs.enabled | false |
+      | gateway.config.policy_engine.logging.level | debug |
+      | gateway.config.router.access_logs.enabled  | false |
     Then the cloud API response status code should be 200
     And the gateway configuration phase should be "applying"
     And the gateway configuration should report:
-      | gateway.config.controller.logging.level   | debug |
-      | gateway.config.router.access_logs.enabled | false |
+      | gateway.config.policy_engine.logging.level | debug |
+      | gateway.config.router.access_logs.enabled  | false |
 
   @TC_APIP_GWCFG_022 @ID_APIP_GATEWAY_CONFIG_021
   Scenario: Clearing a setting returns the gateway to the platform default
@@ -205,13 +206,13 @@ Feature: APIP cloud managed gateway configuration
     And I work with the configuration of synthetic managed APIP gateway 1
     And the configuration of the selected gateway should become readable
     When I save the gateway configuration with:
-      | gateway.config.controller.logging.level | debug |
+      | gateway.config.policy_engine.logging.level | debug |
     Then the gateway configuration should report:
-      | gateway.config.controller.logging.level | debug |
+      | gateway.config.policy_engine.logging.level | debug |
     When I save the gateway configuration with:
-      | gateway.config.controller.logging.level | null |
+      | gateway.config.policy_engine.logging.level | null  |
     Then the cloud API response status code should be 200
-    And the gateway configuration should no longer report "gateway.config.controller.logging.level"
+    And the gateway configuration should no longer report "gateway.config.policy_engine.logging.level"
 
   @TC_APIP_GWCFG_019 @ID_APIP_GATEWAY_CONFIG_022
   Scenario: Simultaneous writes to a gateway's configuration are not silently overwritten

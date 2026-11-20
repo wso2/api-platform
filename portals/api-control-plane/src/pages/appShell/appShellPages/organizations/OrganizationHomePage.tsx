@@ -15,7 +15,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -310,6 +310,17 @@ function OrganizationHomePageContent() {
   const portalsQuery = useApiPortals();
   const deleteProjectMutation = useDeleteProject();
   const trackFeature = useTrackFeature();
+  // Marks the signed-in user and organization as API Management users. Every
+  // sign-in lands here (the gateway's post-login redirect is the console's base
+  // path, /api-management/, whose root route redirects to this page), whatever
+  // route the user started from. Once per visit, however often scope or
+  // queries re-render it.
+  const landingReported = useRef(false);
+  useEffect(() => {
+    if (landingReported.current) return;
+    landingReported.current = true;
+    trackFeature('apip.admin.landing-page-open', {});
+  }, [trackFeature]);
   const restApiCountsQuery = useRestApiCounts(projects.map((project) => project.id));
   const graphqlApiCountsQuery = useGraphQLApiCounts(projects.map((project) => project.id));
   const apiCountsPending = restApiCountsQuery.isPending || graphqlApiCountsQuery.isPending;

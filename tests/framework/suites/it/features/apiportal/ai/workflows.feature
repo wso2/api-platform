@@ -23,7 +23,7 @@ Feature: API workflows are managed per view and shown to people and agents by th
   I want to author multi-step API workflows in a view, publish or draft them, and hide them from agents
   So that developers and AI agents see exactly the workflows I mean them to
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). Each
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml). Each
   # scenario uses its own view, so its workflows and its agent routes belong to it alone. The
   # gallery page and the agent routes are anonymous. A draft is shown nowhere; a hidden workflow is
   # shown to people but to no agent.

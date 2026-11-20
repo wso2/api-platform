@@ -149,6 +149,8 @@ ap gateway health --platform <platform>
 ap gateway health --platform eu
 ```
 
+The gateway-controller answers health requests from every client by default (`controller.health.allowed_clients`). If that list was narrowed and the CLI's address is not in it, for example from another host or through a Docker published port, add the CLI's address or network, or the command fails with status 403.
+
 ---
 
 ### 7. Gateway Controller Commands

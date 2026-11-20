@@ -26,6 +26,7 @@ import {
   shellQuote,
   toCurl,
   toCurlScript,
+  unrepresentableFileName,
 } from './toCurl';
 import {
   HTTP_METHODS,
@@ -197,7 +198,7 @@ describe('buildRequestUrl', () => {
 
 describe('toCurl', () => {
   it('emits the method explicitly, even for GET', () => {
-    expect(toCurl(request(), { revealSecrets: true })).toContain('curl -X GET');
+    expect(toCurl(request(), { revealSecrets: true })).toContain('curl --globoff -X GET');
   });
 
   it('quotes the URL so a query string cannot be split by the shell', () => {
@@ -270,7 +271,7 @@ describe('toCurl', () => {
     expect(command).toContain("-H 'X-Trace: plain'");
   });
 
-  it('emits -d for a JSON body', () => {
+  it('emits --data-raw for a JSON body', () => {
     const command = toCurl(request({ method: 'POST', ...raw('{"amount": 2500}') }), {
       revealSecrets: true,
     });
@@ -278,7 +279,7 @@ describe('toCurl', () => {
     // Byte for byte as typed. Re-serialising through `JSON.parse` would round a
     // number too wide for a double and drop a duplicate key, so the command
     // would stop describing the body the console sends.
-    expect(command).toContain(`-d '{"amount": 2500}'`);
+    expect(command).toContain(`--data-raw '{"amount": 2500}'`);
   });
 
   it('keeps a pretty-printed JSON body exactly as written', () => {
@@ -287,7 +288,7 @@ describe('toCurl', () => {
 
     // The newlines survive inside the single quotes, so the pasted command
     // sends the same bytes the editor shows.
-    expect(command).toContain(`-d '${body}'`);
+    expect(command).toContain(`--data-raw '${body}'`);
   });
 
   it('emits no -d in None mode, even with body text left over', () => {
@@ -310,7 +311,7 @@ describe('toCurl', () => {
       revealSecrets: true,
     });
 
-    expect(command).toContain(`-d '{"note":"it'\\''s fine"}'`);
+    expect(command).toContain(`--data-raw '{"note":"it'\\''s fine"}'`);
   });
 
   it('leaves no dangling line continuation on the last line', () => {
@@ -328,6 +329,83 @@ describe('toCurl', () => {
 
     expect(lines.slice(0, -1).every((line) => line.endsWith('\\'))).toBe(true);
     expect(lines.at(-1)?.endsWith('\\')).toBe(false);
+  });
+});
+
+describe('files', () => {
+  const fileRow = (name: string, filename: string) => row({ file: true, name, value: filename });
+  const command = (overrides: Partial<ConsoleRequest>) =>
+    toCurl(request({ method: 'POST', ...overrides }), { revealSecrets: true });
+
+  it('sends a multipart file with -F, and the other fields as plain text', () => {
+    const out = command({
+      bodyMode: 'form-data',
+      formFields: [fileRow('upload', 'a.csv'), row({ name: 'note', value: 'hi' })],
+    });
+    expect(out).toContain("-F 'upload=@a.csv'");
+    expect(out).toContain("--form-string 'note=hi'");
+  });
+
+  it('quotes a filename curl would split at a comma or semicolon', () => {
+    expect(
+      command({ bodyMode: 'form-data', formFields: [fileRow('upload', 'report,final.csv')] }),
+    ).toContain(`-F 'upload=@"report,final.csv"'`);
+    expect(
+      command({ bodyMode: 'form-data', formFields: [fileRow('upload', 'a;b.csv')] }),
+    ).toContain(`-F 'upload=@"a;b.csv"'`);
+  });
+
+  it('escapes quotes and backslashes in a filename', () => {
+    expect(command({ bodyMode: 'form-data', formFields: [fileRow('f', 'a"b\\c.csv')] })).toContain(
+      `-F 'f=@"a\\"b\\\\c.csv"'`,
+    );
+  });
+
+  it('never mixes -F with --data-urlencode when the mode is url-encoded', () => {
+    const out = command({
+      bodyMode: 'url-encoded',
+      formFields: [fileRow('upload', 'a.csv'), row({ name: 'note', value: 'hi' })],
+    });
+    expect(out).not.toContain('-F ');
+    expect(out).toContain("--data-urlencode 'upload@a.csv'");
+    expect(out).toContain("--data-urlencode 'note=hi'");
+  });
+
+  it('sends a binary upload in binary mode, and drops it when another mode is chosen', () => {
+    expect(command({ binaryFile: 'photo.png', bodyMode: 'binary' })).toContain(
+      "--data-binary '@photo.png'",
+    );
+    // Choosing None, as the editor offers, means no body at all.
+    expect(command({ binaryFile: 'photo.png', bodyMode: 'none' })).not.toContain('--data-binary');
+    // So does choosing a raw or form body, which replaces the upload.
+    const raw = command({ binaryFile: 'photo.png', body: '{}', bodyMode: 'raw' });
+    expect(raw).not.toContain('--data-binary');
+    expect(raw).toContain("--data-raw '{}'");
+    expect(
+      command({ binaryFile: 'photo.png', bodyMode: 'url-encoded', formFields: [] }),
+    ).not.toContain('--data-binary');
+  });
+
+  it('never lets a file named `-` be read as standard input', () => {
+    expect(command({ binaryFile: '-', bodyMode: 'binary' })).toContain("--data-binary '@./-'");
+    expect(command({ bodyMode: 'form-data', formFields: [fileRow('f', '-')] })).toContain(
+      "-F 'f=@./-'",
+    );
+  });
+
+  it('finds a file in a URL-encoded body that curl would send as the wrong field', () => {
+    const urlEncoded = (name: string) =>
+      request({ bodyMode: 'url-encoded', formFields: [fileRow('upload', name)] });
+
+    // curl splits at the first `=`, so `report=final.csv` would be literal text, not the file.
+    expect(unrepresentableFileName(urlEncoded('report=final.csv'))).toBe('report=final.csv');
+    expect(unrepresentableFileName(urlEncoded('report.csv'))).toBeUndefined();
+    // Multipart names its file with -F, which has no such problem.
+    expect(
+      unrepresentableFileName(
+        request({ bodyMode: 'form-data', formFields: [fileRow('upload', 'a=b.csv')] }),
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -398,7 +476,7 @@ describe('encoded bodies', () => {
       { revealSecrets: true },
     );
 
-    // Joining these into one `-d 'a=1&b=2'` would mean encoding them
+    // Joining these into one `--data-raw 'a=1&b=2'` would mean encoding them
     // ourselves, and an unescaped `&` in a value would split one field in two.
     expect(command).toContain("--data-urlencode 'title=The Hobbit'");
     expect(command).toContain("--data-urlencode 'note=a&b=c'");
@@ -491,7 +569,7 @@ describe('raw bodies other than JSON', () => {
       revealSecrets: true,
     });
 
-    expect(command).toContain(`-d '{"unclosed":'`);
+    expect(command).toContain(`--data-raw '{"unclosed":'`);
   });
 });
 

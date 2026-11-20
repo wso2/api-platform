@@ -30,11 +30,19 @@ import taxonomyYaml from './api-platform-taxonomy.yaml?raw';
 
 /**
  * The console's own source, without tests, the src/test helpers, or this
- * module's taxonomy and policy helpers (whose code literals are not call sites).
+ * module's taxonomy and policy helpers (whose code literals are not call sites),
+ * plus the cloud plugins' source: a plugin that replaces a console page reports
+ * the console's features through the host port's `trackFeature`, and some
+ * features (the cloud Gateways page's add form) exist only there.
  */
-const SOURCES = Object.entries(
-  import.meta.glob<string>('../**/*.{ts,tsx}', { eager: true, import: 'default', query: '?raw' }),
-)
+const SOURCES = Object.entries({
+  ...import.meta.glob<string>('../**/*.{ts,tsx}', { eager: true, import: 'default', query: '?raw' }),
+  ...import.meta.glob<string>('../../../cloud-plugins/*/src/**/*.{ts,tsx}', {
+    eager: true,
+    import: 'default',
+    query: '?raw',
+  }),
+})
   // Files in this directory are keyed `./name.ts`, elsewhere `../dir/name.ts`.
   .filter(
     ([file]) =>

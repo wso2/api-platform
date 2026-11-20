@@ -306,6 +306,24 @@ var (
 	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "%s")
 	GraphQLAPISchemaResolveFailed        = def(CodeGraphQLAPISchemaResolveFailed, http.StatusUnprocessableEntity, "The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.")
 	GraphQLAPIDeploymentValidationFailed = def(CodeGraphQLAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
+
+	// Invoking a GraphQL API through a gateway, as RESTAPIInvoke* do for a REST API.
+	GraphQLAPIInvokeGatewayNotDeployed = def(CodeGraphQLAPIInvokeGatewayNotDeployed, http.StatusNotFound,
+		"This GraphQL API is not deployed to the selected gateway.")
+	GraphQLAPIInvokeGatewayNoEndpoint = def(CodeGraphQLAPIInvokeGatewayNoEndpoint, http.StatusUnprocessableEntity,
+		"The selected gateway has no endpoint configured.")
+	GraphQLAPIInvokeGatewayUnsupportedScheme = def(CodeGraphQLAPIInvokeGatewayUnsupportedScheme, http.StatusUnprocessableEntity,
+		"The selected gateway's endpoint is not an http or https address.")
+	GraphQLAPIInvokeTargetNotAllowed = def(CodeGraphQLAPIInvokeTargetNotAllowed, http.StatusForbidden,
+		"This gateway cannot be reached from the control plane.")
+	GraphQLAPIInvokeRequestInvalid = def(CodeGraphQLAPIInvokeRequestInvalid, http.StatusBadRequest,
+		"This request cannot be sent as written.")
+	GraphQLAPIInvokeBusy = def(CodeGraphQLAPIInvokeBusy, http.StatusServiceUnavailable,
+		"Too many test requests are in flight; try again shortly.")
+	GraphQLAPIInvokeUpstreamTimeout = def(CodeGraphQLAPIInvokeUpstreamTimeout, http.StatusGatewayTimeout,
+		"The gateway did not respond in time.")
+	GraphQLAPIInvokeUpstreamUnreachable = def(CodeGraphQLAPIInvokeUpstreamUnreachable, http.StatusBadGateway,
+		"The gateway could not be reached.")
 )
 
 // HMAC secret entries. The 32-character minimum is a fixed, publicly

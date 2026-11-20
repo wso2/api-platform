@@ -113,6 +113,27 @@ export ROUTER_DRAIN_TIME_SECONDS="${ROUTER_DRAIN_TIME_SECONDS:-15}"
 export XDS_SERVER_HOST="${GATEWAY_CONTROLLER_HOST}"
 export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
 
+# Keepalive on the Router's (Envoy's) xDS connection to gateway-controller, in
+# whole seconds (see docker-entrypoint.sh for details). The interval must be at
+# least 5, gateway-controller's keepalive MinTime.
+export XDS_KEEPALIVE_INTERVAL_SECONDS="${XDS_KEEPALIVE_INTERVAL_SECONDS:-30}"
+export XDS_KEEPALIVE_TIMEOUT_SECONDS="${XDS_KEEPALIVE_TIMEOUT_SECONDS:-10}"
+export XDS_TCP_KEEPALIVE_TIME_SECONDS="${XDS_TCP_KEEPALIVE_TIME_SECONDS:-60}"
+export XDS_TCP_KEEPALIVE_INTERVAL_SECONDS="${XDS_TCP_KEEPALIVE_INTERVAL_SECONDS:-10}"
+export XDS_TCP_KEEPALIVE_PROBES="${XDS_TCP_KEEPALIVE_PROBES:-3}"
+
+for var in XDS_KEEPALIVE_INTERVAL_SECONDS XDS_KEEPALIVE_TIMEOUT_SECONDS \
+           XDS_TCP_KEEPALIVE_TIME_SECONDS XDS_TCP_KEEPALIVE_INTERVAL_SECONDS XDS_TCP_KEEPALIVE_PROBES; do
+    value="${!var}"
+    case "${value}" in
+        ''|*[!0-9]*|0) log "FATAL: ${var} must be a positive whole number, got '${value}'"; exit 1 ;;
+    esac
+done
+if [ "${XDS_KEEPALIVE_INTERVAL_SECONDS}" -lt 5 ]; then
+    log "FATAL: XDS_KEEPALIVE_INTERVAL_SECONDS must be at least 5 (gateway-controller keepalive MinTime), got '${XDS_KEEPALIVE_INTERVAL_SECONDS}'"
+    exit 1
+fi
+
 # Policy Engine xDS address
 PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
 
@@ -127,6 +148,7 @@ log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"
 log "  GOMAXPROCS: ${GOMAXPROCS}"
 log "  Router Concurrency: ${ROUTER_CONCURRENCY}"
 log "  Router RE2 Max Program Size: ${APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE}"
+log "  Router xDS Keepalive: ping ${XDS_KEEPALIVE_INTERVAL_SECONDS}s/${XDS_KEEPALIVE_TIMEOUT_SECONDS}s, tcp ${XDS_TCP_KEEPALIVE_TIME_SECONDS}s/${XDS_TCP_KEEPALIVE_INTERVAL_SECONDS}s x${XDS_TCP_KEEPALIVE_PROBES}"
 log "  Policy Engine Metrics: ${APIP_GW_POLICY_ENGINE_METRICS_ENABLED}"
 if [ "${ROUTER_ADMIN_ENABLED}" = "true" ]; then
     log "  Router Admin: enabled on ${ROUTER_ADMIN_HOST}:${ROUTER_ADMIN_PORT}"

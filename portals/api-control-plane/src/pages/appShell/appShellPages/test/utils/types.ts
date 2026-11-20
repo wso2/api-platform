@@ -78,6 +78,8 @@ export type KeyValueRow = {
    * ever rendered in full on an explicit reveal or copy.
    */
   secret?: boolean;
+  /** A form-data row whose value is the name of a file to upload, sent with `-F name=@file`. */
+  file?: boolean;
 };
 
 /**
@@ -85,9 +87,10 @@ export type KeyValueRow = {
  *
  * `form-data` is `multipart/form-data` and `url-encoded` is
  * `application/x-www-form-urlencoded`; both are edited as key/value pairs
- * rather than as text, because that is what they are on the wire.
+ * rather than as text, because that is what they are on the wire. `binary` is a single file
+ * upload mirrored from the other view; choosing any other mode, `none` included, drops it.
  */
-export const BODY_MODES = ['none', 'raw', 'form-data', 'url-encoded'] as const;
+export const BODY_MODES = ['none', 'raw', 'form-data', 'url-encoded', 'binary'] as const;
 
 export type BodyMode = (typeof BODY_MODES)[number];
 
@@ -127,6 +130,8 @@ export type ConsoleRequest = {
    * destroy what the user typed. The serialisation happens at the point of use.
    */
   formFields: KeyValueRow[];
+  /** Name of the file sent as the whole body, with `--data-binary @file`. */
+  binaryFile?: string;
 };
 
 /** Rows that actually travel — enabled, and with a name worth sending. */
@@ -145,6 +150,7 @@ export const hasBody = (request: ConsoleRequest): boolean => {
   if (request.bodyMode === 'form-data' || request.bodyMode === 'url-encoded') {
     return activeRows(request.formFields).length > 0;
   }
+  if (request.bodyMode === 'binary') return Boolean(request.binaryFile);
   return false;
 };
 
