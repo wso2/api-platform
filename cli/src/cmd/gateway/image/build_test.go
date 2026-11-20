@@ -21,6 +21,8 @@ package image
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -54,5 +56,50 @@ func TestGetDockerBuildLogPathUsesPersistentLogsDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(logPath)); err != nil {
 		t.Fatalf("expected logs directory to survive workspace cleanup: %v", err)
+	}
+}
+
+// resetPrivateModuleFlags clears the package-level flag state the tests below set.
+func resetPrivateModuleFlags(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		for _, name := range []string{"netrc", "git-credential", "go-env"} {
+			f := buildCmd.Flags().Lookup(name)
+			if sv, ok := f.Value.(interface{ Replace([]string) error }); ok {
+				_ = sv.Replace(nil)
+			} else {
+				_ = f.Value.Set("")
+			}
+			f.Changed = false
+		}
+	})
+}
+
+func TestGoEnvFlagKeepsCommasInValues(t *testing.T) {
+	resetPrivateModuleFlags(t)
+
+	err := buildCmd.ParseFlags([]string{
+		"--go-env", "GOPRIVATE=github.com/acme/*,gitlab.acme.com",
+		"--go-env", "GOPROXY=https://goproxy.acme.com,direct",
+	})
+	if err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+
+	want := []string{"GOPRIVATE=github.com/acme/*,gitlab.acme.com", "GOPROXY=https://goproxy.acme.com,direct"}
+	if !slices.Equal(goEnvFlags, want) {
+		t.Fatalf("goEnvFlags = %q, want %q", goEnvFlags, want)
+	}
+}
+
+func TestNetrcAndGitCredentialAreMutuallyExclusive(t *testing.T) {
+	resetPrivateModuleFlags(t)
+
+	err := buildCmd.ParseFlags([]string{"--netrc", "/tmp/netrc", "--git-credential", "github.com=x:TOKEN"})
+	if err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	if err := buildCmd.ValidateFlagGroups(); err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+		t.Fatalf("ValidateFlagGroups() error = %v, want a mutually exclusive flags error", err)
 	}
 }

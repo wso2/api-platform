@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/gateway"
@@ -41,7 +42,14 @@ ap gateway image build --name my-gateway
 ap gateway image build --name my-gateway --path ./my-policies --repository myregistry
 
 # Build with platform specification
-ap gateway image build --name my-gateway --platform linux/amd64`
+ap gateway image build --name my-gateway --platform linux/amd64
+
+# Build with policies from a private GitHub repository, reading the token from POLICY_TOKEN
+export GOPRIVATE='github.com/acme/*'
+ap gateway image build --git-credential github.com=<github-username>:POLICY_TOKEN
+
+# Build with a netrc file and a private module proxy
+ap gateway image build --netrc ~/.netrc --go-env GOPROXY=https://goproxy.acme.com,direct`
 )
 
 var (
@@ -57,9 +65,13 @@ var (
 	noCache                  bool
 	platform                 string
 	outputDir                string
+	netrcFile                string
+	gitCredentials           []string
+	goEnvFlags               []string
 
 	// Computed values
-	imageTag string
+	imageTag      string
+	builderAccess gateway.BuilderAccess
 )
 
 var buildCmd = &cobra.Command{
@@ -84,6 +96,72 @@ func init() {
 	buildCmd.Flags().BoolVar(&noCache, "no-cache", false, "Build without using cache")
 	buildCmd.Flags().StringVar(&platform, "platform", "", "Target platform (e.g., linux/amd64)")
 	buildCmd.Flags().StringVar(&outputDir, "output-dir", "", "Output directory for build artifacts")
+
+	// Access to Go module policies in private repositories. StringArray, not
+	// StringSlice: GOPRIVATE-style values contain commas.
+	buildCmd.Flags().StringVar(&netrcFile, "netrc", "",
+		"netrc file with credentials for private Go module hosts and proxies, mounted read-only into the gateway-builder container")
+	buildCmd.Flags().StringArrayVar(&gitCredentials, "git-credential", nil,
+		"Credentials for a private Go module host as <host>=<username>:<ENV_VAR>, where ENV_VAR names an environment variable holding the token (repeatable)")
+	buildCmd.Flags().StringArrayVar(&goEnvFlags, "go-env", nil,
+		"Go module setting for the gateway-builder container as KEY=VALUE, or KEY to copy it from your environment (repeatable). Supported: "+
+			strings.Join(gateway.SupportedGoEnvKeys(), ", ")+". GOPRIVATE, GONOPROXY and GONOSUMDB are copied from your environment automatically")
+	buildCmd.MarkFlagsMutuallyExclusive("netrc", "git-credential")
+}
+
+// resolveBuilderAccess validates the private-module flags before any build work
+// starts. Tokens are read from the environment variables the flags name.
+func resolveBuilderAccess() (gateway.BuilderAccess, error) {
+	var access gateway.BuilderAccess
+	var err error
+
+	if access.GoEnv, err = gateway.ResolveGoEnv(goEnvFlags, os.LookupEnv); err != nil {
+		return access, err
+	}
+	if netrcFile != "" {
+		if access.NetrcFile, err = gateway.ValidateNetrcFile(netrcFile); err != nil {
+			return access, err
+		}
+	}
+	if access.GitCredentials, err = gateway.ParseGitCredentials(gitCredentials, os.LookupEnv); err != nil {
+		return access, err
+	}
+	return access, nil
+}
+
+// printBuilderAccess shows which Go settings and credentials reach the builder, and
+// warns about the two setups that are easy to get wrong.
+func printBuilderAccess(access gateway.BuilderAccess) {
+	if len(access.GoEnv) > 0 {
+		fmt.Println("  Go module settings for the builder:")
+		for _, s := range access.GoEnv {
+			fmt.Printf("    • %-10s %s (%s)\n", s.Key, s.DisplayValue(), s.Source)
+		}
+	}
+	if !access.HasCredentials() {
+		if len(access.GoEnv) > 0 {
+			fmt.Println()
+		}
+		return
+	}
+
+	fmt.Println("  Builder credentials:")
+	if access.NetrcFile != "" {
+		fmt.Printf("    • netrc file %s (mounted read-only)\n", access.NetrcFile)
+	}
+	for _, c := range access.GitCredentials {
+		fmt.Printf("    • %s as %s (from --git-credential)\n", c.Host, c.Username)
+	}
+
+	if defaultBuilder := fmt.Sprintf(utils.DefaultGatewayBuilder, gatewayVersion); gatewayBuilder != defaultBuilder {
+		fmt.Printf("  ! Credentials will be passed to builder image %s, which is not the default for gateway %s (set in %s)\n",
+			gatewayBuilder, gatewayVersion, utils.DefaultBuildFile)
+	}
+	if !access.HasGoEnv("GOPRIVATE") && !access.HasGoEnv("GONOSUMDB") && access.GoEnvValue("GOSUMDB") != "off" {
+		fmt.Println("  ! GOPRIVATE is not set: private modules will fail verification against the public checksum database.")
+		fmt.Println("    Set GOPRIVATE to a pattern matching your module paths, for example: export GOPRIVATE='github.com/acme/*'")
+	}
+	fmt.Println()
 }
 
 // initializeDefaults sets smart defaults for gateway name and constructs the image tag
@@ -131,6 +209,11 @@ func initializeDefaults(buildFile *policy.BuildFile) error {
 func runBuildCommand() error {
 	fmt.Println("=== Gateway Image Build ===")
 	fmt.Println()
+
+	var err error
+	if builderAccess, err = resolveBuilderAccess(); err != nil {
+		return err
+	}
 
 	// Step 1: Check Docker availability
 	fmt.Println("[1/8] Checking Docker Availability")
@@ -192,7 +275,7 @@ func runUnifiedBuild() error {
 	if err != nil {
 		return fmt.Errorf("failed to parse build file at '%s': %w", resolvedBuildFilePath, err)
 	}
-	fmt.Printf("  ✓ Loaded build file with %d policies\n\n", len(buildFile.Policies))
+	fmt.Printf("  ✓ Loaded build file with %s\n\n", policy.CountLabel(len(buildFile.Policies), ""))
 
 	// Initialize computed values
 	if err := initializeDefaults(buildFile); err != nil {
@@ -204,6 +287,7 @@ func runUnifiedBuild() error {
 	fmt.Printf("    • Builder:            %s\n", gatewayBuilder)
 	fmt.Printf("    • Gateway Controller: %s\n", gatewayControllerBaseImg)
 	fmt.Printf("    • Gateway Runtime:    %s\n\n", gatewayRuntimeBaseImg)
+	printBuilderAccess(builderAccess)
 
 	// Step 3: Validate Build File and Separate Policies
 	fmt.Println("[3/6] Validating build file")
@@ -219,7 +303,7 @@ func runUnifiedBuild() error {
 		if err != nil {
 			return fmt.Errorf("failed to process local policies: %w", err)
 		}
-		fmt.Printf("  ✓ Processed %d local policies\n\n", len(processed))
+		fmt.Printf("  ✓ Processed %s\n\n", policy.CountLabel(len(processed), "local"))
 	}
 
 	// Step 5: Prepare workspace and copy build file + policies
@@ -251,18 +335,19 @@ func runUnifiedBuild() error {
 		fmt.Printf("  ✓ Build manifest file written: build-manifest.yaml\n")
 	}
 
-	// Display Summary
-	displayBuildSummary(processed)
+	// Display Summary. Count every build file policy, local and gomodule alike: the
+	// build fails if any of them cannot be resolved, so all of them are in the images.
+	displayBuildSummary(len(buildFile.Policies))
 
 	return nil
 }
 
-func displayBuildSummary(processed []policy.ProcessedPolicy) {
+func displayBuildSummary(policyCount int) {
 	fmt.Println("=== Build Summary ===")
 	fmt.Println()
 
 	// Images built
-	fmt.Printf("✓ Built gateway images with %d policies:\n", len(processed))
+	fmt.Printf("✓ Built gateway images with %s:\n", policy.CountLabel(policyCount, ""))
 	fmt.Printf("  • %s/%s-gateway-runtime:%s\n", imageRepository, gatewayName, gatewayVersion)
 	fmt.Printf("  • %s/%s-gateway-controller:%s\n", imageRepository, gatewayName, gatewayVersion)
 	fmt.Println()
@@ -308,6 +393,7 @@ func runDockerBuild(tempDir string) error {
 		Push:                       push,
 		LogFilePath:                logFilePath,
 		OutputCopyDir:              outputDir,
+		BuilderAccess:              builderAccess,
 	}
 
 	// Run the build

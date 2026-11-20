@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/validation"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/goenv"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
@@ -116,6 +117,10 @@ func main() {
 		"system_build_lock", *systemBuildLockPath,
 	}
 	slog.Info("Policy Builder starting", logFields...)
+	slog.Info("Go module settings", goenv.ModuleSettingsLogFields(os.Getenv, func(path string) bool {
+		info, err := os.Stat(path)
+		return err == nil && info.Mode().IsRegular()
+	})...)
 
 	var outBuildInfoPath string
 
