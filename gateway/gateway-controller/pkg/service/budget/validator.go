@@ -379,6 +379,10 @@ func expressionErrors(spec api.BudgetSpec) []FieldError {
 		}
 		if !split && out != types.BoolType {
 			errs = append(errs, FieldError{Field: field, Message: fmt.Sprintf("must return bool, not %s", out)})
+			return
+		}
+		if tooCostly(env, ast) {
+			errs = append(errs, FieldError{Field: field, Message: "is too costly to run on every request"})
 		}
 	}
 	if spec.Filters != nil {
@@ -399,6 +403,24 @@ func expressionErrors(spec api.BudgetSpec) []FieldError {
 		}
 	}
 	return errs
+}
+
+// maxExpressionCost is the budget system policy's cost limit for one expression per request
+// (system-policies/budget maxExpressionCost): above it the policy stops the expression and
+// the budget counts nothing.
+const maxExpressionCost = 10000
+
+// tooCostly runs the expression once on an empty request under the policy's cost limit.
+// Claims are known only per request, so a static estimate cannot bound most expressions;
+// one that exceeds the limit with no input (nested macros over big literal lists) always
+// will. Other errors (a claim that is not there) are expected here and ignored.
+func tooCostly(env *cel.Env, ast *cel.Ast) bool {
+	prg, err := env.Program(ast, cel.CostLimit(maxExpressionCost))
+	if err != nil {
+		return false
+	}
+	_, _, err = prg.Eval(map[string]any{"request": map[string]any{}})
+	return err != nil && strings.Contains(err.Error(), "cost limit exceeded")
 }
 
 // labelWord is one label's form, as the control plane's: 1-63 letters, digits, '.', '_'

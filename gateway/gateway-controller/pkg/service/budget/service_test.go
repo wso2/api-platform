@@ -230,6 +230,7 @@ func TestCreate_RejectsInvalidBudgets(t *testing.T) {
 		{"filter expression returns a string", filter, `{"type": "attribute", "expression": "'research'"}`, "spec.filters[1].expression"},
 		{"split expression returns bool", `"blockAt": 95`, `"blockAt": 95, "splitBy": {"type": "attribute", "expression": "true"}`, "spec.limit.splitBy.expression"},
 		{"exemption does not compile", `"filters":`, `"exemptions": [{"type": "attribute", "expression": "request.Auth.Subject =="}], "filters":`, "spec.exemptions[0].expression"},
+		{"expression too costly", filter, `{"type": "attribute", "expression": "` + costlyExpression + `"}`, "spec.filters[1].expression"},
 		{"long expression", filter, `{"type": "attribute", "expression": "true || ` + strings.Repeat("x", 1024) + `"}`, "spec.filters[1].expression"},
 	}
 	for _, tc := range cases {
@@ -1103,3 +1104,10 @@ func TestApplyControlPlaneBudget_RefusesAnInvalidBudget(t *testing.T) {
 	assert.Error(t, err)
 	assert.Error(t, svc.ApplyControlPlaneBudget(utils.ControlPlaneBudget{Budget: json.RawMessage(`{}`)}, "c", nil))
 }
+
+// costlyExpression walks a 100-item list three levels deep: a million steps, far over the
+// budget system policy's cost limit, before any claim is read.
+var costlyExpression = func() string {
+	list := "[" + strings.Repeat("1,", 99) + "1]"
+	return list + ".all(a, " + list + ".all(b, " + list + ".all(c, a == b)))"
+}()

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -1229,12 +1230,13 @@ func budgetProperty(values map[string]interface{}) map[string]interface{} {
 			budget[prop] = v
 		}
 	}
+	// Rounded to a millionth of a dollar, so dashboards sum readable amounts.
 	switch cost := values[constants.BudgetCostUSDMetadataKey].(type) {
 	case float64:
-		budget["costUsd"] = cost
+		budget["costUsd"] = math.Round(cost*1e6) / 1e6
 	case string:
 		if parsed, err := strconv.ParseFloat(cost, 64); err == nil {
-			budget["costUsd"] = parsed
+			budget["costUsd"] = math.Round(parsed*1e6) / 1e6
 		}
 	}
 	if len(budget) == 0 {

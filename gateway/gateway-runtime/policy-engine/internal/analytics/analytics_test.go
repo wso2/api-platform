@@ -1706,7 +1706,7 @@ func TestPrepareAnalyticEvent_WithBudgetLimitsBlockedCostAndAgent(t *testing.T) 
 	logEntry := createLogEntryWithMetadataValues(map[string]*structpb.Value{
 		constants.BudgetLimitsMetadataKey:     structpb.NewListValue(limits),
 		constants.BudgetBlockedMetadataKey:    structpb.NewListValue(blocked),
-		constants.BudgetCostUSDMetadataKey:    structpb.NewNumberValue(0.0325),
+		constants.BudgetCostUSDMetadataKey:    structpb.NewNumberValue(0.03250000000000001),
 		constants.BudgetAgentMetadataKey:      structpb.NewStringValue("online-shop/returns-bot"),
 		constants.BudgetCostStatusMetadataKey: structpb.NewStringValue("priced"),
 	})
