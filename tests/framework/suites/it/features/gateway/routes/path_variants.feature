@@ -58,3 +58,132 @@ Feature: Path variants
 
     When I delete the API "${CTX:apiName2}"
     Then the response should be successful
+
+  Scenario: Case variants of several operations are all refused while their parameters keep any case
+    Given I generate a unique value from "path-variants-3" and store it as "apiName3"
+    And I generate a unique API context from "/path-variants-3" and store it as "apiContext3"
+
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
+      | name                  | ${CTX:apiName3}                  |
+      | spec.displayName      | Path-Case-Variant-Shared-API      |
+      | spec.version          | v1.0                              |
+      | spec.context          | ${CTX:apiContext3}/$version      |
+      | spec.upstream.main.url | http://testbench:3000            |
+      | spec.operations       | [{"method":"GET","path":"/*"},{"method":"GET","path":"/secure/data"},{"method":"GET","path":"/alerts/active"},{"method":"GET","path":"/orders/open"},{"method":"GET","path":"/items/{id}"}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext3}/v1.0/orders/open" until status 200
+
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/secure/data"
+    Then the response status code should be 200
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/alerts/active"
+    Then the response status code should be 200
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/items/ABC"
+    Then the response status code should be 200
+    And the JSON response field "path" should be "/items/ABC"
+
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/SECURE/DATA"
+    Then the response status code should be 404
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/Alerts/Active"
+    Then the response status code should be 404
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/orders/OPEN"
+    Then the response status code should be 404
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/Items/abc"
+    Then the response status code should be 404
+
+    When I send a "GET" request to "${CTX:apiContext3}/v1.0/other"
+    Then the response status code should be 200
+
+    When I delete the API "${CTX:apiName3}"
+    Then the response should be successful
+
+  Scenario: An operation spelt with capitals keeps its own route next to a lowercase one
+    Given I generate a unique value from "path-variants-4" and store it as "apiName4"
+    And I generate a unique API context from "/path-variants-4" and store it as "apiContext4"
+
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
+      | name                  | ${CTX:apiName4}                  |
+      | spec.displayName      | Path-Case-Variant-Spelling-API    |
+      | spec.version          | v1.0                              |
+      | spec.context          | ${CTX:apiContext4}/$version      |
+      | spec.upstream.main.url | http://testbench:3000            |
+      | spec.operations       | [{"method":"GET","path":"/*","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Matched-Operation","value":"wildcard"}]}}}]},{"method":"GET","path":"/users","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Matched-Operation","value":"lowercase"}]}}}]},{"method":"GET","path":"/Users","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Matched-Operation","value":"capitalised"}]}}}]}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext4}/v1.0/users" until status 200
+
+    When I send a "GET" request to "${CTX:apiContext4}/v1.0/users"
+    Then the response status code should be 200
+    And the response header "X-Matched-Operation" should be "lowercase"
+
+    When I send a "GET" request to "${CTX:apiContext4}/v1.0/Users"
+    Then the response status code should be 200
+    And the response header "X-Matched-Operation" should be "capitalised"
+
+    When I send a "GET" request to "${CTX:apiContext4}/v1.0/USERS"
+    Then the response status code should be 404
+
+    When I delete the API "${CTX:apiName4}"
+    Then the response should be successful
+
+  Scenario: A case variant is refused only for the methods of the operation it names
+    Given I generate a unique value from "path-variants-5" and store it as "apiName5"
+    And I generate a unique API context from "/path-variants-5" and store it as "apiContext5"
+
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
+      | name                  | ${CTX:apiName5}                  |
+      | spec.displayName      | Path-Case-Variant-Method-API      |
+      | spec.version          | v1.0                              |
+      | spec.context          | ${CTX:apiContext5}/$version      |
+      | spec.upstream.main.url | http://testbench:3000            |
+      | spec.operations       | [{"method":"GET","path":"/*"},{"method":"GET","path":"/secure/data"},{"method":"POST","path":"/*","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Matched-Operation","value":"post-wildcard"}]}}}]}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext5}/v1.0/secure/data" until status 200
+
+    When I send a "GET" request to "${CTX:apiContext5}/v1.0/Secure/data"
+    Then the response status code should be 404
+
+    When I send a "POST" request to "${CTX:apiContext5}/v1.0/Secure/data"
+    Then the response status code should be 200
+    And the response header "X-Matched-Operation" should be "post-wildcard"
+
+    When I delete the API "${CTX:apiName5}"
+    Then the response should be successful
+
+  Scenario: A case variant is refused when another API's wildcard operation would catch it
+    Given I generate a unique value from "path-variants-outer" and store it as "outerName"
+    And I generate a unique API context from "/path-variants-outer" and store it as "outerContext"
+    And I generate a unique value from "path-variants-inner" and store it as "innerName"
+
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
+      | name                  | ${CTX:outerName}                 |
+      | spec.displayName      | Path-Case-Variant-Outer-API       |
+      | spec.version          | v1.0                              |
+      | spec.context          | ${CTX:outerContext}/$version     |
+      | spec.upstream.main.url | http://testbench:3000            |
+      | spec.operations       | [{"method":"GET","path":"/*","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Matched-Operation","value":"outer-wildcard"}]}}}]}] |
+    Then the response should be successful
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
+      | name                  | ${CTX:innerName}                 |
+      | spec.displayName      | Path-Case-Variant-Inner-API       |
+      | spec.version          | v1.0                              |
+      | spec.context          | ${CTX:outerContext}/v1.0/inner/$version |
+      | spec.upstream.main.url | http://testbench:3000            |
+      | spec.operations       | [{"method":"GET","path":"/secure/data"}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:outerContext}/v1.0/inner/v1.0/secure/data" until status 200
+
+    When I send a "GET" request to "${CTX:outerContext}/v1.0/other"
+    Then the response status code should be 200
+    And the response header "X-Matched-Operation" should be "outer-wildcard"
+
+    When I send a "GET" request to "${CTX:outerContext}/v1.0/inner/v1.0/Secure/data"
+    Then the response status code should be 404
+
+    When I delete the API "${CTX:innerName}"
+    Then the response should be successful
+    When I delete the API "${CTX:outerName}"
+    Then the response should be successful

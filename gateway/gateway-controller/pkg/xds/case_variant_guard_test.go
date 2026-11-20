@@ -19,6 +19,7 @@
 package xds
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -207,4 +208,102 @@ func firstMatchingRoute(t *testing.T, routes []*route.Route, method, path string
 		}
 	}
 	return nil
+}
+
+func TestTranslateConfigs_CaseVariantGuardsOnlyWhereNeeded(t *testing.T) {
+	translate := func(t *testing.T, apis ...*models.StoredConfig) []*route.Route {
+		t.Helper()
+		translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, testConfig())
+		require.NoError(t, err)
+		resources, err := translator.TranslateConfigs(apis, "test-correlation-id")
+		require.NoError(t, err)
+		return apiVHostRoutes(t, resources, "localhost")
+	}
+	guards := func(routes []*route.Route) []*route.Route {
+		var out []*route.Route
+		for _, r := range routes {
+			if isCaseVariantGuard(r) {
+				out = append(out, r)
+			}
+		}
+		return out
+	}
+
+	t.Run("no guard when no route could catch a variant", func(t *testing.T) {
+		routes := translate(t, makeRestAPIWithOperations("uuid-plain", "plain", "/plain", []api.Operation{
+			{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/secure/data")},
+			{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/users")},
+		}))
+		assert.Empty(t, guards(routes))
+		got := firstMatchingRoute(t, routes, "GET", "/plain/Secure/data")
+		require.NotNil(t, got)
+		assert.Equal(t, "no-api-found", got.GetName(), "a variant nothing matches still gets the vhost's 404")
+	})
+
+	t.Run("a broader route of another API counts", func(t *testing.T) {
+		routes := translate(t,
+			makeRestAPIWithOperations("uuid-outer", "outer", "/outer", []api.Operation{
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/*")},
+			}),
+			makeRestAPIWithOperations("uuid-inner", "inner", "/outer/inner", []api.Operation{
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/secure/data")},
+			}),
+		)
+		got := firstMatchingRoute(t, routes, "GET", "/outer/inner/Secure/data")
+		require.NotNil(t, got)
+		assert.True(t, isCaseVariantGuard(got), "got %q", got.GetName())
+	})
+
+	t.Run("routes of equal specificity share one guard", func(t *testing.T) {
+		ops := []api.Operation{{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/*")}}
+		for _, p := range []string{"/secure/data", "/alerts/active", "/orders/open"} {
+			ops = append(ops, api.Operation{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr(p)})
+		}
+		routes := translate(t, makeRestAPIWithOperations("uuid-shared", "shared", "/shared", ops))
+		require.Len(t, guards(routes), 1)
+		for _, p := range []string{"/secure/data", "/alerts/active", "/orders/open"} {
+			got := firstMatchingRoute(t, routes, "GET", "/shared"+p)
+			require.NotNil(t, got)
+			assert.Equal(t, "GET|/shared"+p, strings.SplitN(got.GetName(), "|localhost", 2)[0])
+			got = firstMatchingRoute(t, routes, "GET", "/shared"+strings.ToUpper(p))
+			require.NotNil(t, got)
+			assert.True(t, isCaseVariantGuard(got), "%s: got %q", p, got.GetName())
+		}
+	})
+
+	t.Run("a large API's guards stay under the regex size budget", func(t *testing.T) {
+		ops := []api.Operation{{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/*")}}
+		for i := 0; i < 60; i++ {
+			ops = append(ops, api.Operation{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr(fmt.Sprintf("/resource/item%02d", i))})
+		}
+		routes := translate(t, makeRestAPIWithOperations("uuid-large", "large", "/large", ops))
+		g := guards(routes)
+		require.Greater(t, len(g), 1, "60 paths should not fit one guard")
+		assert.Less(t, len(g), 60, "guards should be shared")
+		for _, r := range g {
+			assert.LessOrEqual(t, regexProgramSize(r.GetMatch().GetSafeRegex().GetRegex()), caseVariantGuardProgramBudget, r.GetName())
+		}
+		for i := 0; i < 60; i++ {
+			got := firstMatchingRoute(t, routes, "GET", fmt.Sprintf("/large/RESOURCE/item%02d", i))
+			require.NotNil(t, got)
+			assert.True(t, isCaseVariantGuard(got), "item%02d: got %q", i, got.GetName())
+		}
+	})
+}
+
+func TestSegmentsMayOverlap(t *testing.T) {
+	for _, tt := range []struct {
+		a, b string
+		want bool
+	}{
+		{"/shop/*", "/shop/secure/data", true},
+		{"/SHOP/*", "/shop/secure/data", true},
+		{"/other/*", "/shop/secure/data", false},
+		{"/shop/{id}", "/shop/secure", true},
+		{"/shop/{id}", "/shop/secure/data", false},
+		{"/shop/v{n}/x", "/shop/v1/x", true},
+		{"/shop/items/{id}", "/shop/orders/{id}", false},
+	} {
+		assert.Equal(t, tt.want, segmentsMayOverlap(pathSegments(tt.a), pathSegments(tt.b)), "%s vs %s", tt.a, tt.b)
+	}
 }
