@@ -563,3 +563,18 @@
   .ak-tablewrap { overflow-x: auto; }
   .ak-table { min-width: 48.75rem; }
 }
+
+/* The artifact's kind: REST, MCP, GraphQL and so on. */
+.sub-kind-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--info-surface);
+  color: var(--info);
+}
+.sub-kind-pill--mcp { background: #e0f7fa; color: #006064; }

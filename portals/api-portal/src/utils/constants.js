@@ -287,36 +287,44 @@ module.exports = {
         WEB: 'web',
         DOCS: 'docs',
     },
+    // Created for each new organization when auto_create_subscription_plans is on. A plan with no
+    // conditions is unlimited.
     DEFAULT_SUBSCRIPTION_PLANS: [
         {
             "handle": "Bronze",
             "displayName": "Bronze",
             "description": "Allows 1000 requests per minute",
-            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 1000 }],
+            "conditions": [
+                { "id": "requests", "type": "request-count", "params": { "limits": [{ "count": 1000, "timeAmount": 1, "timeUnit": "MINUTE" }], "onExceed": "reject" } },
+            ],
         },
         {
             "handle": "Silver",
             "displayName": "Silver",
             "description": "Allows 2000 requests per minute",
-            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 2000 }],
+            "conditions": [
+                { "id": "requests", "type": "request-count", "params": { "limits": [{ "count": 2000, "timeAmount": 1, "timeUnit": "MINUTE" }], "onExceed": "reject" } },
+            ],
         },
         {
             "handle": "Gold",
             "displayName": "Gold",
             "description": "Allows 5000 requests per minute",
-            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "timeAmount": 1, "limitCount": 5000 }],
+            "conditions": [
+                { "id": "requests", "type": "request-count", "params": { "limits": [{ "count": 5000, "timeAmount": 1, "timeUnit": "MINUTE" }], "onExceed": "reject" } },
+            ],
         },
         {
             "handle": "Unlimited",
             "displayName": "Unlimited",
             "description": "Allows unlimited requests",
-            "limits": [{ "limitType": "REQUEST_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
+            "conditions": [],
         },
         {
             "handle": "AsyncUnlimited",
             "displayName": "AsyncUnlimited",
             "description": "Allows unlimited requests for Async APIs",
-            "limits": [{ "limitType": "EVENT_COUNT", "timeUnit": null, "timeAmount": 1, "limitCount": -1 }],
+            "conditions": [],
         }
     ],
     ERROR_MESSAGE: {

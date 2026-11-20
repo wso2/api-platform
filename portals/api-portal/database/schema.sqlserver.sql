@@ -258,7 +258,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_tag_mappings_api
 CREATE INDEX idx_api_tag_mappings_api_uuid ON dbo.api_tag_mappings(api_uuid, portal_id);
 
 -- Subscription Plans table (portal-scoped rate/billing plans)
--- Throttling limits live in subscription_plan_limits (one row per limit).
+-- A plan's limits are in subscription_plan_conditions.
 IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) NOT NULL,
@@ -280,28 +280,24 @@ CREATE TABLE dbo.subscription_plans (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_org_handle' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
 CREATE UNIQUE INDEX uq_subscription_plan_org_handle ON dbo.subscription_plans(org_uuid, handle, portal_id) WHERE org_uuid IS NOT NULL;
 
--- Subscription Plan Limits table (throttling limits for a plan)
-IF OBJECT_ID(N'dbo.subscription_plan_limits', N'U') IS NULL
-CREATE TABLE dbo.subscription_plan_limits (
+-- Subscription Plan Conditions table: a plan's conditions in order. condition_type is request-count,
+-- tool-call-count, token-count or custom. params is JSON, for example
+-- {"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}.
+-- Replaces subscription_plan_limits. A plan with no rows here is read from that table if it exists.
+IF OBJECT_ID(N'dbo.subscription_plan_conditions', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_conditions (
     uuid VARCHAR(40) NOT NULL,
     plan_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
-    time_unit VARCHAR(20),
-    time_amount INT NOT NULL DEFAULT 1,
-    limit_count BIGINT NOT NULL,
+    condition_id VARCHAR(63) NOT NULL,
+    condition_type VARCHAR(40) NOT NULL,
+    params VARBINARY(MAX) NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
     PRIMARY KEY (portal_id, uuid),
     FOREIGN KEY (portal_id, plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
-CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(plan_uuid);
--- Split into two filtered unique indexes because time_unit is nullable (see the
--- postgres schema for the full rationale); this is already how the source model
--- declares it (two named partial indexes), so all three dialects agree exactly.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_limits' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
-CREATE UNIQUE INDEX uq_subscription_plan_limits ON dbo.subscription_plan_limits(plan_uuid, limit_type, time_amount, time_unit, portal_id) WHERE time_unit IS NOT NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_limits_null_unit' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
-CREATE UNIQUE INDEX uq_subscription_plan_limits_null_unit ON dbo.subscription_plan_limits(plan_uuid, limit_type, time_amount, portal_id) WHERE time_unit IS NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_conditions' AND object_id = OBJECT_ID(N'dbo.subscription_plan_conditions'))
+CREATE UNIQUE INDEX uq_subscription_plan_conditions ON dbo.subscription_plan_conditions(plan_uuid, condition_id, portal_id);
 
 -- API-Subscription Plan mappings (many-to-many: which plans an API offers)
 IF OBJECT_ID(N'dbo.api_subscription_plan_mappings', N'U') IS NULL

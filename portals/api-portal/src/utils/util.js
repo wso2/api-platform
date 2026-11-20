@@ -32,6 +32,7 @@ const db = require('../db/driver');
 const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
+const planConditions = require('./subscriptionPlanConditions');
 const billingVisibility = require('../services/billing/billingVisibility');
 const { currentRequest } = require('./requestContext');
 const { pageAccess } = require('./pageAccess');
@@ -1425,7 +1426,9 @@ async function appendSubscriptionPlanDetails(orgId, subscriptionPlans, apiUuid) 
                 id: subscriptionPlan.id,
                 displayName: subscriptionPlan.displayName,
                 description: subscriptionPlan.description,
-                limits: subscriptionPlan.limits || [],
+                limits: planConditions.displayLimits(subscriptionPlan.conditions),
+                limitLines: planConditions.limitLines(subscriptionPlan.conditions),
+                conditions: subscriptionPlan.conditions,
                 paid: subscriptionPlan.paid,
                 pricing: subscriptionPlan.pricing,
             });

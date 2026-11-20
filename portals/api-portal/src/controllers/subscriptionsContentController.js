@@ -64,6 +64,7 @@ const loadSubscriptions = async (req, res, next) => {
                     apiVersion: sub.api_metadata?.version || '',
                     apiHandle: sub.api_metadata?.handle || '#',
                     pageSection: artifactPageSection(sub.api_metadata?.type),
+                    apiType: sub.api_metadata?.type || '',
                     planName: sub.subscription_plan?.display_name || '',
                     status: sub.status,
                     subscriptionToken: sub.token,

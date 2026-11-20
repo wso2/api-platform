@@ -292,9 +292,9 @@
           desc = 'Your subscription will remain active until '
             + (_sub.periodEnd ? formatBillingDate(_sub.periodEnd) : 'the end of the period') + '.';
         } else {
-          desc = 'Your applications will lose access to this API and any tokens will stop working. '
+          desc = 'You\'ll lose access to this API, and its subscription token will stop working. '
             + (_sub.paid ? 'Usage up to now is billed on a final invoice. ' : '')
-            + 'You can re-subscribe at any time.';
+            + 'You can subscribe again at any time.';
         }
         showUnsubDialog(
           'Unsubscribe from <span id="apiUnsubPlanName">' + _sub.subscriptionPlanName + '</span> plan?',
@@ -310,7 +310,7 @@
         showUnsubDialog(
           'End your subscription now?',
           'Your subscription ends immediately instead of on ' + formatBillingDate(_sub.endsAt)
-            + ', and your applications lose access to this API. The rest of the paid period is not refunded.',
+            + ', and you lose access to this API. The rest of the paid period is not refunded.',
           'End now'
         );
       }

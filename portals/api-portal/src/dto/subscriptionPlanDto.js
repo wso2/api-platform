@@ -32,6 +32,7 @@ class SubscriptionPlan {
             timeAmount: l.time_amount,
             limitCount: Number.isSafeInteger(Number(l.limit_count)) ? Number(l.limit_count) : String(l.limit_count),
         }));
+        this.conditions = (subscriptionPlan.conditions || []).map(c => ({ id: c.id, type: c.type, params: c.params }));
         // A plan is paid when it has pricing; `pricing` is absent from rows that were not
         // fetched with it, and those read as free.
         this.paid = Boolean(subscriptionPlan.pricing);
