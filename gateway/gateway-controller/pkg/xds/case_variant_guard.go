@@ -93,10 +93,18 @@ func appendCaseVariantGuards(routes []*route.Route) ([]*route.Route, error) {
 		members := groups[key]
 		sort.Slice(members, func(i, j int) bool { return members[i].body < members[j].body })
 		for _, chunk := range chunkGuardMembers(members) {
-			match := proto.Clone(chunk[0].route.GetMatch()).(*route.RouteMatch)
-			match.CaseSensitive = nil
-			match.PathSpecifier = &route.RouteMatch_SafeRegex{
-				SafeRegex: &matcher.RegexMatcher{Regex: combinedGuardRegex(chunk)},
+			var match *route.RouteMatch
+			if len(chunk) == 1 && chunk[0].route.GetMatch().GetPath() != "" &&
+				regexProgramSize(combinedGuardRegex(chunk)) > caseVariantGuardProgramBudget {
+				// An exact path too long for a regex guard keeps Envoy's exact matcher, which has
+				// no size limit, compared case-insensitively.
+				match, _ = caseInsensitiveMatch(chunk[0].route.GetMatch())
+			} else {
+				match = proto.Clone(chunk[0].route.GetMatch()).(*route.RouteMatch)
+				match.CaseSensitive = nil
+				match.PathSpecifier = &route.RouteMatch_SafeRegex{
+					SafeRegex: &matcher.RegexMatcher{Regex: combinedGuardRegex(chunk)},
+				}
 			}
 			guard, err := buildNotFoundRoute(chunk[0].route.GetName()+caseVariantGuardSuffix, match)
 			if err != nil {
@@ -351,7 +359,10 @@ func hasNonLiteralSegment(segments []string) bool {
 
 // segmentsMayOverlap reports whether some request could match both paths with case ignored: a
 // literal segment must equal the other's literal ignoring case, and a wildcard matches the rest.
+// A trailing empty segment ("/shop/") is ignored, since a route accepts its path with or without
+// the trailing slash.
 func segmentsMayOverlap(a, b []string) bool {
+	a, b = trimTrailingEmptySegment(a), trimTrailingEmptySegment(b)
 	for i := 0; ; i++ {
 		if (i < len(a) && a[i] == "*") || (i < len(b) && b[i] == "*") {
 			return true
@@ -439,4 +450,11 @@ func buildNotFoundRoute(name string, match *route.RouteMatch) (*route.Route, err
 			constants.ExtProcFilterName: extProcDisabledAny,
 		},
 	}, nil
+}
+
+func trimTrailingEmptySegment(segments []string) []string {
+	if n := len(segments); n > 0 && segments[n-1] == "" {
+		return segments[:n-1]
+	}
+	return segments
 }

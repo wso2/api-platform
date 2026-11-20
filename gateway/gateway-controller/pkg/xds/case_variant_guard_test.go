@@ -291,6 +291,33 @@ func TestTranslateConfigs_CaseVariantGuardsOnlyWhereNeeded(t *testing.T) {
 	})
 }
 
+func TestTranslateConfigs_CaseVariantGuardForRootOperation(t *testing.T) {
+	translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, testConfig())
+	require.NoError(t, err)
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{
+		makeRestAPIWithOperations("uuid-tenant", "tenant", "/", []api.Operation{
+			{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/{tenant}")},
+		}),
+		makeRestAPIWithOperations("uuid-shop", "shop", "/shop", []api.Operation{
+			{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/")},
+		}),
+	}, "test-correlation-id")
+	require.NoError(t, err)
+	routes := apiVHostRoutes(t, resources, "localhost")
+
+	for _, path := range []string{"/shop", "/shop/"} {
+		got := firstMatchingRoute(t, routes, "GET", path)
+		require.NotNil(t, got, path)
+		assert.Equal(t, "GET|/shop/", strings.SplitN(got.GetName(), "|localhost", 2)[0], path)
+	}
+	got := firstMatchingRoute(t, routes, "GET", "/SHOP")
+	require.NotNil(t, got)
+	assert.True(t, isCaseVariantGuard(got), "GET /SHOP: got %q", got.GetName())
+	got = firstMatchingRoute(t, routes, "GET", "/acme")
+	require.NotNil(t, got)
+	assert.Equal(t, "GET|/{tenant}", strings.SplitN(got.GetName(), "|localhost", 2)[0])
+}
+
 func TestSegmentsMayOverlap(t *testing.T) {
 	for _, tt := range []struct {
 		a, b string
@@ -303,7 +330,51 @@ func TestSegmentsMayOverlap(t *testing.T) {
 		{"/shop/{id}", "/shop/secure/data", false},
 		{"/shop/v{n}/x", "/shop/v1/x", true},
 		{"/shop/items/{id}", "/shop/orders/{id}", false},
+		// A trailing slash is optional in a route's match.
+		{"/{tenant}", "/shop/", true},
+		{"/shop/{id}/", "/shop/data", true},
+		{"/{a}/{b}", "/shop/", false},
 	} {
 		assert.Equal(t, tt.want, segmentsMayOverlap(pathSegments(tt.a), pathSegments(tt.b)), "%s vs %s", tt.a, tt.b)
 	}
+}
+
+func TestAppendCaseVariantGuards_LongExactPathKeepsExactMatcher(t *testing.T) {
+	method := []*route.HeaderMatcher{{
+		Name: ":method",
+		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+			StringMatch: &matcher.StringMatcher{MatchPattern: &matcher.StringMatcher_Exact{Exact: "GET"}},
+		},
+	}}
+	longPath := "/shop/" + strings.Repeat("segment", 60)
+	routes := []*route.Route{
+		{
+			Name:  "GET|" + longPath + "|localhost",
+			Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: longPath}, Headers: method},
+		},
+		{
+			Name: "GET|/shop/*|localhost",
+			Match: &route.RouteMatch{
+				PathSpecifier: &route.RouteMatch_SafeRegex{SafeRegex: &matcher.RegexMatcher{Regex: "^/shop(?:/.*)?$"}},
+				Headers:       method,
+			},
+		},
+	}
+	require.Greater(t, regexProgramSize("(?i)^"+regexp.QuoteMeta(longPath)+"$"), caseVariantGuardProgramBudget)
+
+	guarded, err := appendCaseVariantGuards(routes)
+	require.NoError(t, err)
+	var guards []*route.Route
+	for _, r := range guarded {
+		if isCaseVariantGuard(r) {
+			guards = append(guards, r)
+		}
+	}
+	require.Len(t, guards, 1)
+	m := guards[0].GetMatch()
+	assert.Equal(t, longPath, m.GetPath(), "the guard should use the exact matcher, not a regex")
+	require.NotNil(t, m.GetCaseSensitive())
+	assert.False(t, m.GetCaseSensitive().GetValue())
+	assert.Nil(t, m.GetSafeRegex())
+	require.Len(t, m.GetHeaders(), 1)
 }
