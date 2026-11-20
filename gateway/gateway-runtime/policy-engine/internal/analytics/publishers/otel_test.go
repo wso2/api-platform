@@ -2254,7 +2254,11 @@ func TestBuildRecordBudget(t *testing.T) {
 	event.API.APIType = "LlmProvider"
 	event.Properties[constants.BudgetPropertyKey] = map[string]interface{}{
 		"names":      []string{"research-monthly", "org-daily"},
+		"limits":     []string{"research-monthly ($100.00/month)", "org-daily ($15.00/day)"},
+		"blocked":    []string{"org-daily"},
 		"costStatus": "usage_unavailable",
+		"costUsd":    0.0325,
+		"agent":      "online-shop/checkout-assistant",
 	}
 
 	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
@@ -2265,5 +2269,17 @@ func TestBuildRecordBudget(t *testing.T) {
 	}
 	if got["wso2.budget.cost_status"] != "usage_unavailable" {
 		t.Errorf("wso2.budget.cost_status = %v", got["wso2.budget.cost_status"])
+	}
+	if limits, _ := got["wso2.budget.limits"].([]string); len(limits) != 2 || limits[1] != "org-daily ($15.00/day)" {
+		t.Errorf("wso2.budget.limits = %v", got["wso2.budget.limits"])
+	}
+	if blocked, _ := got["wso2.budget.blocked"].([]string); len(blocked) != 1 || blocked[0] != "org-daily" {
+		t.Errorf("wso2.budget.blocked = %v", got["wso2.budget.blocked"])
+	}
+	if got["wso2.budget.cost_usd"] != 0.0325 {
+		t.Errorf("wso2.budget.cost_usd = %v (%T)", got["wso2.budget.cost_usd"], got["wso2.budget.cost_usd"])
+	}
+	if got["wso2.budget.agent"] != "online-shop/checkout-assistant" {
+		t.Errorf("wso2.budget.agent = %v", got["wso2.budget.agent"])
 	}
 }
