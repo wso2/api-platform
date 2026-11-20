@@ -95,7 +95,7 @@ Behaviour matches **`RestApi`** today:
 
 1. Watch the new CR kind **and** **`APIGateway`** (enqueue when gateways change selection, same pattern as **`restapi_controller.go`** enqueue from gateway events).
 2. **Finalizer** per kind (distinct name per resource type).
-3. Resolve gateway endpoint → **basic auth** (same **`GetAuthSettingsForRegistryGateway`** pattern as **`RestApi`**).
+3. Resolve gateway endpoint → **basic auth** (same **`ResolveControllerAuthHeader`** as **`RestApi`**: credentials from the merged chart, operator and per-gateway values).
 4. Build payload (YAML envelope for **`apiVersion`/`kind`/`metadata`/`spec`** kinds where the management API expects it; JSON for subscriptions where OpenAPI specifies JSON-only).
 5. **Existence probe** (**`GET`**) where supported → **`POST`** or **`PUT`**; **`DELETE`** on CR removal.
 6. **Retry / backoff** using the same **`APITracker`**-style in-memory semantics as **`RestApi`** (factored toward a generic helper implementation-side).
