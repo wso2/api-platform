@@ -418,17 +418,29 @@ func recorded(v *atomic.Value) string {
 // warnIfExited logs a container that is no longer running, with its exit code and whether it
 // was killed for running out of memory, unless its exit is the deliberate stop whose exit time
 // is deliberate. Without it, a container that died mid-run leaves only connection errors in the
-// scenarios that called it. A container whose state cannot be read is not reported.
-func warnIfExited(ctx context.Context, name string, c testcontainers.Container, deliberate string) {
+// scenarios that called it. A container whose state cannot be read is not reported, and it
+// returns whether the state could be read.
+func warnIfExited(ctx context.Context, name string, c testcontainers.Container, deliberate string) bool {
 	state, err := c.State(ctx)
-	if err != nil || state.Running {
-		return
+	if err != nil {
+		return false
 	}
-	if deliberate != "" && state.FinishedAt == deliberate {
-		return
+	if state.Running || deliberate != "" && state.FinishedAt == deliberate {
+		return true
 	}
 	slog.Warn("container had exited before teardown", "container", name, "status", state.Status,
 		"exitCode", state.ExitCode, "oomKilled", state.OOMKilled, "finishedAt", state.FinishedAt, "error", state.Error)
+	return true
+}
+
+// deliberateExit is the exit time to record for a deliberate stop: the one Docker reports after
+// it, unless the state before it could not be read. Then the container may already have exited
+// on its own, so nothing is recorded and teardown reports it.
+func deliberateExit(ctx context.Context, c testcontainers.Container, readBefore bool) string {
+	if !readBefore {
+		return ""
+	}
+	return exitTime(ctx, c)
 }
 
 // Halt stops the container's processes without removing the container, so Resume can start
@@ -440,11 +452,11 @@ func (c *Container) Halt(ctx context.Context) error {
 	}
 	// Stopping an already exited container succeeds, so an exit of its own is reported before
 	// the deliberate stop is recorded over it.
-	warnIfExited(ctx, c.def.Name, c.container, recorded(&c.stoppedAt))
+	readBefore := warnIfExited(ctx, c.def.Name, c.container, recorded(&c.stoppedAt))
 	if err := c.container.Stop(ctx, nil); err != nil {
 		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
 	}
-	c.stoppedAt.Store(exitTime(ctx, c.container))
+	c.stoppedAt.Store(deliberateExit(ctx, c.container, readBefore))
 	return nil
 }
 

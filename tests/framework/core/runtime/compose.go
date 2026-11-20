@@ -750,12 +750,12 @@ func (c *ComposeStack) StopService(ctx context.Context, service string) error {
 	}
 	// Stopping an already exited service succeeds, so an exit of its own is reported before the
 	// deliberate stop is recorded over it.
-	warnIfExited(ctx, service, container, c.stoppedAt(service))
+	readBefore := warnIfExited(ctx, service, container, c.stoppedAt(service))
 	timeout := 30 * time.Second
 	if err := container.Stop(ctx, &timeout); err != nil {
 		return fmt.Errorf("runtime: stopping service %q: %w", service, err)
 	}
-	c.stopped.Store(service, exitTime(ctx, container))
+	c.stopped.Store(service, deliberateExit(ctx, container, readBefore))
 	return nil
 }
 

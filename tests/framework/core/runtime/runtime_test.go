@@ -1692,3 +1692,15 @@ func TestUnreadableStateAtTeardownIsNotReported(t *testing.T) {
 		require.NoError(t, c.Stop(ctx))
 	}))
 }
+
+// When the state before a deliberate stop cannot be read, an exit that had already happened is
+// not recorded as deliberate, so teardown still reports it.
+func TestHaltOfAnExitedContainerWithAnUnreadableStateIsReported(t *testing.T) {
+	ctx := context.Background()
+	// Halt's read before stopping (read 1) fails; the container had already crashed.
+	c := newFakeExitContainer(&fakeExitContainer{running: false, exitCode: 137, finishedAt: "crashed", failReads: map[int]bool{1: true}})
+	require.Equal(t, 1, exitWarnings(t, func() {
+		require.NoError(t, c.Halt(ctx))
+		require.NoError(t, c.Stop(ctx))
+	}))
+}
