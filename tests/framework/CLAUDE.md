@@ -60,8 +60,22 @@ suites/ui/steps/
 ├── apiportal/         API Portal pages
 └── managementportal/  Management Portal (API Control Plane) pages
 
-suites/cloud/steps/cloudconsole/   cloud control-plane and data-plane steps
-suites/cloud/setup/                run-level starter and finalizer for the shared organisation
+suites/cloud/steps/               one package per test area of the hosted cloud
+├── steps.go           registers every area's steps and cleanup handlers
+├── cloudbase/         shared core: console token, authenticated requests, context keys,
+│                      the two suite projects, resources more than one area uses
+├── access/            token and request-credential checks          (apip_auth)
+├── project/           project resolution and its pipeline binding  (apip_project)
+├── restapi/           REST API lifecycle and definitions           (apip_restapi)
+├── graphql/           GraphQL APIs                                 (apip_graphql)
+├── deploy/            builds and deployments                       (apip_deploy)
+├── promotion/         promotion along a deployment pipeline        (apip_promotion)
+├── gateway/           managed gateways and their configuration     (apip_gateway, apip_gateway_config)
+├── selfhosted/        self-hosted gateways and runtimes            (apip_self_hosted_gateway*)
+├── secrets/           secrets                                      (apip_secrets)
+├── portal/            managed API Portals, sign-in, publication    (apip_portal)
+└── orgsetup/          the starter and the finalizer of a run
+suites/cloud/setup/    run-level starter and finalizer engines for the shared organisation
 ```
 
 `base.go` is the entry point for suite construction and step registration.

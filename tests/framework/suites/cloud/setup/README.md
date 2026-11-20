@@ -3,11 +3,11 @@
 The cloud suite runs against a shared, long-lived organisation. Two run-level components keep a
 run honest about it:
 
-- the **starter** (`starter/`, with the checks in `../steps/cloudconsole/starter.go` and
+- the **starter** (`starter/`, with the checks in `../steps/orgsetup/starter.go` and
   `preconditions.go`) checks that the organisation holds what a scenario needs, so a scenario that
   cannot run is **skipped**, and the run is failed when the organisation lacks something the
   suite needs, so a green run never hides a missing environment, pipeline or portal;
-- the **finalizer** (`finalizer/`, with the sweeps in `../steps/cloudconsole/leftovers.go`) removes
+- the **finalizer** (`finalizer/`, with the sweeps in `../steps/orgsetup/leftovers.go`) removes
   the data a run left behind.
 
 `cmd/cloudsetup` runs both by hand, outside a suite run.
@@ -21,7 +21,7 @@ gateway`, `I find an active managed API Portal`, and so on) maps to a **precondi
 met. Each precondition is prepared **once** per run and the answer is shared by every scenario and
 runner after it, so:
 
-- a precondition no scenario of the run needs is never looked at: a run of `apip-basic` alone
+- a precondition no scenario of the run needs is never looked at: a run of `apip-restapi` alone
   checks the default gateway (which reads the pipeline binding of `apip-test-project-1` and lists
   the gateways and pipelines) but not the organisation's portals or other environments, and a
   runner that is commented out or filtered by a tag (`~@known-issue`) asks for nothing;
@@ -37,7 +37,7 @@ named with the prefix `apip-test-`:
 
 | Project | Runners |
 |---|---|
-| `apip-test-project-1` | `apip-basic` (with the GraphQL features), `apip-deploy`, `apip-gateway`, `apip-gateway-config`, `apip-secrets`, `apip-self-hosted-gateway-runtime` |
+| `apip-test-project-1` | `apip-restapi`, `apip-graphql`, `apip-deploy`, `apip-gateway`, `apip-gateway-config`, `apip-secrets`, `apip-self-hosted-gateway-runtime` |
 | `apip-test-project-2` | every other runner: `apip-auth`, `apip-self-hosted-gateway`, `apip-promotion`, `apip-portal` (and `apip-project`) |
 
 A scenario works in the project of its feature file (one feature file is one runner). The default
@@ -66,13 +66,13 @@ run.
 
 | Precondition | Met when | Missing | Scenarios that need it |
 |---|---|---|---|
-| `project@<project>` | `GET /projects/<project>` answers 200, for `apip-test-project-1` and `apip-test-project-2` | **built** by the starter; skipped and the run fails when it cannot be built | the scenarios that read, find or create resources in the project of their runner (basic, deploy, gateway, secrets, portal, project, promotion), as their first check |
-| `default-gateway@<project>` | the deployment pipeline of the project is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in a first stage of it that no suite run created | **built** in the pipeline's first stage (`development` when it is one) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway`, for the project of their runner (basic, deploy, gateway, gateway configuration, secrets, portal) |
+| `project@<project>` | `GET /projects/<project>` answers 200, for `apip-test-project-1` and `apip-test-project-2` | **built** by the starter; skipped and the run fails when it cannot be built | the scenarios that read, find or create resources in the project of their runner (REST API, GraphQL, deploy, gateway, secrets, portal, project, promotion), as their first check |
+| `default-gateway@<project>` | the deployment pipeline of the project is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in a first stage of it that no suite run created | **built** in the pipeline's first stage (`development` when it is one) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway`, for the project of their runner (REST API, GraphQL, deploy, gateway, gateway configuration, secrets, portal) |
 | `environment` | the platform lists an environment the suite may select (see "Which resources the suite selects") | not built: skipped, and the run **fails** | the scenarios that select an existing environment for a managed or self-hosted gateway |
 | `second-environment` | the platform lists a non-production environment the suite may select, besides the default gateway's, that no suite run created | not built: skipped, and the run **fails** | `ID_APIP_GATEWAY_006` and `_007` |
 | `pipeline-project@<project>` | the project is bound to a deployment pipeline named with the prefix `apip-test-` that the platform lists, with at least one promotion path | not built: skipped, and the run **fails** | the scenarios that start with `I find the pipeline-bound APIP project` |
 | `pipeline-chain-2@<project>`, `pipeline-chain-3@<project>` | that pipeline holds a promotion chain of 2 (3) environments the suite may select, each with an active regular gateway | not built: skipped, and the run **fails** | the promotion scenarios of `apip-test-project-2` (the chain of 3 is `ID_APIP_PROMOTION_006`), `ID_APIP_DEPLOY_011` of `apip-test-project-1`, `ID_APIP_PROJECT_009` |
-| `api-portal` | the organisation holds an active managed API Portal that no scenario created | not built while `starterCreatesPortal` is `false` (the cloud intermittently fails to build one): skipped and the run **fails**, so provide an active portal for these scenarios. Built and waited for until it is `active` once the constant is `true` | the scenarios that start with `I find an active managed API Portal` (the portal feature) |
+| `api-portal` | the organisation holds an active managed API Portal whose name starts with `apip-test-` (such as `apip-test-portal`) that no scenario created | not built while `starterCreatesPortal` is `false` (the cloud intermittently fails to build one): skipped and the run **fails**, so provide an active portal named with the prefix (such as `apip-test-portal`) for these scenarios. Built as `apip-test-portal` and waited for until it is `active` once the constant is `true` | the scenarios that start with `I find an active managed API Portal` (the portal feature) |
 
 The starter never creates an environment or a deployment pipeline, and never changes a project's
 pipeline: the WSO2 Cloud console manages them. A scenario never creates them either. The starter
@@ -102,7 +102,7 @@ chains) are not subject to this.
 Any other environment, pipeline or project is passed over, even when it has everything a scenario
 needs (a gateway in the environment, a promotion path in the pipeline): the precondition is not met
 and the scenarios that need it are skipped and the run fails. A promotion chain only runs through
-environments the suite may select. Gateways and portals are not selected by name: the starter finds or builds them
+environments the suite may select. Gateways are not selected by name: the starter finds or builds them
 under any name.
 
 ## What happens when a precondition is not met
@@ -176,11 +176,13 @@ with a suffix of **this run**:
 |---|---|
 | portal publications | the publications of the run's APIs, from every active portal |
 | managed API Portals | only a portal a scenario built for itself (`syn-portal-`) |
-| REST APIs and GraphQL APIs | the run's APIs, in `apip-test-project-1`, `apip-test-project-2` and the projects the run created |
+| REST APIs and GraphQL APIs | the run's APIs, in `apip-test-project-1` and `apip-test-project-2` |
 | subscription plans | the plans the run created (`syn-plan-`) |
-| secrets, self-hosted gateways, managed gateways, projects | the run's entries |
+| secrets, self-hosted gateways, managed gateways | the run's entries |
 
-Whatever the finalizer removes is a leak the per-scenario cleanup missed and is logged as one.
+Whatever the finalizer removes is a leak the per-scenario cleanup missed and is logged as one. No
+scenario creates a project and nothing in the suite deletes one: the scenarios that create a project
+are tagged `@skip`.
 
 The finalizer **never** deletes:
 

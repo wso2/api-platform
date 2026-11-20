@@ -37,7 +37,8 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
-	cloudsteps "github.com/wso2/api-platform/tests/framework/suites/cloud/steps/cloudconsole"
+	cloudsteps "github.com/wso2/api-platform/tests/framework/suites/cloud/steps"
+	"github.com/wso2/api-platform/tests/framework/suites/cloud/steps/orgsetup"
 )
 
 var selection topology.Selection
@@ -145,12 +146,12 @@ func TestCloudSuite(t *testing.T) {
 		t.Fatalf("building source images: %v", err)
 	}
 
-	finalizer := cloudsteps.NewFinalizer()
+	finalizer := orgsetup.NewFinalizer()
 	// The starter makes sure the organisation holds the projects the runners work in first (creating
 	// one it lacks), and checks the rest of what the organisation holds when a scenario first needs
-	// it, so a run of apip-basic alone checks the gateway (reading its project's pipeline binding to
+	// it, so a run of apip-restapi alone checks the gateway (reading its project's pipeline binding to
 	// do so) and never looks at the organisation's portals or other environments.
-	starter, err := cloudsteps.NewStarter()
+	starter, err := orgsetup.NewStarter()
 	if err != nil {
 		t.Fatalf("creating the cloud run starter: %v", err)
 	}
@@ -230,8 +231,8 @@ blocks:
     components:
       - name: cloud-console
     runners:
-      - name: apip-basic
-        features: [features/apip_basic.feature]
+      - name: apip-restapi
+        features: [features/apip_restapi.feature]
 `
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "cloud-suite.yaml"), []byte(fixture), 0o644))
 

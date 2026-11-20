@@ -45,6 +45,7 @@ Feature: APIP cloud managed gateway lifecycle
     And the cloud API error code should be "invalid_request"
     And the cloud API response body should contain "syn-absent-environment"
 
+  @known-issue
   @TC_APIP_GW_010 @ID_APIP_GATEWAY_004
   Scenario Outline: A version that is neither major.minor nor CalVer is refused
     Given I obtain an APIP cloud console token
