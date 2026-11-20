@@ -546,7 +546,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				)
 				return
 			}
-			_, err = c.llmDeploymentService.DeleteLLMProvider(cfg.Handle, correlationID, c.logger)
+			_, err = c.llmDeploymentService.DeleteLLMProvider(cfg.Handle, correlationID, "", c.logger)
 			if err != nil {
 				c.logger.Error("Failed to delete LLM provider during sync",
 					slog.String("artifact_id", artifactID),
@@ -566,7 +566,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				)
 				return
 			}
-			_, err = c.llmDeploymentService.DeleteLLMProxy(cfg.Handle, correlationID, c.logger)
+			_, err = c.llmDeploymentService.DeleteLLMProxy(cfg.Handle, correlationID, "", c.logger)
 			if err != nil {
 				c.logger.Error("Failed to delete LLM proxy during sync",
 					slog.String("artifact_id", artifactID),
@@ -606,7 +606,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				)
 				return
 			}
-			_, err = c.mcpDeploymentService.DeleteMCPProxy(cfg.Handle, correlationID, c.logger)
+			_, err = c.mcpDeploymentService.DeleteMCPProxy(cfg.Handle, correlationID, "", c.logger)
 			if err != nil {
 				c.logger.Error("Failed to delete MCP proxy during sync",
 					slog.String("artifact_id", artifactID),

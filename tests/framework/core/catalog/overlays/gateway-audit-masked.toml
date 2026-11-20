@@ -1,0 +1,14 @@
+[controller.audit]
+enabled = true
+mask_sensitive_fields = true
+outputs = ["stdout", "file", "http"]
+
+[controller.audit.file]
+path = "/app/data/audit/audit.log"
+
+[controller.audit.http]
+endpoint = "http://testbench:3012/${BLOCK}/webhook"
+allow_insecure_transport = true
+content_type = "application/json"
+batch_max_events = 1
+flush_interval = "200ms"

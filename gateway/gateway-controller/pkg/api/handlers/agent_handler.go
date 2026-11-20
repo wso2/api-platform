@@ -81,6 +81,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		CorrelationID: middleware.GetCorrelationID(r),
 		Origin:        models.OriginGatewayAPI,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to deploy agent configuration", slog.Any("error", err))
@@ -188,6 +189,7 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request, id st
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: middleware.GetCorrelationID(r),
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to update agent configuration", slog.Any("error", err))
@@ -223,6 +225,7 @@ func (h *AgentHandler) DeleteAgent(w http.ResponseWriter, r *http.Request, id st
 		Handle:        id,
 		CorrelationID: middleware.GetCorrelationID(r),
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", metricsKindAgent).Inc()
