@@ -85,6 +85,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/subscription_plan_management.feature
+      - name: backend-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/backend_management.feature
       # The ap CLI built from this checkout, driving the gateway through its management and
       # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
       - name: ap-cli-gateway

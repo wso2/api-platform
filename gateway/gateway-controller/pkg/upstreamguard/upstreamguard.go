@@ -17,8 +17,8 @@
  */
 
 // Package upstreamguard applies controller.server.network_security.access_control
-// to the URLs an artifact asks the gateway to reach: its upstream URLs, which
-// the router dials, and the URL-typed parameters of the policies attached to
+// to the URLs an artifact asks the gateway to reach: its upstream URLs (and a
+// gateway-wide Backend's endpoint URLs), which the router dials, and the URL-typed parameters of the policies attached to
 // it, which the policy engine dials. It runs on the rendered artifact (see
 // templateengine.SetPostRenderCheck), so a URL produced by {{ env }} or
 // {{ secret }} is checked as resolved.
@@ -154,7 +154,11 @@ func (g *Guard) CheckArtifact(kind string, rendered any) error {
 		return nil
 	}
 
-	for _, target := range g.collect(spec, kind != string(models.KindLlmProxy)) {
+	targets := g.collect(spec, kind != string(models.KindLlmProxy))
+	if kind == string(models.KindBackend) {
+		targets = append(collectBackendEndpoints(spec), targets...)
+	}
+	for _, target := range targets {
 		if err := g.checkURL(target.path, target.url); err != nil {
 			return err
 		}
@@ -212,6 +216,23 @@ func (g *Guard) collectUpstreams(spec map[string]any, add func(path string, v an
 			}
 		}
 	}
+}
+
+// collectBackendEndpoints returns the endpoint URLs of a gateway-wide Backend,
+// spec.endpoints[].url, which the router dials like any upstream URL.
+func collectBackendEndpoints(spec map[string]any) []target {
+	var out []target
+	endpoints, _ := spec["endpoints"].([]any)
+	for i, e := range endpoints {
+		endpoint, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		if url, ok := endpoint["url"].(string); ok && strings.TrimSpace(url) != "" {
+			out = append(out, target{path: fmt.Sprintf("spec.endpoints[%d].url", i), url: strings.TrimSpace(url)})
+		}
+	}
+	return out
 }
 
 // collectPolicyURLs walks v for policy attachments — objects carrying a

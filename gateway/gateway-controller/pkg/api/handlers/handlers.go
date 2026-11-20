@@ -38,6 +38,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/backend"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
@@ -95,6 +96,15 @@ type APIServer struct {
 	// defaultIdentityMu serialises the role: default check with the save,
 	// so one replica never stores two default identities.
 	defaultIdentityMu sync.Mutex
+
+	// backendService implements the gateway-wide Backend resource. While nil,
+	// the /backends routes answer 503.
+	backendService *backend.Service
+}
+
+// SetBackendService wires the gateway-wide Backend service behind /backends.
+func (s *APIServer) SetBackendService(svc *backend.Service) {
+	s.backendService = svc
 }
 
 // SetEncryptionManager wires the encryption provider manager used to

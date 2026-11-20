@@ -77,6 +77,16 @@ func SetPostRenderCheck(check PostRenderCheck) {
 	postRenderCheck.Store(&check)
 }
 
+// RunPostRenderCheck runs the installed post-render check on a configuration that is stored
+// without rendering, such as a gateway-wide Backend, so the same access control applies to it.
+// It returns nil when no check is installed.
+func RunPostRenderCheck(kind string, cfg any) error {
+	if check := postRenderCheck.Load(); check != nil {
+		return (*check)(kind, cfg)
+	}
+	return nil
+}
+
 // RenderSpec renders template expressions in the spec of a StoredConfig.
 // It renders cfg.Configuration in place, leaving cfg.SourceConfiguration untouched (as stored in DB).
 // cfg.SensitiveValues is populated with tracked resolved secret values for redaction.

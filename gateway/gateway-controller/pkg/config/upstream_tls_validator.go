@@ -32,6 +32,7 @@ import (
 const (
 	WarningCodeTLSVerifyHostNameDisabled = "TLS_VERIFY_HOSTNAME_DISABLED"
 	WarningCodeTLSIdentityExpired        = "TLS_IDENTITY_EXPIRED"
+	WarningCodeTLSNoTrustSource          = "TLS_NO_TRUST_SOURCE"
 )
 
 // upstreamTLSAllowedParams is the set of parameter names the tls block
@@ -277,26 +278,34 @@ func (v *UpstreamTLSValidator) ResolveWarnings(apiConfig api.RestAPI) []clientca
 		if def.Tls == nil {
 			continue
 		}
-		fieldPath := fmt.Sprintf("spec.upstreamDefinitions[%d].tls", d)
-		resolved, _ := parseUpstreamTLSParams(fieldPath, *def.Tls)
+		warnings = append(warnings, v.tlsBlockWarnings(fmt.Sprintf("spec.upstreamDefinitions[%d].tls", d), *def.Tls, now)...)
+	}
 
-		if resolved.hasVerifyHostName && !resolved.verifyHostName {
-			warnings = append(warnings, clientca.Warning{
-				Code:    WarningCodeTLSVerifyHostNameDisabled,
-				Field:   fieldPath + ".verifyHostName",
-				Message: "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host",
-			})
-		}
+	return warnings
+}
 
-		if resolved.identity != "" {
-			if identity, err := v.store.GetCertificateByName(resolved.identity); err == nil && identity != nil {
-				if now.After(identity.NotAfter) {
-					warnings = append(warnings, clientca.Warning{
-						Code:    WarningCodeTLSIdentityExpired,
-						Field:   fieldPath + ".identity",
-						Message: fmt.Sprintf("gateway identity %s expired on %s", resolved.identity, identity.NotAfter.Format(time.RFC3339)),
-					})
-				}
+// tlsBlockWarnings computes the warnings for one validated tls block at
+// fieldPath.
+func (v *UpstreamTLSValidator) tlsBlockWarnings(fieldPath string, params map[string]interface{}, now time.Time) []clientca.Warning {
+	var warnings []clientca.Warning
+	resolved, _ := parseUpstreamTLSParams(fieldPath, params)
+
+	if resolved.hasVerifyHostName && !resolved.verifyHostName {
+		warnings = append(warnings, clientca.Warning{
+			Code:    WarningCodeTLSVerifyHostNameDisabled,
+			Field:   fieldPath + ".verifyHostName",
+			Message: "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host",
+		})
+	}
+
+	if resolved.identity != "" {
+		if identity, err := v.store.GetCertificateByName(resolved.identity); err == nil && identity != nil {
+			if now.After(identity.NotAfter) {
+				warnings = append(warnings, clientca.Warning{
+					Code:    WarningCodeTLSIdentityExpired,
+					Field:   fieldPath + ".identity",
+					Message: fmt.Sprintf("gateway identity %s expired on %s", resolved.identity, identity.NotAfter.Format(time.RFC3339)),
+				})
 			}
 		}
 	}

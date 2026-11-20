@@ -91,6 +91,14 @@ Base URLs:
 - [Update an existing LLM provider template](llm-provider-template-management.md#update-an-existing-llm-provider-template)
 - [Delete an LLM provider template](llm-provider-template-management.md#delete-an-llm-provider-template)
 
+### [Backend Management](backend-management.md)
+
+- [Create a global backend](backend-management.md#create-a-global-backend)
+- [List global backends](backend-management.md#list-global-backends)
+- [Get a global backend](backend-management.md#get-a-global-backend)
+- [Update a global backend](backend-management.md#update-a-global-backend)
+- [Delete a global backend](backend-management.md#delete-a-global-backend)
+
 ### [LLM Provider Management](llm-provider-management.md)
 
 - [Create a new LLM provider](llm-provider-management.md#create-a-new-llm-provider)
@@ -142,6 +150,9 @@ Base URLs:
 - [GraphQLAPIRequest](schemas.md#graphqlapirequest)
 - [GraphQLAPI](schemas.md#graphqlapi)
 - [UpstreamDefinition](schemas.md#upstreamdefinition)
+- [BackendRequest](schemas.md#backendrequest)
+- [Backend](schemas.md#backend)
+- [BackendConfiguration](schemas.md#backendconfiguration)
 - [UpstreamTimeout](schemas.md#upstreamtimeout)
 - [Resilience](schemas.md#resilience)
 - [Upstream](schemas.md#upstream)

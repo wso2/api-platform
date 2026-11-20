@@ -55,6 +55,9 @@ const (
 	adminBasePathV11      = "/api/admin/v0.9"
 	gatewaySpecVersion    = "gateway.api-platform.wso2.com/v1"
 	gatewaySpecVersionV11 = "gateway.api-platform.wso2.com/v1alpha1"
+	// backendSpecVersion is the apiVersion of the Backend kind, which is new and uses the
+	// Choreo Labs API group from its first release.
+	backendSpecVersion = "gateway.choreolabs.com/v1"
 )
 
 // The headers MCP 2026-07-28 requires a client to mirror its request into. A server that declares
@@ -168,6 +171,9 @@ const (
 	// keyGatewaySpecVersion is the resource apiVersion for the selected Gateway release.
 	// Feature tables use ${CTX:gatewaySpecVersion} rather than hard-coding a release contract.
 	keyGatewaySpecVersion = "gatewaySpecVersion"
+	// keyBackendSpecVersion is the Backend kind's apiVersion; feature tables use
+	// ${CTX:backendSpecVersion}.
+	keyBackendSpecVersion = "backendSpecVersion"
 	// keyGatewayMCPUpstreamPath is the path configured on the MCP testbench upstream.
 	// Gateway 1.1 and older append /mcp to that URL; later releases do not.
 	keyGatewayMCPUpstreamPath = "gatewayMCPUpstreamPath"
@@ -1125,6 +1131,9 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		if err := tcontext.Set(ctx, keyGatewaySpecVersion, gatewaySpecVersionForVersion(gatewayVersion(g.topo))); err != nil {
 			return ctx, err
 		}
+		if err := tcontext.Set(ctx, keyBackendSpecVersion, backendSpecVersion); err != nil {
+			return ctx, err
+		}
 		if err := tcontext.Set(ctx, keyGatewayMCPUpstreamPath, gatewayMCPUpstreamPathForVersion(gatewayVersion(g.topo))); err != nil {
 			return ctx, err
 		}
@@ -1150,12 +1159,12 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Backend) "([^"]*)"$`,
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
 	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Backend) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1500,6 +1509,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
 	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
+	"Backend":               {"Backend", collBackends},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -2859,6 +2869,7 @@ const (
 	collLLMProxies   = "/llm-proxies"
 	collAgents       = "/agents"
 	collGraphQLAPIs  = "/graphql-apis"
+	collBackends     = "/backends"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -3026,6 +3037,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindAgent, true
 	case collGraphQLAPIs:
 		return cleanup.KindGraphQLAPI, true
+	case collBackends:
+		return cleanup.KindBackend, true
 	default:
 		return cleanup.Kind{}, false
 	}

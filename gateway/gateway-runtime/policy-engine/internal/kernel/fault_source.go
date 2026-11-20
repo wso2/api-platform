@@ -172,6 +172,10 @@ const (
 	codeResolutionBadRequest = policy.FaultCodeResolutionBadRequest // 905006
 	// codeResolutionUnsupportedEncoding is a content coding the gateway cannot decode.
 	codeResolutionUnsupportedEncoding = policy.FaultCodeResolutionUnsupportedEncoding // 905007
+	// codeBackendUnavailable is a request a policy routed to a global Backend the gateway does
+	// not hold. Request-independent from the caller's side (the name was already accepted by
+	// the policy), so naming it discloses nothing a caller could probe.
+	codeBackendUnavailable = policy.FaultCodeBackendUnavailable // 905008
 )
 
 // routerErrorFor describes a router-generated failure, or returns nil when the error was not

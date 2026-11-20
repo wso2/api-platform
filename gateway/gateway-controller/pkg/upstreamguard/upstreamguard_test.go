@@ -149,6 +149,48 @@ func TestCheck_EveryUpstreamShape(t *testing.T) {
 	}
 }
 
+// A gateway-wide Backend's endpoints are upstream URLs the router dials, so they are checked like
+// any other; the field names the refused endpoint.
+func TestCheckArtifact_BackendEndpoints(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true})
+	backend := map[string]any{"spec": map[string]any{"endpoints": []any{
+		map[string]any{"url": "http://ok.example.com:9080"},
+		map[string]any{"url": "http://169.254.169.254"},
+	}}}
+	if got := refusedField(t, g.CheckArtifact(string(models.KindBackend), backend)); got != "spec.endpoints[1].url" {
+		t.Errorf("refused field = %q, want spec.endpoints[1].url", got)
+	}
+	ok := map[string]any{"spec": map[string]any{"endpoints": []any{map[string]any{"url": "http://ok.example.com:9080"}}}}
+	if err := g.CheckArtifact(string(models.KindBackend), ok); err != nil {
+		t.Fatalf("positive control: a permitted endpoint is accepted: %v", err)
+	}
+}
+
+// With private networks denied, a Backend endpoint at a loopback, private, link-local or cloud
+// metadata address is refused, as an API upstream URL is; a public address is permitted.
+func TestCheckArtifact_BackendEndpointsDenyPrivateNetworks(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
+	backend := func(url string) map[string]any {
+		return map[string]any{"spec": map[string]any{"endpoints": []any{map[string]any{"url": url}}}}
+	}
+	for _, url := range []string{
+		"http://127.0.0.1:9080",     // loopback
+		"http://10.0.0.5:9080",      // private
+		"http://192.168.1.10:9080",  // private
+		"http://169.254.10.10:9080", // link-local
+		"http://169.254.169.254",    // cloud metadata
+		"http://[::1]:9080",         // IPv6 loopback
+		"http://[fd00::1]:9080",     // IPv6 unique-local
+	} {
+		if got := refusedField(t, g.CheckArtifact(string(models.KindBackend), backend(url))); got != "spec.endpoints[0].url" {
+			t.Errorf("%s: refused field = %q, want spec.endpoints[0].url", url, got)
+		}
+	}
+	if err := g.CheckArtifact(string(models.KindBackend), backend("http://93.184.216.34:9080")); err != nil {
+		t.Fatalf("positive control: a public address is permitted: %v", err)
+	}
+}
+
 func TestCheck_HostRuleModes(t *testing.T) {
 	deny := guard(t, netguard.GuardConfig{Enabled: true, Mode: netguard.ModeDeny, Hostnames: []string{`[a-z]+\.internal\.example`}})
 	if refusedField(t, deny.Check(restAPI("https://billing.internal.example/v1"))) == "" {
