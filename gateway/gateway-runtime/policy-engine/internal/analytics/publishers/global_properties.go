@@ -181,6 +181,9 @@ type globalPropertyVariable struct {
 // collection per call.
 var globalPropertyVariables = []globalPropertyVariable{
 	{"request.path", cel.StringType, ""},
+	// The path the client sent, query stripped: request.path when the router rewrote
+	// the path, otherwise the path part of target.destination (see requestClientPath).
+	{"request.clientPath", cel.StringType, ""},
 	{"request.pathTemplate", cel.StringType, ""},
 	{"request.method", cel.StringType, ""},
 	{"request.id", cel.StringType, ""},
@@ -310,6 +313,9 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		if referenced["request.method"] {
 			ctx["request.method"] = event.Operation.APIMethod
 		}
+	}
+	if referenced["request.clientPath"] {
+		ctx["request.clientPath"] = requestClientPath(event)
 	}
 	if referenced["request.pathTemplate"] {
 		if tmpl, ok := event.Properties[dto.PropKeyOperationPath].(string); ok {
@@ -491,4 +497,22 @@ func globalPropertyCELToGoValue(val ref.Val) (interface{}, error) {
 		return nil, fmt.Errorf("unexpected CEL native conversion result type %T", native)
 	}
 	return pbVal.AsInterface(), nil
+}
+
+// requestClientPath returns the path the client sent, without the query string.
+//
+// Operation.APIResourceTemplate comes from Envoy's original_path, which is only set when
+// the router rewrote the path, so it is empty when a policy rejected the request or no
+// route matched. In those cases the path was never rewritten, so the path part of
+// Target.Destination (authority + :path, query already stripped) is the client's path.
+func requestClientPath(event *dto.Event) string {
+	if event.Operation != nil && event.Operation.APIResourceTemplate != "" {
+		return event.Operation.APIResourceTemplate
+	}
+	if event.Target != nil {
+		if i := strings.Index(event.Target.Destination, "/"); i >= 0 {
+			return event.Target.Destination[i:]
+		}
+	}
+	return ""
 }
