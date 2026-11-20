@@ -71,7 +71,7 @@ func BindRequestBody(r *http.Request, request interface{}) error {
 		return err
 	}
 
-	if contentType == "application/yaml" || contentType == "text/yaml" {
+	if contentType == "application/yaml" || contentType == "application/x-yaml" || contentType == "text/yaml" {
 		return yaml.Unmarshal(body, request)
 	}
 	return json.Unmarshal(body, request)

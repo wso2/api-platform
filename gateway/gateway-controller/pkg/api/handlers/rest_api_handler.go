@@ -153,7 +153,7 @@ func (h *RestAPIHandler) GetRestAPIById(w http.ResponseWriter, r *http.Request, 
 	}
 
 	cfg := result.Config
-	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
+	writeResource(w, r, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
 // UpdateRestAPI implements ServerInterface.UpdateRestAPI

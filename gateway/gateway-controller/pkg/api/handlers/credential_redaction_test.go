@@ -143,6 +143,33 @@ func TestRematerializeMCPProxyConfig_RedactsUpstreamCredential(t *testing.T) {
 	assertNoSecretInJSON(t, mcp)
 }
 
+// The YAML response body is converted from the JSON encoding of the same
+// redacted value, so it withholds the credential exactly as JSON does.
+func TestRematerializeMCPProxyConfig_RedactsUpstreamCredentialInYAML(t *testing.T) {
+	source := map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1",
+		"kind":       "MCPProxy",
+		"metadata":   map[string]any{"name": "mcp-proxy"},
+		"spec": map[string]any{
+			"displayName": "MCP Proxy",
+			"version":     "v1.0",
+			"upstream": map[string]any{
+				"url":  "https://mcp.example.com",
+				"auth": map[string]any{"type": "api-key", "header": "Authorization", "value": secretValue},
+			},
+		},
+	}
+
+	mcp, err := rematerializeMCPProxyConfig(slog.Default(), "id-3", "MCP Proxy", source)
+	require.NoError(t, err)
+
+	out, err := jsonToYAML(mcp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), secretValue, "credential leaked into the YAML body: %s", out)
+	assert.Contains(t, string(out), "type: api-key", "the auth block should still be present")
+	assert.NotContains(t, string(out), "value:", "value must be omitted from the auth block, not present-but-empty")
+}
+
 // A secret reference is redacted exactly like a literal value.
 func TestRematerializeLLMProviderConfig_RedactsSecretReferenceToo(t *testing.T) {
 	const handle = `{{ secret "openai-prod-key" }}`
