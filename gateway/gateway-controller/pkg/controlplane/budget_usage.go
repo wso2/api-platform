@@ -22,11 +22,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"maps"
-	"math"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/wso2/api-platform/common/budgetspend"
 	"github.com/wso2/api-platform/gateway/common/counterproto"
 )
 
@@ -146,13 +145,30 @@ func usageKindOf(namespace string) string {
 type BudgetUsageReporter struct {
 	mu      sync.Mutex
 	entries map[usageKey]*usageEntry
-	now     func() time.Time
-	logger  *slog.Logger
+	// sending is set once run starts: without a control plane nothing is sent, so no
+	// entries are kept for it.
+	sending bool
+	// labels are each allowance counter's budget and values, kept while its window can
+	// still be current, so the gateway's budget usage can name allowances.
+	labels    map[string]*allowanceLabels
+	lastPrune time.Time
+	now       func() time.Time
+	logger    *slog.Logger
 }
+
+type allowanceLabels struct {
+	budget string
+	values map[string]string
+	window int64 // the latest window it was labelled in
+}
+
+// labelsKeptFor is how long after its window starts an allowance's labels are kept, as
+// policy engines keep an idle counter's total.
+const labelsKeptFor = 32 * 24 * time.Hour
 
 // NewBudgetUsageReporter returns an empty reporter.
 func NewBudgetUsageReporter(logger *slog.Logger) *BudgetUsageReporter {
-	return &BudgetUsageReporter{entries: map[usageKey]*usageEntry{}, now: time.Now, logger: logger}
+	return &BudgetUsageReporter{entries: map[usageKey]*usageEntry{}, labels: map[string]*allowanceLabels{}, now: time.Now, logger: logger}
 }
 
 // Observe records the totals of budget allowances: an allowance is known once an add
@@ -164,6 +180,12 @@ func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterp
 	for _, add := range adds {
 		kind := usageKindOf(add.Key.Namespace)
 		if kind == "" || len(add.Labels) == 0 || (kind == usageKindAllowance && add.Labels[usageLabelBudget] == "") {
+			continue
+		}
+		if kind == usageKindAllowance {
+			r.label(add)
+		}
+		if !r.sending {
 			continue
 		}
 		key := usageKey{kind, add.Key.ID, add.Key.Window}
@@ -208,6 +230,9 @@ func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterp
 // is closed. send fails while the control plane is not connected; the totals are then
 // kept and sent once it is.
 func (r *BudgetUsageReporter) run(done <-chan struct{}, send func([]byte) error) {
+	r.mu.Lock()
+	r.sending = true
+	r.mu.Unlock()
 	sendTicker := time.NewTicker(usageSendInterval)
 	resendTicker := time.NewTicker(usageResendInterval)
 	defer sendTicker.Stop()
@@ -265,14 +290,14 @@ func (r *BudgetUsageReporter) flush(send func([]byte) error) {
 					Month: day, CostKey: p.key.allowance,
 					Project: e.allowance["project"], Agent: e.allowance["agent"], APIKey: e.allowance["apiKey"],
 					User: e.allowance["user"], LLMProvider: e.allowance["llmProvider"], Model: e.allowance["model"],
-					Cost: formatUSD(e.spent), MissingPriceRequests: int64(e.missingPrice),
+					Cost: budgetspend.FormatUSD(e.spent), MissingPriceRequests: int64(e.missingPrice),
 					UsageUnavailableRequests: int64(e.usageUnavailable),
 				})
 				continue
 			}
 			payload.Allowances = append(payload.Allowances, AllowanceUsage{
-				Budget: e.budget, PeriodStart: day, AllowanceUUID: p.key.allowance,
-				Allowance: maps.Clone(e.allowance), Spent: formatUSD(e.spent), UnpricedRequests: int64(e.unpriced),
+				Budget: e.budget, PeriodStart: day, AllowanceUUID: budgetspend.Allowance(p.key.allowance),
+				Allowance: maps.Clone(e.allowance), Spent: budgetspend.FormatUSD(e.spent), UnpricedRequests: int64(e.unpriced),
 			})
 		}
 		data, err := json.Marshal(BudgetUsageMessage{Type: usageMessageType, Payload: payload})
@@ -310,7 +335,54 @@ func (c *Client) sendBudgetUsage(data []byte) error {
 	return c.sendMessage(data)
 }
 
-// formatUSD writes an amount with at most six decimals, without float noise.
-func formatUSD(v float64) string {
-	return strconv.FormatFloat(math.Round(v*1e6)/1e6, 'f', -1, 64)
+// label keeps an allowance counter's budget and values. Callers hold mu.
+func (r *BudgetUsageReporter) label(add counterproto.Add) {
+	values := maps.Clone(add.Labels)
+	budget := values[usageLabelBudget]
+	delete(values, usageLabelBudget)
+	if l := r.labels[add.Key.ID]; l != nil && l.window > add.Key.Window {
+		return
+	}
+	r.labels[add.Key.ID] = &allowanceLabels{budget: budget, values: values, window: add.Key.Window}
+	now := r.now()
+	if now.Sub(r.lastPrune) < time.Hour {
+		return
+	}
+	r.lastPrune = now
+	for id, l := range r.labels {
+		if now.Sub(time.Unix(l.window, 0)) > labelsKeptFor {
+			delete(r.labels, id)
+		}
+	}
+}
+
+// Labels returns the values of each allowance of budget this gateway has served, by
+// counter ID.
+func (r *BudgetUsageReporter) Labels(budget string) map[string]map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[string]map[string]string{}
+	for id, l := range r.labels {
+		if l.budget == budget {
+			out[id] = maps.Clone(l.values)
+		}
+	}
+	return out
+}
+
+// Forget drops everything kept for a deleted budget, so none of it is sent again or
+// shown for a budget made again under its name.
+func (r *BudgetUsageReporter) Forget(budget string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for key, e := range r.entries {
+		if key.kind == usageKindAllowance && e.budget == budget {
+			delete(r.entries, key)
+		}
+	}
+	for id, l := range r.labels {
+		if l.budget == budget {
+			delete(r.labels, id)
+		}
+	}
 }

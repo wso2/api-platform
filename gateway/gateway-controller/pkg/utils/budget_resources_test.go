@@ -64,10 +64,11 @@ func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredC
 	blockAt := 95
 	currency := api.BudgetCurrencyUSD
 	provider := "openai"
-	consumers := []api.BudgetConsumer{{
-		Type: api.BudgetConsumerTypeAttribute, Allocation: api.BudgetConsumerAllocationSeparate,
-		Expression: func() *string { e := `request.Auth.Claims["sub"] != ""`; return &e }(),
-	}}
+	filters := []api.BudgetFilter{{Type: api.BudgetFilterTypeLlmProvider, Id: &provider}}
+	split := &api.BudgetSplit{
+		Type:       api.BudgetSplitTypeAttribute,
+		Expression: func() *string { e := `request.Auth.Claims["sub"]`; return &e }(),
+	}
 	budget := api.BudgetRequest{
 		ApiVersion: api.BudgetRequestApiVersionV1,
 		Kind:       api.BudgetRequestKindBudget,
@@ -76,10 +77,9 @@ func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredC
 			Status: &status,
 			Limit: api.BudgetLimit{
 				Amount: amount, Currency: &currency, Period: api.BudgetPeriodMonth,
-				Action: api.BudgetActionBlock, BlockAt: &blockAt,
+				Action: api.BudgetActionBlock, BlockAt: &blockAt, SplitBy: split,
 			},
-			Resource:  api.BudgetResource{Type: api.BudgetResourceTypeLlmProvider, Allocation: api.BudgetResourceAllocationShared, Id: &provider},
-			Consumers: &consumers,
+			Filters: &filters,
 		},
 	}
 	return &models.StoredConfig{
@@ -107,6 +107,7 @@ func TestBudgetPublisher_PublishesActiveBudgets(t *testing.T) {
 	assert.Equal(t, "month", limit["period"])
 	assert.Equal(t, "block", limit["action"])
 	assert.Equal(t, float64(95), limit["blockAt"])
+	assert.NotContains(t, limit, "splitBy", "the split is carried by the engine's resource and consumers")
 	assert.Equal(t, "openai", body["resource"].(map[string]interface{})["id"])
 	consumers := body["consumers"].([]interface{})
 	require.Len(t, consumers, 1)
@@ -171,4 +172,80 @@ func TestBudgetPublisher_RejectsWrongConfigurationType(t *testing.T) {
 	publisher, _ := newTestBudgetPublisher(t, &fakeBudgetRows{rows: []*models.StoredConfig{row}})
 
 	assert.Error(t, publisher.Publish(""))
+}
+
+func TestEngineSelection_MapsFiltersAndSplitToTheEngineModel(t *testing.T) {
+	s := func(v string) *string { return &v }
+	cases := []struct {
+		name      string
+		filters   []api.BudgetFilter
+		split     *api.BudgetSplit
+		resource  map[string]interface{}
+		consumers []interface{}
+	}{
+		{
+			name:     "neither: all providers, shared",
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared"},
+		},
+		{
+			name:     "llmProvider filter: that provider, shared",
+			filters:  []api.BudgetFilter{{Type: api.BudgetFilterTypeLlmProvider, Id: s("openai")}},
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared", "id": "openai"},
+		},
+		{
+			name:     "llmProvider split: each provider",
+			split:    &api.BudgetSplit{Type: api.BudgetSplitTypeLlmProvider},
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "separate"},
+		},
+		{
+			name: "other filters shared in order, split separate last",
+			filters: []api.BudgetFilter{
+				{Type: api.BudgetFilterTypeLlmProvider, Id: s("openai")},
+				{Type: api.BudgetFilterTypeAgent, Project: s("online-shop"), Id: s("returns-bot")},
+				{Type: api.BudgetFilterTypeApiKey, Id: s("team-alpha-key")},
+				{Type: api.BudgetFilterTypeAttribute, Expression: s(`'R&D' in request.Auth.Claims["groups"]`)},
+			},
+			split:    &api.BudgetSplit{Type: api.BudgetSplitTypeAttribute, Expression: s("request.Auth.Subject")},
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared", "id": "openai"},
+			consumers: []interface{}{
+				map[string]interface{}{"type": "agent", "allocation": "shared", "project": "online-shop", "id": "returns-bot"},
+				map[string]interface{}{"type": "apiKey", "allocation": "shared", "id": "team-alpha-key"},
+				map[string]interface{}{"type": "attribute", "allocation": "shared", "expression": `'R&D' in request.Auth.Claims["groups"]`},
+				map[string]interface{}{"type": "attribute", "allocation": "separate", "expression": "request.Auth.Subject"},
+			},
+		},
+		{
+			name: "filters without an id: any value of their type, shared",
+			filters: []api.BudgetFilter{
+				{Type: api.BudgetFilterTypeAgent},
+				{Type: api.BudgetFilterTypeApiKey},
+			},
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared"},
+			consumers: []interface{}{
+				map[string]interface{}{"type": "agent", "allocation": "shared"},
+				map[string]interface{}{"type": "apiKey", "allocation": "shared"},
+			},
+		},
+		{
+			name:     "agent split",
+			filters:  []api.BudgetFilter{{Type: api.BudgetFilterTypeProject, Id: s("online-shop")}},
+			split:    &api.BudgetSplit{Type: api.BudgetSplitTypeAgent},
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared"},
+			consumers: []interface{}{
+				map[string]interface{}{"type": "project", "allocation": "shared", "id": "online-shop"},
+				map[string]interface{}{"type": "agent", "allocation": "separate"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := api.BudgetSpec{Limit: api.BudgetLimit{SplitBy: tc.split}}
+			if tc.filters != nil {
+				spec.Filters = &tc.filters
+			}
+			resource, consumers := engineSelection(spec)
+			assert.Equal(t, tc.resource, resource)
+			assert.Equal(t, tc.consumers, consumers)
+		})
+	}
 }

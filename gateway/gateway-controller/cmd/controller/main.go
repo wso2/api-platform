@@ -39,6 +39,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/budget"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage/observe"
@@ -829,6 +830,14 @@ func main() {
 	}
 	// Without an encryption provider, gateway identity uploads are refused.
 	apiServer.SetEncryptionManager(encryptionProviderManager)
+	if cfg.AICostManagement.Budgets.Enabled {
+		// Budget usage reads spend from the counter store; deleting a budget clears it.
+		var labels budget.AllowanceLabels
+		if budgetUsage != nil {
+			labels = budgetUsage
+		}
+		apiServer.SetBudgetSpend(counterStore, labels)
+	}
 
 	// Recompute certificate metrics and expiry warnings at startup and then
 	// every 24h.
@@ -1189,11 +1198,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"DELETE /subscription-plans/{planId}": {"admin"},
 
 		// Budget endpoints
-		"POST /budgets":        {"admin"},
-		"GET /budgets":         {"admin"},
-		"GET /budgets/{id}":    {"admin"},
-		"PUT /budgets/{id}":    {"admin"},
-		"DELETE /budgets/{id}": {"admin"},
+		"POST /budgets":                  {"admin"},
+		"GET /budgets":                   {"admin"},
+		"GET /budgets/{id}":              {"admin"},
+		"PUT /budgets/{id}":              {"admin"},
+		"DELETE /budgets/{id}":           {"admin"},
+		"GET /budgets/{id}/budget-usage": {"admin"},
 
 		"POST /secrets":        {"admin"},
 		"GET /secrets":         {"admin"},

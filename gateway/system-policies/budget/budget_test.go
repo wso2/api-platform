@@ -21,7 +21,9 @@ package budget
 import (
 	"context"
 	"encoding/json"
+	"github.com/wso2/api-platform/common/budgetspend"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -201,7 +203,7 @@ func TestAllowBudgetNeverRefuses(t *testing.T) {
 		}
 	}
 	shared := sharedAllowance("watch")
-	if got := p.tracker.spentIn(spendKey{shared, periodStart(periodDay, wednesdayNoon)}); got != 15 {
+	if got := p.tracker.spentIn(spendKey{budgetspend.SpendID("watch"), shared, periodStart(periodDay, wednesdayNoon)}); got != 15 {
 		t.Fatalf("spent %v, want 15", got)
 	}
 }
@@ -302,7 +304,7 @@ func TestSeparateProviders(t *testing.T) {
 }
 
 func TestAllowanceUUIDs(t *testing.T) {
-	b := &budget{name: "team", spendID: uuid.NewSHA1(spendNamespace, []byte("team"))}
+	b := &budget{name: "team", spendID: budgetspend.SpendID("team")}
 	if got, want := b.allowanceUUID(nil), uuid.NewSHA1(b.spendID, []byte("")).String(); got != want {
 		t.Fatalf("shared %s, want %s", got, want)
 	}
@@ -333,7 +335,7 @@ func TestUnpricedRequestsChargeNothingButAreCounted(t *testing.T) {
 	req.Metadata[metadataLLMCostStatus] = "not_calculated"
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	key := spendKey{sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{budgetspend.SpendID("all"), sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
 	if p.tracker.spentIn(key) != 0 || p.tracker.unpricedIn(key) != 1 {
 		t.Fatalf("spent %v unpriced %d", p.tracker.spentIn(key), p.tracker.unpricedIn(key))
 	}
@@ -349,7 +351,7 @@ func TestARequestIsChargedOnce(t *testing.T) {
 	p.OnResponseBodyChunk(context.Background(), &policy.ResponseStreamContext{SharedContext: req.SharedContext}, &policy.StreamBody{EndOfStream: true}, nil)
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	key := spendKey{sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{budgetspend.SpendID("all"), sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
 	if got := p.tracker.spentIn(key); got != 1 {
 		t.Fatalf("spent %v, want 1", got)
 	}
@@ -366,7 +368,7 @@ func TestChargedToThePeriodItWasAdmittedIn(t *testing.T) {
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
 	shared := sharedAllowance("all")
-	if got := p.tracker.spentIn(spendKey{shared, time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)}); got != 3 {
+	if got := p.tracker.spentIn(spendKey{budgetspend.SpendID("all"), shared, time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)}); got != 3 {
 		t.Fatalf("admitted period spent %v, want 3", got)
 	}
 }
@@ -458,11 +460,20 @@ func TestAnalyticsNameMatchedBudgetsAndCostStatus(t *testing.T) {
 	if got := mods.AnalyticsMetadata[analyticsBudgetNames]; !equalAny(got, []any{"a-all", "b-openai"}) {
 		t.Fatalf("names %v", got)
 	}
+	if got := mods.AnalyticsMetadata[analyticsBudgetLimits]; !equalAny(got, []any{"a-all ($100/day)", "b-openai ($1/day)"}) {
+		t.Fatalf("limits %v", got)
+	}
+	if _, ok := mods.AnalyticsMetadata[analyticsBudgetBlocked]; ok {
+		t.Fatal("an admitted request names blocking budgets")
+	}
 	req.Metadata[metadataLLMCost] = "1"
 	req.Metadata[metadataLLMCostStatus] = costStatusCalculated
 	chunk := p.OnResponseBodyChunk(context.Background(), &policy.ResponseStreamContext{SharedContext: req.SharedContext}, &policy.StreamBody{EndOfStream: true}, nil).(policy.ForwardResponseChunk)
 	if got := chunk.AnalyticsMetadata[analyticsBudgetCostStatus]; got != costStatusPriced {
 		t.Fatalf("cost status %v", got)
+	}
+	if got := chunk.AnalyticsMetadata[analyticsBudgetCostUSD]; got != 1.0 {
+		t.Fatalf("cost %v, want 1 as a number", got)
 	}
 
 	// Refused: the refusal carries the names too.
@@ -472,6 +483,10 @@ func TestAnalyticsNameMatchedBudgetsAndCostStatus(t *testing.T) {
 	}
 	if got := refused.AnalyticsMetadata[analyticsBudgetNames]; !equalAny(got, []any{"a-all", "b-openai"}) {
 		t.Fatalf("refusal names %v", got)
+	}
+	// Only the Block budget that was used up refused it; the Allow budget did not.
+	if got := refused.AnalyticsMetadata[analyticsBudgetBlocked]; !equalAny(got, []any{"b-openai"}) {
+		t.Fatalf("blocked %v", got)
 	}
 
 	// Another provider: only the budget that covers it.
@@ -533,7 +548,7 @@ func equalAny(got any, want []any) bool {
 
 // sharedAllowance is the allowance ID of a shared budget, from its name.
 func sharedAllowance(name string) string {
-	return uuid.NewSHA1(uuid.NewSHA1(spendNamespace, []byte(name)), nil).String()
+	return uuid.NewSHA1(budgetspend.SpendID(name), nil).String()
 }
 
 func TestSpendIsSharedByNameNotUUID(t *testing.T) {
@@ -597,6 +612,73 @@ func TestProjectAgentAndAPIKeyConsumers(t *testing.T) {
 	}
 	if got := matched(call{provider: "openai", apiKey: "hash-of-another-key"}); len(got) != 0 {
 		t.Errorf("a call with no project, agent or known key matched %v", got)
+	}
+}
+
+func TestConsumersWithoutAnIDMatchAnyValueOfTheirType(t *testing.T) {
+	p, _, _ := testPolicy(t,
+		budgetBody("any-agent", testBudgetUUID, "1", "day", "block", allProviders,
+			consumers(map[string]any{"type": "agent", "allocation": "shared"})),
+		budgetBody("any-project", otherUUID, "1", "day", "block", allProviders,
+			consumers(map[string]any{"type": "project", "allocation": "shared"})),
+		budgetBody("any-key", "0193f1c2-0000-7000-8000-0000000000d3", "1", "day", "block", allProviders,
+			consumers(map[string]any{"type": "apiKey", "allocation": "shared"})),
+	)
+	p.apiKeyName = func(apiID, hash string) string {
+		if hash == "hash-of-prod-key" {
+			return "support-agent-prod"
+		}
+		return ""
+	}
+	matched := func(c call) []any {
+		action := p.OnRequestHeaders(context.Background(), c.context(), c.params)
+		mods, _ := action.(policy.UpstreamRequestHeaderModifications)
+		names, _ := mods.AnalyticsMetadata[analyticsBudgetNames].([]any)
+		return names
+	}
+
+	if got := matched(call{provider: "openai", project: "api-platform", params: agentRoute("support-agent")}); !equalAny(got, []any{"any-agent", "any-project"}) {
+		t.Errorf("an agent's call matched %v", got)
+	}
+	direct := call{provider: "openai", params: map[string]any{paramRole: roleProvider, paramAdmittedToken: "secret-1"}, apiKey: "hash-of-prod-key"}
+	if got := matched(direct); !equalAny(got, []any{"any-key"}) {
+		t.Errorf("a direct provider-key call matched %v", got)
+	}
+	if got := matched(call{provider: "openai"}); len(got) != 0 {
+		t.Errorf("a call with no project, agent or key matched %v", got)
+	}
+
+	// A shared consumer adds nothing to the allowance: its ID is the shared budget's.
+	for _, b := range p.catalog.current() {
+		allowances, ok := b.matches("openai", caller{project: "api-platform", agent: "support-agent", apiKey: "support-agent-prod"}, nil)
+		if !ok || len(allowances) != 1 || allowances[0].id != b.allowanceUUID(nil) {
+			t.Errorf("budget %s charged %v", b.name, allowances)
+		}
+	}
+}
+
+func TestAnAgentConsumerTakesItsIDAndProjectOrNeither(t *testing.T) {
+	for _, entry := range []map[string]any{
+		{"type": "agent", "allocation": "shared", "project": "api-platform"},
+		{"type": "agent", "allocation": "shared", "id": "support-agent"},
+	} {
+		p, _, _ := testPolicy(t, budgetBody("half-agent", testBudgetUUID, "1", "day", "block", allProviders, consumers(entry)))
+		if len(p.catalog.current()) != 0 {
+			t.Errorf("a budget with agent consumer %v was applied", entry)
+		}
+	}
+}
+
+func TestExemptionsStillNameTheirValue(t *testing.T) {
+	for _, entry := range []map[string]any{
+		{"type": "agent"},
+		{"type": "project"},
+	} {
+		p, _, _ := testPolicy(t, budgetBody("bad-exemption", testBudgetUUID, "1", "day", "block", allProviders,
+			map[string]any{"exemptions": []any{entry}}))
+		if len(p.catalog.current()) != 0 {
+			t.Errorf("a budget with exemption %v was applied", entry)
+		}
 	}
 }
 
@@ -693,7 +775,7 @@ func TestChargedCountersAreDescribedForTheControlPlane(t *testing.T) {
 	if len(allowances) != 1 {
 		t.Fatalf("allowances %v", allowances)
 	}
-	key := spendKey{allowance: allowances[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{spendID: budgetspend.SpendID("per-agent"), allowance: allowances[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}
 	want := map[string]string{"budget": "per-agent", "agent": "api-platform/support-agent"}
 	for _, counter := range []counters.Key{spendCounter(key), unpricedCounter(key)} {
 		if got := mem.Labels(counter); len(got) != 2 || got["budget"] != want["budget"] || got["agent"] != want["agent"] {
@@ -707,5 +789,65 @@ func TestAllowanceLabelsNumberRepeatedTypes(t *testing.T) {
 	got := a.labels("team")
 	if got["budget"] != "team" || got["attribute"] != "R&D" || got["attribute.2"] != "alice@wso2.com" || got["llmProvider"] != "openai" {
 		t.Fatalf("labels %v", got)
+	}
+}
+
+// An expression that does too much work errors, so it matches nothing; a claim check runs.
+func TestExpressionCostIsLimited(t *testing.T) {
+	c, err := newCatalog(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activation := map[string]any{"request": map[string]any{"Headers": map[string][]string{"x-team": {"red"}}}}
+	cheap, err := c.program(`request.Headers["x-team"][0] == "red"`, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := evalBool(cheap, activation); err != nil || !ok {
+		t.Fatalf("cheap expression: ok=%v err=%v", ok, err)
+	}
+	list := "[" + strings.Repeat("1,", 99) + "1]"
+	costly, err := c.program(list+".all(a, "+list+".all(b, "+list+".all(c, a == b)))", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := evalBool(costly, activation); err == nil || ok {
+		t.Fatalf("costly expression ran: ok=%v err=%v", ok, err)
+	}
+}
+
+// A budget deleted, or made again under its name (a new UUID), starts from nothing; one
+// that is only changed keeps its spend.
+func TestDeletedBudgetSpendIsForgotten(t *testing.T) {
+	team := func(id, amount string) map[string]any {
+		return budgetBody("team", id, amount, "day", "allow", allProviders, nil)
+	}
+	p, source, _ := testPolicy(t, team(testBudgetUUID, "10"))
+	spent := func() float64 {
+		return p.tracker.spentIn(spendKey{budgetspend.SpendID("team"), sharedAllowance("team"), periodStart(periodDay, wednesdayNoon)})
+	}
+	send(t, p, call{provider: "openai"}, "4.0")
+	if spent() != 4 {
+		t.Fatalf("spent %v, want 4", spent())
+	}
+
+	source.set(team(testBudgetUUID, "20")) // updated: same UUID
+	send(t, p, call{provider: "openai"}, "1.0")
+	if spent() != 5 {
+		t.Fatalf("after an update spent %v, want 5", spent())
+	}
+
+	source.set(team(otherUUID, "20")) // deleted and made again
+	send(t, p, call{provider: "openai"}, "1.0")
+	if spent() != 1 {
+		t.Fatalf("after it was made again spent %v, want 1", spent())
+	}
+
+	source.set() // deleted
+	send(t, p, call{provider: "openai"}, "")
+	source.set(team(otherUUID, "20"))
+	send(t, p, call{provider: "openai"}, "2.0")
+	if spent() != 2 {
+		t.Fatalf("after delete and create spent %v, want 2", spent())
 	}
 }

@@ -20,14 +20,18 @@
 package budget
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/budgetspend"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/gateway/common/counterproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -54,6 +58,174 @@ type Service struct {
 	// pusher pushes this gateway's own budgets to the control plane; nil until
 	// SetResourcePusher.
 	pusher utils.ResourcePusher
+	// counters and labels hold budget spend; nil until SetSpend (budgets off).
+	counters CounterStore
+	labels   AllowanceLabels
+	now      func() time.Time
+}
+
+// CounterStore is the shared counter store budgets count spend in.
+type CounterStore interface {
+	Totals(ctx context.Context, namespace, idPrefix string) ([]counterproto.Total, error)
+	Delete(ctx context.Context, namespace, idPrefix string) error
+}
+
+// AllowanceLabels knows the values of the allowances this gateway has served.
+type AllowanceLabels interface {
+	// Labels returns the values of each allowance of the budget, by counter ID.
+	Labels(budget string) map[string]map[string]string
+	// Forget drops what is kept for a deleted budget.
+	Forget(budget string)
+}
+
+// SetSpend wires the counter store budget spend is kept in, and what names allowances:
+// the budget usage reads them, and deleting a budget clears its spend.
+func (s *Service) SetSpend(counters CounterStore, labels AllowanceLabels) {
+	s.counters, s.labels = counters, labels
+}
+
+// spendTimeout bounds reading or clearing spend in the counter store.
+const spendTimeout = 5 * time.Second
+
+// clearSpend removes a deleted budget's spend, so a budget made again under its name
+// starts from nothing. Policy engines drop their copies when the budget leaves their set.
+// With a shared store this clears the name's spend for every gateway sharing it.
+func (s *Service) clearSpend(name string, log *slog.Logger) {
+	if s.labels != nil {
+		s.labels.Forget(name)
+	}
+	if s.counters == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), spendTimeout)
+	defer cancel()
+	prefix := budgetspend.CounterIDPrefix(name)
+	for _, namespace := range []string{budgetspend.NamespaceSpend, budgetspend.NamespaceUnpriced} {
+		if err := s.counters.Delete(ctx, namespace, prefix); err != nil {
+			log.Error("Failed to clear the deleted budget's spend", slog.String("handle", name), slog.Any("error", err))
+			return
+		}
+	}
+	log.Info("Budget spend cleared", slog.String("handle", name))
+}
+
+// AllowanceUsage is one allowance's spend in the current period.
+type AllowanceUsage struct {
+	// Allowance holds the values it is separated by; empty when shared, or when this
+	// gateway has not served it.
+	Allowance map[string]string
+	Spent     float64
+	Unpriced  int64
+}
+
+// PeriodUsage is a budget's spend in its current period, highest spend first.
+type PeriodUsage struct {
+	PeriodStart time.Time
+	Allowances  []AllowanceUsage
+}
+
+// Spent is the total across the allowances.
+func (u PeriodUsage) Spent() (spent float64, unpriced int64) {
+	for _, a := range u.Allowances {
+		spent += a.Spent
+		unpriced += a.Unpriced
+	}
+	return spent, unpriced
+}
+
+// SpendTotals is every budget's spend, read once for a list.
+type SpendTotals struct {
+	spend, unpriced []counterproto.Total
+}
+
+// ReadSpend reads the spend of every budget from the counter store.
+func (s *Service) ReadSpend() (SpendTotals, error) {
+	return s.readSpend("")
+}
+
+func (s *Service) readSpend(prefix string) (SpendTotals, error) {
+	if s.counters == nil {
+		return SpendTotals{}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), spendTimeout)
+	defer cancel()
+	spend, err := s.counters.Totals(ctx, budgetspend.NamespaceSpend, prefix)
+	if err != nil {
+		return SpendTotals{}, fmt.Errorf("failed to read budget spend: %w", err)
+	}
+	unpriced, err := s.counters.Totals(ctx, budgetspend.NamespaceUnpriced, prefix)
+	if err != nil {
+		return SpendTotals{}, fmt.Errorf("failed to read budget spend: %w", err)
+	}
+	return SpendTotals{spend: spend, unpriced: unpriced}, nil
+}
+
+// Usage returns the named budget's spend in its current period.
+func (s *Service) Usage(name string) (*PeriodUsage, error) {
+	cfg, err := s.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	totals, err := s.readSpend(budgetspend.CounterIDPrefix(name))
+	if err != nil {
+		return nil, err
+	}
+	usage := s.UsageOf(cfg, totals)
+	return &usage, nil
+}
+
+// UsageOf returns a stored budget's spend in its current period from totals.
+func (s *Service) UsageOf(cfg *models.StoredConfig, totals SpendTotals) PeriodUsage {
+	req, _ := cfg.SourceConfiguration.(api.BudgetRequest)
+	now := time.Now
+	if s.now != nil {
+		now = s.now
+	}
+	start := budgetspend.PeriodStart(string(req.Spec.Limit.Period), now())
+	usage := PeriodUsage{PeriodStart: start}
+	prefix := budgetspend.CounterIDPrefix(cfg.Handle)
+	window := start.Unix()
+	byID := map[string]*AllowanceUsage{}
+	row := func(id string) *AllowanceUsage {
+		a := byID[id]
+		if a == nil {
+			a = &AllowanceUsage{Allowance: map[string]string{}}
+			byID[id] = a
+		}
+		return a
+	}
+	for _, t := range totals.spend {
+		if t.Key.Window == window && strings.HasPrefix(t.Key.ID, prefix) {
+			row(t.Key.ID).Spent += t.Total
+		}
+	}
+	for _, t := range totals.unpriced {
+		if t.Key.Window == window && strings.HasPrefix(t.Key.ID, prefix) {
+			row(t.Key.ID).Unpriced += int64(t.Total)
+		}
+	}
+	var labels map[string]map[string]string
+	if s.labels != nil && len(byID) > 0 {
+		labels = s.labels.Labels(cfg.Handle)
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		if values, ok := labels[id]; ok {
+			byID[id].Allowance = values
+		}
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		a, b := byID[ids[i]], byID[ids[j]]
+		if a.Spent != b.Spent {
+			return a.Spent > b.Spent
+		}
+		return ids[i] < ids[j]
+	})
+	for _, id := range ids {
+		usage.Allowances = append(usage.Allowances, *byID[id])
+	}
+	return usage
 }
 
 // SetResourcePusher wires the push of gateway-created budgets to the control plane, the
@@ -109,7 +281,7 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkProviderExists(budget.Spec.Resource); err != nil {
+	if err := s.checkProviderExists(budget.Spec); err != nil {
 		return nil, err
 	}
 
@@ -258,6 +430,7 @@ func (s *Service) Delete(name, correlationID string, log *slog.Logger) error {
 	}
 
 	log.Info("Budget deleted", slog.String("uuid", existing.UUID), slog.String("handle", name))
+	s.clearSpend(name, log)
 	if s.canPush() {
 		s.pusher.PushResourceDeletion(existing)
 	}
@@ -328,7 +501,7 @@ func artifactID(metadata api.BudgetMetadata) string {
 }
 
 // fixedFieldChanges lists the fields that differ but cannot change after
-// creation: the artifact-id annotation, period, currency, resource and consumers.
+// creation: the artifact-id annotation, period, currency, splitBy and filters.
 func fixedFieldChanges(stored, updated api.BudgetRequest) []FieldError {
 	const message = "cannot be changed after creation; create a new budget instead"
 	var errs []FieldError
@@ -341,33 +514,38 @@ func fixedFieldChanges(stored, updated api.BudgetRequest) []FieldError {
 	if !reflect.DeepEqual(stored.Spec.Limit.Currency, updated.Spec.Limit.Currency) {
 		errs = append(errs, FieldError{Field: "spec.limit.currency", Message: message})
 	}
-	if !reflect.DeepEqual(stored.Spec.Resource, updated.Spec.Resource) {
-		errs = append(errs, FieldError{Field: "spec.resource", Message: message})
+	if !reflect.DeepEqual(stored.Spec.Limit.SplitBy, updated.Spec.Limit.SplitBy) {
+		errs = append(errs, FieldError{Field: "spec.limit.splitBy", Message: message})
 	}
-	if !reflect.DeepEqual(stored.Spec.Consumers, updated.Spec.Consumers) {
-		errs = append(errs, FieldError{Field: "spec.consumers", Message: message})
+	if !reflect.DeepEqual(stored.Spec.Filters, updated.Spec.Filters) {
+		errs = append(errs, FieldError{Field: "spec.filters", Message: message})
 	}
 	return errs
 }
 
-// checkProviderExists rejects a budget whose resource names an LLM provider
+// checkProviderExists rejects a budget whose llmProvider filter names an LLM provider
 // that is not on this gateway.
-func (s *Service) checkProviderExists(resource api.BudgetResource) error {
-	if resource.Id == nil {
+func (s *Service) checkProviderExists(spec api.BudgetSpec) error {
+	if spec.Filters == nil {
 		return nil
 	}
-	_, err := s.db.GetConfigByKindAndHandle(models.KindLlmProvider, *resource.Id)
-	switch {
-	case err == nil:
-		return nil
-	case storage.IsNotFoundError(err):
-		return &ValidationError{Errors: []FieldError{{
-			Field:   "spec.resource.id",
-			Message: fmt.Sprintf("no LLM provider named %q on this gateway", *resource.Id),
-		}}}
-	default:
-		return fmt.Errorf("failed to look up LLM provider %q: %w", *resource.Id, err)
+	for i, f := range *spec.Filters {
+		if f.Type != api.BudgetFilterTypeLlmProvider || f.Id == nil {
+			continue
+		}
+		_, err := s.db.GetConfigByKindAndHandle(models.KindLlmProvider, *f.Id)
+		switch {
+		case err == nil:
+		case storage.IsNotFoundError(err):
+			return &ValidationError{Errors: []FieldError{{
+				Field:   fmt.Sprintf("spec.filters[%d].id", i),
+				Message: fmt.Sprintf("no LLM provider named %q on this gateway", *f.Id),
+			}}}
+		default:
+			return fmt.Errorf("failed to look up LLM provider %q: %w", *f.Id, err)
+		}
 	}
+	return nil
 }
 
 // ApplyControlPlaneBudget stores a budget the control plane sent (budget.created,
@@ -462,6 +640,7 @@ func (s *Service) DeleteControlPlaneBudget(budgetID, correlationID string, log *
 		return fmt.Errorf("failed to delete control-plane budget: %w", err)
 	}
 	log.Info("Control-plane budget deleted", slog.String("uuid", budgetID), slog.String("handle", existing.Handle))
+	s.clearSpend(existing.Handle, log)
 	return s.publish("DELETE", existing.Handle, correlationID, log)
 }
 

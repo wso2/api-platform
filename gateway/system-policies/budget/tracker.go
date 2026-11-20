@@ -21,53 +21,34 @@ package budget
 import (
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/wso2/api-platform/common/budgetspend"
 	"github.com/wso2/api-platform/sdk/core/counters"
 )
 
-// Budget periods, as in the Budget kind's spec.limit.period.
+// Budget periods, as in the Budget kind's spec.limit.period, and their UTC bounds.
 const (
-	periodDay   = "day"
-	periodWeek  = "week"
-	periodMonth = "month"
+	periodDay   = budgetspend.PeriodDay
+	periodWeek  = budgetspend.PeriodWeek
+	periodMonth = budgetspend.PeriodMonth
 )
 
-// periodStart returns the start of the UTC calendar period that holds now: midnight,
-// Monday midnight, or the 1st of the month.
-func periodStart(period string, now time.Time) time.Time {
-	now = now.UTC()
-	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	switch period {
-	case periodWeek:
-		return midnight.AddDate(0, 0, -((int(midnight.Weekday()) + 6) % 7))
-	case periodMonth:
-		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	default:
-		return midnight
-	}
-}
-
-// periodEnd returns when the period that starts at start resets.
-func periodEnd(period string, start time.Time) time.Time {
-	switch period {
-	case periodWeek:
-		return start.AddDate(0, 0, 7)
-	case periodMonth:
-		return start.AddDate(0, 1, 0)
-	default:
-		return start.AddDate(0, 0, 1)
-	}
-}
+var (
+	periodStart = budgetspend.PeriodStart
+	periodEnd   = budgetspend.PeriodEnd
+)
 
 // spendKey names one allowance in one period.
 type spendKey struct {
+	spendID     uuid.UUID // the budget's: its counters are found and cleared by it
 	allowance   string
 	periodStart time.Time
 }
 
 // Counter namespaces: USD charged, and requests charged $0 because they had no price.
 const (
-	namespaceSpend    = "budget"
-	namespaceUnpriced = "budget-unpriced"
+	namespaceSpend    = budgetspend.NamespaceSpend
+	namespaceUnpriced = budgetspend.NamespaceUnpriced
 )
 
 // counterService is the part of sdk/core/counters the tracker uses.
@@ -75,6 +56,7 @@ type counterService interface {
 	Add(key counters.Key, delta float64)
 	Total(key counters.Key) (float64, bool)
 	Describe(key counters.Key, labels map[string]string)
+	Forget(namespace, idPrefix string)
 }
 
 // installedCounters uses the counter service the policy engine installed: synced with the
@@ -87,6 +69,7 @@ func (installedCounters) Total(key counters.Key) (float64, bool) { return counte
 func (installedCounters) Describe(key counters.Key, labels map[string]string) {
 	counters.Describe(key, labels)
 }
+func (installedCounters) Forget(namespace, idPrefix string) { counters.Forget(namespace, idPrefix) }
 
 // tracker charges spend per allowance and period to the shared counters.
 type tracker struct {
@@ -98,11 +81,11 @@ func newTracker(c counterService) *tracker {
 }
 
 func spendCounter(key spendKey) counters.Key {
-	return counters.Key{Namespace: namespaceSpend, ID: key.allowance, Window: key.periodStart}
+	return counters.Key{Namespace: namespaceSpend, ID: budgetspend.CounterID(key.spendID, key.allowance), Window: key.periodStart}
 }
 
 func unpricedCounter(key spendKey) counters.Key {
-	return counters.Key{Namespace: namespaceUnpriced, ID: key.allowance, Window: key.periodStart}
+	return counters.Key{Namespace: namespaceUnpriced, ID: budgetspend.CounterID(key.spendID, key.allowance), Window: key.periodStart}
 }
 
 // spentIn returns the USD charged to key so far, across every gateway sharing the store,
@@ -136,4 +119,12 @@ func (t *tracker) countUnpriced(keys []admitted) {
 		t.counters.Describe(counter, key.labels)
 		t.counters.Add(counter, 1)
 	}
+}
+
+// forget drops this engine's copy of a deleted budget's spend, as the gateway-controller
+// clears it in the store, so a budget made again under the name starts from nothing.
+func (t *tracker) forget(name string) {
+	prefix := budgetspend.CounterIDPrefix(name)
+	t.counters.Forget(namespaceSpend, prefix)
+	t.counters.Forget(namespaceUnpriced, prefix)
 }

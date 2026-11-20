@@ -69,6 +69,41 @@ func TestTotalCombinesSharedInflightAndPending(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestForgetDropsTotalsPendingAndInflight(t *testing.T) {
+	s := NewService("engine-1", 0)
+	s.Add(key("gone/1"), 1)
+	s.Add(key("kept/1"), 1)
+	req := s.nextRequest() // both in flight
+	s.apply(req, &counterproto.SyncResponse{OK: true, Totals: []counterproto.Total{
+		{Key: wire(key("gone/1")), Total: 7}, {Key: wire(key("kept/1")), Total: 7},
+	}})
+	s.Add(key("gone/1"), 2) // pending
+
+	s.Forget("budget", "gone/")
+
+	total, ok := s.Total(key("gone/1"))
+	assert.Equal(t, 0.0, total, "a forgotten counter starts again from nothing")
+	assert.False(t, ok)
+	total, _ = s.Total(key("kept/1"))
+	assert.Equal(t, 8.0, total, "other counters keep their totals and in-flight adds")
+
+	again := s.nextRequest()
+	assert.Equal(t, req.ReportID, again.ReportID, "the report in flight keeps its ID")
+	for _, add := range again.Adds {
+		assert.NotEqual(t, "gone/1", add.Key.ID, "the forgotten counter's adds are not sent")
+	}
+}
+
+func TestForgetEndsAReportLeftEmpty(t *testing.T) {
+	s := NewService("engine-1", 0)
+	s.Add(key("gone/1"), 1)
+	s.nextRequest()
+	s.Forget("budget", "gone/")
+	s.Add(key("kept/1"), 1)
+	next := s.nextRequest()
+	assert.Equal(t, "2", next.ReportID, "a new report, not an empty one resent")
+}
+
 func TestReportIsResentUntilAcknowledged(t *testing.T) {
 	s := NewService("engine-1", 0)
 	s.Add(key("a"), 1)

@@ -125,3 +125,33 @@ func TestMemoryForgetsIdleCounters(t *testing.T) {
 
 	assert.Equal(t, 0.0, totals[0].Total)
 }
+
+// Totals and Delete find a budget's counters by their ID prefix, in every window, and
+// leave other budgets and other namespaces alone.
+func TestStoreTotalsAndDeleteByPrefix(t *testing.T) {
+	for name, store := range stores(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			gone1 := counterproto.KeyFor("budget", "a/1", november)
+			gone2 := counterproto.KeyFor("budget", "a/2:x", december)
+			kept := counterproto.KeyFor("budget", "b/1", november)
+			otherNamespace := counterproto.KeyFor("budget-unpriced", "a/1", november)
+			adds := []counterproto.Add{{Key: gone1, Delta: 1}, {Key: gone2, Delta: 2}, {Key: kept, Delta: 3}, {Key: otherNamespace, Delta: 4}}
+			_, err := store.Sync(ctx, "engine-1", "r1", adds, nil)
+			require.NoError(t, err)
+
+			totals, err := store.Totals(ctx, "budget", "a/")
+			require.NoError(t, err)
+			assert.ElementsMatch(t, []counterproto.Total{{Key: gone1, Total: 1}, {Key: gone2, Total: 2}}, totals)
+
+			require.NoError(t, store.Delete(ctx, "budget", "a/"))
+			totals, err = store.Totals(ctx, "budget", "a/")
+			require.NoError(t, err)
+			assert.Empty(t, totals)
+
+			left, err := store.Sync(ctx, "engine-1", "", nil, []counterproto.Key{gone1, kept, otherNamespace})
+			require.NoError(t, err)
+			assert.Equal(t, []float64{0, 3, 4}, []float64{left[0].Total, left[1].Total, left[2].Total})
+		})
+	}
+}

@@ -76,10 +76,8 @@ Feature: Budgets on an agent's LLM proxy
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"project","id":"api-platform"}] |
       | spec.limit.blockAt  | 10                        |
-      | spec.consumers      | [{"type":"project","allocation":"shared","id":"api-platform"}] |
     Then the response status code should be 201
     When I create Budget from "resources/templates/budget.yaml" with values:
       | apiVersion          | ${CTX:gatewaySpecVersion} |
@@ -87,10 +85,8 @@ Feature: Budgets on an agent's LLM proxy
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"agent","id":"support-agent","project":"api-platform"}] |
       | spec.limit.blockAt  | 10                        |
-      | spec.consumers      | [{"type":"agent","allocation":"shared","project":"api-platform","id":"support-agent"}] |
     Then the response status code should be 201
     When I create Budget from "resources/templates/budget.yaml" with values:
       | apiVersion          | ${CTX:gatewaySpecVersion} |
@@ -98,10 +94,8 @@ Feature: Budgets on an agent's LLM proxy
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"apiKey","id":"${CTX:keyName}"}] |
       | spec.limit.blockAt  | 10                        |
-      | spec.consumers      | [{"type":"apiKey","allocation":"shared","id":"${CTX:keyName}"}] |
     Then the response status code should be 201
     When I create Budget from "resources/templates/budget.yaml" with values:
       | apiVersion          | ${CTX:gatewaySpecVersion} |
@@ -109,10 +103,8 @@ Feature: Budgets on an agent's LLM proxy
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"agent","id":"research-agent","project":"api-platform"}] |
       | spec.limit.blockAt  | 1                         |
-      | spec.consumers      | [{"type":"agent","allocation":"shared","project":"api-platform","id":"research-agent"}] |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:otherAgentBudget}" of type "Budget" is present
     Then the response status code should be 200

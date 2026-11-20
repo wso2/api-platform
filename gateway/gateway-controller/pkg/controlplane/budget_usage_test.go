@@ -35,6 +35,7 @@ import (
 func usageReporter(now *time.Time) *BudgetUsageReporter {
 	r := NewBudgetUsageReporter(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	r.now = func() time.Time { return *now }
+	r.sending = true // as run sets it once a control plane is configured
 	return r
 }
 
@@ -154,4 +155,42 @@ func TestBudgetUsage_ReportsCostTotals(t *testing.T) {
 	require.Len(t, s.messages, 2)
 	assert.Empty(t, s.messages[1].Payload.Allowances)
 	assert.Equal(t, int64(4), s.messages[1].Payload.Costs[0].MissingPriceRequests)
+}
+
+// Without a control plane nothing is sent, so nothing is kept for sending; the labels are
+// kept for the gateway's own budget usage. Counter IDs carry the budget; the control plane
+// gets the allowance UUID.
+func TestBudgetUsage_StandaloneKeepsOnlyLabels(t *testing.T) {
+	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	r := usageReporter(&now)
+	r.sending = false
+	window := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	key := counterproto.KeyFor("budget", "spend-id/allowance-1", window)
+	r.Observe([]counterproto.Add{{Key: key, Delta: 1, Labels: map[string]string{"budget": "team", "apiKey": "red"}}},
+		[]counterproto.Total{{Key: key, Total: 1}})
+	assert.Empty(t, r.entries)
+	assert.Equal(t, map[string]map[string]string{"spend-id/allowance-1": {"apiKey": "red"}}, r.Labels("team"))
+
+	r.Forget("team")
+	assert.Empty(t, r.Labels("team"))
+}
+
+func TestBudgetUsage_SendsTheAllowanceUUIDAndForgetsDeletedBudgets(t *testing.T) {
+	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	r := usageReporter(&now)
+	window := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	gone := counterproto.KeyFor("budget", "spend-a/allowance-1", window)
+	kept := counterproto.KeyFor("budget", "spend-b/allowance-2", window)
+	r.Observe([]counterproto.Add{
+		{Key: gone, Delta: 1, Labels: map[string]string{"budget": "a"}},
+		{Key: kept, Delta: 2, Labels: map[string]string{"budget": "b"}},
+	}, []counterproto.Total{{Key: gone, Total: 1}, {Key: kept, Total: 2}})
+
+	r.Forget("a")
+	var s sentUsage
+	r.flush(s.send)
+	require.Len(t, s.messages, 1)
+	require.Len(t, s.messages[0].Payload.Allowances, 1)
+	assert.Equal(t, "b", s.messages[0].Payload.Allowances[0].Budget)
+	assert.Equal(t, "allowance-2", s.messages[0].Payload.Allowances[0].AllowanceUUID)
 }

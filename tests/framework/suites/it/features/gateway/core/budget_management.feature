@@ -49,9 +49,7 @@ Feature: Budget management
       | amount              | "500.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
-      | spec.consumers      | [{"type":"attribute","allocation":"shared","expression":"'research' in request.Auth.Claims[\"groups\"]"}] |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"attribute","expression":"'research' in request.Auth.Claims[\"groups\"]"}] |
     Then the response status code should be 201
     And the JSON response field "status.id" should be "${CTX:budgetName}"
     And the JSON response field "status.state" should be "deployed"
@@ -62,8 +60,8 @@ Feature: Budget management
     When I send a "GET" request to the "gateway-controller" service at "/budgets/${CTX:budgetName}"
     Then the response status code should be 200
     And the JSON response field "spec.limit.amount" should be "500.00"
-    And the JSON response field "spec.resource.id" should be "${CTX:providerName}"
-    And the JSON response field "spec.consumers[0].allocation" should be "shared"
+    And the JSON response field "spec.filters[0].id" should be "${CTX:providerName}"
+    And the JSON response field "spec.filters[1].type" should be "attribute"
 
     When I send a "GET" request to the "gateway-controller" service at "/budgets"
     Then the response status code should be 200
@@ -75,11 +73,9 @@ Feature: Budget management
       | amount              | "750.00"                  |
       | period              | month                     |
       | action              | allow                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"attribute","expression":"'research' in request.Auth.Claims[\"groups\"]"}] |
       | spec.status         | inactive                  |
       | spec.limit.blockAt  | 90                        |
-      | spec.consumers      | [{"type":"attribute","allocation":"shared","expression":"'research' in request.Auth.Claims[\"groups\"]"}] |
       | spec.exemptions     | [{"type":"attribute","expression":"request.Auth.Claims[\"sub\"] == \"admin\""}] |
     Then the response status code should be 200
 
@@ -107,7 +103,7 @@ Feature: Budget management
       | amount              | "100.00"                  |
       | period              | week                      |
       | action              | block                     |
-      | resource.allocation | separate                  |
+      | spec.limit.splitBy  | {"type":"llmProvider"} |
     Then the response status code should be 201
 
     When I update Budget "${CTX:budgetName}" from "resources/templates/budget.yaml" with values:
@@ -116,7 +112,7 @@ Feature: Budget management
       | amount              | "100.00"                  |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | separate                  |
+      | spec.limit.splitBy  | {"type":"llmProvider"} |
     Then the response status code should be 400
     And the JSON response field "errors[0].field" should be "spec.limit.period"
 
@@ -132,7 +128,6 @@ Feature: Budget management
       | amount              | "-5"                      |
       | period              | year                      |
       | action              | block                     |
-      | resource.allocation | shared                    |
       | spec.limit.blockAt  | 101                       |
     Then the response status code should be 400
     And the response body should contain "spec.limit.amount"
@@ -151,7 +146,6 @@ Feature: Budget management
       | amount              | "10"                      |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
     Then the response status code should be 201
 
     When I create Budget from "resources/templates/budget.yaml" with values:
@@ -160,7 +154,6 @@ Feature: Budget management
       | amount              | "20"                      |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
     Then the response status code should be 409
 
   @BUDGET-009 @type:negative
@@ -172,10 +165,9 @@ Feature: Budget management
       | amount              | "10"                      |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | no-such-provider          |
+      | spec.filters        | [{"type":"llmProvider","id":"no-such-provider"}] |
     Then the response status code should be 400
-    And the JSON response field "errors[0].field" should be "spec.resource.id"
+    And the JSON response field "errors[0].field" should be "spec.filters[0].id"
 
   @BUDGET-010 @BUDGET-011 @BUDGET-012 @BUDGET-013
   Scenario: An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted
@@ -186,9 +178,8 @@ Feature: Budget management
       | amount              | "500.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
       | spec.limit.blockAt  | 95                        |
-      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
     Then the JSON response array "lazy_resources.resources_by_type.Budget" item with "id" equal to "${CTX:budgetName}" should have "resource.limit.amount" equal to "500.00"
@@ -202,9 +193,8 @@ Feature: Budget management
       | amount              | "650.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
       | spec.limit.blockAt  | 95                        |
-      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
     Then the response status code should be 200
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" has "limit.amount" equal to "650.00"
     Then the response status code should be 200
@@ -215,10 +205,9 @@ Feature: Budget management
       | amount              | "650.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
       | spec.status         | inactive                  |
       | spec.limit.blockAt  | 95                        |
-      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
     Then the response status code should be 200
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is absent
     Then the response status code should be 200
@@ -229,9 +218,8 @@ Feature: Budget management
       | amount              | "650.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
       | spec.limit.blockAt  | 95                        |
-      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
     Then the response status code should be 200
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
     Then the response status code should be 200
@@ -265,8 +253,7 @@ Feature: Budget management
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 1                         |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
@@ -316,8 +303,7 @@ Feature: Budget management
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | allow                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 1                         |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
@@ -366,8 +352,7 @@ Feature: Budget management
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 1                         |
       | spec.status         | inactive                  |
     Then the response status code should be 201
@@ -417,10 +402,9 @@ Feature: Budget management
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Headers[\"x-team\"][0]"} |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 1                         |
-      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Headers[\"x-team\"][0]"}] |
       | spec.exemptions     | [{"type":"attribute","expression":"request.Headers[\"x-budget-exempt\"][0] == \"yes\""}] |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
@@ -482,8 +466,7 @@ Feature: Budget management
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 1                         |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
@@ -540,8 +523,7 @@ Feature: Budget management
       | amount              | "0.01"                    |
       | period              | day                       |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 10                        |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present

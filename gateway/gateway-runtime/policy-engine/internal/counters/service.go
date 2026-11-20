@@ -22,6 +22,7 @@ package counters
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -137,6 +138,32 @@ func (s *Service) Total(key sdkcounters.Key) (float64, bool) {
 	defer s.mu.Unlock()
 	e := s.use(key)
 	return e.total + s.inflight[key] + e.pending, e.synced
+}
+
+// Forget drops the counters of namespace whose IDs start with idPrefix: their totals,
+// adds not yet reported and adds in the report in flight. The controller clears them in
+// the store when their budget is deleted; a budget made again under the same name then
+// starts from nothing here too. Dropping from the report in flight is safe: the store
+// applies a report once, so whether it was applied or not, nothing is counted twice.
+func (s *Service) Forget(namespace, idPrefix string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	matches := func(key sdkcounters.Key) bool {
+		return key.Namespace == namespace && strings.HasPrefix(key.ID, idPrefix)
+	}
+	for key := range s.entries {
+		if matches(key) {
+			delete(s.entries, key)
+		}
+	}
+	for key := range s.inflight {
+		if matches(key) {
+			delete(s.inflight, key)
+		}
+	}
+	if s.inflight != nil && len(s.inflight) == 0 {
+		s.inflight, s.inflightID = nil, ""
+	}
 }
 
 // nextRequest builds the request for this sync: the report in flight, or a new one

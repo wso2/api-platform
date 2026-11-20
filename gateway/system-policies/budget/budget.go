@@ -37,6 +37,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
@@ -93,6 +94,16 @@ const (
 const (
 	analyticsBudgetNames      = "budgetNames"
 	analyticsBudgetCostStatus = "budgetCostStatus"
+	// analyticsBudgetLimits labels each matched budget with its limit and period,
+	// "online-shop-agents ($50.00/month)", so analytics can show spend beside the limit
+	// by grouping on one string (no list of objects to pair up).
+	analyticsBudgetLimits = "budgetLimits"
+	// analyticsBudgetBlocked names the budgets that refused the request.
+	analyticsBudgetBlocked = "budgetBlocked"
+	// analyticsBudgetCostUSD is the cost charged, as a number (0 when unpriced).
+	analyticsBudgetCostUSD = "budgetCostUsd"
+	// analyticsBudgetAgent is the calling agent, "project/agent", on an agent's proxy route.
+	analyticsBudgetAgent = "budgetAgent"
 
 	costStatusPriced           = "priced"
 	costStatusMissingPrice     = "missing_price"
@@ -253,6 +264,9 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 		}
 	}
 	budgets := p.catalog.current()
+	for _, name := range p.catalog.takeForgotten() {
+		p.tracker.forget(name)
+	}
 	if len(budgets) == 0 {
 		return pass
 	}
@@ -267,17 +281,18 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 	}
 	var keys []admitted
 	var exhausted []*budget
-	var names []any
+	var names, limits []any
 	for _, b := range budgets {
 		allowances, ok := b.matches(provider, who, lazyVars)
 		if !ok {
 			continue
 		}
 		names = append(names, b.name)
+		limits = append(limits, limitLabel(b))
 		start := periodStart(b.period, now)
 		used := false
 		for _, a := range allowances {
-			key := admitted{spendKey: spendKey{allowance: a.id, periodStart: start}, labels: a.labels(b.name)}
+			key := admitted{spendKey: spendKey{spendID: b.spendID, allowance: a.id, periodStart: start}, labels: a.labels(b.name)}
 			keys = append(keys, key)
 			if b.action == actionBlock && p.tracker.spentIn(key.spendKey) >= b.blockPoint() {
 				used = true
@@ -290,8 +305,16 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 	if len(names) == 0 {
 		return pass
 	}
-	analytics := map[string]any{analyticsBudgetNames: names}
+	analytics := map[string]any{analyticsBudgetNames: names, analyticsBudgetLimits: limits}
+	if agent := who.value(valueTypeAgent); agent != "" {
+		analytics[analyticsBudgetAgent] = agent
+	}
 	if len(exhausted) > 0 {
+		blocked := make([]any, 0, len(exhausted))
+		for _, b := range exhausted {
+			blocked = append(blocked, b.name)
+		}
+		analytics[analyticsBudgetBlocked] = blocked
 		refused := refusal(exhausted, now)
 		refused.AnalyticsMetadata = analytics
 		return refused
@@ -353,15 +376,26 @@ func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) map[string]any
 		p.tracker.recordCost(caller, usageModel(shared.Metadata[metadataUsage]), monthStart(p.now()), cost, costStatus)
 	}
 	if len(keys) == 0 {
-		// Counted in the cost stats only: no budget covered it, so analytics gets nothing.
-		return nil
+		// Counted in the cost stats only: no budget covered it. Analytics still gets the
+		// cost and the agent, so spend per agent covers every request.
+		out := map[string]any{analyticsBudgetCostUSD: cost, analyticsBudgetCostStatus: costStatus}
+		if caller.project != "" && caller.agent != "" {
+			out[analyticsBudgetAgent] = caller.project + "/" + caller.agent
+		}
+		return out
 	}
 	if !priced {
 		p.tracker.countUnpriced(keys)
 	} else {
 		p.tracker.charge(keys, cost)
 	}
-	return map[string]any{analyticsBudgetCostStatus: costStatus}
+	return map[string]any{analyticsBudgetCostStatus: costStatus, analyticsBudgetCostUSD: cost}
+}
+
+// limitLabel is a budget's name with its limit and period, as analytics groups by it:
+// "online-shop-agents ($50.00/month)". Budgets are in USD.
+func limitLabel(b *budget) string {
+	return fmt.Sprintf("%s ($%s/%s)", b.name, b.limit, b.period)
 }
 
 // unpricedReason tells a response without usage from one whose model has no price: the

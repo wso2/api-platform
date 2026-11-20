@@ -8,9 +8,10 @@ description: |
   caller; the controller adds llm-cost to these routes when they do not price responses.
 
   The active budgets reach the policy engine as lazy resources of type Budget. For each
-  request the policy finds the budgets that cover it (the LLM provider, every consumer, no
-  exemption) and the allowance each one charges. A consumer is an attribute (a CEL
-  expression), a project, an agent (with its project) or an API key: the project of an
+  request the policy finds the budgets that cover it (every filter, no exemption) and the
+  allowance each one charges (one per value of its limit.splitBy). A filter or split is an
+  LLM provider, an attribute (a CEL expression), a project, an agent (with its project) or
+  an API key: the project of an
   agent's hidden LLM proxy route is the route's project ID, its agent this policy's agent
   parameter, and the API key's
   name from the key the request authenticated with. In the request-header phase it refuses

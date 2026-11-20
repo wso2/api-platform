@@ -201,3 +201,27 @@ func TestFailoverCloseStopsReconnecting(t *testing.T) {
 	defer h.f.mu.Unlock()
 	assert.True(t, h.f.closed)
 }
+
+// A budget cleared while Redis is away is cleared in memory at once and in Redis when it
+// is back, before what was counted afterwards is added.
+func TestFailoverDeleteWhileRedisIsAway(t *testing.T) {
+	var reachable atomic.Bool
+	reachable.Store(true)
+	h := newFailoverHarness(t, &reachable)
+	assert.Equal(t, 100.0, h.sync(t, "r1", 100))
+
+	h.mr.Close()
+	reachable.Store(false)
+	assert.Equal(t, 105.0, h.sync(t, "r2", 5))
+	require.True(t, h.isDown())
+
+	require.NoError(t, h.f.Delete(context.Background(), spendKey.Namespace, spendKey.ID))
+	assert.Equal(t, 0.0, h.sync(t, "", 0), "cleared in memory at once")
+	assert.Equal(t, 2.0, h.sync(t, "r3", 2), "counting starts again from nothing")
+
+	require.NoError(t, h.mr.Restart())
+	reachable.Store(true)
+	h.next <- true
+	require.Eventually(t, func() bool { return !h.isDown() }, time.Second, time.Millisecond)
+	assert.Equal(t, 2.0, h.redisTotal(t), "Redis was cleared, then given what came after")
+}

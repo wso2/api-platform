@@ -63,8 +63,7 @@ Feature: Budget spend shared by gateways through Redis
       | amount              | "0.01"                    |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 10                        |
     Then the response status code should be 201
     When I create Budget on the second gateway from "resources/templates/budget.yaml" with values:
@@ -73,8 +72,7 @@ Feature: Budget spend shared by gateways through Redis
       | amount              | "0.01"                    |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 10                        |
     Then the response status code should be 201
 

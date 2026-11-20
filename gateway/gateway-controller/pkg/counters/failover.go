@@ -64,11 +64,16 @@ type Failover struct {
 	queued []queuedReport
 	// held sums the adds reported while Redis was down that are not queued yet.
 	held map[counterproto.Key]float64
+	// deletes are clears made while Redis was down, applied to it before what was
+	// counted meanwhile.
+	deletes []prefixDelete
 	// applied remembers the reports counted in memory, so a resent one is counted once.
 	applied   map[string]time.Time
 	retention time.Duration
 	lastSweep time.Time
 }
+
+type prefixDelete struct{ namespace, idPrefix string }
 
 type queuedReport struct {
 	source, reportID string
@@ -160,6 +165,82 @@ func (f *Failover) Sync(ctx context.Context, source, reportID string, adds []cou
 	}
 	f.mu.Unlock()
 	return f.memoryTotals(keys), nil
+}
+
+// Totals returns the matching counters: from Redis, or from memory while it cannot be
+// reached.
+func (f *Failover) Totals(ctx context.Context, namespace, idPrefix string) ([]counterproto.Total, error) {
+	f.mu.Lock()
+	r, down := f.redis, f.down
+	f.mu.Unlock()
+	if !down && r != nil {
+		if totals, err := r.Totals(ctx, namespace, idPrefix); err == nil {
+			return totals, nil
+		}
+	}
+	f.mu.Lock()
+	keys := map[counterproto.Key]bool{}
+	for key := range f.last {
+		keys[key] = true
+	}
+	for key := range f.held {
+		keys[key] = true
+	}
+	for _, q := range f.queued {
+		for _, add := range q.adds {
+			keys[add.Key] = true
+		}
+	}
+	var wanted []counterproto.Key
+	for key := range keys {
+		if matches(key, namespace, idPrefix) {
+			wanted = append(wanted, key)
+		}
+	}
+	f.mu.Unlock()
+	return f.memoryTotals(wanted), nil
+}
+
+// Delete removes the matching counters from memory and from Redis; while Redis cannot be
+// reached the delete is kept and applied to it first when it is back.
+func (f *Failover) Delete(ctx context.Context, namespace, idPrefix string) error {
+	f.mu.Lock()
+	for key := range f.last {
+		if matches(key, namespace, idPrefix) {
+			delete(f.last, key)
+		}
+	}
+	for key := range f.held {
+		if matches(key, namespace, idPrefix) {
+			delete(f.held, key)
+		}
+	}
+	for i := range f.queued {
+		kept := f.queued[i].adds[:0:0]
+		for _, add := range f.queued[i].adds {
+			if !matches(add.Key, namespace, idPrefix) {
+				kept = append(kept, add)
+			}
+		}
+		f.queued[i].adds = kept
+	}
+	r, down := f.redis, f.down
+	if down || r == nil {
+		f.deletes = append(f.deletes, prefixDelete{namespace, idPrefix})
+		f.mu.Unlock()
+		return nil
+	}
+	f.mu.Unlock()
+	if err := r.Delete(ctx, namespace, idPrefix); err != nil {
+		f.mu.Lock()
+		f.deletes = append(f.deletes, prefixDelete{namespace, idPrefix})
+		if !f.down {
+			f.logger.Warn("Redis cannot be reached: counting in memory until it can", slog.Any("error", err))
+			f.goDownLocked()
+		}
+		f.mu.Unlock()
+	}
+	return nil
 }
 
 // Close stops reconnecting and closes the Redis connection.
@@ -277,6 +358,14 @@ func (f *Failover) recover() error {
 		return nil
 	}
 	f.redis = r
+	// Clears made meanwhile go first, so what was counted after them is kept.
+	for len(f.deletes) > 0 {
+		d := f.deletes[0]
+		if err := f.redis.Delete(ctx, d.namespace, d.idPrefix); err != nil {
+			return err
+		}
+		f.deletes = f.deletes[1:]
+	}
 	// What was summed in memory becomes one report, kept under one ID until Redis takes it.
 	if len(f.held) > 0 {
 		adds := make([]counterproto.Add, 0, len(f.held))

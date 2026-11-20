@@ -1206,31 +1206,60 @@ func (c *Analytics) getAnonymousApp() *dto.Application {
 }
 
 // budgetProperty builds the event's "budget" property from the budget system policy's
-// analytics metadata: {"names": [...], "costStatus": "..."}, each only when set. It
-// returns nil when the request was not covered by any budget.
+// analytics metadata, each only when set: names (the budgets the request counted
+// against), limits ("name ($50.00/month)" per budget), blocked (the budgets that refused
+// it), costUsd (the cost charged, a number), agent ("project/agent") and costStatus. It
+// returns nil when the policy left none of them.
 func budgetProperty(values map[string]interface{}) map[string]interface{} {
 	budget := map[string]interface{}{}
-	switch names := values[constants.BudgetNamesMetadataKey].(type) {
-	case []interface{}:
-		list := make([]string, 0, len(names))
-		for _, n := range names {
-			if name, ok := n.(string); ok && name != "" {
-				list = append(list, name)
-			}
-		}
-		if len(list) > 0 {
-			budget["names"] = list
-		}
-	case string:
-		if names != "" {
-			budget["names"] = strings.Split(names, ",")
+	for key, prop := range map[string]string{
+		constants.BudgetNamesMetadataKey:   "names",
+		constants.BudgetLimitsMetadataKey:  "limits",
+		constants.BudgetBlockedMetadataKey: "blocked",
+	} {
+		if list := stringList(values[key]); len(list) > 0 {
+			budget[prop] = list
 		}
 	}
-	if status, ok := values[constants.BudgetCostStatusMetadataKey].(string); ok && status != "" {
-		budget["costStatus"] = status
+	for key, prop := range map[string]string{
+		constants.BudgetCostStatusMetadataKey: "costStatus",
+		constants.BudgetAgentMetadataKey:      "agent",
+	} {
+		if v, ok := values[key].(string); ok && v != "" {
+			budget[prop] = v
+		}
+	}
+	switch cost := values[constants.BudgetCostUSDMetadataKey].(type) {
+	case float64:
+		budget["costUsd"] = cost
+	case string:
+		if parsed, err := strconv.ParseFloat(cost, 64); err == nil {
+			budget["costUsd"] = parsed
+		}
 	}
 	if len(budget) == 0 {
 		return nil
 	}
 	return budget
+}
+
+// stringList reads a list of strings the policy wrote: a list, or a comma-joined string.
+func stringList(v interface{}) []string {
+	switch items := v.(type) {
+	case []interface{}:
+		list := make([]string, 0, len(items))
+		for _, item := range items {
+			if s, ok := item.(string); ok && s != "" {
+				list = append(list, s)
+			}
+		}
+		return list
+	case []string:
+		return items
+	case string:
+		if items != "" {
+			return strings.Split(items, ",")
+		}
+	}
+	return nil
 }

@@ -20,6 +20,7 @@ package budget
 
 import (
 	"context"
+	"github.com/wso2/api-platform/common/budgetspend"
 	"testing"
 
 	"github.com/wso2/api-platform/sdk/core/counters"
@@ -82,8 +83,15 @@ func TestCostStatsCountEveryRequestWithoutABudget(t *testing.T) {
 	if got := mem.Labels(key); len(got) != len(labels) || got[costLabelModel] != "gpt-4o" || got[costLabelAgent] != "support-agent" {
 		t.Fatalf("labels %v, want %v", got, labels)
 	}
-	if analytics != nil {
-		t.Fatalf("no budget covered it, so analytics gets nothing; got %v", analytics)
+	// No budget covered it: analytics still gets the cost and the agent, for spend per agent.
+	if analytics[analyticsBudgetAgent] != "api-platform/support-agent" || analytics[analyticsBudgetCostStatus] != costStatusPriced {
+		t.Fatalf("analytics %v, want the agent and priced", analytics)
+	}
+	if _, ok := analytics[analyticsBudgetCostUSD].(float64); !ok {
+		t.Fatalf("analytics %v, want costUsd as a number", analytics)
+	}
+	if _, ok := analytics[analyticsBudgetNames]; ok {
+		t.Fatalf("analytics %v names a budget, but none covered it", analytics)
 	}
 }
 
@@ -138,7 +146,7 @@ func TestABudgetAndTheCostStatsAreBothCharged(t *testing.T) {
 		t.Fatalf("analytics %v", analytics)
 	}
 	allowances, _ := p.catalog.current()[0].matches("openai", caller{}, nil)
-	spent, _ := mem.Total(spendCounter(spendKey{allowance: allowances[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}))
+	spent, _ := mem.Total(spendCounter(spendKey{spendID: budgetspend.SpendID("all"), allowance: allowances[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}))
 	if spent != 3 {
 		t.Fatalf("budget spend %v, want 3", spent)
 	}

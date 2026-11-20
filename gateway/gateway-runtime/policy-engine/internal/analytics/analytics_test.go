@@ -1696,6 +1696,33 @@ func TestPrepareAnalyticEvent_WithBudgetMetadata(t *testing.T) {
 	}, event.Properties[constants.BudgetPropertyKey])
 }
 
+func TestPrepareAnalyticEvent_WithBudgetLimitsBlockedCostAndAgent(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	limits, err := structpb.NewList([]interface{}{"online-shop-agents ($50.00/month)"})
+	require.NoError(t, err)
+	blocked, err := structpb.NewList([]interface{}{"online-shop-agents"})
+	require.NoError(t, err)
+
+	logEntry := createLogEntryWithMetadataValues(map[string]*structpb.Value{
+		constants.BudgetLimitsMetadataKey:     structpb.NewListValue(limits),
+		constants.BudgetBlockedMetadataKey:    structpb.NewListValue(blocked),
+		constants.BudgetCostUSDMetadataKey:    structpb.NewNumberValue(0.0325),
+		constants.BudgetAgentMetadataKey:      structpb.NewStringValue("online-shop/returns-bot"),
+		constants.BudgetCostStatusMetadataKey: structpb.NewStringValue("priced"),
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, map[string]interface{}{
+		"limits":     []string{"online-shop-agents ($50.00/month)"},
+		"blocked":    []string{"online-shop-agents"},
+		"costUsd":    0.0325,
+		"agent":      "online-shop/returns-bot",
+		"costStatus": "priced",
+	}, event.Properties[constants.BudgetPropertyKey])
+}
+
 func TestPrepareAnalyticEvent_WithoutBudgetMetadata(t *testing.T) {
 	analytics := NewAnalytics(&config.Config{})
 

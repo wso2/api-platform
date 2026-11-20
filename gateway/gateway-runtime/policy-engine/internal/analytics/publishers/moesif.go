@@ -301,7 +301,9 @@ func (m *Moesif) Publish(event *dto.Event) {
 				slog.Warn("AI Metadata property cannot be converted to the required format")
 			}
 		} else {
-			slog.Warn("AI Metadata property cannot be found in the event properties")
+			// Missing when the gateway answered the request itself (an auth failure or a
+			// used-up budget), as the OTEL publisher treats it.
+			slog.Debug("AI Metadata property cannot be found in the event properties")
 		}
 
 		// Safely extract aiTokenUsage with nil check
@@ -314,7 +316,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 				slog.Warn("Token usage property cannot be converted to the required format")
 			}
 		} else {
-			slog.Warn("AI Token Usage data cannot be found in the event properties")
+			slog.Debug("AI Token Usage data cannot be found in the event properties")
 		}
 
 		// Budgets the request counted against and how it was priced: metadata.budget.*

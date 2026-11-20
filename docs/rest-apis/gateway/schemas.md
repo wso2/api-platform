@@ -3191,15 +3191,13 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
       "action": "block",
       "blockAt": 95
     },
-    "resource": {
-      "type": "llmProvider",
-      "allocation": "shared",
-      "id": "openai"
-    },
-    "consumers": [
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
       {
         "type": "attribute",
-        "allocation": "shared",
         "expression": "'research' in request.Auth.Claims[\"groups\"]"
       }
     ]
@@ -3245,15 +3243,13 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
       "action": "block",
       "blockAt": 95
     },
-    "resource": {
-      "type": "llmProvider",
-      "allocation": "shared",
-      "id": "openai"
-    },
-    "consumers": [
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
       {
         "type": "attribute",
-        "allocation": "shared",
         "expression": "'research' in request.Auth.Claims[\"groups\"]"
       }
     ]
@@ -3270,7 +3266,12 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
         "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
         "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
       }
-    ]
+    ],
+    "currentPeriod": {
+      "periodStart": "2026-11-01",
+      "spent": "312.4",
+      "unpricedRequests": 0
+    }
   }
 }
 
@@ -3289,7 +3290,147 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+|» status|[BudgetStatus](#schemabudgetstatus)|false|read-only|Server-managed fields. Populated on responses.|
+
+## BudgetStatus
+
+<a id="schemabudgetstatus"></a>
+<a id="schema_BudgetStatus"></a>
+<a id="tocSbudgetstatus"></a>
+<a id="tocsbudgetstatus"></a>
+
+```json
+{
+  "id": "reading-list-api-v1.0",
+  "state": "deployed",
+  "createdAt": "2026-04-24T07:21:13Z",
+  "updatedAt": "2026-04-24T07:21:13Z",
+  "deployedAt": "2026-04-24T07:21:13Z",
+  "warnings": [
+    {
+      "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+      "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+      "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+    }
+  ],
+  "currentPeriod": {
+    "periodStart": "2026-11-01",
+    "spent": "312.4",
+    "unpricedRequests": 0
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[ResourceStatus](#schemaresourcestatus)|false|none|Server-managed lifecycle information for a resource|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» currentPeriod|[BudgetCurrentPeriod](#schemabudgetcurrentperiod)|false|none|Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.|
+
+## BudgetCurrentPeriod
+
+<a id="schemabudgetcurrentperiod"></a>
+<a id="schema_BudgetCurrentPeriod"></a>
+<a id="tocSbudgetcurrentperiod"></a>
+<a id="tocsbudgetcurrentperiod"></a>
+
+```json
+{
+  "periodStart": "2026-11-01",
+  "spent": "312.4",
+  "unpricedRequests": 0
+}
+
+```
+
+Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|periodStart|string(date)|true|none|none|
+|spent|string|true|none|USD, total across the budget's allowances|
+|unpricedRequests|integer(int64)|true|none|Requests charged $0 this period because they had no price|
+
+## BudgetUsageListResponse
+
+<a id="schemabudgetusagelistresponse"></a>
+<a id="schema_BudgetUsageListResponse"></a>
+<a id="tocSbudgetusagelistresponse"></a>
+<a id="tocsbudgetusagelistresponse"></a>
+
+```json
+{
+  "periodStart": "2019-08-24",
+  "allowances": [
+    {
+      "allowance": {
+        "property1": "string",
+        "property2": "string"
+      },
+      "spent": "104.21",
+      "unpricedRequests": 0
+    }
+  ],
+  "total": 0,
+  "limit": 0,
+  "offset": 0
+}
+
+```
+
+A page of a budget's usage, one row per allowance, in the current period
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|periodStart|string(date)|true|none|none|
+|allowances|[[BudgetAllowanceUsage](#schemabudgetallowanceusage)]|true|none|[One allowance's spend this period]|
+|total|integer|true|none|none|
+|limit|integer|true|none|none|
+|offset|integer|true|none|none|
+
+## BudgetAllowanceUsage
+
+<a id="schemabudgetallowanceusage"></a>
+<a id="schema_BudgetAllowanceUsage"></a>
+<a id="tocSbudgetallowanceusage"></a>
+<a id="tocsbudgetallowanceusage"></a>
+
+```json
+{
+  "allowance": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "spent": "104.21",
+  "unpricedRequests": 0
+}
+
+```
+
+One allowance's spend this period
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|allowance|object|true|none|The allocated values, e.g. {"apiKey":"team-red"}; empty when shared, or when this gateway has not served the allowance|
+|» **additionalProperties**|string|false|none|none|
+|spent|string|true|none|USD|
+|unpricedRequests|integer(int64)|true|none|none|
 
 ## BudgetMetadata
 
@@ -3314,7 +3455,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
-|annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget counts only that project: when no project consumer is listed, {type: project, allocation: shared, id} is added as the first consumer. It exempts only that project's agents.|
+|annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget counts only that project: when its filters have no project filter, {type: project, id} is added as the last filter. It exempts only that project's agents and cannot be split by project.|
 |» **additionalProperties**|string|false|none|none|
 
 ## BudgetSpec
@@ -3332,20 +3473,18 @@ and
     "currency": "USD",
     "period": "day",
     "action": "block",
-    "blockAt": 100
+    "blockAt": 100,
+    "splitBy": {
+      "type": "llmProvider",
+      "expression": "string"
+    }
   },
-  "resource": {
-    "type": "llmProvider",
-    "allocation": "shared",
-    "id": "string"
-  },
-  "consumers": [
+  "filters": [
     {
-      "type": "attribute",
-      "allocation": "shared",
-      "expression": "string",
+      "type": "llmProvider",
       "id": "string",
-      "project": "string"
+      "project": "string",
+      "expression": "string"
     }
   ],
   "exemptions": [
@@ -3366,8 +3505,7 @@ and
 |---|---|---|---|---|
 |status|string|false|none|An inactive budget is kept but matches no traffic.|
 |limit|[BudgetLimit](#schemabudgetlimit)|true|none|none|
-|resource|[BudgetResource](#schemabudgetresource)|true|none|none|
-|consumers|[[BudgetConsumer](#schemabudgetconsumer)]|false|none|Every consumer must match (AND). Empty means all traffic.|
+|filters|[[BudgetFilter](#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Every filter must match (AND). Empty means all LLM usage.|
 |exemptions|[[BudgetExemption](#schemabudgetexemption)]|false|none|Matching traffic is left out of this budget.|
 
 ##### Enumerated Values
@@ -3390,7 +3528,11 @@ and
   "currency": "USD",
   "period": "day",
   "action": "block",
-  "blockAt": 100
+  "blockAt": 100,
+  "splitBy": {
+    "type": "llmProvider",
+    "expression": "string"
+  }
 }
 
 ```
@@ -3404,6 +3546,7 @@ and
 |period|string|true|none|UTC calendar day, ISO week starting Monday, or calendar month.|
 |action|string|true|none|block refuses requests at the block point; allow only counts.|
 |blockAt|integer|false|none|Percentage of the amount at which a block budget refuses requests.|
+|splitBy|[BudgetSplit](#schemabudgetsplit)|false|none|Gives each value of the type its own limit: each LLM provider, project, agent or API key, or each value of an attribute expression. Omitted means one shared limit for all matching usage.|
 
 ##### Enumerated Values
 
@@ -3416,78 +3559,77 @@ and
 |action|block|
 |action|allow|
 
-## BudgetResource
+## BudgetSplit
 
-<a id="schemabudgetresource"></a>
-<a id="schema_BudgetResource"></a>
-<a id="tocSbudgetresource"></a>
-<a id="tocsbudgetresource"></a>
+<a id="schemabudgetsplit"></a>
+<a id="schema_BudgetSplit"></a>
+<a id="tocSbudgetsplit"></a>
+<a id="tocsbudgetsplit"></a>
 
 ```json
 {
   "type": "llmProvider",
-  "allocation": "shared",
-  "id": "string"
+  "expression": "string"
 }
 
 ```
+
+Gives each value of the type its own limit: each LLM provider, project, agent or API key, or each value of an attribute expression. Omitted means one shared limit for all matching usage.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |type|string|true|none|none|
-|allocation|string|true|none|shared is one allowance; separate is one allowance per provider (id omitted).|
-|id|string|false|none|LLM provider handle. Omit for all providers.|
+|expression|string|false|none|attribute only. CEL over the request returning a string or a list of strings.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|llmProvider|
-|allocation|shared|
-|allocation|separate|
+|type|project|
+|type|agent|
+|type|apiKey|
+|type|attribute|
 
-## BudgetConsumer
+## BudgetFilter
 
-<a id="schemabudgetconsumer"></a>
-<a id="schema_BudgetConsumer"></a>
-<a id="tocSbudgetconsumer"></a>
-<a id="tocsbudgetconsumer"></a>
+<a id="schemabudgetfilter"></a>
+<a id="schema_BudgetFilter"></a>
+<a id="tocSbudgetfilter"></a>
+<a id="tocsbudgetfilter"></a>
 
 ```json
 {
-  "type": "attribute",
-  "allocation": "shared",
-  "expression": "string",
+  "type": "llmProvider",
   "id": "string",
-  "project": "string"
+  "project": "string",
+  "expression": "string"
 }
 
 ```
 
-Who the budget applies to; consumers combine with AND. attribute is a CEL expression over the request (token claims); project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-name and agent-name annotations); apiKey is the name of the API key the request authenticated with.
+One condition on the LLM usage the budget counts; filters combine with AND. llmProvider is the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-name and agent-name annotations); apiKey is the name of the API key the request authenticated with; attribute is a CEL condition over the request (token claims). A project, agent or apiKey filter without an id matches any one: requests that carry that value at all (an agent filter without an id leaves out requests sent straight to a provider). Each type except attribute is used once.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |type|string|true|none|none|
-|allocation|string|true|none|shared is one allowance; separate is one allowance per value (each user, project, agent or API key).|
-|expression|string|false|none|attribute only. CEL over the request. A condition when shared; the value to allocate by when separate.|
-|id|string|false|none|The project, agent or API key name. Required when shared; omitted when separate.|
-|project|string|false|none|agent only, with id. The agent's project; agent names are unique only per project.|
+|id|string|false|none|The LLM provider, project, agent or API key name. Required for llmProvider; omitted for project, agent or apiKey means any one. Not for an attribute.|
+|project|string|false|none|agent only, with id: the agent's project; agent names are unique only per project. Omit both for any agent.|
+|expression|string|false|none|attribute only. CEL condition over the request, returning bool.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
-|type|attribute|
+|type|llmProvider|
 |type|project|
 |type|agent|
 |type|apiKey|
-|allocation|shared|
-|allocation|separate|
+|type|attribute|
 
 ## BudgetExemption
 

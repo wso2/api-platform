@@ -36,6 +36,7 @@
 package counters
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -71,6 +72,14 @@ type Service interface {
 type Describer interface {
 	// Describe sets the counter's labels, replacing any it had.
 	Describe(key Key, labels map[string]string)
+}
+
+// Forgetter is implemented by a Service that caches totals: Forget drops what it holds
+// for the counters of a namespace whose IDs start with idPrefix, including adds not yet
+// reported, so counters that were cleared in the shared store (a deleted budget's) are
+// not judged by, or written back from, a stale copy.
+type Forgetter interface {
+	Forget(namespace, idPrefix string)
 }
 
 // serviceHolder lets atomic.Pointer hold an interface value.
@@ -116,6 +125,14 @@ func Total(key Key) (float64, bool) {
 func Describe(key Key, labels map[string]string) {
 	if d, ok := current().(Describer); ok {
 		d.Describe(key, labels)
+	}
+}
+
+// Forget drops the cached counters of namespace whose IDs start with idPrefix when the
+// installed service caches them (Forgetter); otherwise it does nothing.
+func Forget(namespace, idPrefix string) {
+	if f, ok := current().(Forgetter); ok {
+		f.Forget(namespace, idPrefix)
 	}
 }
 
@@ -165,4 +182,16 @@ func (m *Memory) Labels(key Key) map[string]string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.labels[key]
+}
+
+// Forget drops the counters of namespace whose IDs start with idPrefix.
+func (m *Memory) Forget(namespace, idPrefix string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key := range m.totals {
+		if key.Namespace == namespace && strings.HasPrefix(key.ID, idPrefix) {
+			delete(m.totals, key)
+			delete(m.labels, key)
+		}
+	}
 }

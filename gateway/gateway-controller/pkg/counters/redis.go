@@ -152,6 +152,90 @@ func (r *Redis) Sync(ctx context.Context, source, reportID string, adds []counte
 	return totals, nil
 }
 
+// scanCount is how many keys one SCAN step looks at.
+const scanCount = 500
+
+// globEscaper keeps a key part from acting as a SCAN pattern.
+var globEscaper = strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`, "[", `\[`, "]", `\]`)
+
+// keysWithPrefix returns the Redis keys of namespace's counters whose ID starts with
+// idPrefix. Every counter shares the {c} hash tag, so one node holds them all.
+func (r *Redis) keysWithPrefix(ctx context.Context, namespace, idPrefix string) ([]string, error) {
+	pattern := globEscaper.Replace(r.prefix+"{c}:"+escape(namespace)+":"+escape(idPrefix)) + "*"
+	var keys []string
+	iter := r.client.Scan(ctx, 0, pattern, scanCount).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("counter store: %w", err)
+	}
+	return keys, nil
+}
+
+// parseKey reads a counter back from its Redis key: {prefix}{c}:namespace:id:window.
+func (r *Redis) parseKey(redisKey string) (counterproto.Key, bool) {
+	rest, ok := strings.CutPrefix(redisKey, r.prefix+"{c}:")
+	if !ok {
+		return counterproto.Key{}, false
+	}
+	parts := strings.Split(rest, ":")
+	if len(parts) != 3 {
+		return counterproto.Key{}, false
+	}
+	window, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return counterproto.Key{}, false
+	}
+	return counterproto.Key{Namespace: unescape(parts[0]), ID: unescape(parts[1]), Window: window}, true
+}
+
+var keyPartUnescaper = strings.NewReplacer("%3A", ":", "%25", "%")
+
+func unescape(s string) string { return keyPartUnescaper.Replace(s) }
+
+// Totals returns the matching counters.
+func (r *Redis) Totals(ctx context.Context, namespace, idPrefix string) ([]counterproto.Total, error) {
+	keys, err := r.keysWithPrefix(ctx, namespace, idPrefix)
+	if err != nil || len(keys) == 0 {
+		return nil, err
+	}
+	values, err := r.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("counter store: %w", err)
+	}
+	totals := make([]counterproto.Total, 0, len(keys))
+	for i, redisKey := range keys {
+		key, ok := r.parseKey(redisKey)
+		raw, isString := values[i].(string)
+		if !ok || !isString {
+			continue // expired since the scan, or not a counter
+		}
+		total, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			continue
+		}
+		totals = append(totals, counterproto.Total{Key: key, Total: total})
+	}
+	return totals, nil
+}
+
+// Delete removes the matching counters.
+func (r *Redis) Delete(ctx context.Context, namespace, idPrefix string) error {
+	keys, err := r.keysWithPrefix(ctx, namespace, idPrefix)
+	if err != nil {
+		return err
+	}
+	for len(keys) > 0 {
+		n := min(len(keys), scanCount)
+		if err := r.client.Unlink(ctx, keys[:n]...).Err(); err != nil {
+			return fmt.Errorf("counter store: %w", err)
+		}
+		keys = keys[n:]
+	}
+	return nil
+}
+
 // Ping checks Redis answers.
 func (r *Redis) Ping(ctx context.Context) error { return r.client.Ping(ctx).Err() }
 

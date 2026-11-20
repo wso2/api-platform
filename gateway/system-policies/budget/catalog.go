@@ -20,6 +20,7 @@ package budget
 
 import (
 	"fmt"
+	"github.com/wso2/api-platform/common/budgetspend"
 	"log/slog"
 	"net/url"
 	"reflect"
@@ -37,15 +38,18 @@ import (
 // LazyResourceType is the lazy-resource type the gateway controller publishes budgets as.
 const LazyResourceType = "Budget"
 
-// Allocation and action values, as in the Budget kind.
+// Allocation and action values of the published budget. The gateway controller maps the
+// Budget kind's filters and limit.splitBy to a provider resource and consumers: a filter is a
+// shared consumer (an llmProvider filter the resource's id), the split a separate one (an
+// llmProvider split the separate resource).
 const (
 	allocationShared   = "shared"
 	allocationSeparate = "separate"
 	actionBlock        = "block"
 )
 
-// Consumer and exemption types, as in the Budget kind; they also name allocated values
-// in allowance names.
+// Consumer and exemption types, as in the Budget kind's filters, split and exemptions; they
+// also name allocated values in allowance names.
 const (
 	valueTypeAttribute   = "attribute"
 	valueTypeProject     = "project"
@@ -80,13 +84,13 @@ func (c caller) value(valueType string) string {
 	return ""
 }
 
-// spendNamespace roots the IDs spend is counted under. Never change it: every gateway
-// must derive the same IDs for the same budget.
-var spendNamespace = uuid.MustParse("8d740d5b-3b73-4e13-84a6-5336674f813f")
-
 // maxAllowancesPerBudget caps the allowances one request can charge for one budget. List
 // claims allocated separately multiply; a request beyond the cap is not covered.
 const maxAllowancesPerBudget = 64
+
+// maxExpressionCost caps the work one expression may do per request, in CEL cost units: a
+// claim or header check costs a few units; walking big lists in nested macros costs more.
+const maxExpressionCost = 10000
 
 // resourceSource is where budgets come from: the policy engine's lazy-resource store.
 type resourceSource interface {
@@ -121,12 +125,15 @@ type budget struct {
 // consumer is one consumer or exemption. An attribute is a CEL expression: a condition
 // when shared, the value to allocate by when separate. A project, agent or API key is
 // compared with the caller: the named one when shared (id; an agent also names its
-// project), each one its own allowance when separate.
+// project), any one when shared without an id (the request has a value of that type at
+// all), each one its own allowance when separate.
 type consumer struct {
 	valueType string
 	separate  bool
 	program   cel.Program // attribute only
-	id        string      // shared project, agent or API key; for an agent "<project>/<agent>"
+	// id is the shared project, agent or API key; for an agent "<project>/<agent>". Empty
+	// on a shared consumer means any one. An exemption always has one.
+	id string
 }
 
 // is reports whether a shared consumer, or an exemption, covers the request.
@@ -136,7 +143,7 @@ func (c consumer) is(who caller, activation func() map[string]any) bool {
 		return ok
 	}
 	v := who.value(c.valueType)
-	return v != "" && v == c.id
+	return v != "" && (c.id == "" || v == c.id)
 }
 
 // values returns a separate consumer's values for the request; false when it has none.
@@ -302,6 +309,11 @@ type catalog struct {
 	version uint64
 	built   bool
 	budgets []*budget
+	// known is the UUID of every published budget by name, compiled or not; forgotten
+	// lists the names whose budget was deleted or made again (a new UUID) since the
+	// policy last took them, so their spend is dropped here as it is in the store.
+	known     map[string]string
+	forgotten []string
 }
 
 func newCatalog(source resourceSource) (*catalog, error) {
@@ -331,6 +343,18 @@ func (c *catalog) current() []*budget {
 		slog.Error("Failed to read budgets; keeping the previous set", slog.Any("error", err))
 		return c.budgets
 	}
+	known := make(map[string]string, len(resources))
+	for _, resource := range resources {
+		known[str(resource.Resource["name"])] = str(resource.Resource["uuid"])
+	}
+	if c.built {
+		for name, id := range c.known {
+			if known[name] != id {
+				c.forgotten = append(c.forgotten, name)
+			}
+		}
+	}
+	c.known = known
 	budgets := make([]*budget, 0, len(resources))
 	for id, resource := range resources {
 		b, err := c.compile(resource.Resource)
@@ -343,6 +367,16 @@ func (c *catalog) current() []*budget {
 	sort.Slice(budgets, func(i, j int) bool { return budgets[i].name < budgets[j].name })
 	c.budgets, c.version, c.built = budgets, version, true
 	return budgets
+}
+
+// takeForgotten returns, once, the names of budgets deleted or made again since the last
+// call.
+func (c *catalog) takeForgotten() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	names := c.forgotten
+	c.forgotten = nil
+	return names
 }
 
 // compile turns a published budget into a budget ready to match.
@@ -373,7 +407,7 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 	if b.name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	b.spendID = uuid.NewSHA1(spendNamespace, []byte(b.name))
+	b.spendID = budgetspend.SpendID(b.name)
 	switch b.period {
 	case periodDay, periodWeek, periodMonth:
 	default:
@@ -394,7 +428,7 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 	consumers, _ := body["consumers"].([]any)
 	for i, raw := range consumers {
 		entry, _ := raw.(map[string]any)
-		cons, err := c.consumer(entry, str(entry["allocation"]) == allocationSeparate)
+		cons, err := c.consumer(entry, str(entry["allocation"]) == allocationSeparate, false)
 		if err != nil {
 			return nil, fmt.Errorf("consumers[%d]: %w", i, err)
 		}
@@ -403,7 +437,7 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 	exemptions, _ := body["exemptions"].([]any)
 	for i, raw := range exemptions {
 		entry, _ := raw.(map[string]any)
-		cons, err := c.consumer(entry, false)
+		cons, err := c.consumer(entry, false, true)
 		if err != nil {
 			return nil, fmt.Errorf("exemptions[%d]: %w", i, err)
 		}
@@ -413,8 +447,10 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 }
 
 // consumer compiles one consumer or exemption. A type left out is an attribute, as budgets
-// published before typed consumers were.
-func (c *catalog) consumer(entry map[string]any, separate bool) (consumer, error) {
+// published before typed consumers were. A shared project, agent or API key consumer
+// without an id is any one; an agent takes its id and project, or neither. An exemption
+// names its project, agent or API key.
+func (c *catalog) consumer(entry map[string]any, separate, exemption bool) (consumer, error) {
 	valueType := str(entry["type"])
 	if valueType == "" {
 		valueType = valueTypeAttribute
@@ -431,8 +467,11 @@ func (c *catalog) consumer(entry map[string]any, separate bool) (consumer, error
 		cons.id = str(entry["id"])
 	case valueTypeAgent:
 		project, agent := str(entry["project"]), str(entry["id"])
-		if !separate && (project == "" || agent == "") {
-			return consumer{}, fmt.Errorf("an agent needs its id and project")
+		if !separate && (project == "") != (agent == "") {
+			return consumer{}, fmt.Errorf("an agent needs its id and project, or neither for any agent")
+		}
+		if exemption && agent == "" {
+			return consumer{}, fmt.Errorf("an agent exemption needs its id and project")
 		}
 		if agent != "" {
 			cons.id = project + "/" + agent
@@ -440,8 +479,8 @@ func (c *catalog) consumer(entry map[string]any, separate bool) (consumer, error
 	default:
 		return consumer{}, fmt.Errorf("type %q is not attribute, project, agent or apiKey", valueType)
 	}
-	if !separate && valueType != valueTypeAttribute && cons.id == "" {
-		return consumer{}, fmt.Errorf("a %s needs its id", valueType)
+	if exemption && valueType != valueTypeAttribute && cons.id == "" {
+		return consumer{}, fmt.Errorf("a %s exemption needs its id", valueType)
 	}
 	return cons, nil
 }
@@ -463,7 +502,9 @@ func (c *catalog) program(expression string, separate bool) (cel.Program, error)
 			return nil, fmt.Errorf("expression must return bool, not %s", out)
 		}
 	}
-	return c.env.Program(ast)
+	// The cost limit stops an expression that does too much work: it then errors, which
+	// counts as no match, so one costly expression never slows every request.
+	return c.env.Program(ast, cel.CostLimit(maxExpressionCost))
 }
 
 func str(v any) string {

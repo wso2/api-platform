@@ -1,0 +1,48 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# Budget: a spend limit on LLM traffic
+#
+# Needs [ai_cost_management.budgets] enabled = true in config.toml (see
+# configs/config-template.toml). Several gateways share one total only when
+# they share [counters.redis] and carry a budget of the same name.
+#
+# Each API key of openai-provider (openai-provider.yaml) may spend $50 a
+# day; requests from a key are refused (429 BUDGET_EXCEEDED) once it has
+# spent $45 (blockAt: 90). Requests with the header x-team: admin are
+# not counted. Spend resets at 00:00 UTC.
+#
+# Other shapes:
+#   limit.splitBy: {type: llmProvider}   each provider its own limit
+#   filters: [{type: apiKey, id: <key name>}]   one key only
+#   limit.splitBy: {type: attribute,
+#                   expression: "request.Headers['x-team'][0]"}   each team its own
+#   limit.action: allow   never refuses: counts spend only
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Budget
+metadata:
+  name: openai-daily-per-key
+spec:
+  limit:
+    amount: "50.00"
+    period: day # day, week or month (UTC)
+    action: block
+    blockAt: 90 # % of the amount
+    splitBy:
+      type: apiKey # each API key its own limit
+  filters:
+    - type: llmProvider
+      id: openai-provider
+  exemptions:
+    - type: attribute
+      expression: "'x-team' in request.Headers && request.Headers['x-team'][0] == 'admin'"

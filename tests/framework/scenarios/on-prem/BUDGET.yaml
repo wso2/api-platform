@@ -99,7 +99,7 @@ scenarios:
         - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget whose name is taken is refused"
   - id: BUDGET-009
-    title: "Create a budget naming an LLM provider the gateway does not have; 400 on spec.resource.id."
+    title: "Create a budget naming an LLM provider the gateway does not have; 400 on spec.filters[0].id."
     priority: P2
     ui:
       status: exempt
@@ -110,7 +110,7 @@ scenarios:
         - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget naming a provider the gateway does not have is rejected"
   - id: BUDGET-010
-    title: "Create an active budget; it reaches the policy engine as a lazy resource of type Budget with its limit, resource and consumers."
+    title: "Create an active budget; it reaches the policy engine as a lazy resource of type Budget with its limit, filters and split mapped to the engine's model."
     priority: P1
     ui:
       status: exempt

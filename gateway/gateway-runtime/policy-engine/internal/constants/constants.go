@@ -205,5 +205,9 @@ const (
 	// matching literals there); BudgetPropertyKey carries both on the event.
 	BudgetNamesMetadataKey      = "budgetNames"
 	BudgetCostStatusMetadataKey = "budgetCostStatus"
+	BudgetLimitsMetadataKey     = "budgetLimits"
+	BudgetBlockedMetadataKey    = "budgetBlocked"
+	BudgetCostUSDMetadataKey    = "budgetCostUsd"
+	BudgetAgentMetadataKey      = "budgetAgent"
 	BudgetPropertyKey           = "budget"
 )

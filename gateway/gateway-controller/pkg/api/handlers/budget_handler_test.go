@@ -19,6 +19,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -27,11 +28,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/common/budgetspend"
+	"github.com/wso2/api-platform/gateway/common/counterproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/counters"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/budget"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -44,8 +49,7 @@ const testBudgetBody = `{
   "metadata": {"name": "research-team-monthly"},
   "spec": {
     "limit": {"amount": "500.00", "period": "month", "action": "block"},
-    "resource": {"type": "llmProvider", "allocation": "shared"},
-    "consumers": [{"type": "attribute", "allocation": "shared", "expression": "'research' in request.Auth.Claims[\"groups\"]"}]
+    "filters": [{"type": "attribute", "expression": "'research' in request.Auth.Claims[\"groups\"]"}]
   }
 }`
 
@@ -106,7 +110,7 @@ func TestCreateBudget_Created(t *testing.T) {
 	assert.Equal(t, 100, *got.Spec.Limit.BlockAt)
 	require.NotNil(t, got.Status)
 	assert.Equal(t, "research-team-monthly", *got.Status.Id)
-	assert.Equal(t, api.ResourceStatusStateDeployed, *got.Status.State)
+	assert.Equal(t, api.BudgetStatusStateDeployed, *got.Status.State)
 }
 
 func TestCreateBudget_ValidationErrorsListFields(t *testing.T) {
@@ -120,7 +124,7 @@ func TestCreateBudget_ValidationErrorsListFields(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.NotNil(t, got.Errors)
 	require.NotEmpty(t, *got.Errors)
-	assert.Equal(t, "spec.consumers[0].type", *(*got.Errors)[0].Field)
+	assert.Equal(t, "spec.filters[0].type", *(*got.Errors)[0].Field)
 	assert.Contains(t, *(*got.Errors)[0].Message, "allowed values")
 }
 
@@ -206,4 +210,75 @@ func TestConfigDumpListsBudgets(t *testing.T) {
 	assert.Equal(t, "gateway_api", *budgets[1].Metadata.Origin)
 	assert.Equal(t, "500.00", (*budgets[1].Configuration)["spec"].(map[string]interface{})["limit"].(map[string]interface{})["amount"])
 	assert.NotNil(t, budgets[1].Id)
+}
+
+// fakeLabels names allowances as the usage reporter does.
+type fakeLabels struct {
+	byBudget map[string]map[string]map[string]string
+}
+
+func (f *fakeLabels) Labels(b string) map[string]map[string]string { return f.byBudget[b] }
+func (f *fakeLabels) Forget(b string)                              { delete(f.byBudget, b) }
+
+// The budget shows its spend this period, its usage lists each allowance highest first,
+// and deleting it clears its spend, so a budget made again under its name starts at $0.
+func TestBudgetSpendIsShownAndClearedOnDelete(t *testing.T) {
+	server := newBudgetTestServer(t)
+	store := counters.NewMemory(0)
+	prefix := budgetspend.CounterIDPrefix("research-team-monthly")
+	labels := &fakeLabels{byBudget: map[string]map[string]map[string]string{
+		"research-team-monthly": {prefix + "a": {"attribute": "alice@wso2.com"}},
+	}}
+	server.SetBudgetSpend(store, labels)
+	require.Equal(t, http.StatusCreated, postBudget(server, testBudgetBody).Code)
+
+	month := budgetspend.PeriodStart("month", time.Now())
+	adds := []counterproto.Add{
+		{Key: counterproto.KeyFor("budget", prefix+"a", month), Delta: 1.5},
+		{Key: counterproto.KeyFor("budget", prefix+"b", month), Delta: 2.25},
+		{Key: counterproto.KeyFor("budget-unpriced", prefix+"b", month), Delta: 3},
+		{Key: counterproto.KeyFor("budget", prefix+"a", month.AddDate(0, -1, 0)), Delta: 100}, // last month
+	}
+	_, err := store.Sync(context.Background(), "engine-1", "r1", adds, nil)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	server.GetBudget(rec, httptest.NewRequest(http.MethodGet, "/budgets/research-team-monthly", nil), "research-team-monthly")
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got api.Budget
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.NotNil(t, got.Status.CurrentPeriod)
+	assert.Equal(t, "3.75", got.Status.CurrentPeriod.Spent)
+	assert.Equal(t, int64(3), got.Status.CurrentPeriod.UnpricedRequests)
+	assert.Equal(t, month.Format(time.DateOnly), got.Status.CurrentPeriod.PeriodStart.Format(time.DateOnly))
+
+	limit := 1
+	rec = httptest.NewRecorder()
+	server.GetBudgetUsage(rec, httptest.NewRequest(http.MethodGet, "/budgets/research-team-monthly/budget-usage", nil), "research-team-monthly", api.GetBudgetUsageParams{Limit: &limit})
+	require.Equal(t, http.StatusOK, rec.Code)
+	var page api.BudgetUsageListResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
+	assert.Equal(t, 2, page.Total)
+	require.Len(t, page.Allowances, 1)
+	assert.Equal(t, "2.25", page.Allowances[0].Spent, "highest spend first")
+	assert.Empty(t, page.Allowances[0].Allowance, "values not known on this gateway")
+
+	bad := 101
+	rec = httptest.NewRecorder()
+	server.GetBudgetUsage(rec, httptest.NewRequest(http.MethodGet, "/", nil), "research-team-monthly", api.GetBudgetUsageParams{Limit: &bad})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = httptest.NewRecorder()
+	server.DeleteBudget(rec, httptest.NewRequest(http.MethodDelete, "/budgets/research-team-monthly", nil), "research-team-monthly")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	left, err := store.Totals(context.Background(), "budget", prefix)
+	require.NoError(t, err)
+	assert.Empty(t, left, "the deleted budget's spend is cleared")
+	assert.Empty(t, labels.byBudget, "and its allowance names")
+
+	require.Equal(t, http.StatusCreated, postBudget(server, testBudgetBody).Code)
+	rec = httptest.NewRecorder()
+	server.GetBudget(rec, httptest.NewRequest(http.MethodGet, "/budgets/research-team-monthly", nil), "research-team-monthly")
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	assert.Equal(t, "0", got.Status.CurrentPeriod.Spent, "made again: starts at $0")
 }

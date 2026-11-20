@@ -53,10 +53,9 @@ Feature: Budgets on an LLM provider secured with jwt-auth
       | amount              | "0.01"                    |
       | period              | month                     |
       | action              | block                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"]"} |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
       | spec.limit.blockAt  | 10                        |
-      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"]"}] |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
     Then the response status code should be 200

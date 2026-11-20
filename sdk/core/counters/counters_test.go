@@ -69,3 +69,19 @@ func TestInstalledServiceIsUsed(t *testing.T) {
 		t.Fatal("an installed service is shared")
 	}
 }
+
+func TestMemoryForgetDropsOnlyMatchingCounters(t *testing.T) {
+	m := NewMemory()
+	keep := Key{Namespace: "budget", ID: "b/2"}
+	gone := Key{Namespace: "budget", ID: "a/1"}
+	other := Key{Namespace: "other", ID: "a/1"}
+	for _, k := range []Key{keep, gone, other} {
+		m.Add(k, 5)
+	}
+	m.Forget("budget", "a/")
+	for k, want := range map[Key]float64{keep: 5, gone: 0, other: 5} {
+		if got, _ := m.Total(k); got != want {
+			t.Errorf("%v = %v, want %v", k, got, want)
+		}
+	}
+}

@@ -38,15 +38,13 @@ Add a budget (a spend limit on LLM traffic) to the Gateway.
       "action": "block",
       "blockAt": 95
     },
-    "resource": {
-      "type": "llmProvider",
-      "allocation": "shared",
-      "id": "openai"
-    },
-    "consumers": [
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
       {
         "type": "attribute",
-        "allocation": "shared",
         "expression": "'research' in request.Auth.Claims[\"groups\"]"
       }
     ]
@@ -87,15 +85,13 @@ Required roles: `admin`
       "action": "block",
       "blockAt": 95
     },
-    "resource": {
-      "type": "llmProvider",
-      "allocation": "shared",
-      "id": "openai"
-    },
-    "consumers": [
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
       {
         "type": "attribute",
-        "allocation": "shared",
         "expression": "'research' in request.Auth.Claims[\"groups\"]"
       }
     ]
@@ -112,7 +108,12 @@ Required roles: `admin`
         "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
         "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
       }
-    ]
+    ],
+    "currentPeriod": {
+      "periodStart": "2026-11-01",
+      "spent": "312.4",
+      "unpricedRequests": 0
+    }
   }
 }
 ```
@@ -175,15 +176,13 @@ Required roles: `admin`
           "action": "block",
           "blockAt": 95
         },
-        "resource": {
-          "type": "llmProvider",
-          "allocation": "shared",
-          "id": "openai"
-        },
-        "consumers": [
+        "filters": [
+          {
+            "type": "llmProvider",
+            "id": "openai"
+          },
           {
             "type": "attribute",
-            "allocation": "shared",
             "expression": "'research' in request.Auth.Claims[\"groups\"]"
           }
         ]
@@ -200,7 +199,12 @@ Required roles: `admin`
             "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
             "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
           }
-        ]
+        ],
+        "currentPeriod": {
+          "periodStart": "2026-11-01",
+          "spent": "312.4",
+          "unpricedRequests": 0
+        }
       }
     }
   ]
@@ -233,7 +237,7 @@ Status Code **200**
 |»»» kind|string|true|none|none|
 |»»» metadata|[BudgetMetadata](schemas.md#schemabudgetmetadata)|true|none|none|
 |»»»» name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
-|»»»» annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget counts only that project: when no project consumer is listed, {type: project, allocation: shared, id} is added as the first consumer. It exempts only that project's agents.|
+|»»»» annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget counts only that project: when its filters have no project filter, {type: project, id} is added as the last filter. It exempts only that project's agents and cannot be split by project.|
 |»»»»» **additionalProperties**|string|false|none|none|
 |»»» spec|[BudgetSpec](schemas.md#schemabudgetspec)|true|none|none|
 |»»»» status|string|false|none|An inactive budget is kept but matches no traffic.|
@@ -243,16 +247,14 @@ Status Code **200**
 |»»»»» period|string|true|none|UTC calendar day, ISO week starting Monday, or calendar month.|
 |»»»»» action|string|true|none|block refuses requests at the block point; allow only counts.|
 |»»»»» blockAt|integer|false|none|Percentage of the amount at which a block budget refuses requests.|
-|»»»» resource|[BudgetResource](schemas.md#schemabudgetresource)|true|none|none|
+|»»»»» splitBy|[BudgetSplit](schemas.md#schemabudgetsplit)|false|none|Gives each value of the type its own limit: each LLM provider, project, agent or API key, or each value of an attribute expression. Omitted means one shared limit for all matching usage.|
+|»»»»»» type|string|true|none|none|
+|»»»»»» expression|string|false|none|attribute only. CEL over the request returning a string or a list of strings.|
+|»»»» filters|[[BudgetFilter](schemas.md#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Every filter must match (AND). Empty means all LLM usage.|
 |»»»»» type|string|true|none|none|
-|»»»»» allocation|string|true|none|shared is one allowance; separate is one allowance per provider (id omitted).|
-|»»»»» id|string|false|none|LLM provider handle. Omit for all providers.|
-|»»»» consumers|[[BudgetConsumer](schemas.md#schemabudgetconsumer)]|false|none|Every consumer must match (AND). Empty means all traffic.|
-|»»»»» type|string|true|none|none|
-|»»»»» allocation|string|true|none|shared is one allowance; separate is one allowance per value (each user, project, agent or API key).|
-|»»»»» expression|string|false|none|attribute only. CEL over the request. A condition when shared; the value to allocate by when separate.|
-|»»»»» id|string|false|none|The project, agent or API key name. Required when shared; omitted when separate.|
-|»»»»» project|string|false|none|agent only, with id. The agent's project; agent names are unique only per project.|
+|»»»»» id|string|false|none|The LLM provider, project, agent or API key name. Required for llmProvider; omitted for project, agent or apiKey means any one. Not for an attribute.|
+|»»»»» project|string|false|none|agent only, with id: the agent's project; agent names are unique only per project. Omit both for any agent.|
+|»»»»» expression|string|false|none|attribute only. CEL condition over the request, returning bool.|
 |»»»» exemptions|[[BudgetExemption](schemas.md#schemabudgetexemption)]|false|none|Matching traffic is left out of this budget.|
 |»»»»» type|string|true|none|none|
 |»»»»» expression|string|false|none|attribute only. CEL condition over the request.|
@@ -264,16 +266,7 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
-|»»» status|[ResourceStatus](schemas.md#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
-|»»»» id|string|false|none|Unique identifier assigned by the server (equal to metadata.name)|
-|»»»» state|string|false|none|Desired deployment state reported by the server|
-|»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
-|»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
-|»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
-|»»»» warnings|[[Warning](schemas.md#schemawarning)]|false|read-only|Non-fatal deploy-time findings (e.g. a policy's parameters resolved to something other than what was written, such as an omitted accept list inheriting the whole client-CA pool). Present only when non-empty.|
-|»»»»» code|string|false|none|none|
-|»»»»» field|string|false|none|none|
-|»»»»» message|string|false|none|none|
+|»»» status|any|false|read-only|Server-managed fields. Populated on responses.|
 
 #### Enumerated Values
 
@@ -290,28 +283,18 @@ Status Code **200**
 |action|block|
 |action|allow|
 |type|llmProvider|
-|allocation|shared|
-|allocation|separate|
-|type|attribute|
 |type|project|
 |type|agent|
 |type|apiKey|
-|allocation|shared|
-|allocation|separate|
+|type|attribute|
+|type|llmProvider|
+|type|project|
+|type|agent|
+|type|apiKey|
+|type|attribute|
 |type|attribute|
 |type|project|
 |type|agent|
-|state|deployed|
-|state|undeployed|
-|code|MTLS_ACCEPT_INHERITS_POOL|
-|code|MTLS_ACCEPT_UNNARROWED|
-|code|MTLS_AUTH_NOT_FIRST|
-|code|MTLS_ACCEPT_NAMES_RELAY_AUTHORITY|
-|code|MTLS_THUMBPRINT_NORMALISED|
-|code|HEADER_CERT_BYPASS_ACTIVE|
-|code|MTLS_HOSTNAME_NOT_SCOPED|
-|code|TLS_VERIFY_HOSTNAME_DISABLED|
-|code|TLS_IDENTITY_EXPIRED|
 
 ## Get a budget
 
@@ -364,15 +347,13 @@ Required roles: `admin`
       "action": "block",
       "blockAt": 95
     },
-    "resource": {
-      "type": "llmProvider",
-      "allocation": "shared",
-      "id": "openai"
-    },
-    "consumers": [
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
       {
         "type": "attribute",
-        "allocation": "shared",
         "expression": "'research' in request.Auth.Claims[\"groups\"]"
       }
     ]
@@ -389,7 +370,12 @@ Required roles: `admin`
         "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
         "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
       }
-    ]
+    ],
+    "currentPeriod": {
+      "periodStart": "2026-11-01",
+      "spent": "312.4",
+      "unpricedRequests": 0
+    }
   }
 }
 ```
@@ -420,7 +406,7 @@ curl -X PUT http://localhost:9090/api/management/v1/budgets/{id} \
 
 ```
 
-Update a budget. Only spec.status, spec.limit.amount, spec.limit.action, spec.limit.blockAt and spec.exemptions can change; every other field must match the stored budget. To change the period, resource or consumers, create a new budget. Budgets from the control plane cannot be changed here.
+Update a budget. Only spec.status, spec.limit.amount, spec.limit.action, spec.limit.blockAt and spec.exemptions can change; every other field must match the stored budget. To change the period, splitBy or filters, create a new budget. Budgets from the control plane cannot be changed here.
 
 > Payload
 
@@ -438,15 +424,13 @@ Update a budget. Only spec.status, spec.limit.amount, spec.limit.action, spec.li
       "action": "block",
       "blockAt": 95
     },
-    "resource": {
-      "type": "llmProvider",
-      "allocation": "shared",
-      "id": "openai"
-    },
-    "consumers": [
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
       {
         "type": "attribute",
-        "allocation": "shared",
         "expression": "'research' in request.Auth.Claims[\"groups\"]"
       }
     ]
@@ -488,15 +472,13 @@ Required roles: `admin`
       "action": "block",
       "blockAt": 95
     },
-    "resource": {
-      "type": "llmProvider",
-      "allocation": "shared",
-      "id": "openai"
-    },
-    "consumers": [
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
       {
         "type": "attribute",
-        "allocation": "shared",
         "expression": "'research' in request.Auth.Claims[\"groups\"]"
       }
     ]
@@ -513,7 +495,12 @@ Required roles: `admin`
         "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
         "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
       }
-    ]
+    ],
+    "currentPeriod": {
+      "periodStart": "2026-11-01",
+      "spent": "312.4",
+      "unpricedRequests": 0
+    }
   }
 }
 ```
@@ -591,3 +578,70 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
+
+## List a budget's usage
+
+<a id="opIdgetBudgetUsage"></a>
+
+`GET /budgets/{id}/budget-usage`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/api/management/v1/budgets/{id}/budget-usage \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+The budget's spend in the current period, one row per allowance, highest spend first: the same as the control plane's budget usage. Totals include every gateway sharing the counter store; an allowance's values are known once this gateway has served it, and are empty otherwise (and for a shared allowance).
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
+
+<h3 id="list-a-budget's-usage-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|The budget's name (metadata.name)|
+|limit|query|integer|false|none|
+|offset|query|integer|false|none|
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "periodStart": "2019-08-24",
+  "allowances": [
+    {
+      "allowance": {
+        "property1": "string",
+        "property2": "string"
+      },
+      "spent": "104.21",
+      "unpricedRequests": 0
+    }
+  ],
+  "total": 0,
+  "limit": 0,
+  "offset": 0
+}
+```
+
+<h3 id="list-a-budget's-usage-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|The budget's usage this period|[BudgetUsageListResponse](schemas.md#schemabudgetusagelistresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid limit or offset|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Budget not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|

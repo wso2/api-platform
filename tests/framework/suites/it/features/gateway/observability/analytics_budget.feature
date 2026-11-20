@@ -62,8 +62,7 @@ Feature: Budget properties on analytics events
       | amount              | "100"                     |
       | period              | month                     |
       | action              | allow                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
     Then the response status code should be 200
@@ -126,8 +125,7 @@ Feature: Budget properties on analytics events
       | amount              | "100"                     |
       | period              | month                     |
       | action              | allow                     |
-      | resource.allocation | shared                    |
-      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
     Then the response status code should be 200

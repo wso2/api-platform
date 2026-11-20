@@ -125,24 +125,78 @@ func budgetResource(cfg *models.StoredConfig) (*storage.LazyResource, bool, erro
 		"uuid": cfg.UUID,
 		"name": budget.Metadata.Name,
 	}
-	fields := map[string]interface{}{
-		"limit":    budget.Spec.Limit,
-		"resource": budget.Spec.Resource,
+	limit, err := plainJSON(budget.Spec.Limit)
+	if err != nil {
+		return nil, false, fmt.Errorf("budget %q: encoding limit: %w", cfg.Handle, err)
 	}
-	if budget.Spec.Consumers != nil {
-		fields["consumers"] = *budget.Spec.Consumers
+	// splitBy is carried by the engine's resource and consumers below.
+	delete(limit.(map[string]interface{}), "splitBy")
+	body["limit"] = limit
+	resource, consumers := engineSelection(budget.Spec)
+	body["resource"] = resource
+	if len(consumers) > 0 {
+		body["consumers"] = consumers
 	}
 	if budget.Spec.Exemptions != nil {
-		fields["exemptions"] = *budget.Spec.Exemptions
-	}
-	for key, value := range fields {
-		plain, err := plainJSON(value)
+		exemptions, err := plainJSON(*budget.Spec.Exemptions)
 		if err != nil {
-			return nil, false, fmt.Errorf("budget %q: encoding %s: %w", cfg.Handle, key, err)
+			return nil, false, fmt.Errorf("budget %q: encoding exemptions: %w", cfg.Handle, err)
 		}
-		body[key] = plain
+		body["exemptions"] = exemptions
 	}
 	return &storage.LazyResource{ID: budget.Metadata.Name, ResourceType: LazyResourceTypeBudget, Resource: body}, true, nil
+}
+
+// Allocation values of the budget system policy's model.
+const (
+	engineAllocationShared   = "shared"
+	engineAllocationSeparate = "separate"
+)
+
+// engineSelection maps the kind's filters and splitBy to the budget system policy's model,
+// which names allowances and spend counters: one LLM provider resource and a list of
+// consumers, each shared (a condition) or separate (one allowance per value). An llmProvider
+// filter is the shared provider resource with that id; an llmProvider split is the separate
+// provider resource; neither is all providers, shared. Every other filter is a shared
+// consumer of its type (without an id it is any value of that type), and every other split
+// a separate consumer of its type.
+func engineSelection(spec api.BudgetSpec) (map[string]interface{}, []interface{}) {
+	resource := map[string]interface{}{"type": string(api.BudgetFilterTypeLlmProvider), "allocation": engineAllocationShared}
+	var consumers []interface{}
+	if spec.Filters != nil {
+		for _, f := range *spec.Filters {
+			if f.Type == api.BudgetFilterTypeLlmProvider {
+				if f.Id != nil {
+					resource["id"] = *f.Id
+				}
+				continue
+			}
+			consumer := map[string]interface{}{"type": string(f.Type), "allocation": engineAllocationShared}
+			if f.Id != nil {
+				consumer["id"] = *f.Id
+			}
+			if f.Project != nil {
+				consumer["project"] = *f.Project
+			}
+			if f.Expression != nil {
+				consumer["expression"] = *f.Expression
+			}
+			consumers = append(consumers, consumer)
+		}
+	}
+	if split := spec.Limit.SplitBy; split != nil {
+		if split.Type == api.BudgetSplitTypeLlmProvider {
+			resource["allocation"] = engineAllocationSeparate
+			delete(resource, "id")
+		} else {
+			consumer := map[string]interface{}{"type": string(split.Type), "allocation": engineAllocationSeparate}
+			if split.Expression != nil {
+				consumer["expression"] = *split.Expression
+			}
+			consumers = append(consumers, consumer)
+		}
+	}
+	return resource, consumers
 }
 
 // plainJSON turns a typed value into maps, slices, strings, float64s and bools, the form a lazy

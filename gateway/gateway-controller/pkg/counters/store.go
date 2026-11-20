@@ -23,6 +23,7 @@ package counters
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,7 +42,18 @@ const appliedReportTTL = 10 * time.Minute
 type Store interface {
 	// Sync applies adds once per (source, reportID) and returns the totals of keys.
 	Sync(ctx context.Context, source, reportID string, adds []counterproto.Add, keys []counterproto.Key) ([]counterproto.Total, error)
+	// Totals returns every counter of namespace whose ID starts with idPrefix, in every
+	// window it has (a budget's spend, by budgetspend.CounterIDPrefix).
+	Totals(ctx context.Context, namespace, idPrefix string) ([]counterproto.Total, error)
+	// Delete removes every counter of namespace whose ID starts with idPrefix (a deleted
+	// budget's spend), so a budget made again under its name starts from nothing.
+	Delete(ctx context.Context, namespace, idPrefix string) error
 	Close() error
+}
+
+// matches reports whether key is one of namespace's counters whose ID starts with idPrefix.
+func matches(key counterproto.Key, namespace, idPrefix string) bool {
+	return key.Namespace == namespace && strings.HasPrefix(key.ID, idPrefix)
 }
 
 // Memory is a Store in this controller's memory: shared by its own policy engines and
@@ -96,6 +108,31 @@ func (m *Memory) Sync(_ context.Context, source, reportID string, adds []counter
 		totals = append(totals, counterproto.Total{Key: key, Total: m.totals[key].total})
 	}
 	return totals, nil
+}
+
+// Totals returns the matching counters.
+func (m *Memory) Totals(_ context.Context, namespace, idPrefix string) ([]counterproto.Total, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var totals []counterproto.Total
+	for key, c := range m.totals {
+		if matches(key, namespace, idPrefix) {
+			totals = append(totals, counterproto.Total{Key: key, Total: c.total})
+		}
+	}
+	return totals, nil
+}
+
+// Delete removes the matching counters.
+func (m *Memory) Delete(_ context.Context, namespace, idPrefix string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key := range m.totals {
+		if matches(key, namespace, idPrefix) {
+			delete(m.totals, key)
+		}
+	}
+	return nil
 }
 
 // Close does nothing.

@@ -7,6 +7,3 @@ spec:
     amount: ${VALUE:amount}
     period: ${VALUE:period}
     action: ${VALUE:action}
-  resource:
-    type: llmProvider
-    allocation: ${VALUE:resource.allocation}

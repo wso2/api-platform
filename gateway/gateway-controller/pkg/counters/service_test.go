@@ -41,7 +41,11 @@ type failingStore struct{}
 func (failingStore) Sync(context.Context, string, string, []counterproto.Add, []counterproto.Key) ([]counterproto.Total, error) {
 	return nil, errors.New("store down")
 }
-func (failingStore) Close() error { return nil }
+func (failingStore) Totals(context.Context, string, string) ([]counterproto.Total, error) {
+	return nil, errors.New("store down")
+}
+func (failingStore) Delete(context.Context, string, string) error { return errors.New("store down") }
+func (failingStore) Close() error                                 { return nil }
 
 // openStream serves store and opens a client stream to it.
 func openStream(t *testing.T, store Store) grpc.ClientStream {

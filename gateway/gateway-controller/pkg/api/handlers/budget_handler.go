@@ -26,6 +26,8 @@ import (
 	"net/http"
 	"sort"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+	"github.com/wso2/api-platform/common/budgetspend"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -68,7 +70,7 @@ func (s *APIServer) CreateBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusCreated, budgetResponse(stored))
+	httputil.WriteJSON(w, http.StatusCreated, s.budgetWithUsage(stored, log))
 }
 
 // ListBudgets implements ServerInterface.ListBudgets
@@ -86,9 +88,18 @@ func (s *APIServer) ListBudgets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	spend, err := s.budgetService.ReadSpend()
+	if err != nil {
+		log.Warn("Budget spend not shown: it cannot be read", slog.Any("error", err))
+	}
 	items := make([]api.Budget, 0, len(cfgs))
 	for _, cfg := range cfgs {
-		items = append(items, budgetResponse(cfg))
+		if err != nil {
+			items = append(items, budgetResponse(cfg, nil))
+			continue
+		}
+		usage := s.budgetService.UsageOf(cfg, spend)
+		items = append(items, budgetResponse(cfg, &usage))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "success", "count": len(items), "budgets": items})
 }
@@ -106,7 +117,7 @@ func (s *APIServer) GetBudget(w http.ResponseWriter, r *http.Request, id string)
 		writeBudgetError(w, log, "get", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, budgetResponse(cfg))
+	httputil.WriteJSON(w, http.StatusOK, s.budgetWithUsage(cfg, log))
 }
 
 // UpdateBudget implements ServerInterface.UpdateBudget
@@ -129,7 +140,7 @@ func (s *APIServer) UpdateBudget(w http.ResponseWriter, r *http.Request, id stri
 		writeBudgetError(w, log, "update", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, budgetResponse(cfg))
+	httputil.WriteJSON(w, http.StatusOK, s.budgetWithUsage(cfg, log))
 }
 
 // DeleteBudget implements ServerInterface.DeleteBudget
@@ -166,10 +177,21 @@ func writeBudgetError(w http.ResponseWriter, log *slog.Logger, action string, er
 	}
 }
 
-// budgetResponse is the stored budget with the server-managed status.
-func budgetResponse(cfg *models.StoredConfig) api.Budget {
+// budgetResponse is the stored budget with the server-managed status: its lifecycle and,
+// when usage is known, the current period's spend.
+func budgetResponse(cfg *models.StoredConfig, usage *budget.PeriodUsage) api.Budget {
 	req, _ := cfg.SourceConfiguration.(api.BudgetRequest)
-	status := buildResourceStatus(cfg)
+	rs := buildResourceStatus(cfg)
+	state := api.BudgetStatusState(*rs.State)
+	status := api.BudgetStatus{Id: rs.Id, State: &state, CreatedAt: rs.CreatedAt, UpdatedAt: rs.UpdatedAt, DeployedAt: rs.DeployedAt}
+	if usage != nil {
+		spent, unpriced := usage.Spent()
+		status.CurrentPeriod = &api.BudgetCurrentPeriod{
+			PeriodStart:      openapi_types.Date{Time: usage.PeriodStart},
+			Spent:            budgetspend.FormatUSD(spent),
+			UnpricedRequests: unpriced,
+		}
+	}
 	return api.Budget{
 		ApiVersion: api.BudgetApiVersion(req.ApiVersion),
 		Kind:       api.BudgetKind(req.Kind),
@@ -177,6 +199,64 @@ func budgetResponse(cfg *models.StoredConfig) api.Budget {
 		Spec:       req.Spec,
 		Status:     &status,
 	}
+}
+
+// budgetWithUsage is budgetResponse with the budget's spend read from the counter store;
+// without it when the store cannot be read.
+func (s *APIServer) budgetWithUsage(cfg *models.StoredConfig, log *slog.Logger) api.Budget {
+	usage, err := s.budgetService.Usage(cfg.Handle)
+	if err != nil {
+		log.Warn("Budget spend not shown: it cannot be read", slog.String("handle", cfg.Handle), slog.Any("error", err))
+		return budgetResponse(cfg, nil)
+	}
+	return budgetResponse(cfg, usage)
+}
+
+// SetBudgetSpend wires the counter store budget spend is kept in and what names its
+// allowances, for the budget usage and for clearing a deleted budget's spend.
+func (s *APIServer) SetBudgetSpend(counters budget.CounterStore, labels budget.AllowanceLabels) {
+	s.budgetService.SetSpend(counters, labels)
+}
+
+// Budget usage page bounds, as the control plane's.
+const (
+	budgetUsageDefaultLimit = 20
+	budgetUsageMaxLimit     = 100
+)
+
+// GetBudgetUsage implements ServerInterface.GetBudgetUsage
+// (GET /budgets/{id}/budget-usage)
+func (s *APIServer) GetBudgetUsage(w http.ResponseWriter, r *http.Request, id string, params api.GetBudgetUsageParams) {
+	if !s.budgetsAvailable(w) {
+		return
+	}
+	log := middleware.GetLogger(r, s.logger)
+	limit, offset := budgetUsageDefaultLimit, 0
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if params.Offset != nil {
+		offset = *params.Offset
+	}
+	if limit < 1 || limit > budgetUsageMaxLimit || offset < 0 {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error",
+			Message: fmt.Sprintf("limit must be 1 to %d and offset 0 or more", budgetUsageMaxLimit)})
+		return
+	}
+	usage, err := s.budgetService.Usage(id)
+	if err != nil {
+		writeBudgetError(w, log, "read the usage of", err)
+		return
+	}
+	page := usage.Allowances[min(offset, len(usage.Allowances)):min(offset+limit, len(usage.Allowances))]
+	rows := make([]api.BudgetAllowanceUsage, 0, len(page))
+	for _, a := range page {
+		rows = append(rows, api.BudgetAllowanceUsage{Allowance: a.Allowance, Spent: budgetspend.FormatUSD(a.Spent), UnpricedRequests: a.Unpriced})
+	}
+	httputil.WriteJSON(w, http.StatusOK, api.BudgetUsageListResponse{
+		PeriodStart: openapi_types.Date{Time: usage.PeriodStart},
+		Allowances:  rows, Total: len(usage.Allowances), Limit: limit, Offset: offset,
+	})
 }
 
 func budgetValidationResponse(invalid *budget.ValidationError) api.ErrorResponse {
