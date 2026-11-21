@@ -659,3 +659,34 @@ func TestImportHooks_NoHooksImportsEverything(t *testing.T) {
 		t.Fatalf("success/failed = %d/%d, want 2/0", resp.Success, resp.Failed)
 	}
 }
+
+// A malformed push that repeats a DPID across two new artifacts: admitting it admits both, and
+// refusing it refuses both, rather than whichever one the DPID happened to map to last.
+func TestImportHooks_RepeatedDPIDIsDecidedForEveryArtifactUnderIt(t *testing.T) {
+	t.Run("admitted", func(t *testing.T) {
+		d := setupImportTest(t)
+		d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{&recordingAdmitter{}}, nil)
+		importBatch(d,
+			restImportRequest("dp-shared", "first-api", "First"),
+			restImportRequest("dp-shared", "second-api", "Second"),
+		)
+		for _, h := range []string{"first-api", "second-api"} {
+			if art := artifactByHandle(t, d, h); art == nil {
+				t.Errorf("%s was admitted but not created", h)
+			}
+		}
+	})
+	t.Run("refused", func(t *testing.T) {
+		d := setupImportTest(t)
+		d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{&recordingAdmitter{refuse: refuseDPIDs("dp-shared")}}, nil)
+		importBatch(d,
+			restImportRequest("dp-shared", "first-api", "First"),
+			restImportRequest("dp-shared", "second-api", "Second"),
+		)
+		for _, h := range []string{"first-api", "second-api"} {
+			if art := artifactByHandle(t, d, h); art != nil {
+				t.Errorf("%s was created under a refused DPID", h)
+			}
+		}
+	})
+}

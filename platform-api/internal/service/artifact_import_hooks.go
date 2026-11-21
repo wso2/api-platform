@@ -121,9 +121,10 @@ func (s *ArtifactImportService) admitImports(ctx context.Context, orgID, gateway
 	if len(candidates) == 0 {
 		return gate
 	}
-	keyByDPID := make(map[string]admissionKey, len(candidates))
+	// DPIDs should be unique, but a malformed push can repeat one across candidates.
+	keysByDPID := make(map[string][]admissionKey, len(candidates))
 	for _, c := range candidates {
-		keyByDPID[c.DPID] = admissionKey{handle: c.Handle, kind: c.Kind}
+		keysByDPID[c.DPID] = append(keysByDPID[c.DPID], candidateKey(c))
 	}
 
 	hookCtx := context.WithoutCancel(ctx)
@@ -131,7 +132,7 @@ func (s *ArtifactImportService) admitImports(ctx context.Context, orgID, gateway
 		// An artifact one admitter refused is not offered to the next.
 		remaining := make([]pdk.GatewayImportCandidate, 0, len(candidates))
 		for _, c := range candidates {
-			if _, refused := gate.refused[keyByDPID[c.DPID]]; !refused {
+			if _, refused := gate.refused[candidateKey(c)]; !refused {
 				remaining = append(remaining, c)
 			}
 		}
@@ -149,12 +150,12 @@ func (s *ArtifactImportService) admitImports(ctx context.Context, orgID, gateway
 			s.slogger.Warn("Import admitter could not decide; the artifacts it was offered are not created in this push",
 				"admitter", i, "gatewayId", gatewayID, "orgId", orgID, "candidates", len(remaining), "error", err)
 			for _, c := range remaining {
-				gate.undecided[keyByDPID[c.DPID]] = err
+				gate.undecided[candidateKey(c)] = err
 			}
 			return gate
 		}
 		for dpid, rejection := range verdicts {
-			key, offered := keyByDPID[dpid]
+			keys, offered := keysByDPID[dpid]
 			if !offered {
 				// Only a candidate can be refused: anything else is an update or not in the
 				// push at all, and an admitter must not be able to block either.
@@ -162,18 +163,30 @@ func (s *ArtifactImportService) admitImports(ctx context.Context, orgID, gateway
 					"dpid", dpid, "gatewayId", gatewayID, "orgId", orgID)
 				continue
 			}
-			if _, refused := gate.refused[key]; refused {
-				continue
+			if len(keys) > 1 {
+				// The refusal cannot say which one it meant, so it holds for all of them.
+				s.slogger.Warn("Import admitter refused a DPID the push repeats; refusing every artifact under it",
+					"dpid", dpid, "artifacts", len(keys), "gatewayId", gatewayID, "orgId", orgID)
 			}
-			gate.refused[key] = normalizeImportRejection(rejection)
+			for _, key := range keys {
+				if _, refused := gate.refused[key]; !refused {
+					gate.refused[key] = normalizeImportRejection(rejection)
+				}
+			}
 		}
 	}
-	for _, key := range keyByDPID {
+	for _, c := range candidates {
+		key := candidateKey(c)
 		if _, refused := gate.refused[key]; !refused {
 			gate.admitted[key] = true
 		}
 	}
 	return gate
+}
+
+// candidateKey is the create a candidate stands for.
+func candidateKey(c pdk.GatewayImportCandidate) admissionKey {
+	return admissionKey{handle: c.Handle, kind: c.Kind}
 }
 
 // callAdmitter runs one admitter and limits panic failures to its requested creates.
