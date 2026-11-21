@@ -156,6 +156,22 @@ const messages = defineMessages({
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.noFile',
     defaultMessage: 'No file chosen',
   },
+  queryOverridden: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.queryOverridden',
+    defaultMessage:
+      '{names} typed here {count, plural, one {is} other {are}} replaced by the Params tab or the console, so that value is sent instead.',
+    description:
+      'Helper text under the URL bar. {names} is a comma-separated list of query parameter names.',
+  },
+  pathOverridden: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.pathOverridden',
+    defaultMessage:
+      'The path was edited in the URL bar, so the path parameters below are not used.',
+  },
+  restorePath: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.restorePath',
+    defaultMessage: 'Restore generated path',
+  },
   noParams: {
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.noParams',
     defaultMessage: 'This endpoint takes no parameters.',
@@ -395,8 +411,9 @@ export type RequestPanelProps = {
   problems: Record<string, Problem>;
   baseUrl: string;
   /** Path and query as far as they are filled in. */
-  preview: { path: string; query: [string, string][] };
+  preview: { path: string; query: [string, string][]; overriddenQuery?: string[] };
   autoHeaders: readonly ConsoleAutoParam[];
+  /** Console-supplied query parameters; credentials among them are masked in the URL shown. */
   autoQuery: readonly ConsoleAutoParam[];
   tab: RequestTab;
   onTab: (tab: RequestTab) => void;
@@ -439,11 +456,14 @@ function ParameterRow({
   parameter,
   value,
   problem,
+  disabled = false,
   onChange,
 }: {
   parameter: ConsoleParameter;
   value: string;
   problem: Problem | undefined;
+  /** The value is not used, so it cannot be edited. */
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   const intl = useIntl();
@@ -482,7 +502,7 @@ function ParameterRow({
       <TableCell>
         <Stack spacing={0.75}>
           {isEnum || isBoolean ? (
-            <FormControl error={Boolean(problem)} fullWidth size="small">
+            <FormControl disabled={disabled} error={Boolean(problem)} fullWidth size="small">
               <FormLabel id={`${labelId}-select`} sx={visuallyHidden}>
                 {parameter.name}
               </FormLabel>
@@ -507,6 +527,7 @@ function ParameterRow({
             </FormControl>
           ) : (
             <TextField
+              disabled={disabled}
               error={Boolean(problem)}
               fullWidth
               onChange={(event) => onChange(event.target.value)}
@@ -535,13 +556,17 @@ function ParamsTab({
   draft,
   problems,
   onChange,
+  onRestorePath,
 }: {
   operation: ConsoleOperation;
   draft: RequestDraft;
   problems: Record<string, Problem>;
   onChange: (key: string, value: string) => void;
+  onRestorePath: () => void;
 }) {
   const pathProblem = problems[PATH_PROBLEM_KEY];
+  const pathOverridden = draft.pathOverride !== undefined;
+  const hasPathParams = operation.parameters.some((parameter) => parameter.in === 'path');
   if (operation.parameters.length === 0 && !pathProblem) {
     return (
       <SecondaryText variant="body2">
@@ -552,6 +577,16 @@ function ParamsTab({
   return (
     <Stack spacing={1}>
       {pathProblem && <ProblemText problem={pathProblem} />}
+      {pathOverridden && hasPathParams && (
+        <Stack alignItems="center" direction="row" flexWrap="wrap" gap={1}>
+          <SecondaryText variant="body2">
+            <FormattedMessage {...messages.pathOverridden} />
+          </SecondaryText>
+          <Button onClick={onRestorePath} size="small">
+            <FormattedMessage {...messages.restorePath} />
+          </Button>
+        </Stack>
+      )}
       {operation.parameters.length > 0 && (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small" sx={{ '& .MuiTableCell-root': { borderColor: 'divider' } }}>
@@ -568,6 +603,7 @@ function ParamsTab({
             <TableBody>
               {operation.parameters.map((parameter) => (
                 <ParameterRow
+                  disabled={pathOverridden && parameter.in === 'path'}
                   key={paramKey(parameter)}
                   onChange={(value) => onChange(paramKey(parameter), value)}
                   parameter={parameter}
@@ -1102,14 +1138,18 @@ export function RequestPanel({
 
   const activeTab: RequestTab = tab === 'body' && !hasBody ? 'params' : tab;
 
-  // The URL as shown: credentials masked. What is copied reveals them.
+  // The URL as shown: credentials masked. What is copied reveals them. Once the user has
+  // typed a target, that text stands as typed.
   const maskedQuery = preview.query
     .map(([name, value]) => {
       const secret = autoQuery.some((q) => q.name === name && q.secret);
       return `${encodeURIComponent(name)}=${encodeURIComponent(secret ? MASKED_VALUE : value)}`;
     })
     .join('&');
-  const shownUrl = `${baseUrl}${preview.path}${maskedQuery === '' ? '' : `?${maskedQuery}`}`;
+  const overriddenQuery = draft.pathOverride === undefined ? [] : (preview.overriddenQuery ?? []);
+  const shownUrl = `${baseUrl}${
+    draft.pathOverride ?? `${preview.path}${maskedQuery === '' ? '' : `?${maskedQuery}`}`
+  }`;
 
   const tabLabel = (label: ReactNode, errors: number, count?: number): ReactNode => (
     <Stack alignItems="center" direction="row" spacing={1}>
@@ -1151,7 +1191,26 @@ export function RequestPanel({
 
           <Stack alignItems="flex-start" direction={{ sm: 'row', xs: 'column' }} spacing={1.5}>
             <TextField
+              error={problems[PATH_PROBLEM_KEY] !== undefined}
               fullWidth
+              helperText={
+                problems[PATH_PROBLEM_KEY]
+                  ? intl.formatMessage(messages.problemPath)
+                  : overriddenQuery.length > 0
+                    ? intl.formatMessage(messages.queryOverridden, {
+                        count: overriddenQuery.length,
+                        names: overriddenQuery.join(', '),
+                      })
+                    : undefined
+              }
+              onChange={(event) => {
+                // The gateway address is fixed: what follows it is the path and query to send.
+                // An edit that reaches into the address is ignored, so it cannot be mangled.
+                const typed = event.target.value;
+                if (baseUrl !== '' && !typed.startsWith(baseUrl)) return;
+                const target = typed.slice(baseUrl.length);
+                onDraft((current) => ({ ...current, pathOverride: target }));
+              }}
               size="small"
               sx={{ '& .MuiOutlinedInput-root': { pl: 0.5 } }}
               slotProps={{
@@ -1188,7 +1247,6 @@ export function RequestPanel({
                       </Tooltip>
                     </InputAdornment>
                   ),
-                  readOnly: true,
                 },
               }}
               value={shownUrl}
@@ -1261,6 +1319,9 @@ export function RequestPanel({
                     ...current,
                     params: { ...current.params, [key]: value },
                   }))
+                }
+                onRestorePath={() =>
+                  onDraft((current) => ({ ...current, pathOverride: undefined }))
                 }
                 operation={operation}
                 problems={problems}

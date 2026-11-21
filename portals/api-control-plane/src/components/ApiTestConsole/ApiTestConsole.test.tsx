@@ -350,6 +350,98 @@ describe('ApiTestConsole — credentials', () => {
   });
 });
 
+describe('ApiTestConsole — typed path', () => {
+  it('sends the path the user typed into the URL bar', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+
+    const field = screen.getByRole('textbox', { name: /url/i });
+    await user.type(field, '/42');
+    await user.click(sendButton());
+
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    expect(transport.mock.calls[0][0].path).toBe('/books/42');
+  });
+
+  it('does not let an edit reach into the gateway address', async () => {
+    const { user } = renderConsole(vi.fn());
+    const field = screen.getByRole('textbox', { name: 'Request URL' });
+
+    // Clearing, or deleting a character of the address, changes nothing.
+    await user.clear(field);
+    expect(field).toHaveValue('https://gw.example.com/p/books');
+    await user.type(field, '{Home}{Delete}');
+    expect(field).toHaveValue('https://gw.example.com/p/books');
+  });
+
+  it('shows the whole request URL, gateway address first', () => {
+    renderConsole(vi.fn());
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue(
+      'https://gw.example.com/p/books',
+    );
+  });
+
+  it('says when a value on the Params tab replaces the same name typed into the URL', async () => {
+    const { user } = renderConsole(vi.fn());
+    await user.type(screen.getByRole('textbox', { name: 'limit' }), '10');
+
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '?limit=20');
+
+    expect(await screen.findByText(/limit typed here is replaced/i)).toBeInTheDocument();
+  });
+
+  it('keeps the gateway address when the user types after it', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/all?x=1');
+    await user.click(sendButton());
+
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    expect(transport.mock.calls[0][0]).toMatchObject({
+      baseUrl: 'https://gw.example.com/p',
+      path: '/books/all',
+      query: [['x', '1']],
+    });
+  });
+
+  it('flags a typed path that cannot be called and does not send it', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+
+    const field = screen.getByRole('textbox', { name: /url/i });
+    // Delete "/books", leaving the gateway address, then type a path without its leading slash.
+    await user.type(field, '{Backspace}'.repeat('/books'.length) + 'books');
+    await user.click(sendButton());
+
+    expect((await screen.findAllByText(/path cannot be called/i)).length).toBeGreaterThan(0);
+    expect(transport).not.toHaveBeenCalled();
+  });
+});
+
+describe('ApiTestConsole — typed path and path parameters', () => {
+  it('disables the path parameter editors once the path is typed, until it is restored', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport);
+    await user.click(screen.getByRole('button', { name: /Get a book/ }));
+    await user.type(screen.getByRole('textbox', { name: 'id' }), '42');
+
+    const bar = screen.getByRole('textbox', { name: /url/i });
+    await user.type(bar, '?x=1');
+
+    expect(screen.getByRole('textbox', { name: 'id' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Restore generated path' }));
+
+    expect(screen.getByRole('textbox', { name: 'id' })).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: /url/i })).toHaveValue(
+      'https://gw.example.com/p/books/42',
+    );
+    await user.click(sendButton());
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    expect(transport.mock.calls[0][0].path).toBe('/books/42');
+  });
+});
+
 describe('ApiTestConsole — mirroring', () => {
   it('reports the latest valid request so another view can follow it', async () => {
     const onRequestChange = vi.fn<(request: ConsoleSendRequest) => void>();

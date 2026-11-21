@@ -41,6 +41,11 @@ export type DraftHeader = { id: string; name: string; value: string };
 export type RequestDraft = {
   /** Values by `in:name`. */
   params: Record<string, string>;
+  /**
+   * The path (and optional `?query`) the user typed into the URL bar. When set, it is sent
+   * instead of the operation's path with its `{placeholders}` filled in.
+   */
+  pathOverride?: string;
   headers: DraftHeader[];
   bodyMediaType: string;
   bodyText: string;
@@ -86,7 +91,12 @@ export const PATH_PROBLEM_KEY = 'path';
 export type BuildResult = {
   request?: ConsoleSendRequest;
   /** The target as far as it is filled in, for the URL bar. Valid parts only. */
-  preview: { path: string; query: [string, string][] };
+  preview: {
+    path: string;
+    query: [string, string][];
+    /** Query names typed into the URL bar that the Params tab or the console replaced. */
+    overriddenQuery: string[];
+  };
   problems: Record<string, Problem>;
   /** Lower-cased header names and exact query names whose values are credentials. */
   secretHeaders: ReadonlySet<string>;
@@ -167,13 +177,52 @@ export const buildSendRequest = ({
   const problems: Record<string, Problem> = {};
   const query: [string, string][] = [];
   const headers: [string, string][] = [];
-  let path = operation.path;
-
-  if (!isSafePath(operation.path)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
+  // A wildcard route (`/*`, `/files/*`) names every path below it; the request goes to the
+  // route's base, so the `*` is dropped rather than sent literally.
+  let path = operation.path.replace(/\/\*$/, '/');
 
   // Console-owned credentials replace anything the user typed under the same name.
   const autoHeaderNames = new Set(autoHeaders.map((h) => h.name.toLowerCase()));
   const autoQueryNames = new Set(autoQuery.map((q) => q.name));
+
+  // A path typed into the URL bar replaces the operation's own; its query joins the others.
+  // Names the user filled in on the Params tab win over the typed ones, and the console's own
+  // credentials win over both, so no name is sent twice.
+  const editorQueryNames = new Set(
+    operation.parameters
+      .filter(
+        (parameter) =>
+          parameter.in === 'query' && (own(draft.params, paramKey(parameter)) ?? '').trim() !== '',
+      )
+      .map((parameter) => parameter.name),
+  );
+  const typedQueryNames = new Set<string>();
+  const overriddenQuery: string[] = [];
+  const override = draft.pathOverride;
+  if (override !== undefined) {
+    const split = override.indexOf('?');
+    path = split === -1 ? override : override.slice(0, split);
+    const typedQuery = split === -1 ? '' : override.slice(split + 1);
+    // eslint-disable-next-line no-control-regex
+    if (/[#\u0000-\u001f\u007f]/.test(typedQuery)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
+    else {
+      new URLSearchParams(typedQuery).forEach((value, name) => {
+        if (autoQueryNames.has(name) || editorQueryNames.has(name)) {
+          if (!overriddenQuery.includes(name)) overriddenQuery.push(name);
+          return;
+        }
+        query.push([name, value]);
+        if (value.trim() === '') return;
+        // A typed value meets the same constraints as one typed on the Params tab.
+        const declared = operation.parameters.find((p) => p.in === 'query' && p.name === name);
+        const problem = declared ? parameterProblem(declared, value) : undefined;
+        if (declared && problem) problems[paramProblemKey(declared)] = problem;
+        typedQueryNames.add(name);
+      });
+    }
+  }
+
+  if (!isSafePath(path)) problems[PATH_PROBLEM_KEY] = { code: 'path' };
 
   operation.parameters.forEach((parameter) => {
     // The console supplies these itself, so what the user typed (or left blank) is moot.
@@ -182,8 +231,15 @@ export const buildSendRequest = ({
     // Content-Type is owned by the body editor's media-type choice.
     if (parameter.in === 'header' && parameter.name.toLowerCase() === 'content-type') return;
 
+    // The typed path already carries whatever the placeholders stood for.
+    if (parameter.in === 'path' && override !== undefined) return;
+
     // Blank is judged on the trimmed text; typed values are validated exactly as they are sent.
     const value = own(draft.params, paramKey(parameter)) ?? '';
+    // A required query value the typed path already supplies is not missing.
+    if (parameter.in === 'query' && value.trim() === '' && typedQueryNames.has(parameter.name)) {
+      return;
+    }
     const problem = parameterProblem(parameter, value);
     if (problem) {
       problems[paramProblemKey(parameter)] = problem;
@@ -314,7 +370,7 @@ export const buildSendRequest = ({
   );
   const secretQuery = new Set(autoQuery.filter((q) => q.secret).map((q) => q.name));
 
-  const preview = { path, query };
+  const preview = { path, query, overriddenQuery };
   if (Object.keys(problems).length > 0) return { preview, problems, secretHeaders, secretQuery };
 
   return {
