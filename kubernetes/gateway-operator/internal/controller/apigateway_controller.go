@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,6 +126,10 @@ type GatewayReconciler struct {
 	Config         *config.OperatorConfig
 	gatewayTracker *GatewayTracker
 	Logger         *slog.Logger
+
+	// uninstallGateway removes a deleted gateway's release. Nil means
+	// deleteGatewayResources; tests substitute it to observe the call.
+	uninstallGateway func(ctx context.Context, owner *apiv1.APIGateway) error
 }
 
 // NewGatewayReconciler creates a new GatewayReconciler
@@ -152,6 +157,11 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	gatewayConfig := &apiv1.APIGateway{}
 	if err := r.Get(ctx, req.NamespacedName, gatewayConfig); err != nil {
 		if apierrors.IsNotFound(err) {
+			// Forget what was tracked for this name. If the APIGateway went away
+			// without the finalizer running (for example the finalizer was removed
+			// by hand to keep the release), a later APIGateway with the same name
+			// must be deployed afresh rather than matched against stale state.
+			r.gatewayTracker.Delete(req.String())
 			return ctrl.Result{}, nil
 		}
 		log.Error("unable to fetch APIGateway", slog.Any("error", err))
@@ -170,6 +180,10 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(gatewayConfig, apigatewayFinalizerName) {
+		// An APIGateway without the finalizer has not been processed in this
+		// incarnation; drop any entry left by an earlier object of the same name so
+		// it does not suppress the deployment that adopts the existing release.
+		r.gatewayTracker.Delete(req.String())
 		controllerutil.AddFinalizer(gatewayConfig, apigatewayFinalizerName)
 		if err := r.Update(ctx, gatewayConfig); err != nil {
 			log.Error("failed to add finalizer", slog.Any("error", err))
@@ -724,6 +738,11 @@ func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewa
 		return ctrl.Result{}, nil
 	}
 
+	// Keep the release running until the deletion grace period has passed.
+	if wait, proceedAt := r.gatewayDeletionWait(gatewayConfig, time.Now()); wait > 0 {
+		return r.holdGatewayDeletion(ctx, gatewayConfig, wait, proceedAt)
+	}
+
 	// Update status to deleting
 	base := gatewayConfig.DeepCopy()
 	gatewayConfig.Status.Phase = apiv1.GatewayPhaseDeleting
@@ -740,7 +759,11 @@ func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewa
 	}
 
 	// Perform cleanup
-	if err := r.deleteGatewayResources(ctx, gatewayConfig); err != nil {
+	uninstall := r.uninstallGateway
+	if uninstall == nil {
+		uninstall = r.deleteGatewayResources
+	}
+	if err := uninstall(ctx, gatewayConfig); err != nil {
 		log.Error("failed to delete gateway resources", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
@@ -768,6 +791,66 @@ func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewa
 
 	log.Info("Successfully cleaned up APIGateway resources and removed finalizer")
 	return ctrl.Result{}, nil
+}
+
+// gatewayDeletionWait returns how long uninstalling a deleted APIGateway's release
+// must still wait, and when the wait ends. A zero duration means proceed now: no
+// grace period is configured, the APIGateway asks to be deleted immediately, or the
+// grace period has already passed.
+func (r *GatewayReconciler) gatewayDeletionWait(gatewayConfig *apiv1.APIGateway, now time.Time) (time.Duration, time.Time) {
+	if r.Config == nil || gatewayConfig.DeletionTimestamp == nil {
+		return 0, time.Time{}
+	}
+	grace := r.Config.Gateway.DeletionGracePeriod
+	if grace <= 0 {
+		return 0, time.Time{}
+	}
+	if strings.EqualFold(strings.TrimSpace(gatewayConfig.Annotations[AnnAPIGatewayDeleteImmediately]), "true") {
+		return 0, time.Time{}
+	}
+	proceedAt := gatewayConfig.DeletionTimestamp.Add(grace)
+	wait := proceedAt.Sub(now)
+	if wait <= 0 {
+		return 0, proceedAt
+	}
+	return wait, proceedAt
+}
+
+// holdGatewayDeletion leaves a deleted APIGateway's release running, records when
+// the uninstall will happen in a DeletionPending condition, and requeues for then.
+// Nothing else about the gateway changes: it stays registered and keeps serving.
+func (r *GatewayReconciler) holdGatewayDeletion(ctx context.Context, gatewayConfig *apiv1.APIGateway, wait time.Duration, proceedAt time.Time) (ctrl.Result, error) {
+	log := r.Logger.With(slog.String("controller", "APIGateway"), slog.String("name", gatewayConfig.Name))
+
+	at := proceedAt.UTC().Format(time.RFC3339)
+	message := fmt.Sprintf("APIGateway was deleted; its gateway release keeps running until %s and is uninstalled then. "+
+		"Annotate the APIGateway with %s=\"true\" to uninstall now.", at, AnnAPIGatewayDeleteImmediately)
+
+	log.Info("Deferring gateway uninstall until the deletion grace period has passed",
+		slog.String("namespace", gatewayConfig.Namespace),
+		slog.String("uninstallAt", at),
+		slog.Duration("remaining", wait))
+
+	existing := meta.FindStatusCondition(gatewayConfig.Status.Conditions, apiv1.GatewayConditionDeletionPending)
+	if existing == nil || existing.Status != metav1.ConditionTrue || existing.Message != message ||
+		gatewayConfig.Status.Phase != apiv1.GatewayPhaseDeleting {
+		base := gatewayConfig.DeepCopy()
+		gatewayConfig.Status.Phase = apiv1.GatewayPhaseDeleting
+		meta.SetStatusCondition(&gatewayConfig.Status.Conditions, metav1.Condition{
+			Type:               apiv1.GatewayConditionDeletionPending,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: gatewayConfig.Generation,
+			Reason:             apiv1.GatewayDeletionPendingReasonGracePeriod,
+			Message:            message,
+			LastTransitionTime: metav1.Now(),
+		})
+		if err := r.Status().Patch(ctx, gatewayConfig, client.MergeFrom(base)); err != nil {
+			// The hold does not depend on the status; requeue as planned either way.
+			log.Error("failed to record pending deletion in status", slog.Any("error", err))
+		}
+	}
+
+	return ctrl.Result{RequeueAfter: wait}, nil
 }
 
 // applyGatewayManifest applies the gateway using Helm only

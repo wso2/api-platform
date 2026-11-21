@@ -91,6 +91,20 @@ type GatewayConfig struct {
 
 	// RegistryCredentialsSecret holds the reference to the registry credentials secret
 	RegistryCredentialsSecret *SecretReference `koanf:"registry_credentials_secret"`
+
+	// DeletionGracePeriod delays uninstalling a gateway's Helm release after its
+	// APIGateway is deleted. The release keeps running until the deletion timestamp
+	// plus this period has passed, which leaves time to notice and recover from an
+	// unintended deletion. Zero (the default) uninstalls straight away. An APIGateway
+	// annotated with gateway.api-platform.wso2.com/delete-immediately: "true" skips
+	// the wait.
+	DeletionGracePeriod time.Duration `koanf:"deletion_grace_period"`
+
+	// RetainVolumeOnDelete marks the gateway controller's PersistentVolumeClaim with
+	// helm.sh/resource-policy: keep when the operator installs or upgrades a gateway,
+	// so uninstalling the release leaves the claim and its data in place. It applies
+	// from the next install or upgrade of each gateway.
+	RetainVolumeOnDelete bool `koanf:"retain_volume_on_delete"`
 }
 
 // SecretReference holds a reference to a Kubernetes Secret
@@ -143,9 +157,11 @@ type LoggingConfig struct {
 func getDefaults() map[string]interface{} {
 	return map[string]interface{}{
 		"gateway": map[string]interface{}{
-			"helm_chart_name":       "api-platform-gateway",
-			"helm_chart_version":    "0.1.0",
-			"helm_values_file_path": "",
+			"helm_chart_name":         "api-platform-gateway",
+			"helm_chart_version":      "0.1.0",
+			"helm_values_file_path":   "",
+			"deletion_grace_period":   "0s",
+			"retain_volume_on_delete": false,
 		},
 		"gateway_api": map[string]interface{}{
 			"gateway_class_names": []string{"wso2-api-platform"},
@@ -212,6 +228,10 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 			return "gateway.helm_chart_version"
 		case "helm_values_file_path":
 			return "gateway.helm_values_file_path"
+		case "deletion_grace_period":
+			return "gateway.deletion_grace_period"
+		case "retain_volume_on_delete":
+			return "gateway.retain_volume_on_delete"
 		default:
 			// For other vars, use standard mapping (underscore to dot)
 			s = strings.ReplaceAll(s, "_", ".")
@@ -269,6 +289,10 @@ func (c *OperatorConfig) Validate() error {
 			return fmt.Errorf("gateway_api.nodeport_address_override must be a valid IP address")
 		}
 		c.GatewayAPI.NodePortAddressOverride = v
+	}
+
+	if c.Gateway.DeletionGracePeriod < 0 {
+		return fmt.Errorf("gateway.deletion_grace_period must not be negative")
 	}
 
 	// Validate log level

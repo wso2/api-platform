@@ -39,6 +39,19 @@ gateway:
   #   username_key: "username"
   #   password_key: "password"
 
+  # How long a deleted APIGateway's gateway release keeps running before the operator
+  # uninstalls it (duration string). Until the deletion timestamp plus this period has
+  # passed, the APIGateway reports a DeletionPending condition and the deletion can still
+  # be recovered from. "0s" uninstalls straight away. The annotation
+  # gateway.api-platform.wso2.com/delete-immediately: "true" on an APIGateway skips the wait.
+  # Can be overridden with GATEWAY_DELETION_GRACE_PERIOD.
+  deletion_grace_period: "0s"
+
+  # Keep each gateway controller's PersistentVolumeClaim (helm.sh/resource-policy: keep)
+  # when its gateway release is uninstalled. Applies from the next install or upgrade of
+  # each gateway. Can be overridden with GATEWAY_RETAIN_VOLUME_ON_DELETE.
+  retain_volume_on_delete: false
+
 # Kubernetes Gateway API (gateway.networking.k8s.io) configuration
 gateway_api:
   # gatewayClassName values this operator manages; only matching Gateway/HTTPRoute

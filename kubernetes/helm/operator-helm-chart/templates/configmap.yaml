@@ -18,6 +18,8 @@ data:
       helm_values_file_path: {{ .Values.gateway.helm.valuesFilePath | quote }}
       insecure_registry: {{ .Values.gateway.helm.insecureRegistry | default false }}
       plain_http: {{ .Values.gateway.helm.plainHTTP | default false }}
+      deletion_grace_period: {{ .Values.gateway.deletionGracePeriod | default "0s" | quote }}
+      retain_volume_on_delete: {{ .Values.gateway.retainVolumeOnDelete | default false }}
 {{- with .Values.gateway.helm.registryCredentialsSecret }}
 {{- if .name }}
       registry_credentials_secret:

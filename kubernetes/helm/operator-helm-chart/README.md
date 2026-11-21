@@ -72,6 +72,8 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 | `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
 | `gateway.helm.plainHTTP` | Use plain HTTP for OCI registries | `false` |
 | `gateway.helm.registryCredentialsSecret.name` | Secret holding private-registry credentials for the gateway chart pull (empty = anonymous) | `""` |
+| `gateway.deletionGracePeriod` | How long (Go duration) a deleted APIGateway's gateway release keeps running before the operator uninstalls it; `0s` uninstalls at once. See [Gateway Deletion Safety](#gateway-deletion-safety) | `0s` |
+| `gateway.retainVolumeOnDelete` | Keep each gateway controller's PersistentVolumeClaim (and its data) when the gateway release is uninstalled. See [Gateway Deletion Safety](#gateway-deletion-safety) | `false` |
 
 ### Gateway API (Kubernetes Gateway API) Configuration
 
@@ -291,6 +293,61 @@ kubectl describe apigateway production-gateway
 ```
 
 ## Advanced Configuration
+
+### Gateway Deletion Safety
+
+Deleting an APIGateway makes the operator uninstall that gateway's Helm release, including the
+gateway controller's PersistentVolumeClaim. By default this happens as soon as the deletion is
+seen, so an APIGateway deleted by mistake (by hand, or by automation that manages APIGateways)
+takes its gateway and the gateway's stored data with it. Two opt-in settings guard against that:
+
+```yaml
+gateway:
+  deletionGracePeriod: "1h"    # keep a deleted gateway running for an hour before uninstalling
+  retainVolumeOnDelete: true   # keep the controller's volume when the release is uninstalled
+```
+
+**Grace period.** With `gateway.deletionGracePeriod` set, a deleted APIGateway stays in the
+`Deleting` phase until its `metadata.deletionTimestamp` plus the grace period has passed. Its
+release keeps running and serving traffic in the meantime, and a `DeletionPending` condition
+records when the uninstall will happen:
+
+```bash
+kubectl get apigateway my-gateway -o jsonpath='{.status.conditions[?(@.type=="DeletionPending")].message}'
+```
+
+To skip the wait for a deletion you do intend, annotate the APIGateway before or after deleting
+it; the operator then uninstalls the release straight away:
+
+```bash
+kubectl annotate apigateway my-gateway gateway.api-platform.wso2.com/delete-immediately=true
+```
+
+**Recovering a deleted gateway.** Kubernetes cannot cancel a deletion once it has been requested,
+so the deleted APIGateway object cannot be kept. The gateway itself can, as long as the grace
+period has not run out:
+
+1. Stop whatever deleted the APIGateway, so it does not delete the replacement as well.
+2. Release the deleted object without uninstalling the gateway by removing the operator's
+   finalizer. The APIGateway disappears and its release is left running, unowned:
+   ```bash
+   kubectl patch apigateway my-gateway --type=json \
+     -p='[{"op":"remove","path":"/metadata/finalizers"}]'
+   ```
+3. Re-create the APIGateway with the same name and namespace (for example, re-apply the manifest
+   it was created from; recreate its `spec.configRef` ConfigMap first if that was deleted too).
+   Release names are derived from the APIGateway name, so the operator upgrades the release that
+   is still running instead of installing a new one, keeping its pods and its volume.
+
+**Keeping the volume.** With `gateway.retainVolumeOnDelete: true` the operator adds
+`helm.sh/resource-policy: keep` to each gateway controller's PersistentVolumeClaim, so the claim
+survives the uninstall. Re-creating an APIGateway with the same name later installs a release
+with the same name, which adopts the retained claim and its data. Retained claims are not
+cleaned up automatically; delete them by hand when they are no longer needed. The setting
+reaches a gateway the next time the operator installs or upgrades it, so gateways deployed
+before it was enabled are not covered until then. It has no effect on gateways that use
+`gateway.controller.persistence.existingClaim` (the operator never owned that claim) or an
+external database.
 
 ### Enable Debug Mode
 
