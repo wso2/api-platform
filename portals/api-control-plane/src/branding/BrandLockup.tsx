@@ -26,7 +26,15 @@ import { useBrandLogo } from './BrandLogoProvider';
  * weight. Shared by the app header and the login page so both paint the same
  * lockup, on-prem and cloud alike.
  */
-export function BrandLockup({ height }: { height: number }) {
+export function BrandLockup({
+  height,
+  fontSize,
+}: {
+  /** Logo height: pixels as a number, or any CSS length such as `1.75rem`. */
+  height: number | string;
+  /** Name size, same units. Defaults to three quarters of a numeric `height`. */
+  fontSize?: number | string;
+}) {
   const brandLogo = useBrandLogo();
 
   return (
@@ -34,7 +42,12 @@ export function BrandLockup({ height }: { height: number }) {
       <ColorSchemeImage alt="" height={height} src={brandLogo} width="auto" />
       <Typography
         component="span"
-        sx={{ fontSize: height * 0.75, fontWeight: 400, lineHeight: 1, whiteSpace: 'nowrap' }}
+        sx={{
+          fontSize: fontSize ?? (typeof height === 'number' ? height * 0.75 : undefined),
+          fontWeight: 400,
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+        }}
         variant="h6"
       >
         <FormattedMessage

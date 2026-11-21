@@ -321,11 +321,13 @@ export function ApiList({
   const createApi = (entryPoint: Exclude<ApiCreationEntryPoint, 'direct'>) =>
     navigate(routes.newApi(orgHandle, projectHandler), apiCreationEntry(entryPoint));
 
+  // The type panel sits beside the list only where the list keeps room for its columns: with
+  // the left navigation open, anything narrower than `xl` clips the table, so it drops below.
   const layoutSx = {
     display: 'grid',
     gridTemplateColumns: {
       xs: 'minmax(0, 1fr)',
-      lg: sidebar ? 'minmax(0, 1fr) 280px' : 'minmax(0, 1fr)',
+      xl: sidebar ? 'minmax(0, 1fr) 280px' : 'minmax(0, 1fr)',
     },
     gap: 4,
     alignItems: 'start',

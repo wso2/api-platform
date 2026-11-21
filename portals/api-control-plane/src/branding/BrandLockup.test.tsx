@@ -31,4 +31,11 @@ describe('BrandLockup', () => {
     expect(name.querySelector('b, strong')).toBeNull();
     expect(getComputedStyle(name).fontWeight).toBe('400');
   });
+
+  it('takes the logo height and the name size as CSS lengths', () => {
+    renderWithProviders(<BrandLockup fontSize="1.125rem" height="1.75rem" />);
+
+    expect(screen.getByText('Choreo API Management')).toHaveStyle({ fontSize: '1.125rem' });
+    expect(document.querySelector('img')).toHaveStyle({ height: '1.75rem' });
+  });
 });

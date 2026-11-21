@@ -52,6 +52,9 @@ import { AppHeader } from './AppHeader';
 import { AppSidebar } from './AppSidebar';
 import { FormattedMessage } from 'react-intl';
 
+/** Expanded width of the left navigation, in pixels. Oxygen UI's own default is 250. */
+const SIDEBAR_WIDTH = 280;
+
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -160,7 +163,7 @@ export default function AppLayout() {
 
   return (
     <PortProvider value={port}>
-      <AppShell initialCollapsed={false} collapseOnSelectOnMobile>
+      <AppShell initialCollapsed={false} collapseOnSelectOnMobile sidebarWidth={SIDEBAR_WIDTH}>
         <AppShell.Navbar>
           <AppHeader />
         </AppShell.Navbar>
