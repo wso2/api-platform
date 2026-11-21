@@ -67,12 +67,14 @@ func moduleFetchTimeoutError(gomodule string, timeout time.Duration, stderr []by
 		"repository at that version, which can be slow for a large repository or a slow network. "+
 		"Raise the limit with --fetch-timeout (ap gateway image build), for example --fetch-timeout 10m, "+
 		"or check that the builder container can reach the repository or module proxy", gomodule, timeout)
-	if out := strings.TrimSpace(string(stderr)); out != "" {
+	// Redact before trimming: a cut inside a URL could drop the scheme that redaction
+	// needs to find the credentials.
+	if out := strings.TrimSpace(goenv.RedactCredentials(string(stderr))); out != "" {
 		const maxOutput = 2000
 		if len(out) > maxOutput {
 			out = "..." + out[len(out)-maxOutput:]
 		}
-		msg += "\ngo output before it was stopped:\n" + goenv.RedactCredentials(out)
+		msg += "\ngo output before it was stopped:\n" + out
 	}
 	return errors.New(msg)
 }

@@ -201,6 +201,19 @@ func TestModuleFetchTimeoutError_LongOutputIsTrimmed(t *testing.T) {
 	assert.Less(t, len(err.Error()), 2600)
 }
 
+func TestModuleFetchTimeoutError_RedactsBeforeTrimming(t *testing.T) {
+	// The kept last 2000 bytes start right after "https://", inside the credentials.
+	// Trimming first would drop the scheme that redaction needs and leak the password.
+	credentialsAndPath := "bot:s3cret@proxy.example/"
+	stderr := "reading https://" + credentialsAndPath + strings.Repeat("x", 2000-len(credentialsAndPath))
+
+	err := moduleFetchTimeoutError(module, time.Minute, []byte(stderr))
+
+	assert.NotContains(t, err.Error(), "s3cret")
+	assert.NotContains(t, err.Error(), "bot:")
+	assert.Contains(t, err.Error(), "@proxy.example/x")
+}
+
 func TestResolveModuleInfo_TimeoutIsDescriptive(t *testing.T) {
 	previous := ModuleFetchTimeout
 	ModuleFetchTimeout = time.Nanosecond // already expired when go starts: no network needed
