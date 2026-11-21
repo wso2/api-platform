@@ -7927,6 +7927,251 @@ func TestStoppingALocalGatewayThatIsNotRunningSucceeds(t *testing.T) {
 	require.Greater(t, kindLocalGateway.Order, cleanup.KindAPI.Order, "the APIs deployed to it are deleted while it still runs")
 }
 
+func TestCheckManifestPolicyTellsCustomFromBuiltIn(t *testing.T) {
+	policies := []manifestPolicy{
+		{Name: "it-custom-basic", Version: "v1.0.0", IsCustomPolicy: true, PolicyDefinition: json.RawMessage(`{"parameters":{}}`)},
+		{Name: "it-builtin", Version: "v1.0.0", PolicyDefinition: json.RawMessage(`null`)},
+		{Name: "it-custom-bare", Version: "v1.0.0", IsCustomPolicy: true},
+		{Name: "it-custom-false", Version: "v1.0.0", IsCustomPolicy: true, PolicyDefinition: json.RawMessage(`false`)},
+		{Name: "it-custom-empty", Version: "v1.0.0", IsCustomPolicy: true, PolicyDefinition: json.RawMessage(`{}`)},
+	}
+	require.NoError(t, checkManifestPolicy(policies, "it-custom-basic", "v1.0.0", true))
+	require.NoError(t, checkManifestPolicy(policies, "it-builtin", "v1.0.0", false))
+	require.ErrorContains(t, checkManifestPolicy(policies, "it-builtin", "v1.0.0", true), "isCustomPolicy=false")
+	require.ErrorContains(t, checkManifestPolicy(policies, "it-custom-basic", "v1.0.0", false), "isCustomPolicy=true")
+	for _, name := range []string{"it-custom-bare", "it-custom-false", "it-custom-empty"} {
+		require.ErrorContains(t, checkManifestPolicy(policies, name, "v1.0.0", true), "without a definition object", name)
+	}
+	require.ErrorContains(t, checkManifestPolicy(policies, "it-custom-basic", "v2.0.0", true), "does not list")
+}
+
+// stubCalls records what an HTTP stub saw. The handler runs on the server's goroutine, so every
+// access goes through the mutex.
+type stubCalls struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (c *stubCalls) add(call string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls = append(c.calls, call)
+	return len(c.calls)
+}
+
+func (c *stubCalls) snapshot() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.calls)
+}
+
+func TestAwaitManifestPolicyWaitsForTheGatewaysManifest(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var reads stubCalls
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if !assert.Equal(t, "/gateways/development-syn-shgw-1/manifest", r.URL.Path) {
+			w.WriteHeader(http.StatusTeapot)
+			return
+		}
+		if reads.add(r.URL.Path) == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"policies": []map[string]any{
+			{"name": "it-custom-basic", "version": "v1.0.0", "isCustomPolicy": true, "policyDefinition": map[string]any{"parameters": map[string]any{}}},
+			{"name": "it-builtin", "version": "v1.0.0", "isCustomPolicy": false},
+		}})
+	})
+	local.Set(keySelfHostedGatewayID, "development-syn-shgw-1")
+
+	require.NoError(t, steps.awaitManifestPolicy(ctx, "it-custom-basic"))
+	require.Len(t, reads.snapshot(), 2, "a manifest not yet pushed is waited for")
+	require.NoError(t, steps.assertManifestPolicy(ctx, "it-custom-basic", "v1.0.0", "custom"))
+	require.NoError(t, steps.assertManifestPolicy(ctx, "it-builtin", "v1.0.0", "built-in"))
+}
+
+func TestSyncCustomPolicyRegistersTheSyncedRecordForCleanup(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if !assert.Equal(t, http.MethodPost, r.Method) || !assert.Equal(t, "/gateway-custom-policies/sync", r.URL.Path) ||
+			!assert.Equal(t, "development-syn-shgw-1", r.URL.Query().Get("gatewayId")) {
+			w.WriteHeader(http.StatusTeapot)
+			return
+		}
+		if r.URL.Query().Get("policyName") == "it-builtin" {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": "POLICY_INVALID_STATE"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"uuid": "policy-1", "name": "it-custom-basic", "version": "v1.0.0"})
+	})
+	local.Set(keySelfHostedGatewayID, "development-syn-shgw-1")
+
+	require.NoError(t, steps.syncCustomPolicy(ctx, "it-builtin", "v1.0.0"))
+	require.Empty(t, registry.Pending(), "a refused sync creates nothing to clean up")
+	require.NoError(t, steps.assertCloudErrorCode(ctx, "POLICY_INVALID_STATE"))
+
+	require.NoError(t, steps.syncCustomPolicy(ctx, "it-custom-basic", "v1.0.0"))
+	pending := registry.Pending()
+	require.Len(t, pending, 1)
+	require.Equal(t, kindGatewayCustomPolicy, pending[0].Kind)
+	require.Equal(t, "policy-1/v1.0.0", pending[0].ID)
+	id, version, name, err := syncedCustomPolicy(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"policy-1", "v1.0.0", "it-custom-basic"}, []string{id, version, name})
+}
+
+func TestSyncCustomPolicyDeletesTheRecordItCannotRegisterForCleanup(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var calls stubCalls
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.add(r.Method + " " + r.URL.Path)
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"uuid": "policy-1", "name": "it-custom-basic", "version": "v1.0.0"})
+	})
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0)
+	steps := &Steps{topo: topo, funnel: funnel, client: funnel.Client()}
+	// No cleanup registry is installed, so registering the synced policy fails.
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keySelfHostedGatewayID, "development-syn-shgw-1")
+
+	require.ErrorContains(t, steps.syncCustomPolicy(ctx, "it-custom-basic", "v1.0.0"), "registering custom policy it-custom-basic v1.0.0 for cleanup")
+	require.Equal(t, []string{
+		"POST /gateway-custom-policies/sync",
+		"DELETE /gateway-custom-policies/policy-1/versions/v1.0.0",
+	}, calls.snapshot())
+}
+
+func TestRemoveLeftoverCustomPolicyDeletesOnlyThatPolicyAcrossPages(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var deleted stubCalls
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted.add(r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if !assert.Equal(t, "/gateway-custom-policies", r.URL.Path) {
+			w.WriteHeader(http.StatusTeapot)
+			return
+		}
+		list := []map[string]any{}
+		if r.URL.Query().Get("offset") == "0" {
+			for i := 0; i < customPolicyListPage-1; i++ {
+				list = append(list, map[string]any{"uuid": "other-" + strconv.Itoa(i), "name": "ops-policy", "version": "v1.0.0"})
+			}
+			list = append(list, map[string]any{"uuid": "old-1", "name": "it-custom-basic", "version": "v1.0.0"})
+		} else {
+			list = append(list, map[string]any{"uuid": "old-2", "name": "it-custom-basic", "version": "v2.0.0"})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": list})
+	})
+
+	require.NoError(t, steps.removeLeftoverCustomPolicy(ctx, "it-custom-basic"))
+	require.Equal(t, []string{
+		"/gateway-custom-policies/old-1/versions/v1.0.0",
+		"/gateway-custom-policies/old-2/versions/v2.0.0",
+	}, deleted.snapshot())
+}
+
+func TestCustomPolicyListsAreReadOnlyFromAListThePlatformReturned(t *testing.T) {
+	items, err := customPolicyPage([]byte(`{"list":[]}`))
+	require.NoError(t, err)
+	require.Empty(t, items, "an explicit empty list is an empty page")
+	items, err = customPolicyPage([]byte(`{"count":0,"list":null,"pagination":{"total":0}}`))
+	require.NoError(t, err, "the platform answers an organisation that holds none with a null list")
+	require.Empty(t, items)
+	_, err = customPolicyPage([]byte(`{}`))
+	require.ErrorContains(t, err, "has no list")
+	_, err = customPolicyPage([]byte(`{"list":{"name":"it-builtin"}}`))
+	require.ErrorContains(t, err, "decoding")
+	_, err = customPolicyPage([]byte(`{"list":[{"name":"ops-policy"},null]}`))
+	require.ErrorContains(t, err, "null entry at 1")
+	_, err = customPolicyPage([]byte(`{"list":[{"name":"ops-policy"},{"uuid":"policy-2","version":"v1.0.0"}]}`))
+	require.ErrorContains(t, err, "entry without a name at 1", "a row the absence check cannot read by name is rejected")
+	_, err = customPolicyPage([]byte(`{"list":[{"name":""}]}`))
+	require.ErrorContains(t, err, "entry without a name at 0")
+}
+
+func TestAssertCustomPolicyListedWithoutReadsBothFromOneList(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var lists stubCalls
+	var list []map[string]any
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		lists.add(r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": list})
+	})
+	local.Set(keyCustomPolicyID, "control-1")
+	local.Set(keyCustomPolicyVersion, "v1.0.0")
+	local.Set(keyCustomPolicyName, "it-custom-control")
+	control := map[string]any{"uuid": "control-1", "name": "it-custom-control", "version": "v1.0.0"}
+
+	list = []map[string]any{control}
+	require.NoError(t, steps.assertCustomPolicyListedWithout(ctx, "it-builtin"))
+	require.Len(t, lists.snapshot(), 1, "the control and the absence are read from one list")
+
+	list = []map[string]any{}
+	require.ErrorContains(t, steps.assertCustomPolicyListedWithout(ctx, "it-builtin"), "does not list custom policy control-1",
+		"an empty list cannot pass the absence check")
+
+	list = []map[string]any{control, {"name": "it-builtin"}}
+	require.ErrorContains(t, steps.assertCustomPolicyListedWithout(ctx, "it-builtin"), "holds custom policy it-builtin")
+}
+
+func TestAssertNoCustomPolicyCountsAListedNameWithoutAnIdentity(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
+			{"uuid": "ops-1", "name": "ops-policy", "version": "v1.0.0"},
+			{"name": "it-builtin"},
+		}})
+	})
+
+	require.NoError(t, steps.assertNoCustomPolicy(ctx, "it-custom-basic"))
+	require.ErrorContains(t, steps.assertNoCustomPolicy(ctx, "it-builtin"), "holds custom policy it-builtin")
+}
+
+func TestDeleteCustomPolicyRequestTreatsAGonePolicyAsDeleted(t *testing.T) {
+	method, path, settled, err := deleteCustomPolicyRequest("policy-1/v1.0.0")
+	require.NoError(t, err)
+	require.Equal(t, http.MethodDelete, method)
+	require.Equal(t, "/gateway-custom-policies/policy-1/versions/v1.0.0", path)
+	require.True(t, settled(&httpx.Response{StatusCode: http.StatusNoContent}))
+	require.True(t, settled(&httpx.Response{StatusCode: http.StatusNotFound}))
+	require.False(t, settled(&httpx.Response{StatusCode: http.StatusConflict}))
+	for _, bad := range []string{"policy-1", "/v1.0.0", "policy-1/"} {
+		_, _, _, err := deleteCustomPolicyRequest(bad)
+		require.Error(t, err, bad)
+	}
+	require.Less(t, kindGatewayCustomPolicy.Order, kindLocalGateway.Order)
+}
+
+func TestVerifyCustomPolicyDeletedWaitsUntilTheListDropsIt(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var lists stubCalls
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if !assert.Equal(t, "/gateway-custom-policies", r.URL.Path, "a policy is never read by version: the cloud does not route it") {
+			w.WriteHeader(http.StatusTeapot)
+			return
+		}
+		list := []map[string]any{{"uuid": "ops-1", "name": "ops-policy", "version": "v1.0.0"}}
+		if lists.add(r.URL.Path) == 1 {
+			list = append(list, map[string]any{"uuid": "policy-1", "name": "it-custom-basic", "version": "v1.0.0"})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": list})
+	})
+	local.Set(keyCustomPolicyID, "policy-1")
+	local.Set(keyCustomPolicyVersion, "v1.0.0")
+	local.Set(keyCustomPolicyName, "it-custom-basic")
+
+	require.NoError(t, steps.verifyCustomPolicyDeleted(ctx))
+	require.Len(t, lists.snapshot(), 2, "a policy still listed is waited for")
+}
+
 // pendingOf lists the ids of the resources of a kind that cleanup still holds.
 func pendingOf(registry *cleanup.Registry, kind cleanup.Kind) []string {
 	var ids []string

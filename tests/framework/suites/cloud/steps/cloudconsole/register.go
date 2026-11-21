@@ -355,6 +355,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(kindLocalGateway, localGatewayDeleter); err != nil {
 		return err
 	}
+	if err := reg.RegisterDeleter(kindGatewayCustomPolicy, cloudRequestDeleter(topo, client, deleteCustomPolicyRequest)); err != nil {
+		return err
+	}
 	if err := reg.RegisterDeleter(kindSelfHostedGateway, cloudDeleter(topo, client, selfHostedGatewaysPath)); err != nil {
 		return err
 	}
