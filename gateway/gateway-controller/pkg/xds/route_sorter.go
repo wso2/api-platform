@@ -36,7 +36,7 @@ func (x EnvoyRoutes) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
 //
 // Priority order (highest to lowest):
 // 1. Path match type: Exact > Regex > Prefix
-// 2. Path segment specificity (compared left-to-right)
+// 2. Path segment specificity (compared left-to-right); a case-variant guard follows its equals
 // 3. Number of header matches (more headers = higher priority)
 // 4. Number of exact header matches
 // 5. Number of query parameter matches
@@ -66,6 +66,12 @@ func (x EnvoyRoutes) Less(i, j int) bool {
 	}
 
 	// Equal path specificity case
+
+	// A case-variant guard comes after every route of equal path specificity, so it refuses only
+	// paths that no such route matches as spelled.
+	if guardI, guardJ := isCaseVariantGuard(x[i]), isCaseVariantGuard(x[j]); guardI != guardJ {
+		return guardI
+	}
 
 	// 3. Sort based on the number of Header matches.
 	// When the number is same, sort based on number of Exact Header matches.

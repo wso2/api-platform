@@ -499,6 +499,9 @@ gateway:
         # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
         # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
         path_with_escaped_slashes_action: KEEP_UNCHANGED
+        # Let a request whose path matches a route only case-insensitively fall through to a
+        # broader route instead of getting a 404
+        allow_path_case_variants: false
 
         # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
         timeouts:

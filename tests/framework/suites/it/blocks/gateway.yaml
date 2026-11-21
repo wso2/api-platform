@@ -119,6 +119,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/path_normalization.feature
+      - name: path-variants
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/routes/path_variants.feature
       - name: header-routing
         tags: "gateway-version>=1.2.0"
         features:

@@ -842,6 +842,9 @@ type HTTPListenerConfig struct {
 	DisablePathNormalization      bool        `koanf:"disable_path_normalization"`
 	ReturnRequestIDInResponse     bool        `koanf:"return_request_id_in_response"`    // Return x-request-id in responses
 	PathWithEscapedSlashesAction  string      `koanf:"path_with_escaped_slashes_action"` // Options: "KEEP_UNCHANGED", "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD"
+	// AllowPathCaseVariants turns off the 404 for a path that matches a route only when compared
+	// case-insensitively, letting such a request fall through to a broader route as before.
+	AllowPathCaseVariants bool `koanf:"allow_path_case_variants"`
 }
 
 // HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
@@ -1623,6 +1626,7 @@ func defaultConfig() *Config {
 				DisablePathNormalization:      false,                          // Path normalization enabled by default
 				ReturnRequestIDInResponse:     true,                           // x-request-id returned by default
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
+				AllowPathCaseVariants:         false,                          // Case variants of a route's path get a 404 by default
 			},
 		},
 		Analytics: AnalyticsConfig{
