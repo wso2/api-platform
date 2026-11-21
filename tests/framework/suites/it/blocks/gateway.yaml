@@ -142,6 +142,12 @@ blocks:
       - name: cel-conditions
         features:
           - features/gateway/core/cel_conditions.feature
+      # Fault policies on the default configuration (handle_upstream_faults off). Released
+      # gateways up to 1.2.0 have no fault flow.
+      - name: fault-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/fault_policies.feature
       - name: certificates
         tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
         features:
@@ -658,3 +664,20 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
+
+  # Backend error statuses and router failures run an API's fault policies instead of its response
+  # policies (fault-policies-upstream.toml), a gateway-wide setting gateway-core's runners must not
+  # see.
+  - name: gateway-fault-policies-upstream
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/fault-policies-upstream.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: fault-policies-upstream
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/fault_policies_upstream.feature
