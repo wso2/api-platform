@@ -102,6 +102,24 @@ gateway:
       # Keys within the Secret holding the registry username and password.
       usernameKey: username
       passwordKey: password
+  # Values policy for per-gateway Helm values: the APIGateway (or Gateway) overlay
+  # merged with the ConfigMap it references. Checked on every reconcile before the
+  # gateway chart is rendered; on refusal nothing is applied, the installed release
+  # keeps running, and the gateway gets a status condition and a Warning Event naming
+  # the refused key. gateway.values below is not checked.
+  # Refused: image repositories outside allowedImageRegistries; extraEnv/extraEnvFrom
+  # that read Secrets; extraVolumes other than emptyDir/configMap/downwardAPI/projected
+  # (configMap, downwardAPI sources); mount propagation; privileged, root or
+  # privilege-escalating security contexts, added capabilities (except
+  # NET_BIND_SERVICE), Unconfined seccomp/AppArmor, SELinux type/user/role, and nulls
+  # that erase security context fields; hostNetwork/hostPID/hostIPC.
+  valuesPolicy:
+    enabled: true
+    # Image repository prefixes per-gateway values may use (matched at a path
+    # boundary). An empty list refuses every image override.
+    allowedImageRegistries:
+      - ghcr.io/wso2/api-platform/
+      - registry.wso2.com/wso2-api-platform/
   # Gateway chart values that will be used when deploying gateways
   # Users can override these values during helm install/upgrade
   values:

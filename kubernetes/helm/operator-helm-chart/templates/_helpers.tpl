@@ -97,6 +97,13 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - update
   - watch
+{{- /*
+Secrets: the operator itself only reads them (get/list/watch, for the
+informer cache and secret references). create/update/delete are needed only by
+Helm, which stores each gateway release as a Secret
+(sh.helm.release.v1.<release>.v<N>) in the gateway's namespace; Helm's Secret
+storage driver never patches. The gateway chart renders no Secrets.
+*/}}
 - apiGroups:
   - ""
   resources:
@@ -107,8 +114,14 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - watch
   - create
   - update
-  - patch
   - delete
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - ""
   resources:

@@ -28,6 +28,8 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/valuespolicy"
 )
 
 // OperatorConfig holds the runtime configuration for the operator
@@ -91,6 +93,29 @@ type GatewayConfig struct {
 
 	// RegistryCredentialsSecret holds the reference to the registry credentials secret
 	RegistryCredentialsSecret *SecretReference `koanf:"registry_credentials_secret"`
+
+	// ValuesPolicy restricts the per-gateway Helm values (the CR overlay merged
+	// with the referenced ConfigMap) before the gateway chart is rendered.
+	ValuesPolicy ValuesPolicyConfig `koanf:"values_policy"`
+}
+
+// ValuesPolicyConfig configures the per-gateway Helm values policy. See
+// package valuespolicy for what it refuses.
+type ValuesPolicyConfig struct {
+	// Enabled turns the policy on (default true).
+	Enabled bool `koanf:"enabled"`
+
+	// AllowedImageRegistries lists the image repository prefixes per-gateway
+	// values may use. Defaults to the registries the gateway chart uses.
+	AllowedImageRegistries []string `koanf:"allowed_image_registries"`
+}
+
+// Policy returns the values policy described by this configuration.
+func (c ValuesPolicyConfig) Policy() valuespolicy.Policy {
+	return valuespolicy.Policy{
+		Enabled:                c.Enabled,
+		AllowedImageRegistries: c.AllowedImageRegistries,
+	}
 }
 
 // SecretReference holds a reference to a Kubernetes Secret
@@ -146,6 +171,10 @@ func getDefaults() map[string]interface{} {
 			"helm_chart_name":       "api-platform-gateway",
 			"helm_chart_version":    "0.1.0",
 			"helm_values_file_path": "",
+			"values_policy": map[string]interface{}{
+				"enabled":                  true,
+				"allowed_image_registries": valuespolicy.DefaultAllowedImageRegistries,
+			},
 		},
 		"gateway_api": map[string]interface{}{
 			"gateway_class_names": []string{"wso2-api-platform"},
@@ -212,6 +241,11 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 			return "gateway.helm_chart_version"
 		case "helm_values_file_path":
 			return "gateway.helm_values_file_path"
+		case "values_policy_enabled":
+			return "gateway.values_policy.enabled"
+		case "values_policy_allowed_image_registries":
+			// Comma-separated; parsed after unmarshalling below.
+			return ""
 		default:
 			// For other vars, use standard mapping (underscore to dot)
 			s = strings.ReplaceAll(s, "_", ".")
@@ -239,6 +273,16 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 			return nil, fmt.Errorf("GATEWAY_API_GATEWAY_CLASS_NAMES is set but contains no valid class names")
 		}
 		cfg.GatewayAPI.GatewayClassNames = names
+	}
+
+	if v, ok := os.LookupEnv("GATEWAY_VALUES_POLICY_ALLOWED_IMAGE_REGISTRIES"); ok {
+		registries := []string{}
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				registries = append(registries, p)
+			}
+		}
+		cfg.Gateway.ValuesPolicy.AllowedImageRegistries = registries
 	}
 
 	if v := strings.TrimSpace(os.Getenv("CLUSTER_DOMAIN")); v != "" {
