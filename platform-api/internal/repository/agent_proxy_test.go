@@ -33,8 +33,8 @@ import (
 func seedAgentProxyOrgProject(t *testing.T, db *database.DB, orgUUID, projectUUID string) {
 	t.Helper()
 	if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, 'default', 'idp-ref', datetime('now'), datetime('now'))`,
-		orgUUID, "org-"+orgUUID, "Org "+orgUUID); err != nil {
+		VALUES (?, ?, ?, 'default', ?, datetime('now'), datetime('now'))`,
+		orgUUID, "org-"+orgUUID, "Org "+orgUUID, "idp-ref-"+orgUUID); err != nil {
 		t.Fatalf("insert organization %s: %v", orgUUID, err)
 	}
 	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, organization_uuid, created_at, updated_at)
