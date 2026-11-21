@@ -136,6 +136,54 @@ gateway:
 
 The chart fails to render if `encryptionKeys` is not enabled.
 
+### Gateway Controller Credentials
+
+The operator calls each gateway controller's management REST API (to deploy RestApis, HTTPRoutes and
+the other resources) with HTTP basic auth. It takes the credential from the same values the controller's
+`config.toml` is rendered from, merged in the same order, so the two always agree:
+
+```
+per-gateway values ConfigMap  >  operator default (/config/gateway_values.yaml)  >  chart built-in values
+```
+
+Maps merge key by key; a higher layer **replaces** `users` as a whole. The operator authenticates as the
+first user holding the `admin` role (then any other user) whose password it can obtain:
+
+- `password_secret_ref` (recommended): the operator reads the plaintext from a Secret in the gateway's
+  namespace, while the controller is rendered with only the bcrypt hash. The operator strips
+  `password_secret_ref` before Helm renders the controller config.
+- a plaintext `password` with `password_hashed: false` (the chart default `admin`/`admin` is one).
+
+```bash
+kubectl create secret generic gateway-controller-creds \
+  --from-literal=password='<password>' -n <gateway-namespace>
+htpasswd -nbBC 10 "" '<password>' | tr -d ':\n'   # bcrypt hash for the values below
+```
+
+```yaml
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: operator
+              password: "<bcrypt hash>"
+              password_hashed: true
+              roles: ["admin"]
+              password_secret_ref:
+                name: gateway-controller-creds
+                key: password
+```
+
+Set this in `gateway_values.yaml` for every gateway, or in a gateway's values ConfigMap for one. The
+operator does **not** fall back to a default password: if basic auth is enabled and no user has a
+usable credential (for example every user is hashed without `password_secret_ref`), or the Secret's
+password does not match the hash, reconciliation fails with an explicit error instead of a 401. A user
+with `password_secret_ref` must carry the hash and `password_hashed: true`, or the deploy is refused.
+The `spec.infrastructure` overlay carries only labels and annotations and cannot set credentials.
+
 ### Logging Configuration
 
 | Environment Variable | Default | Description |

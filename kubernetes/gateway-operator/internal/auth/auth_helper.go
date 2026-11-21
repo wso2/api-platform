@@ -17,20 +17,9 @@ limitations under the License.
 package auth
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
-
-	"gopkg.in/yaml.v3"
-	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 // DeploymentConfig represents the authentication configuration from the gateway ConfigMap
@@ -71,119 +60,24 @@ type AuthUser struct {
 	Password       string   `yaml:"password"`
 	PasswordHashed bool     `yaml:"password_hashed"`
 	Roles          []string `yaml:"roles"`
+
+	// PasswordSecretRef is read by the operator only and is stripped from the values before
+	// Helm renders the controller's config.toml. It names a Secret key in the gateway's
+	// namespace holding this user's plaintext password, which the operator sends to the
+	// controller's management API. Pair it with password set to the bcrypt hash of that
+	// password and password_hashed: true, so the controller's config never holds the plaintext.
+	PasswordSecretRef *SecretKeyRef `yaml:"password_secret_ref,omitempty"`
+}
+
+// SecretKeyRef names a key in a Secret in the gateway's namespace.
+type SecretKeyRef struct {
+	Name string `yaml:"name"`
+	Key  string `yaml:"key"`
 }
 
 // IDPConfig describes an external identity provider for JWT validation
 type IDPConfig struct {
 	Enabled bool `yaml:"enabled"`
-}
-
-// GetDeploymentConfigFromGateway retrieves authentication configuration from an APIGateway's ConfigRef
-// Returns nil if no ConfigRef is specified or if auth config is not found in the ConfigMap
-func GetDeploymentConfigFromGateway(ctx context.Context, k8sClient client.Client, gateway *apiv1.APIGateway) (*AuthSettings, error) {
-	// If no ConfigRef, return nil (will use default auth)
-	if gateway.Spec.ConfigRef == nil {
-		return nil, nil
-	}
-
-	// Get the ConfigMap
-	configMap := &corev1.ConfigMap{}
-	if err := k8sClient.Get(ctx, client.ObjectKey{
-		Name:      gateway.Spec.ConfigRef.Name,
-		Namespace: gateway.Namespace,
-	}, configMap); err != nil {
-		return nil, fmt.Errorf("failed to get ConfigMap %s/%s: %w", gateway.Namespace, gateway.Spec.ConfigRef.Name, err)
-	}
-
-	// Look for values.yaml key
-	valuesYAML, ok := configMap.Data["values.yaml"]
-	if !ok {
-		// No values.yaml key, return nil (will use default auth)
-		return nil, nil
-	}
-
-	// Parse the YAML
-	var deploymentConfig DeploymentConfig
-	if err := yaml.Unmarshal([]byte(valuesYAML), &deploymentConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse auth config from ConfigMap: %w", err)
-	}
-
-	return &deploymentConfig.Gateway.Config.Controller.Auth, nil
-}
-
-// GetDeploymentAuthFromConfigMap reads auth settings from a ConfigMap values.yaml key.
-func GetDeploymentAuthFromConfigMap(ctx context.Context, k8sClient client.Client, namespace, configMapName string) (*AuthSettings, error) {
-	if configMapName == "" {
-		return nil, nil
-	}
-	configMap := &corev1.ConfigMap{}
-	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: configMapName}, configMap); err != nil {
-		return nil, fmt.Errorf("get ConfigMap %s/%s: %w", namespace, configMapName, err)
-	}
-	valuesYAML, ok := configMap.Data["values.yaml"]
-	if !ok {
-		return nil, nil
-	}
-	var deploymentConfig DeploymentConfig
-	if err := yaml.Unmarshal([]byte(valuesYAML), &deploymentConfig); err != nil {
-		return nil, fmt.Errorf("parse auth config from ConfigMap: %w", err)
-	}
-	return &deploymentConfig.Gateway.Config.Controller.Auth, nil
-}
-
-// GetAuthSettingsForRegistryGateway resolves controller REST auth settings for a registered gateway.
-// Prefer Helm values ConfigMap when HelmValuesConfigMapName is set; otherwise load from APIGateway CR.
-func GetAuthSettingsForRegistryGateway(ctx context.Context, k8sClient client.Client, info *registry.GatewayInfo) (*AuthSettings, error) {
-	if info == nil {
-		return nil, nil
-	}
-	if info.HelmValuesConfigMapName != "" {
-		return GetDeploymentAuthFromConfigMap(ctx, k8sClient, info.Namespace, info.HelmValuesConfigMapName)
-	}
-	gateway := &apiv1.APIGateway{}
-	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: info.Namespace, Name: info.Name}, gateway); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return GetDeploymentConfigFromGateway(ctx, k8sClient, gateway)
-}
-
-// GetBasicAuthCredentials extracts basic auth credentials from the auth config
-// Returns username, password, and ok=true if basic auth is enabled and has at least one user
-// Returns empty strings and ok=false if basic auth is not configured or disabled
-func GetBasicAuthCredentials(authConfig *AuthSettings) (username, password string, ok bool) {
-	if authConfig == nil {
-		return "", "", false
-	}
-
-	// Check if basic auth is enabled
-	if !authConfig.Basic.Enabled {
-		return "", "", false
-	}
-
-	// Get the first user (if any)
-	if len(authConfig.Basic.Users) == 0 {
-		return "", "", false
-	}
-
-	user := authConfig.Basic.Users[0]
-
-	// For now, we only support plain passwords (not hashed)
-	// The operator needs the plain password to send in the Authorization header
-	if user.PasswordHashed {
-		// Cannot use hashed password for outgoing requests
-		return "", "", false
-	}
-
-	return user.Username, user.Password, true
-}
-
-// GetDefaultBasicAuthCredentials returns the default basic auth credentials
-// Default: username="admin", password="admin"
-func GetDefaultBasicAuthCredentials() (username, password string) {
-	return "admin", "admin"
 }
 
 // EncodeBasicAuth encodes username and password for HTTP Basic Authentication
