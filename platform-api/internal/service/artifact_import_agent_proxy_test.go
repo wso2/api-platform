@@ -249,7 +249,7 @@ func TestAgentImport_CreatesReadOnlyAgentProxy(t *testing.T) {
 	d := setupAgentImportTest(t)
 
 	const dpid = "a1111111-1111-1111-1111-111111111111"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, agentImportRequest(dpid, "weather-agent", minimalGatewayAgentSpec()))
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, agentImportRequest(dpid, "weather-agent", minimalGatewayAgentSpec()))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -340,7 +340,7 @@ func TestAgentImport_CreatesReadOnlyAgentProxy(t *testing.T) {
 func TestAgentImport_PersistsColumnAndDocumentBoundary(t *testing.T) {
 	d := setupAgentImportTest(t)
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		agentImportRequest("a2222222-2222-2222-2222-222222222222", "weather-agent", fullGatewayAgentSpec()))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -414,7 +414,7 @@ func TestAgentImport_InverseOfDeploymentBuilder(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			d := setupAgentImportTest(t)
 			pushed := specFn()
-			if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+			if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 				agentImportRequest("a3333333-3333-3333-3333-333333333333", "weather-agent", deepCopySpec(t, pushed))); err != nil {
 				t.Fatalf("Import() error = %v", err)
 			}
@@ -457,7 +457,7 @@ func TestAgentImport_InverseOfDeploymentBuilder(t *testing.T) {
 func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testing.T) {
 	d := setupAgentImportTest(t)
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(agentImportRequest("a4444444-4444-4444-4444-444444444444", "weather-agent", fullGatewayAgentSpec()), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -562,7 +562,7 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 func TestAgentImport_APIKeysAssociateWithControlPlaneUUIDAndBackfill(t *testing.T) {
 	d := setupAgentImportTest(t)
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		agentImportRequest("a5555555-5555-5555-5555-555555555555", "weather-agent", minimalGatewayAgentSpec()))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -637,7 +637,7 @@ func TestAgentImport_RefusesOnlyWhatCannotBeStored(t *testing.T) {
 				tc.mutate(&req)
 			}
 
-			_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+			_, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 			if !apperror.ValidationFailed.Is(err) {
 				t.Fatalf("Import() error = %v, want VALIDATION_FAILED", err)
 			}
@@ -782,7 +782,7 @@ func TestAgentImport_StoresWhatMapsAndDropsTheRest(t *testing.T) {
 				tc.mutate(&req)
 			}
 
-			resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+			resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 			if err != nil {
 				t.Fatalf("Import() error = %v, want the Agent imported", err)
 			}
@@ -843,7 +843,7 @@ func TestAgentImport_AcceptsValuesEquivalentToAbsence(t *testing.T) {
 		},
 	}
 
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		agentImportRequest("a7777777-7777-7777-7777-777777777777", "weather-agent", spec)); err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -879,7 +879,7 @@ func TestAgentImport_LastInWinsWorkingCopy(t *testing.T) {
 	}
 
 	const dpid = "a8888888-8888-8888-8888-888888888888"
-	first, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	first, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(agentImportRequest(dpid, "weather-agent", minimalGatewayAgentSpec()), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("first import: %v", err)
@@ -895,7 +895,7 @@ func TestAgentImport_LastInWinsWorkingCopy(t *testing.T) {
 	newer["version"] = "v2.0"
 	newerReq := withDeployedAt(agentImportRequest(dpid, "weather-agent", newer), newerDeployedAt)
 	newerReq.Configuration.Metadata.Annotations = projectAnnotations("other-project")
-	second, err := d.svc.Import(importTestOrgID, importTestGatewayID, newerReq)
+	second, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, newerReq)
 	if err != nil {
 		t.Fatalf("newer import: %v", err)
 	}
@@ -927,7 +927,7 @@ func TestAgentImport_LastInWinsWorkingCopy(t *testing.T) {
 	// cache is left alone.
 	stale := minimalGatewayAgentSpec()
 	stale["displayName"] = "Stale Name"
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(agentImportRequest(dpid, "weather-agent", stale), olderDeployedAt)); err != nil {
 		t.Fatalf("stale import: %v", err)
 	}
@@ -970,7 +970,7 @@ func TestAgentImport_ControlPlaneOwnedAgentProxyIsNotOverwritten(t *testing.T) {
 
 	pushed := fullGatewayAgentSpec()
 	pushed["displayName"] = "Gateway Name"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(agentImportRequest("a9999999-9999-9999-9999-999999999999", "weather-agent", pushed), newerDeployedAt))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1002,12 +1002,12 @@ func TestAgentImport_ControlPlaneOwnedAgentProxyIsNotOverwritten(t *testing.T) {
 // handle is a conflict, and a gateway Agent on an AgentProxy's handle is not.
 func TestAgentImport_HandleOwnedByAnotherKindIsAConflict(t *testing.T) {
 	d := setupAgentImportTest(t)
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		restImportRequest("b1111111-1111-1111-1111-111111111111", "shared-handle", "Shared")); err != nil {
 		t.Fatalf("seed REST API import: %v", err)
 	}
 
-	_, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	_, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		agentImportRequest("b2222222-2222-2222-2222-222222222222", "shared-handle", minimalGatewayAgentSpec()))
 	if !apperror.ArtifactExists.Is(err) {
 		t.Fatalf("Import() error = %v, want ARTIFACT_EXISTS", err)
@@ -1023,7 +1023,7 @@ func TestAgentImport_UndeployPush(t *testing.T) {
 	d := setupAgentImportTest(t)
 
 	const dpid = "b3333333-3333-3333-3333-333333333333"
-	created, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	created, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		agentImportRequest(dpid, "weather-agent", minimalGatewayAgentSpec()))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1031,7 +1031,7 @@ func TestAgentImport_UndeployPush(t *testing.T) {
 
 	undeploy := agentImportRequest(dpid, "weather-agent", minimalGatewayAgentSpec())
 	undeploy.Status = utils.ImportStatusUndeployed
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, undeploy)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, undeploy)
 	if err != nil {
 		t.Fatalf("undeploy Import() error = %v", err)
 	}
@@ -1050,14 +1050,14 @@ func TestAgentImport_UndeployPush(t *testing.T) {
 	}
 
 	// Kind guard: an Agent undeploy that names a REST API's handle changes nothing.
-	rest, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	rest, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		restImportRequest("b4444444-4444-4444-4444-444444444444", "rest-only", "Rest Only"))
 	if err != nil {
 		t.Fatalf("seed REST API import: %v", err)
 	}
 	wrongKind := agentImportRequest("b5555555-5555-5555-5555-555555555555", "rest-only", minimalGatewayAgentSpec())
 	wrongKind.Status = utils.ImportStatusUndeployed
-	ignored, err := d.svc.Import(importTestOrgID, importTestGatewayID, wrongKind)
+	ignored, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, wrongKind)
 	if err != nil {
 		t.Fatalf("wrong-kind undeploy Import() error = %v", err)
 	}

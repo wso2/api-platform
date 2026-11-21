@@ -26,35 +26,50 @@ import (
 // decide which NEW artifacts a data-plane gateway's push may create in the
 // control plane (POST /api/internal/v1/artifacts/import-gateway-artifacts).
 //
-// The platform calls it once per push, after the gateway has authenticated and
-// before anything is written, with only the artifacts the push would create.
-// Updates to artifacts the control plane already holds, undeploy pushes, and
-// organization-level kinds that are not stored as artifacts (LLM provider
-// templates) are never offered, so an admitter cannot block a gateway from
-// keeping what it has already synced.
+// The platform invokes the admitter once per push, after gateway authentication
+// and before any writes, offering only artifacts the push would create.
+// Updates to existing artifacts, undeploy pushes, and organization-level
+// resources not stored as artifacts (e.g., LLM provider templates) are excluded.
+// Thus, an admitter cannot prevent the gateway from retaining synced resources.
 //
-// An artifact the admitter rejects is not created. It is reported to the
-// gateway as a failure under its dpid, carrying the rejection's Code and
-// Message, inside the push's normal 200 response; the rest of the push goes
-// ahead. The gateway records the failure and pushes the artifact again on its
-// next (re)connect, when it is offered again.
+// Admission is enforced at artifact creation, not when artifacts are offered.
+// A create is rejected if it was not admitted in the same push, including
+// explicit rejections, artifacts never offered, and updates converted to creates
+// by concurrent deletions. Rejections are reported as artifact failures under
+// their dpid, including the rejection's Code and Message, within the normal
+// HTTP 200 response. Other artifacts continue processing. The gateway records
+// the failure and retries the artifact on its next (re)connection.
 //
-// With several admitters, they run in plugin order and an artifact rejected by
+// Admission and creation are not atomic. Concurrent pushes from the same
+// organization are admitted independently, so shared-count limits may be
+// exceeded. Strict limits require the admitter to manage its own reservations.
+//
+// With several admitters, they run in plugin order and an artifact refused by
 // one is not offered to the next.
 type GatewayImportAdmitter interface {
-	// AdmitGatewayImports returns the rejected candidates, keyed by their DPID.
-	// A candidate absent from the map is admitted, so a nil or empty map admits
-	// the whole batch. ctx is the push request's context.
-	AdmitGatewayImports(ctx context.Context, batch GatewayImportBatch) map[string]GatewayImportRejection
+	// AdmitGatewayImports returns refused candidates keyed by DPID. Candidates
+	// absent from the map are admitted; nil or empty maps admit all candidates.
+	//
+	// A non-nil error means admission failed: no offered candidates are created,
+	// and each is reported as a transient failure (without an errorCode) for retry.
+	// Updates and undeploys are unaffected. Return nil, nil to allow the push when
+	// admission cannot be determined. Panics are treated as errors.
+	//
+	// ctx carries the push request's values but is not cancelled on disconnect.
+	// The admitter is responsible for bounding its execution time.
+	AdmitGatewayImports(ctx context.Context, batch GatewayImportBatch) (map[string]GatewayImportRejection, error)
 }
 
 // GatewayImportObserver is an OPTIONAL interface a Plugin may implement to learn
 // which artifacts a data-plane gateway's push created in the control plane.
 //
 // It is called once per push, after every artifact in it has been processed,
-// and only when at least one artifact was created. Updates are not reported.
-// It runs on the request path and cannot change the response, so it must not
-// block: hand slow work (publishing an event, say) off to the background.
+// and only when at least one artifact was created. Updates are not reported, so
+// an artifact is reported exactly once, by the push that created it. It runs on
+// the request path and cannot change the response, so it should be quick. ctx is
+// not cancelled when the gateway disconnects, so a report is not lost to a
+// gateway that gave up waiting; the observer bounds its own calls. A panic is
+// recovered and logged.
 type GatewayImportObserver interface {
 	GatewayArtifactsImported(ctx context.Context, imported GatewayImportedBatch)
 }
@@ -71,14 +86,17 @@ type GatewayImportBatch struct {
 	Candidates []GatewayImportCandidate
 }
 
-// GatewayImportCandidate is one artifact a push would create.
+// GatewayImportCandidate represents an artifact that a push would create.
 //
-// A handle pushed more than once in the same batch is offered once, as its first
-// entry, carrying the latest DeployedAt among its entries; the verdict on it
-// applies to every entry with that handle.
+// Duplicate entries with the same handle and kind are offered once, using the
+// first entry and the latest DeployedAt value. Its admission decision applies
+// to all matching entries.
+//
+// Handle, DisplayName, Version, and ProjectHandle are taken directly from the
+// push body and are untrusted, except that Handle must be non-blank.
 type GatewayImportCandidate struct {
 	// DPID is the artifact's data-plane UUID, the key its result is reported
-	// under and the key a rejection is returned under.
+	// under and the key a rejection is returned under. The gateway assigns it.
 	DPID string
 	// Kind is the control-plane kind the artifact would be stored as: one of the
 	// Kind* constants (a gateway Agent is offered as KindAgentProxy).

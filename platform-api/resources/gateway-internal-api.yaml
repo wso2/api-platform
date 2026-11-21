@@ -1473,8 +1473,10 @@ paths:
         for example when its plan has no room for another API. A refused artifact is reported
         the same way, with an `error` message and an `errorCode` (such as `quota_exceeded`);
         updates to artifacts the control plane already holds and undeploy pushes are never
-        refused this way. A refused artifact is not created, and is considered again the next
-        time it is pushed.
+        refused this way. A refused artifact is not created in the control plane (it stays
+        deployed on the gateway), and is considered again the next time it is pushed. When
+        the deployment cannot decide, the new artifact is reported as a failure without an
+        `errorCode` and is likewise not created.
       operationId: importGatewayArtifacts
       tags:
         - Gateway Internal APIs
@@ -1961,8 +1963,8 @@ components:
           description: >-
             Machine-readable reason, present when the deployment refused to create the artifact
             (for example when the organization's plan has no room for it); absent otherwise. A
-            refusal is not transient: pushing the artifact again gets the same answer until what
-            caused it changes, so a gateway should not retry it straight away.
+            refusal is a decision rather than a transient failure: pushing the artifact again
+            gets the same answer until what caused it changes.
           example: quota_exceeded
 
     InternalAPIKeyItem:

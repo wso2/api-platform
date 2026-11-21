@@ -31,8 +31,8 @@ type externalImportHookPlugin struct {
 	*fakeExternalPlugin
 }
 
-func (*externalImportHookPlugin) AdmitGatewayImports(context.Context, pdk.GatewayImportBatch) map[string]pdk.GatewayImportRejection {
-	return nil
+func (*externalImportHookPlugin) AdmitGatewayImports(context.Context, pdk.GatewayImportBatch) (map[string]pdk.GatewayImportRejection, error) {
+	return nil, nil
 }
 
 func (*externalImportHookPlugin) GatewayArtifactsImported(context.Context, pdk.GatewayImportedBatch) {
@@ -43,8 +43,8 @@ type internalImportAdmitterPlugin struct {
 	*fakePlugin
 }
 
-func (*internalImportAdmitterPlugin) AdmitGatewayImports(context.Context, pdk.GatewayImportBatch) map[string]pdk.GatewayImportRejection {
-	return nil
+func (*internalImportAdmitterPlugin) AdmitGatewayImports(context.Context, pdk.GatewayImportBatch) (map[string]pdk.GatewayImportRejection, error) {
+	return nil, nil
 }
 
 func TestInitPlugins_CollectsGatewayImportHooksFromBothTiers(t *testing.T) {

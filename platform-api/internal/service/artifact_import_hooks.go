@@ -19,6 +19,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -44,44 +45,116 @@ func offeredForAdmission(gatewayKind string) bool {
 	return gatewayKind != constants.LLMProviderTemplate
 }
 
-// admitImports asks the plugins' admitters which of the artifacts in a push may be created,
-// and returns the refused ones keyed by dpid. It is nil when there are no admitters or nothing
-// in the push would be created. The gateway must already be validated for the org.
+// admissionKey identifies a possible create by handle and control-plane kind. A handle can
+// be new for multiple kinds, but only one can be created.
+type admissionKey struct {
+	handle string
+	kind   string
+}
+
+// importGate holds one push's admission decisions and is enforced where the import creates an
+// artifact, ensuring no create escapes the admitters.
 //
-// A refusal on a handle applies to every entry in the push with that handle, since letting a
-// second entry through would create the artifact the first was refused.
-func (s *ArtifactImportService) admitImports(ctx context.Context, orgID, gatewayID string, ordered []dto.ImportGatewayArtifactRequest) map[string]pdk.GatewayImportRejection {
+// A nil gate admits every create: no admitter is installed.
+type importGate struct {
+	admitted map[admissionKey]bool
+	refused  map[admissionKey]pdk.GatewayImportRejection
+	// undecided names the creates an admitter could not decide (it failed or panicked).
+	undecided map[admissionKey]error
+}
+
+// importRefusedError is an admitter's refusal, reported to the gateway with its code.
+type importRefusedError struct {
+	rejection pdk.GatewayImportRejection
+}
+
+func (e *importRefusedError) Error() string { return e.rejection.Message }
+
+// importNotAdmittedError is a transient create error when no admitter decided this push.
+type importNotAdmittedError struct {
+	cause error
+}
+
+func (e *importNotAdmittedError) Error() string {
+	const msg = "The artifact was not admitted in this push and was not created; it is considered again when it is next pushed."
+	if e.cause != nil {
+		return msg + " The control plane could not decide: " + e.cause.Error()
+	}
+	return msg
+}
+
+func (e *importNotAdmittedError) Unwrap() error { return e.cause }
+
+// allowCreate reports whether the push may create the artifact named by handle and kind.
+func (g *importGate) allowCreate(handle, storedKind string) error {
+	if g == nil {
+		return nil
+	}
+	key := admissionKey{handle: handle, kind: storedKind}
+	if rejection, ok := g.refused[key]; ok {
+		return &importRefusedError{rejection: rejection}
+	}
+	if cause, ok := g.undecided[key]; ok {
+		return &importNotAdmittedError{cause: cause}
+	}
+	if g.admitted[key] {
+		return nil
+	}
+	return &importNotAdmittedError{}
+}
+
+// admitImports asks plugin admitters which artifacts may be created. It returns nil when no
+// admitters are configured. The gateway must already be validated for the org.
+//
+// Admitters receive a non-cancellable context so processing continues after the gateway
+// disconnects; decisions must not fail, and fail-open admitters must allow everything through.
+func (s *ArtifactImportService) admitImports(ctx context.Context, orgID, gatewayID string, ordered []dto.ImportGatewayArtifactRequest) *importGate {
 	if len(s.importAdmitters) == 0 {
 		return nil
 	}
-	candidates, dpidsByHandle := s.importCandidates(orgID, ordered)
-	if len(candidates) == 0 {
-		return nil
+	gate := &importGate{
+		admitted:  make(map[admissionKey]bool),
+		refused:   make(map[admissionKey]pdk.GatewayImportRejection),
+		undecided: make(map[admissionKey]error),
 	}
-	handleByDPID := make(map[string]string, len(candidates))
+	candidates := s.importCandidates(orgID, ordered)
+	if len(candidates) == 0 {
+		return gate
+	}
+	keyByDPID := make(map[string]admissionKey, len(candidates))
 	for _, c := range candidates {
-		handleByDPID[c.DPID] = c.Handle
+		keyByDPID[c.DPID] = admissionKey{handle: c.Handle, kind: c.Kind}
 	}
 
-	refusedHandles := make(map[string]pdk.GatewayImportRejection)
-	for _, admitter := range s.importAdmitters {
+	hookCtx := context.WithoutCancel(ctx)
+	for i, admitter := range s.importAdmitters {
 		// An artifact one admitter refused is not offered to the next.
 		remaining := make([]pdk.GatewayImportCandidate, 0, len(candidates))
 		for _, c := range candidates {
-			if _, refused := refusedHandles[c.Handle]; !refused {
+			if _, refused := gate.refused[keyByDPID[c.DPID]]; !refused {
 				remaining = append(remaining, c)
 			}
 		}
 		if len(remaining) == 0 {
 			break
 		}
-		verdicts := admitter.AdmitGatewayImports(ctx, pdk.GatewayImportBatch{
+		verdicts, err := s.callAdmitter(hookCtx, admitter, pdk.GatewayImportBatch{
 			OrgID:      orgID,
 			GatewayID:  gatewayID,
 			Candidates: remaining,
 		})
+		if err != nil {
+			// Nothing this admitter was offered can be decided, and the admitters after it
+			// cannot overrule it: none of these creates happens in this push.
+			s.slogger.Warn("Import admitter could not decide; the artifacts it was offered are not created in this push",
+				"admitter", i, "gatewayId", gatewayID, "orgId", orgID, "candidates", len(remaining), "error", err)
+			for _, c := range remaining {
+				gate.undecided[keyByDPID[c.DPID]] = err
+			}
+			return gate
+		}
 		for dpid, rejection := range verdicts {
-			handle, offered := handleByDPID[dpid]
+			key, offered := keyByDPID[dpid]
 			if !offered {
 				// Only a candidate can be refused: anything else is an update or not in the
 				// push at all, and an admitter must not be able to block either.
@@ -89,37 +162,43 @@ func (s *ArtifactImportService) admitImports(ctx context.Context, orgID, gateway
 					"dpid", dpid, "gatewayId", gatewayID, "orgId", orgID)
 				continue
 			}
-			if _, refused := refusedHandles[handle]; refused {
+			if _, refused := gate.refused[key]; refused {
 				continue
 			}
-			refusedHandles[handle] = normalizeImportRejection(rejection)
+			gate.refused[key] = normalizeImportRejection(rejection)
 		}
 	}
-	if len(refusedHandles) == 0 {
-		return nil
+	for _, key := range keyByDPID {
+		if _, refused := gate.refused[key]; !refused {
+			gate.admitted[key] = true
+		}
 	}
+	return gate
+}
 
-	rejected := make(map[string]pdk.GatewayImportRejection)
-	for handle, rejection := range refusedHandles {
-		for _, dpid := range dpidsByHandle[handle] {
-			rejected[dpid] = rejection
+// callAdmitter runs one admitter and limits panic failures to its requested creates.
+func (s *ArtifactImportService) callAdmitter(ctx context.Context, admitter pdk.GatewayImportAdmitter, batch pdk.GatewayImportBatch) (verdicts map[string]pdk.GatewayImportRejection, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			verdicts, err = nil, fmt.Errorf("admitter panicked: %v", r)
 		}
-	}
-	return rejected
+	}()
+	return admitter.AdmitGatewayImports(ctx, batch)
 }
 
 // importCandidates picks out the entries of a push that would create an artifact: a deployed
-// (not undeployed) push of an offered kind with a registered importer, whose handle the
-// organization does not hold yet. A handle pushed more than once yields one candidate — its
-// first entry, carrying the latest DeployedAt among them — and dpidsByHandle lists every
-// entry with that handle so a verdict can be applied to all of them.
+// (not undeployed) push of an offered kind with a registered importer and a non-blank handle,
+// whose handle the organization does not hold yet. A handle and kind pushed more than once
+// yield one candidate — the first entry, carrying the latest DeployedAt among them.
 //
-// A handle whose lookup fails is left out: the import itself is very likely to fail on the
-// same lookup, and offering it could get an update to an existing artifact refused.
-func (s *ArtifactImportService) importCandidates(orgID string, ordered []dto.ImportGatewayArtifactRequest) (candidates []pdk.GatewayImportCandidate, dpidsByHandle map[string][]string) {
-	dpidsByHandle = make(map[string][]string)
-	candidateIndex := make(map[string]int) // handle -> index in candidates
-	known := make(map[string]bool)         // handle -> already held by the organization
+// An entry whose handle could not be looked up is not offered. That does not let it through:
+// the gate refuses any create it was not asked about, so it is created only if the import's
+// own lookup finds it to be an update after all.
+func (s *ArtifactImportService) importCandidates(orgID string, ordered []dto.ImportGatewayArtifactRequest) []pdk.GatewayImportCandidate {
+	var candidates []pdk.GatewayImportCandidate
+	candidateIndex := make(map[admissionKey]int) // key -> index in candidates
+	known := make(map[string]bool)               // handle -> already held by the organization
+	lookupFailed := make(map[string]bool)        // handle -> could not be looked up
 
 	for _, req := range ordered {
 		kind := req.Configuration.Kind
@@ -130,12 +209,12 @@ func (s *ArtifactImportService) importCandidates(orgID string, ordered []dto.Imp
 			continue
 		}
 		handle := utils.ImportHandle(req.Configuration)
-		if strings.TrimSpace(handle) == "" {
+		if strings.TrimSpace(handle) == "" || lookupFailed[handle] {
 			continue
 		}
+		key := admissionKey{handle: handle, kind: storedArtifactKind(kind)}
 
-		if i, seen := candidateIndex[handle]; seen {
-			dpidsByHandle[handle] = append(dpidsByHandle[handle], req.DPID)
+		if i, seen := candidateIndex[key]; seen {
 			if req.DeployedAt != nil && (candidates[i].DeployedAt == nil || req.DeployedAt.After(*candidates[i].DeployedAt)) {
 				deployedAt := *req.DeployedAt
 				candidates[i].DeployedAt = &deployedAt
@@ -147,8 +226,9 @@ func (s *ArtifactImportService) importCandidates(orgID string, ordered []dto.Imp
 		if !looked {
 			existing, err := s.artifactRepo.GetByHandle(handle, orgID)
 			if err != nil {
-				s.slogger.Warn("Could not tell whether a pushed artifact is new; not offering it for admission",
+				s.slogger.Warn("Could not tell whether a pushed artifact is new; it is not offered for admission",
 					"dpid", req.DPID, "kind", kind, "handle", handle, "orgId", orgID, "error", err)
+				lookupFailed[handle] = true
 				continue
 			}
 			exists = existing != nil
@@ -164,11 +244,10 @@ func (s *ArtifactImportService) importCandidates(orgID string, ordered []dto.Imp
 			t := *req.DeployedAt
 			deployedAt = &t
 		}
-		candidateIndex[handle] = len(candidates)
-		dpidsByHandle[handle] = append(dpidsByHandle[handle], req.DPID)
+		candidateIndex[key] = len(candidates)
 		candidates = append(candidates, pdk.GatewayImportCandidate{
 			DPID:          req.DPID,
-			Kind:          storedArtifactKind(kind),
+			Kind:          key.kind,
 			Handle:        handle,
 			DisplayName:   utils.ImportDisplayName(req.Configuration),
 			Version:       utils.SpecString(req.Configuration.Spec, "version"),
@@ -176,7 +255,7 @@ func (s *ArtifactImportService) importCandidates(orgID string, ordered []dto.Imp
 			DeployedAt:    deployedAt,
 		})
 	}
-	return candidates, dpidsByHandle
+	return candidates
 }
 
 // normalizeImportRejection fills in what an admitter left empty.
@@ -194,12 +273,31 @@ func normalizeImportRejection(r pdk.GatewayImportRejection) pdk.GatewayImportRej
 
 // notifyImported tells the plugins' observers which artifacts a push created. It is a no-op
 // when nothing was created or no plugin observes.
+//
+// The observers get ctx without its cancellation: the creates have already happened, and the
+// next push only updates them, so a report lost because the gateway stopped waiting would be
+// lost for good. A panicking observer is logged and the rest are still told.
 func (s *ArtifactImportService) notifyImported(ctx context.Context, orgID, gatewayID string, created []pdk.GatewayImportedArtifact) {
 	if len(created) == 0 || len(s.importObservers) == 0 {
 		return
 	}
-	batch := pdk.GatewayImportedBatch{OrgID: orgID, GatewayID: gatewayID, Created: created}
-	for _, observer := range s.importObservers {
-		observer.GatewayArtifactsImported(ctx, batch)
+	hookCtx := context.WithoutCancel(ctx)
+	for i, observer := range s.importObservers {
+		// Each gets its own copy, so one observer cannot change what the next is told.
+		batch := pdk.GatewayImportedBatch{OrgID: orgID, GatewayID: gatewayID,
+			Created: append([]pdk.GatewayImportedArtifact(nil), created...)}
+		s.callObserver(hookCtx, i, observer, batch)
 	}
+}
+
+// callObserver runs one observer, recovering a panic: the push's creates are already done and
+// its response must still reach the gateway.
+func (s *ArtifactImportService) callObserver(ctx context.Context, i int, observer pdk.GatewayImportObserver, batch pdk.GatewayImportedBatch) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.slogger.Error("Import observer panicked; the artifacts it was told about may not be recorded by it",
+				"observer", i, "gatewayId", batch.GatewayID, "orgId", batch.OrgID, "created", len(batch.Created), "panic", r)
+		}
+	}()
+	observer.GatewayArtifactsImported(ctx, batch)
 }

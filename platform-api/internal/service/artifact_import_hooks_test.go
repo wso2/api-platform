@@ -19,27 +19,42 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 	"github.com/wso2/api-platform/platform-api/pdk"
 )
 
-// recordingAdmitter records every batch it is offered and refuses what refuse returns.
+// recordingAdmitter records every batch it is offered and refuses what refuse returns. err
+// makes it fail to decide, panicValue makes it panic, and ctxErrs records the context error it
+// saw on each call.
 type recordingAdmitter struct {
-	batches []pdk.GatewayImportBatch
-	refuse  func(batch pdk.GatewayImportBatch) map[string]pdk.GatewayImportRejection
+	batches    []pdk.GatewayImportBatch
+	refuse     func(batch pdk.GatewayImportBatch) map[string]pdk.GatewayImportRejection
+	err        error
+	panicValue any
+	ctxErrs    []error
 }
 
-func (a *recordingAdmitter) AdmitGatewayImports(_ context.Context, batch pdk.GatewayImportBatch) map[string]pdk.GatewayImportRejection {
+func (a *recordingAdmitter) AdmitGatewayImports(ctx context.Context, batch pdk.GatewayImportBatch) (map[string]pdk.GatewayImportRejection, error) {
 	a.batches = append(a.batches, batch)
-	if a.refuse == nil {
-		return nil
+	a.ctxErrs = append(a.ctxErrs, ctx.Err())
+	if a.panicValue != nil {
+		panic(a.panicValue)
 	}
-	return a.refuse(batch)
+	if a.err != nil {
+		return nil, a.err
+	}
+	if a.refuse == nil {
+		return nil, nil
+	}
+	return a.refuse(batch), nil
 }
 
 // offeredDPIDs is every candidate dpid across the batches the admitter saw, sorted.
@@ -65,13 +80,20 @@ func refuseDPIDs(dpids ...string) func(pdk.GatewayImportBatch) map[string]pdk.Ga
 	}
 }
 
-// recordingObserver records every batch of created artifacts it is told about.
+// recordingObserver records every batch of created artifacts it is told about, and the context
+// error it saw. panicValue makes it panic after recording.
 type recordingObserver struct {
-	batches []pdk.GatewayImportedBatch
+	batches    []pdk.GatewayImportedBatch
+	ctxErrs    []error
+	panicValue any
 }
 
-func (o *recordingObserver) GatewayArtifactsImported(_ context.Context, b pdk.GatewayImportedBatch) {
+func (o *recordingObserver) GatewayArtifactsImported(ctx context.Context, b pdk.GatewayImportedBatch) {
 	o.batches = append(o.batches, b)
+	o.ctxErrs = append(o.ctxErrs, ctx.Err())
+	if o.panicValue != nil {
+		panic(o.panicValue)
+	}
 }
 
 func (o *recordingObserver) createdDPIDs() []string {
@@ -340,6 +362,289 @@ func TestImportHooks_ObserverIsToldOnlyOfCreates(t *testing.T) {
 	importBatch(d, restImportRequest("dp-existing-3", "existing-api", "Existing API v3"))
 	if len(observer.batches) != 1 {
 		t.Errorf("observer called for a push that created nothing")
+	}
+}
+
+// flakyLookupRepo fails the next GetByHandle calls for one handle, then behaves normally.
+type flakyLookupRepo struct {
+	repository.ArtifactRepository
+	handle   string
+	failures int
+}
+
+func (r *flakyLookupRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {
+	if handle == r.handle && r.failures > 0 {
+		r.failures--
+		return nil, errors.New("connection reset")
+	}
+	return r.ArtifactRepository.GetByHandle(handle, orgUUID)
+}
+
+// When the lookup that decides whether an artifact is new fails, the artifact is failed for
+// this push — never imported — even though the import's own lookup would have succeeded:
+// otherwise a create could slip past the admitters. Every entry with that handle goes with it,
+// the failure is transient (no errorCode), and the next push decides it normally.
+func TestImportHooks_UndecidableArtifactIsFailedNotImported(t *testing.T) {
+	d := setupImportTest(t)
+	// Only the admission lookup fails; the import's own lookup would succeed.
+	d.svc.artifactRepo = &flakyLookupRepo{ArtifactRepository: d.artifactRepo, handle: "flaky-api", failures: 1}
+	admitter := &recordingAdmitter{}
+	observer := &recordingObserver{}
+	d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{admitter}, []pdk.GatewayImportObserver{observer})
+
+	resp := importBatch(d,
+		restImportRequest("dp-flaky", "flaky-api", "Flaky API"),
+		restImportRequest("dp-flaky-again", "flaky-api", "Flaky API"),
+		restImportRequest("dp-fine", "fine-api", "Fine API"),
+	)
+
+	if resp.Success != 1 || resp.Failed != 2 {
+		t.Fatalf("success/failed = %d/%d, want 1/2 (%+v)", resp.Success, resp.Failed, resp.Artifacts)
+	}
+	for _, dpid := range []string{"dp-flaky", "dp-flaky-again"} {
+		got := resp.Artifacts[dpid]
+		if got.Status != utils.ImportStatusFailed || got.Error == "" || got.ErrorCode != "" {
+			t.Errorf("%s = %+v, want a transient failure: an error and no errorCode", dpid, got)
+		}
+	}
+	if art := artifactByHandle(t, d, "flaky-api"); art != nil {
+		t.Fatalf("an artifact no admitter saw was created: %+v", art)
+	}
+	if got := admitter.offeredDPIDs(); !equalStrings(got, []string{"dp-fine"}) {
+		t.Errorf("offered = %v, want only dp-fine", got)
+	}
+	if got := observer.createdDPIDs(); !equalStrings(got, []string{"dp-fine"}) {
+		t.Errorf("observer told of %v, want only dp-fine", got)
+	}
+
+	// The next push decides it, and creates it once admitted.
+	resp = importBatch(d, restImportRequest("dp-flaky", "flaky-api", "Flaky API"))
+	if resp.Success != 1 {
+		t.Fatalf("next push: success = %d, want 1 (%+v)", resp.Success, resp.Artifacts)
+	}
+	if got := admitter.offeredDPIDs(); !equalStrings(got, []string{"dp-fine", "dp-flaky"}) {
+		t.Errorf("offered across both pushes = %v, want dp-fine then dp-flaky", got)
+	}
+}
+
+// refuseKind refuses every candidate of one kind, as a limit on that kind with no room would.
+func refuseKind(kind string) func(pdk.GatewayImportBatch) map[string]pdk.GatewayImportRejection {
+	return func(b pdk.GatewayImportBatch) map[string]pdk.GatewayImportRejection {
+		out := map[string]pdk.GatewayImportRejection{}
+		for _, c := range b.Candidates {
+			if c.Kind == kind {
+				out[c.DPID] = pdk.GatewayImportRejection{Code: "quota_exceeded", Message: "no room"}
+			}
+		}
+		return out
+	}
+}
+
+// H1: one handle pushed under two kinds is offered once per kind, so an admitter limiting one
+// kind sees the entry of that kind, and a decoy of another kind that fails its own import
+// cannot carry it through.
+func TestImportHooks_SameHandleDifferentKindIsOfferedPerKind(t *testing.T) {
+	d := setupImportTest(t)
+	admitter := &recordingAdmitter{refuse: refuseKind(pdk.KindRestAPI)}
+	d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{admitter}, nil)
+
+	resp := importBatch(d,
+		// A decoy that fails on its own: its template does not exist.
+		dpProviderReq("dp-decoy", "shared-handle", "Decoy", "no-such-template"),
+		restImportRequest("dp-rest", "shared-handle", "Real API"),
+	)
+
+	cands := admitter.batches[0].Candidates
+	kinds := map[string]string{}
+	for _, c := range cands {
+		kinds[c.DPID] = c.Kind
+	}
+	if kinds["dp-decoy"] != pdk.KindLLMProvider || kinds["dp-rest"] != pdk.KindRestAPI {
+		t.Fatalf("candidates = %+v, want one per kind", cands)
+	}
+	if got := resp.Artifacts["dp-rest"]; got.ErrorCode != "quota_exceeded" {
+		t.Errorf("REST entry = %+v, want refused", got)
+	}
+	if art := artifactByHandle(t, d, "shared-handle"); art != nil {
+		t.Fatalf("a refused create went through behind a decoy: %+v", art)
+	}
+}
+
+// H2: a blank handle is refused by the import itself, with or without admitters, so it can
+// neither create an unaddressable artifact nor slip past admission.
+func TestImportHooks_BlankHandleIsRefused(t *testing.T) {
+	for _, withHooks := range []bool{false, true} {
+		d := setupImportTest(t)
+		admitter := &recordingAdmitter{}
+		if withHooks {
+			d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{admitter}, nil)
+		}
+		resp := importBatch(d,
+			restImportRequest("dp-space", " ", "Space"),
+			restImportRequest("dp-tab", "\t", "Tab"),
+		)
+		if resp.Failed != 2 || resp.Success != 0 {
+			t.Fatalf("hooks=%v: success/failed = %d/%d, want 0/2 (%+v)", withHooks, resp.Success, resp.Failed, resp.Artifacts)
+		}
+		for _, h := range []string{" ", "\t"} {
+			if art := artifactByHandle(t, d, h); art != nil {
+				t.Errorf("hooks=%v: blank handle %q was created", withHooks, h)
+			}
+		}
+		if len(admitter.batches) != 0 {
+			t.Errorf("hooks=%v: blank handles were offered: %+v", withHooks, admitter.batches)
+		}
+	}
+}
+
+// phantomRepo reports an artifact for one handle on the next lookups, then nothing: the artifact
+// was deleted between the lookup that picks candidates and the one that decides the create.
+type phantomRepo struct {
+	repository.ArtifactRepository
+	handle   string
+	phantoms int
+}
+
+func (r *phantomRepo) GetByHandle(handle, orgUUID string) (*model.Artifact, error) {
+	if handle == r.handle && r.phantoms > 0 {
+		r.phantoms--
+		return &model.Artifact{UUID: "deleted-meanwhile", Handle: handle, Type: constants.RestApi}, nil
+	}
+	return r.ArtifactRepository.GetByHandle(handle, orgUUID)
+}
+
+// H3: an artifact that was an update when candidates were picked, and is gone when the import
+// decides, is not created: no admitter saw it. It fails as transient and is offered next push.
+func TestImportHooks_UpdateTurnedCreateIsNotCreatedUnadmitted(t *testing.T) {
+	d := setupImportTest(t)
+	d.svc.artifactRepo = &phantomRepo{ArtifactRepository: d.artifactRepo, handle: "vanishing-api", phantoms: 1}
+	admitter := &recordingAdmitter{}
+	d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{admitter}, nil)
+
+	resp := importBatch(d, restImportRequest("dp-1", "vanishing-api", "Vanishing API"))
+
+	got := resp.Artifacts["dp-1"]
+	if got.Status != utils.ImportStatusFailed || got.Error == "" || got.ErrorCode != "" {
+		t.Errorf("result = %+v, want a transient failure", got)
+	}
+	if art := artifactByHandle(t, d, "vanishing-api"); art != nil {
+		t.Fatalf("a create no admitter saw went through: %+v", art)
+	}
+	if len(admitter.batches) != 0 {
+		t.Errorf("admitter was offered %+v, want nothing (it looked like an update)", admitter.batches)
+	}
+}
+
+// H3: a failed first lookup does not hold up an artifact that turns out to be an update: the
+// import's own lookup finds it, and updates are never gated.
+func TestImportHooks_UndecidableUpdateStillUpdates(t *testing.T) {
+	d := setupImportTest(t)
+	mustImport(t, d, withDeployedAt(restImportRequest("dp-1", "kept-api", "First"), baseDeployedAt))
+	d.svc.artifactRepo = &flakyLookupRepo{ArtifactRepository: d.artifactRepo, handle: "kept-api", failures: 1}
+	d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{&recordingAdmitter{}}, nil)
+
+	resp := importBatch(d, withDeployedAt(restImportRequest("dp-1", "kept-api", "Second"), newerDeployedAt))
+	if resp.Success != 1 {
+		t.Fatalf("update result = %+v, want success", resp.Artifacts["dp-1"])
+	}
+	if art := artifactByHandle(t, d, "kept-api"); art == nil || art.Name != "Second" {
+		t.Errorf("artifact = %+v, want updated to Second", art)
+	}
+}
+
+// M2 and M4: an admitter that cannot decide — an error or a panic — costs the creates it was
+// offered, as transient failures, and nothing else: updates in the push still go through.
+func TestImportHooks_AdmitterThatCannotDecideBlocksOnlyItsCreates(t *testing.T) {
+	cases := map[string]*recordingAdmitter{
+		"error": {err: errors.New("quota backend unavailable")},
+		"panic": {panicValue: "boom"},
+	}
+	for name, admitter := range cases {
+		t.Run(name, func(t *testing.T) {
+			d := setupImportTest(t)
+			mustImport(t, d, withDeployedAt(restImportRequest("dp-existing", "existing-api", "First"), baseDeployedAt))
+			observer := &recordingObserver{}
+			d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{admitter}, []pdk.GatewayImportObserver{observer})
+
+			resp := importBatch(d,
+				withDeployedAt(restImportRequest("dp-existing", "existing-api", "Second"), newerDeployedAt),
+				restImportRequest("dp-new", "new-api", "New API"),
+			)
+
+			if resp.Success != 1 || resp.Failed != 1 {
+				t.Fatalf("success/failed = %d/%d, want 1/1 (%+v)", resp.Success, resp.Failed, resp.Artifacts)
+			}
+			if got := resp.Artifacts["dp-new"]; got.ErrorCode != "" || got.Error == "" {
+				t.Errorf("new artifact result = %+v, want a transient failure", got)
+			}
+			if art := artifactByHandle(t, d, "new-api"); art != nil {
+				t.Errorf("an undecided create went through: %+v", art)
+			}
+			if art := artifactByHandle(t, d, "existing-api"); art == nil || art.Name != "Second" {
+				t.Errorf("update = %+v, want applied", art)
+			}
+			if len(observer.batches) != 0 {
+				t.Errorf("observer told of %v, want nothing created", observer.createdDPIDs())
+			}
+		})
+	}
+}
+
+// M4: a panicking observer does not lose the push's response, and later observers are still told.
+func TestImportHooks_PanickingObserverDoesNotBreakThePush(t *testing.T) {
+	d := setupImportTest(t)
+	bad := &recordingObserver{panicValue: "boom"}
+	good := &recordingObserver{}
+	d.svc.SetGatewayImportHooks(nil, []pdk.GatewayImportObserver{bad, good})
+
+	resp := importBatch(d, restImportRequest("dp-1", "an-api", "An API"))
+	if resp.Success != 1 {
+		t.Fatalf("result = %+v, want success", resp.Artifacts)
+	}
+	if got := good.createdDPIDs(); !equalStrings(got, []string{"dp-1"}) {
+		t.Errorf("second observer told of %v, want dp-1", got)
+	}
+}
+
+// M3: the hooks get the push's context without its cancellation, so a gateway that stops
+// waiting can neither make a fail-open admitter let everything through nor lose a report.
+func TestImportHooks_HooksDoNotSeeTheRequestCancelled(t *testing.T) {
+	d := setupImportTest(t)
+	admitter := &recordingAdmitter{}
+	observer := &recordingObserver{}
+	d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{admitter}, []pdk.GatewayImportObserver{observer})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	d.svc.ImportArtifacts(ctx, importTestOrgID, importTestGatewayID,
+		[]dto.ImportGatewayArtifactRequest{restImportRequest("dp-1", "an-api", "An API")})
+
+	if len(admitter.ctxErrs) != 1 || admitter.ctxErrs[0] != nil {
+		t.Errorf("admitter context errors = %v, want one call with a live context", admitter.ctxErrs)
+	}
+	if len(observer.ctxErrs) != 1 || observer.ctxErrs[0] != nil {
+		t.Errorf("observer context errors = %v, want one call with a live context", observer.ctxErrs)
+	}
+}
+
+// L1: a refusal is applied to the create it was made about, so an update that shares its DPID
+// is not refused with it.
+func TestImportHooks_RefusalDoesNotReachAnUpdateSharingItsDPID(t *testing.T) {
+	d := setupImportTest(t)
+	mustImport(t, d, withDeployedAt(restImportRequest("dp-old", "existing-api", "First"), baseDeployedAt))
+	admitter := &recordingAdmitter{refuse: refuseDPIDs("dup")}
+	d.svc.SetGatewayImportHooks([]pdk.GatewayImportAdmitter{admitter}, nil)
+
+	importBatch(d,
+		withDeployedAt(restImportRequest("dup", "existing-api", "Second"), newerDeployedAt),
+		restImportRequest("dup", "new-api", "New API"),
+	)
+
+	if art := artifactByHandle(t, d, "existing-api"); art == nil || art.Name != "Second" {
+		t.Errorf("update = %+v, want applied despite the shared DPID", art)
+	}
+	if art := artifactByHandle(t, d, "new-api"); art != nil {
+		t.Errorf("refused create went through: %+v", art)
 	}
 }
 
