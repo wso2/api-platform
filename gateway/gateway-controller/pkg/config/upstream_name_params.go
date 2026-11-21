@@ -205,10 +205,45 @@ func isUpstreamNameSchema(schema map[string]interface{}) bool {
 	return false
 }
 
+// composedSchemas returns schema and, recursively, every allOf, anyOf and oneOf
+// subschema under it.
+func composedSchemas(schema map[string]interface{}) []map[string]interface{} {
+	out := []map[string]interface{}{schema}
+	for _, keyword := range []string{"allOf", "anyOf", "oneOf"} {
+		subschemas, _ := schema[keyword].([]interface{})
+		for _, s := range subschemas {
+			if sub, ok := s.(map[string]interface{}); ok {
+				out = append(out, composedSchemas(sub)...)
+			}
+		}
+	}
+	return out
+}
+
+// childSchema picks a child's schema from schema and each of its composed
+// subschemas. Several matches are combined under allOf so the child is walked once
+// and a marked value is reported once.
+func childSchema(schema map[string]interface{}, pick func(map[string]interface{}) map[string]interface{}) map[string]interface{} {
+	var found []interface{}
+	for _, s := range composedSchemas(schema) {
+		if child := pick(s); child != nil {
+			found = append(found, child)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return nil
+	case 1:
+		return found[0].(map[string]interface{})
+	default:
+		return map[string]interface{}{"allOf": found}
+	}
+}
+
 // collectUpstreamNameRefs walks a parameter value alongside its JSON Schema, through
-// nested objects and arrays, and collects every non-blank string whose schema
-// carries the marker. A value still holding a template expression is skipped; it is
-// checked once rendered.
+// nested objects, arrays and allOf, anyOf or oneOf subschemas, and collects every
+// non-blank string whose schema carries the marker. A value still holding a template
+// expression is skipped; it is checked once rendered.
 func collectUpstreamNameRefs(path string, value interface{}, schema map[string]interface{}, out *[]upstreamNameRef) {
 	switch v := value.(type) {
 	case string:
@@ -217,19 +252,24 @@ func collectUpstreamNameRefs(path string, value interface{}, schema map[string]i
 			*out = append(*out, upstreamNameRef{path: path, value: trimmed})
 		}
 	case map[string]interface{}:
-		props, _ := schema["properties"].(map[string]interface{})
-		additional, _ := schema["additionalProperties"].(map[string]interface{})
 		for _, key := range slices.Sorted(maps.Keys(v)) {
-			childSchema, _ := props[key].(map[string]interface{})
-			if childSchema == nil {
-				childSchema = additional
-			}
-			if childSchema != nil {
-				collectUpstreamNameRefs(path+"."+key, v[key], childSchema, out)
+			child := childSchema(schema, func(s map[string]interface{}) map[string]interface{} {
+				props, _ := s["properties"].(map[string]interface{})
+				if c, ok := props[key].(map[string]interface{}); ok {
+					return c
+				}
+				additional, _ := s["additionalProperties"].(map[string]interface{})
+				return additional
+			})
+			if child != nil {
+				collectUpstreamNameRefs(path+"."+key, v[key], child, out)
 			}
 		}
 	case []interface{}:
-		items, _ := schema["items"].(map[string]interface{})
+		items := childSchema(schema, func(s map[string]interface{}) map[string]interface{} {
+			items, _ := s["items"].(map[string]interface{})
+			return items
+		})
 		if items == nil {
 			return
 		}

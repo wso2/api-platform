@@ -148,3 +148,33 @@ func TestUpstreamNameParams_RestAPIUsesUpstreamDefinitions(t *testing.T) {
 	params["backend"] = "backend-a"
 	assert.Empty(t, v.ValidateRestAPIPolicies(apiConfig))
 }
+
+func TestUpstreamNameParams_ComposedObjectAndArraySchemasAreTraversed(t *testing.T) {
+	marked := map[string]interface{}{"type": "string", UpstreamNameMarker: true}
+	composed := map[string]interface{}{
+		"allOf": []interface{}{
+			map[string]interface{}{"properties": map[string]interface{}{"backend": marked}},
+			// A second subschema naming the same property must not duplicate the error.
+			map[string]interface{}{"properties": map[string]interface{}{"backend": map[string]interface{}{"type": "string"}}},
+			map[string]interface{}{"properties": map[string]interface{}{
+				"targets": map[string]interface{}{
+					"oneOf": []interface{}{map[string]interface{}{"type": "array", "items": marked}},
+				},
+			}},
+		},
+	}
+	defs := map[string]models.PolicyDefinition{"composed|v1.0.0": {Name: "composed", Version: "v1.0.0", Parameters: &composed}}
+	v := NewPolicyValidator(defs, nil)
+	params := map[string]interface{}{"backend": "typo", "targets": []interface{}{"primary", "other"}}
+	cfg := &api.LLMProviderConfiguration{Spec: api.LLMProviderConfigData{
+		UpstreamDefinitions: &[]api.UpstreamDefinition{{Name: "primary"}},
+		GlobalPolicies:      &[]api.Policy{{Name: "composed", Version: "v1", Params: &params}},
+	}}
+	errs := v.ValidateLLMProviderPolicies(cfg)
+	require.Len(t, errs, 2)
+	assert.Equal(t, "spec.globalPolicies[0].params.backend", errs[0].Field)
+	assert.Equal(t, "spec.globalPolicies[0].params.targets[1]", errs[1].Field)
+
+	params = map[string]interface{}{"backend": "primary", "targets": []interface{}{"primary"}}
+	assert.Empty(t, v.ValidateLLMProviderPolicies(cfg))
+}
