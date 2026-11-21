@@ -49,6 +49,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost1}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext1}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext1}/v1.0/whoami"
     Then the response should be successful
     And the response should be valid JSON
@@ -58,6 +61,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName1}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost1}"
+    And I send a "GET" request to "${CTX:apiContext1}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost1}"
     And I send a "GET" request to "${CTX:apiContext1}/v1.0/whoami" until status 404
 
   @SVR-021
@@ -83,6 +89,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost2}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami"
     Then the response should be successful
     And the response should be valid JSON
@@ -92,6 +101,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName2}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost2}"
+    And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost2}"
     And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami" until status 404
 
   @SVR-021
@@ -117,6 +129,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost3}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext3}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext3}/v1.0/whoami"
     Then the response should be successful
     And the response should be valid JSON
@@ -126,6 +141,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName3}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost3}"
+    And I send a "GET" request to "${CTX:apiContext3}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost3}"
     And I send a "GET" request to "${CTX:apiContext3}/v1.0/whoami" until status 404
 
   @SVR-025
@@ -180,6 +198,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost6}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext6}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext6}/v1.0/whoami"
     Then the response should be successful
     And the response header "X-Sandbox-Ref-Policy" should be "applied"
@@ -187,6 +208,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName6}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost6}"
+    And I send a "GET" request to "${CTX:apiContext6}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost6}"
     And I send a "GET" request to "${CTX:apiContext6}/v1.0/whoami" until status 404
 
   @SVR-021
@@ -211,6 +235,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost7}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext7}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext7}/v1.0/whoami"
     Then the response should be successful
     And the JSON response field "path" should be "/sandbox/whoami"
@@ -218,6 +245,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName7}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost7}"
+    And I send a "GET" request to "${CTX:apiContext7}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost7}"
     And I send a "GET" request to "${CTX:apiContext7}/v1.0/whoami" until status 404
 
   @SVR-022
@@ -236,6 +266,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost8}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext8}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext8}/v1.0/whoami"
     Then the response should be successful
     And the response should be valid JSON
@@ -245,6 +278,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName8}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost8}"
+    And I send a "GET" request to "${CTX:apiContext8}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost8}"
     And I send a "GET" request to "${CTX:apiContext8}/v1.0/whoami" until status 404
 
   @SVR-022
@@ -341,6 +377,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost12}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext12}/v1.0/us/seattle" until status 200
     And I send a "GET" request to "${CTX:apiContext12}/v1.0/us/seattle"
     Then the response should be successful
     And the JSON response field "path" should be "/sandbox/us/seattle"
@@ -348,6 +387,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName12}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost12}"
+    And I send a "GET" request to "${CTX:apiContext12}/v1.0/us/seattle" until status 404
+    And I set request host to "${CTX:sandboxHost12}"
     And I send a "GET" request to "${CTX:apiContext12}/v1.0/us/seattle" until status 404
 
   @SVR-025
@@ -402,6 +444,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost16}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext16}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext16}/v1.0/whoami"
     Then the response should be successful
     And the response header "X-Both-Ref-Policy" should be "applied"
@@ -409,6 +454,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName16}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost16}"
+    And I send a "GET" request to "${CTX:apiContext16}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost16}"
     And I send a "GET" request to "${CTX:apiContext16}/v1.0/whoami" until status 404
 
   @SVR-024
@@ -433,6 +481,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost17}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext17}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext17}/v1.0/whoami"
     Then the response should be successful
     And the response header "X-Main-Ref-Policy" should be "applied"
@@ -440,6 +491,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName17}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost17}"
+    And I send a "GET" request to "${CTX:apiContext17}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost17}"
     And I send a "GET" request to "${CTX:apiContext17}/v1.0/whoami" until status 404
 
   # A request on the sandbox host reaches the main upstream: https://github.com/wso2/api-platform/issues/4286
@@ -500,6 +554,9 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost20}"
+    # The main host routing does not mean the sandbox host does: its upstream cluster
+    # can still be warming in the router, so wait for this host too (#4378).
+    And I send a "GET" request to "${CTX:apiContext20}/v1.0/whoami" until status 200
     And I send a "GET" request to "${CTX:apiContext20}/v1.0/whoami"
     Then the response should be successful
     And the response header "X-Both-URL-Policy" should be "applied"
@@ -507,6 +564,9 @@ Feature: Sandbox routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName20}"
     Then the response should be successful
+    And I set request host to "${CTX:mainHost20}"
+    And I send a "GET" request to "${CTX:apiContext20}/v1.0/whoami" until status 404
+    And I set request host to "${CTX:sandboxHost20}"
     And I send a "GET" request to "${CTX:apiContext20}/v1.0/whoami" until status 404
 
   @SVR-004
