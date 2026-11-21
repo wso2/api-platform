@@ -69,6 +69,9 @@ func main() {
 	gatewayRuntimeBaseImage := flag.String("gateway-runtime-base-image", defaultGatewayRuntimeBaseImage,
 		"Base gateway runtime image (used in generated Dockerfile)")
 
+	fetchTimeout := flag.Duration("fetch-timeout", discovery.DefaultModuleFetchTimeout,
+		"How long to wait for each gomodule policy to download, for example 10m")
+
 	// Logging flags
 	logFormat := flag.String("log-format", "json", "Log format: text or json")
 	logLevel := flag.String("log-level", "info", "Log level: debug, info, warn, error")
@@ -76,6 +79,12 @@ func main() {
 
 	// Setup logging
 	initLogger(*logFormat, *logLevel)
+
+	if *fetchTimeout <= 0 {
+		slog.Error("Invalid -fetch-timeout: it must be greater than zero, for example 10m", "value", fetchTimeout.String())
+		os.Exit(1)
+	}
+	discovery.ModuleFetchTimeout = *fetchTimeout
 
 	// Resolve paths to absolute paths
 	absBuildFilePath, err := filepath.Abs(*buildFilePath)
@@ -115,6 +124,7 @@ func main() {
 		"build_date", BuildDate,
 		"build_file", *buildFilePath,
 		"system_build_lock", *systemBuildLockPath,
+		"fetch_timeout", fetchTimeout.String(),
 	}
 	slog.Info("Policy Builder starting", logFields...)
 	slog.Info("Go module settings", goenv.ModuleSettingsLogFields(os.Getenv, func(path string) bool {

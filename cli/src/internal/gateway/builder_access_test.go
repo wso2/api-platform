@@ -503,3 +503,31 @@ func TestProcessAliveForThisProcess(t *testing.T) {
 		t.Fatal("processAlive(own pid) = false")
 	}
 }
+
+func TestBuilderRunArgs(t *testing.T) {
+	config := DockerBuildConfig{
+		TempDir:                    "/home/u/.wso2ap/.tmp/gateway-image-build-1",
+		GatewayBuilder:             "ghcr.io/wso2/api-platform/gateway-builder:1.2.0",
+		GatewayControllerBaseImage: "ghcr.io/wso2/api-platform/gateway-controller:1.2.0",
+		GatewayRuntimeBaseImage:    "ghcr.io/wso2/api-platform/gateway-runtime:1.2.0",
+	}
+	base := []string{
+		"run", "--rm", "-v", "/home/u/.wso2ap/.tmp/gateway-image-build-1:/workspace",
+		"-e", "GOPRIVATE",
+		"ghcr.io/wso2/api-platform/gateway-builder:1.2.0",
+		"-gateway-controller-base-image", "ghcr.io/wso2/api-platform/gateway-controller:1.2.0",
+		"-gateway-runtime-base-image", "ghcr.io/wso2/api-platform/gateway-runtime:1.2.0",
+	}
+
+	// Not set: no -fetch-timeout, so builder images that predate the flag keep working.
+	if got := builderRunArgs(config, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, base) {
+		t.Fatalf("args = %v, want %v", got, base)
+	}
+
+	// Set: passed after the image, where the builder reads its own flags.
+	config.FetchTimeout = 10 * time.Minute
+	want := append(slices.Clone(base), "-fetch-timeout", "10m0s")
+	if got := builderRunArgs(config, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+}
