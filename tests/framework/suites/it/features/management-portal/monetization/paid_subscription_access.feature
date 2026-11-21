@@ -43,7 +43,7 @@ Feature: A paid subscription's billing state decides its access at the gateway
     When I generate a unique resource name from "paid-access-app" and store it as "appHandle"
     And I create an application "${CTX:appHandle}" via the control plane in project "${CTX:projectHandle}"
     And I create a subscription for REST API "${CTX:apiHandle}" application "${CTX:appHandle}" plan "${CTX:planHandle}" via the control plane and store the subscription token as "subscriptionToken"
-    And I generate a unique value from "paid-access-key" and store it as "apiKeyValue"
+    And I generate a unique value from "paid-access-key-api-key-0123456789" and store it as "apiKeyValue"
     And I issue an API key "${CTX:apiKeyValue}" for REST API "${CTX:apiHandle}" via the control plane
     And I generate a unique resource name from "cus" and store it as "customerId"
     When I set header "API-Key" to "${CTX:apiKeyValue}"
@@ -153,7 +153,7 @@ Feature: A paid subscription's billing state decides its access at the gateway
     Then the response status code should be 200
     When I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
     And I send a "GET" request to "${CTX:apiContext}/" until status 401
-    And I generate a unique value from "paid-pull-key" and store it as "apiKeyValue"
+    And I generate a unique value from "paid-pull-key-api-key-0123456789" and store it as "apiKeyValue"
     And I issue an API key "${CTX:apiKeyValue}" for REST API "${CTX:apiHandle}" via the control plane
     And I set header "API-Key" to "${CTX:apiKeyValue}"
     And I set header "Subscription-Key" to "${CTX:subscriptionToken}"
