@@ -139,6 +139,15 @@ spec:
                   name: {{ $controller.sqlserver.passwordSecretRef.name }}
                   key: {{ $controller.sqlserver.passwordSecretRef.key | default "password" }}
             {{- end }}
+            {{- range (include "gateway-operator.basicAuthUserSecrets" $ | fromYaml).list }}
+            {{- if eq .source "env" }}
+            - name: {{ .envVar }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | quote }}
+            {{- end }}
+            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}
@@ -294,10 +303,10 @@ spec:
         {{- range $secretMounts }}
         - name: {{ .volume }}
           secret:
-            secretName: {{ .secretName }}
+            secretName: {{ .secretName | quote }}
             items:
-              - key: {{ .key }}
-                path: {{ .key }}
+              - key: {{ .key | quote }}
+                path: {{ .key | quote }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

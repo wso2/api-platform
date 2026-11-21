@@ -261,6 +261,56 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
 - Like the env var, the file is read once at startup: restart the controller after rotating the
   Secret.
 
+#### Admin users with a password from a Secret
+
+A basic-auth user in `gateway.config.controller.auth.basic.users` can take its password from a
+Kubernetes Secret through `passwordSecretRef` instead of `password`, so the password never appears
+in the ConfigMap or the Helm release. It takes the same `source` switch as the secrets above:
+
+```yaml
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: gw-admin
+              passwordSecretRef:
+                name: gateway-admin   # required
+                key: password         # default "password"
+                source: file          # env (default) | file
+              roles: ["admin"]
+```
+
+| `source` | How the controller receives the password |
+|---|---|
+| `env` | Env var `APIP_GW_CONTROLLER_AUTH_BASIC_USER_<index>_PASSWORD` from the Secret, read by a `{{ env }}` token in `config.toml` |
+| `file` | The key mounted read-only at `<mountPath>/<key>` (default `mountPath`: `/secrets/gateway-controller/basic-auth/user-<index>`), read by a `{{ file }}` token |
+
+- A user sets `password` or `passwordSecretRef`, never both; the chart fails to render otherwise.
+- When any user uses `source: file`, the whole `[controller.auth.basic]` block, every user included,
+  is rendered into `controller-secrets.toml` instead of `config.toml`. The second `-config` file
+  replaces arrays rather than merging them, so the users list has to stay together.
+- Set `password_hashed: true` if the Secret holds a bcrypt hash. Leave it `false` when the gateway
+  operator manages the gateway (`APIGateway.spec.adminCredentials`): the operator needs the plain
+  password to call the management API.
+- The `mountPath` rules above apply, and the Secret is mounted only while basic auth is enabled.
+- A username cannot contain `:` (HTTP Basic authentication splits on the first `:`) or control
+  characters; the chart fails to render otherwise.
+- With `source: file`, trailing spaces, tabs and newlines are trimmed from the file, so a Secret
+  created with `kubectl create secret generic --from-file` works as is. With `source: env`, the
+  value is used exactly as stored.
+- The password is read once at startup, so the controller must restart after the Secret is rotated:
+  - With a plain Helm install, restart it yourself (`kubectl rollout restart deployment
+    <release>-gateway-controller`); Helm does not watch Secrets.
+  - For an `APIGateway` managed by the gateway operator, the operator rolls the controller pod when
+    any Secret referenced by `spec.adminCredentials` or by a `passwordSecretRef` in the
+    `spec.configRef` values changes.
+  - For a Kubernetes Gateway API `Gateway` managed by the operator, the operator does not roll the
+    pod: restart the controller yourself. Until then the operator, which signs in with the current
+    Secret value, gets 401 from the management API.
+
 ### Raw config passthrough (`gateway.config_toml`)
 
 For configuration the chart doesn't model as structured `gateway.config.*` values, use

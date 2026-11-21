@@ -69,6 +69,9 @@ type ResourceTrackingEntry struct {
 	// so a failed Status().Update does not strand the tracker on Deployed with
 	// stale observedGeneration (see decideAndProcess + handleDeploymentSuccess).
 	GatewayDeploySucceeded bool
+	// GatewayObserved is the target gateway's Programmed state when the latest
+	// deployment attempt started (see gatewayReprogrammedSinceFailure).
+	GatewayObserved gatewayObservation
 }
 
 // ResourceTracker is the shared in-memory tracker used by the generic
@@ -311,6 +314,30 @@ func (r *GenericReconciler) decideAndProcess(
 		return ctrl.Result{}, nil
 	}
 
+	// A terminal failure at the current generation is otherwise never retried. Retry it
+	// once when the target gateway has become Programmed since the failure, for example
+	// after an admin credential rotation rolled out or a missing admin Secret was created.
+	if crGeneration == statusObservedGen && progCond != nil &&
+		progCond.Status == metav1.ConditionFalse && progCond.Reason == apiv1.ReasonDeploymentFailed {
+		var observed gatewayObservation
+		if hasEntry && entry != nil && entry.Generation == crGeneration {
+			observed = entry.GatewayObserved
+		}
+		if gw := r.findTargetGateway(obj); gw != nil &&
+			gatewayReprogrammedSinceFailure(ctx, r.Client, gw, observed, r.Adapter.GetStatus(obj).LastUpdateTime) {
+			log.Info("target gateway was programmed after this resource failed; retrying deployment",
+				slog.String("name", obj.GetName()),
+				slog.String("gateway", gw.Namespace+"/"+gw.Name),
+				slog.Int64("generation", crGeneration))
+			retry := &ResourceTrackingEntry{Generation: crGeneration, Status: ResourceStatusRetrying}
+			if hasEntry && entry != nil {
+				retry.Id = entry.Id
+			}
+			r.Tracker.Set(trackingKey, retry)
+			return r.processDeployment(ctx, obj, trackingKey, crGeneration)
+		}
+	}
+
 	if crGeneration > statusObservedGen {
 		if hasEntry {
 			if entry.Generation == crGeneration {
@@ -394,6 +421,9 @@ func (r *GenericReconciler) processDeployment(ctx context.Context, obj client.Ob
 		GatewayKey: gatewayKey,
 		Id:         r.Adapter.GetStatus(obj).Id,
 		RetryCount: retryCount,
+		// Recorded before the call, so a gateway that recovers while this attempt fails
+		// still counts as re-programmed afterwards.
+		GatewayObserved: observeGateway(ctx, r.Client, gateway),
 	}
 	r.Tracker.Set(trackingKey, entry)
 
@@ -440,19 +470,9 @@ func (r *GenericReconciler) findTargetGateway(obj client.Object) *registry.Gatew
 
 func (r *GenericReconciler) buildAuthFn(gateway *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
 	return func(ctx context.Context, req *http.Request) error {
-		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gateway)
+		username, password, err := auth.ResolveBasicCredentials(ctx, r.Client, gateway)
 		if err != nil {
-			return fmt.Errorf("retrieve auth config for gateway %q: %w", gateway.Name, err)
-		}
-		var username, password string
-		if authConfig != nil {
-			var ok bool
-			username, password, ok = auth.GetBasicAuthCredentials(authConfig)
-			if !ok {
-				username, password = auth.GetDefaultBasicAuthCredentials()
-			}
-		} else {
-			username, password = auth.GetDefaultBasicAuthCredentials()
+			return fmt.Errorf("resolve admin credentials for gateway %q: %w", gateway.Name, err)
 		}
 		req.Header.Set("Authorization", "Basic "+auth.EncodeBasicAuth(username, password))
 		return nil

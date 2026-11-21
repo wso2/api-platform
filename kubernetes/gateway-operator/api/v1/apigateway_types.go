@@ -130,7 +130,53 @@ type GatewaySpec struct {
 	// If not specified, the operator will use the default mounted configuration.
 	// +optional
 	ConfigRef *corev1.LocalObjectReference `json:"configRef,omitempty"`
+
+	// AdminCredentials sets the gateway-controller's basic-auth admin user from a
+	// Kubernetes Secret. The operator configures the gateway with this user and uses
+	// the same credentials to call the gateway's management API; the password never
+	// enters the Helm values or the gateway ConfigMap. The admin user is listed first,
+	// followed by the other basic-auth users in the ConfigRef values (a ConfigRef user
+	// with the same username is replaced). The operator's default admin/admin user is
+	// not kept. When unset, the admin credentials come from the ConfigRef values, as
+	// before.
+	// +optional
+	AdminCredentials *GatewayAdminCredentials `json:"adminCredentials,omitempty"`
 }
+
+// GatewayAdminCredentials references the gateway-controller admin user's password
+// in a Kubernetes Secret.
+// +kubebuilder:validation:XValidation:rule="has(self.passwordSecretRef.name) && size(self.passwordSecretRef.name) > 0",message="passwordSecretRef.name must name the Secret that holds the admin password"
+// +kubebuilder:validation:XValidation:rule="self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$') && self.passwordSecretRef.key != '.' && self.passwordSecretRef.key != '..'",message="passwordSecretRef.key must be a Secret key name (letters, digits, '-', '_', '.')"
+type GatewayAdminCredentials struct {
+	// Username of the admin user. It cannot contain ':' (HTTP Basic authentication
+	// splits on the first ':') or control characters.
+	// +kubebuilder:default=admin
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[^:\x00-\x1f\x7f]+$`
+	// +optional
+	Username string `json:"username,omitempty"`
+
+	// PasswordSecretRef selects the key holding the plaintext admin password in a
+	// Secret in the APIGateway's namespace.
+	// +kubebuilder:validation:Required
+	PasswordSecretRef corev1.SecretKeySelector `json:"passwordSecretRef"`
+
+	// Source is how the gateway-controller receives the password: "env" injects it
+	// as an environment variable from the Secret, "file" mounts the Secret key
+	// read-only and the controller reads it from the file, so the value never
+	// enters the pod environment.
+	// +kubebuilder:validation:Enum=env;file
+	// +kubebuilder:default=env
+	// +optional
+	Source string `json:"source,omitempty"`
+}
+
+// Admin password delivery modes for GatewayAdminCredentials.Source.
+const (
+	AdminCredentialsSourceEnv  = "env"
+	AdminCredentialsSourceFile = "file"
+)
 
 // GatewayControlPlane defines control plane connection settings
 type GatewayControlPlane struct {
