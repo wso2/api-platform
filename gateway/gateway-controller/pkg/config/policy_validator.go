@@ -184,6 +184,10 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 		}
 	}
 
+	// Parameters that name an upstream must name one of this API's upstreamDefinitions.
+	errors = append(errors, pv.validateUpstreamNameParams(restAPIPolicyParams(apiConfig.Spec),
+		upstreamDefinitionNames(apiConfig.Spec.UpstreamDefinitions), "upstream definition")...)
+
 	// mtls-auth validation needs every policy chain of the API at once.
 	if pv.mtlsAuthValidator != nil {
 		mtlsAuthErrors := pv.mtlsAuthValidator.ValidateRestAPI(apiConfig)
@@ -287,15 +291,27 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 // LLM->RestAPI transform (e.g. upstream auth) are intentionally not validated here so the
 // semantics match the REST API path, which only validates user-authored policies.
 func (pv *PolicyValidator) ValidateLLMProviderPolicies(cfg *api.LLMProviderConfiguration) []ValidationError {
-	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
+	errors := pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
 		cfg.Spec.GlobalFaultPolicies, cfg.Spec.OperationFaultPolicies)
+	// Parameters that name an upstream must name one of the provider's upstreamDefinitions.
+	return append(errors, pv.validateUpstreamNameParams(
+		llmPolicyParams(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies),
+		upstreamDefinitionNames(cfg.Spec.UpstreamDefinitions), "upstream definition")...)
 }
 
 // ValidateLLMProxyPolicies validates all policy references in an LLM proxy configuration.
 // See ValidateLLMProviderPolicies for the rationale on validating the source configuration.
 func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfiguration) []ValidationError {
-	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
+	errors := pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
 		cfg.Spec.GlobalFaultPolicies, cfg.Spec.OperationFaultPolicies)
+	// Parameters that name an upstream must name one of the proxy's providers: the
+	// primary or an additional provider, by alias when one is set.
+	if names, ok := llmProxyProviderNames(cfg.Spec); ok {
+		errors = append(errors, pv.validateUpstreamNameParams(
+			llmPolicyParams(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies),
+			names, "provider")...)
+	}
+	return errors
 }
 
 // validateLLMPolicyRefs validates the policy collections shared by LLM providers and proxies:
