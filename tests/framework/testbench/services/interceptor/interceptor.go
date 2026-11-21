@@ -16,7 +16,6 @@
  * under the License.
  */
 
-// Package interceptor provides a stateless request/response interceptor upstream.
 package interceptor
 
 import (
@@ -51,6 +50,7 @@ type reply struct {
 	DirectRespond      bool              `json:"directRespond,omitempty"`
 	ResponseCode       int               `json:"responseCode,omitempty"`
 	HeadersToAdd       map[string]string `json:"headersToAdd,omitempty"`
+	HeadersToReplace   map[string]string `json:"headersToReplace,omitempty"`
 	PathToRewrite      string            `json:"pathToRewrite,omitempty"`
 	Body               string            `json:"body,omitempty"`
 	InterceptorContext map[string]string `json:"interceptorContext,omitempty"`
@@ -71,12 +71,16 @@ func (s *Service) Port() int { return Port }
 // Stateful reports whether the service keeps request-specific state.
 func (s *Service) Stateful() bool { return false }
 
-// Handler returns the policy hooks and health handler.
+// Handler returns the policy hooks, the scripted hooks and the health handler.
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/handle-request", s.handleRequest)
 	mux.HandleFunc("/handle-response", s.handleResponse)
+	mux.HandleFunc("POST /scripted/{id}/handle-request", s.scripted(phaseRequest, false))
+	mux.HandleFunc("POST /scripted/{id}/handle-response", s.scripted(phaseResponse, false))
+	mux.HandleFunc("POST /scripted/{id}/reflect/handle-request", s.scripted(phaseRequest, true))
+	mux.HandleFunc("POST /scripted/{id}/reflect/handle-response", s.scripted(phaseResponse, true))
 	return mux
 }
 
