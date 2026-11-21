@@ -39,6 +39,11 @@ const (
 	// Used by policies to dynamically select which upstream definition to route to
 	TargetUpstreamNameKey = "target_upstream_name"
 
+	// Dynamic metadata key for the gateway-wide Endpoint a policy routed the request to.
+	// Kept apart from TargetUpstreamNameKey because an upstream definition and an Endpoint
+	// may share a name; at most one of the two is set for a request.
+	TargetEndpointNameKey = "target_endpoint_name"
+
 	// Dynamic metadata key for the full cluster name (with prefix)
 	// This is read by Lua filter to set the x-target-upstream header
 	TargetUpstreamClusterKey = "target_upstream_cluster"
@@ -152,6 +157,7 @@ const (
 	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
 	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
 	TerminalReasonUnsupportedEncoding  = "unsupported_encoding"   // Content-Encoding the kernel cannot round-trip, on a body the policy chain requires
+	TerminalReasonEndpointUnavailable  = "endpoint_unavailable"   // a policy routed to a gateway-wide Endpoint the gateway does not have
 
 	// TerminalReasonPolicyAnswered marks a request a policy answered itself with a
 	// non-denial status, rather than refusing it: the request stopped at the

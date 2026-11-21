@@ -64,6 +64,7 @@ func init() {
 type MockStorage struct {
 	configs           map[string]*models.StoredConfig
 	templates         map[string]*models.StoredLLMProviderTemplate
+	endpoints         map[string]*models.StoredEndpoint
 	apiKeys           map[string]*models.APIKey
 	certs             []*models.StoredCertificate
 	secrets           map[string]*models.Secret
@@ -4343,4 +4344,57 @@ func TestOpenAPI_WarningCodeEnum_CoversEveryEmittedCode(t *testing.T) {
 			t.Errorf("Warning.code enum is missing %q", code)
 		}
 	}
+}
+
+func (m *MockStorage) SaveEndpoint(endpoint *models.StoredEndpoint) error {
+	if m.endpoints == nil {
+		m.endpoints = make(map[string]*models.StoredEndpoint)
+	}
+	for _, existing := range m.endpoints {
+		if existing.GetHandle() == endpoint.GetHandle() {
+			return storage.ErrConflict
+		}
+	}
+	m.endpoints[endpoint.UUID] = endpoint
+	return nil
+}
+
+func (m *MockStorage) UpdateEndpoint(endpoint *models.StoredEndpoint) error {
+	if _, ok := m.endpoints[endpoint.UUID]; !ok {
+		return storage.ErrNotFound
+	}
+	m.endpoints[endpoint.UUID] = endpoint
+	return nil
+}
+
+func (m *MockStorage) DeleteEndpoint(id string) error {
+	if _, ok := m.endpoints[id]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(m.endpoints, id)
+	return nil
+}
+
+func (m *MockStorage) GetEndpoint(id string) (*models.StoredEndpoint, error) {
+	if endpoint, ok := m.endpoints[id]; ok {
+		return endpoint, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) GetEndpointByHandle(handle string) (*models.StoredEndpoint, error) {
+	for _, endpoint := range m.endpoints {
+		if endpoint.GetHandle() == handle {
+			return endpoint, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) GetAllEndpoints() ([]*models.StoredEndpoint, error) {
+	endpoints := make([]*models.StoredEndpoint, 0, len(m.endpoints))
+	for _, endpoint := range m.endpoints {
+		endpoints = append(endpoints, endpoint)
+	}
+	return endpoints, nil
 }

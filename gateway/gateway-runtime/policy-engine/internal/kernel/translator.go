@@ -65,48 +65,139 @@ type Mutations struct {
 	BodyMutation   *extprocv3.BodyMutation
 }
 
-// upstreamRedirectDirective captures the last dynamic-routing directive (a named upstream
-// definition) set by any policy in a chain — last-write-wins across the chain.
+// upstreamRedirectDirective captures the last dynamic-routing directive set by any policy in
+// a chain: a named upstream definition of the API, or a gateway-wide Endpoint. The two share
+// one directive, last-write-wins across the chain, so setting either replaces the other.
 type upstreamRedirectDirective struct {
-	name *string
+	name     *string
+	endpoint *string
 }
 
-// set records name as the new live directive. Call once per policy result; a nil/empty name
-// leaves it unchanged.
-func (d *upstreamRedirectDirective) set(name *string) {
+// set records the routing fields of one policy result as the new live directive. Call once
+// per policy result; a result that sets neither field leaves the directive unchanged. A
+// result that sets both routes to the Endpoint.
+func (d *upstreamRedirectDirective) set(name, endpoint *string) {
+	if endpoint != nil && *endpoint != "" {
+		d.endpoint, d.name = endpoint, nil
+		return
+	}
 	if name != nil && *name != "" {
-		d.name = name
+		d.name, d.endpoint = name, nil
+	}
+}
+
+// restore re-arms the directive a previous phase of the same request applied, read back from
+// the dynamic metadata applyUpstreamRedirect wrote.
+func (d *upstreamRedirectDirective) restore(namespace map[string]interface{}) {
+	if namespace == nil {
+		return
+	}
+	if endpoint, ok := namespace[constants.TargetEndpointNameKey].(string); ok && endpoint != "" {
+		d.set(nil, &endpoint)
+		return
+	}
+	if name, ok := namespace[constants.TargetUpstreamNameKey].(string); ok && name != "" {
+		d.set(&name, nil)
 	}
 }
 
 func (d upstreamRedirectDirective) isSet() bool {
-	return d.name != nil
+	return d.name != nil || d.endpoint != nil
 }
 
-// resolveUpstreamRedirect resolves a directive into a concrete UpstreamInfo. ok=false means
-// the directive could not be resolved — callers must leave routing untouched and fall back to
-// the route's default, exactly as if no directive had been set.
-func resolveUpstreamRedirect(execCtx *PolicyExecutionContext, d upstreamRedirectDirective) (info policyenginev1.UpstreamInfo, label string, basePathKnown bool, ok bool) {
+// endpointUnavailableError reports a routing directive that names a gateway-wide Endpoint
+// the gateway does not have. The request must fail closed: falling back to the route's own
+// upstream would send it somewhere the policy did not choose.
+type endpointUnavailableError struct {
+	endpoint string
+}
+
+func (e *endpointUnavailableError) Error() string {
+	return fmt.Sprintf("endpoint %q is not available on this gateway", e.endpoint)
+}
+
+// resolvedRedirect is a routing directive resolved to a concrete destination.
+type resolvedRedirect struct {
+	info policyenginev1.UpstreamInfo
+	// label is the upstream definition name, or the Endpoint name when isEndpoint is set.
+	label         string
+	isEndpoint    bool
+	basePathKnown bool
+}
+
+// resolveUpstreamRedirect resolves a directive into a concrete destination.
+//
+// ok=false with a nil error means there is nothing to apply — callers leave routing untouched
+// and fall back to the route's default, exactly as if no directive had been set. A non-nil
+// error means the directive names an Endpoint that does not exist, and the request must not
+// be routed at all.
+//
+// An Endpoint resolves only to the cluster the store holds for that name, which is always
+// "endpoint_<name>", so no directive value can select an API's cluster or an internal one.
+func resolveUpstreamRedirect(execCtx *PolicyExecutionContext, d upstreamRedirectDirective) (resolved resolvedRedirect, ok bool, err error) {
+	if d.endpoint != nil {
+		endpoint, found := policy.LookupEndpoint(*d.endpoint)
+		if !found {
+			return resolvedRedirect{}, false, &endpointUnavailableError{endpoint: *d.endpoint}
+		}
+		basePath := endpoint.BasePath
+		if basePath == "" {
+			basePath = "/"
+		}
+		return resolvedRedirect{
+			info:          policyenginev1.UpstreamInfo{ClusterName: endpoint.ClusterName, BasePath: basePath},
+			label:         endpoint.Name,
+			isEndpoint:    true,
+			basePathKnown: true,
+		}, true, nil
+	}
+
 	if d.name != nil {
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*d.name)
 		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
-		info = policyenginev1.UpstreamInfo{ClusterName: clusterName}
+		resolved = resolvedRedirect{info: policyenginev1.UpstreamInfo{ClusterName: clusterName}, label: *d.name}
 		if execCtx.upstreamDefinitionPaths != nil {
 			if bp, found := execCtx.upstreamDefinitionPaths[*d.name]; found {
-				info.BasePath = bp
-				basePathKnown = true
+				resolved.info.BasePath = bp
+				resolved.basePathKnown = true
 			}
 		}
-		if !basePathKnown {
+		if !resolved.basePathKnown {
 			slog.Warn("UpstreamName: target upstream base path not found in upstreamDefinitionPaths",
 				"target_upstream", *d.name)
 		}
-		return info, *d.name, basePathKnown, true
+		return resolved, true, nil
 	}
 
-	return policyenginev1.UpstreamInfo{}, "", false, false
+	return resolvedRedirect{}, false, nil
+}
+
+// applyRoutingDirective resolves the chain's routing directive and writes the outcome: the
+// directive's destination, or the route's compiled-in default when no policy set one. It
+// returns an error only for an Endpoint the gateway does not have.
+func applyRoutingDirective(
+	execCtx *PolicyExecutionContext,
+	directive upstreamRedirectDirective,
+	headerOps map[string][]*headerOp,
+	localDynamicMetadata map[string]map[string]interface{},
+	pathMutation **string,
+) error {
+	if directive.isSet() {
+		resolved, ok, err := resolveUpstreamRedirect(execCtx, directive)
+		if err != nil {
+			return err
+		}
+		if ok {
+			applyUpstreamRedirect(execCtx, headerOps, localDynamicMetadata, pathMutation, resolved)
+			return nil
+		}
+	}
+	if execCtx.defaultUpstreamCluster != "" {
+		applyDefaultUpstream(execCtx, headerOps, localDynamicMetadata)
+	}
+	return nil
 }
 
 // applyUpstreamRedirect writes a resolved dynamic-routing override to header ops and dynamic
@@ -118,11 +209,10 @@ func applyUpstreamRedirect(
 	headerOps map[string][]*headerOp,
 	localDynamicMetadata map[string]map[string]interface{},
 	pathMutation **string,
-	info policyenginev1.UpstreamInfo,
-	label string,
-	basePathKnown bool,
+	resolved resolvedRedirect,
 ) {
 	extProcNS := constants.ExtProcFilterName
+	info := resolved.info
 
 	headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
 		opType: "set",
@@ -136,15 +226,23 @@ func applyUpstreamRedirect(
 		localDynamicMetadata[extProcNS] = make(map[string]interface{})
 	}
 
+	// Exactly one of the two name keys is kept, so a later phase restores the directive as
+	// the kind it was: an upstream definition and an Endpoint may share a name.
 	execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = info.ClusterName
-	execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = label
+	if resolved.isEndpoint {
+		execCtx.dynamicMetadata[extProcNS][constants.TargetEndpointNameKey] = resolved.label
+		delete(execCtx.dynamicMetadata[extProcNS], constants.TargetUpstreamNameKey)
+	} else {
+		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = resolved.label
+		delete(execCtx.dynamicMetadata[extProcNS], constants.TargetEndpointNameKey)
+	}
 	execCtx.dynamicMetadata[extProcNS][constants.CurrentUpstreamKey] = info.ToMap()
 
 	localDynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
 	localDynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 	localDynamicMetadata[extProcNS][constants.CurrentUpstreamKey] = info.ToMap()
 
-	if basePathKnown {
+	if resolved.basePathKnown {
 		localDynamicMetadata[extProcNS]["target_upstream_base_path"] = info.BasePath
 		execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = info.BasePath
 
@@ -277,11 +375,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	// request-body processing unless a body-phase policy explicitly replaces it.
 	// UpstreamName == nil means "no change"; applying the default upstream here
 	// would otherwise undo a header-phase additional-provider selection.
-	if namespace := execCtx.dynamicMetadata[constants.ExtProcFilterName]; namespace != nil {
-		if name, ok := namespace[constants.TargetUpstreamNameKey].(string); ok && name != "" {
-			directive.set(&name)
-		}
-	}
+	directive.restore(execCtx.dynamicMetadata[constants.ExtProcFilterName])
 
 	// Seed analyticsData from execution context so data set in a previous phase
 	// (e.g. request_headers captured during the request-headers phase) is carried
@@ -375,8 +469,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					execCtx.analyticsMetadata[analytics.RequestHeadersKey] = finalizedHeaders
 				}
 
-				// Handle UpstreamName for dynamic cluster routing (last one wins)
-				directive.set(mods.UpstreamName)
+				// Handle UpstreamName / EndpointName for dynamic cluster routing (last one wins)
+				directive.set(mods.UpstreamName, mods.EndpointName)
 			}
 		}
 	}
@@ -385,15 +479,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	// and set the x-target-upstream header directly; if it can't be resolved, fall back to the
 	// route's default exactly as if no directive had been set. ClearRouteCache is always
 	// enabled so Envoy can re-evaluate routing.
-	applied := false
-	if directive.isSet() {
-		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
-			applyUpstreamRedirect(execCtx, headerOps, out.DynamicMetadata, &out.Mutations.Path, info, label, basePathKnown)
-			applied = true
-		}
-	}
-	if !applied && execCtx.defaultUpstreamCluster != "" {
-		applyDefaultUpstream(execCtx, headerOps, out.DynamicMetadata)
+	if err := applyRoutingDirective(execCtx, directive, headerOps, out.DynamicMetadata, &out.Mutations.Path); err != nil {
+		return nil, err
 	}
 
 	// Always pass api_context and upstream_base_path in dynamic metadata when path rewrite is requested
@@ -643,7 +730,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		directive.set(mods.UpstreamName)
+		directive.set(mods.UpstreamName, mods.EndpointName)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -664,15 +751,8 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 	}
 
 	// Handle dynamic cluster routing
-	applied := false
-	if directive.isSet() {
-		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
-			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, info, label, basePathKnown)
-			applied = true
-		}
-	}
-	if !applied && execCtx.defaultUpstreamCluster != "" {
-		applyDefaultUpstream(execCtx, headerOps, dynamicMetadata)
+	if err := applyRoutingDirective(execCtx, directive, headerOps, dynamicMetadata, &mutations.Path); err != nil {
+		return nil, err
 	}
 
 	mergeHeaderMutations(headerMutation, headerOps)
@@ -879,7 +959,7 @@ func mergeRequestHeaderAndBodyResults(
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		directive.set(mods.UpstreamName)
+		directive.set(mods.UpstreamName, mods.EndpointName)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -939,7 +1019,7 @@ func mergeRequestHeaderAndBodyResults(
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		directive.set(mods.UpstreamName)
+		directive.set(mods.UpstreamName, mods.EndpointName)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -960,15 +1040,8 @@ func mergeRequestHeaderAndBodyResults(
 	}
 
 	// Handle dynamic cluster routing (last directive wins across both phases).
-	applied := false
-	if directive.isSet() {
-		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
-			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, info, label, basePathKnown)
-			applied = true
-		}
-	}
-	if !applied && execCtx.defaultUpstreamCluster != "" {
-		applyDefaultUpstream(execCtx, headerOps, dynamicMetadata)
+	if err := applyRoutingDirective(execCtx, directive, headerOps, dynamicMetadata, &mutations.Path); err != nil {
+		return nil, err
 	}
 
 	// A body-phase policy that rewrote the body must not leave plaintext behind a

@@ -2637,6 +2637,227 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /endpoints:
+    post:
+      summary: Create a new endpoint
+      description: >
+        Add a gateway-wide Endpoint: a named backend, shared by every API on the
+        gateway, that the dynamic-endpoint policy can route requests to. The
+        Endpoint becomes routable without editing or redeploying any API.
+      operationId: createEndpoint
+      x-basicauth-roles: [admin]
+      tags:
+        - Endpoint Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/EndpointConfigurationRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndpointConfigurationRequest'
+      responses:
+        '201':
+          description: Endpoint created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointConfiguration'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Endpoint with same name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all endpoints
+      description: List the gateway-wide Endpoints, with their names and labels.
+      operationId: listEndpoints
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Endpoint Management
+      responses:
+        '200':
+          description: List of endpoints
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 2
+                  endpoints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EndpointConfiguration'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /endpoints/{id}:
+    get:
+      summary: Get endpoint by id
+      description: Get a gateway-wide Endpoint by its name.
+      operationId: getEndpointById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Name (metadata.name) of the endpoint
+          schema:
+            type: string
+          example: tenant-a
+      responses:
+        '200':
+          description: Endpoint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointConfiguration'
+        '404':
+          description: Endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing endpoint
+      description: >
+        Update a gateway-wide Endpoint. Every API that routes to it follows the
+        change; no API is redeployed. The name cannot be changed.
+      operationId: updateEndpoint
+      x-basicauth-roles: [admin]
+      tags:
+        - Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Name (metadata.name) of the endpoint to update
+          schema:
+            type: string
+          example: tenant-a
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/EndpointConfigurationRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndpointConfigurationRequest'
+      responses:
+        '200':
+          description: Endpoint updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointConfiguration'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete an endpoint
+      description: >
+        Delete a gateway-wide Endpoint. Refused while a deployed API names the
+        Endpoint as the fixed target of a policy. Requests that select a
+        deleted Endpoint by header are rejected and never reach another
+        backend.
+      operationId: deleteEndpoint
+      x-basicauth-roles: [admin]
+      tags:
+        - Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Name (metadata.name) of the endpoint to delete
+          schema:
+            type: string
+          example: tenant-a
+      responses:
+        '200':
+          description: Endpoint deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Endpoint deleted successfully
+                  id:
+                    type: string
+                    example: tenant-a
+        '404':
+          description: Endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Endpoint is the fixed target of a deployed API
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /llm-providers:
     post:
       summary: Create a new LLM provider
@@ -6209,6 +6430,136 @@ components:
           description: Human-readable error message
           example: Context must start with / and cannot end with /
 
+    EndpointConfigurationRequest:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Endpoint specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: Endpoint kind
+          example: Endpoint
+          enum:
+            - Endpoint
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/EndpointConfigurationData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: Endpoint
+        metadata:
+          name: tenant-a
+          labels:
+            team: orders
+        spec:
+          displayName: Orders backend for tenant A
+          basePath: /v1
+          upstreams:
+            - url: http://orders-tenant-a:9080
+          timeout:
+            connect: 2s
+
+    EndpointConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/EndpointConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: Endpoint
+        metadata:
+          name: tenant-a
+          labels:
+            team: orders
+        spec:
+          displayName: Orders backend for tenant A
+          basePath: /v1
+          upstreams:
+            - url: http://orders-tenant-a:9080
+          timeout:
+            connect: 2s
+        status:
+          id: tenant-a
+          createdAt: 2026-11-16T07:21:13Z
+          updatedAt: 2026-11-16T07:21:13Z
+
+    EndpointConfigurationData:
+      type: object
+      required:
+        - upstreams
+      description: >
+        A gateway-wide backend. The fields are those of an upstreamDefinitions
+        entry. metadata.name is the Endpoint's name: lowercase letters and
+        digits in hyphen-separated segments, 3 to 40 characters. metadata.labels
+        is what the dynamic-endpoint policy's endpointSelector matches against.
+      properties:
+        displayName:
+          type: string
+          description: Human-readable endpoint name
+          minLength: 1
+          maxLength: 253
+          example: Orders backend for tenant A
+        basePath:
+          type: string
+          description: Base path prefix for all requests to this endpoint (e.g., /api/v2). Must start with '/' and must not end with '/'; omit for root.
+          pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
+          example: /v1
+        timeout:
+          $ref: "#/components/schemas/UpstreamTimeout"
+        upstreams:
+          type: array
+          description: List of backend targets with optional weights for load balancing
+          minItems: 1
+          items:
+            type: object
+            required:
+              - url
+            properties:
+              url:
+                type: string
+                format: uri
+                description: Backend URL (host and port only, path comes from basePath)
+                example: http://orders-tenant-a:9080
+              weight:
+                type: integer
+                description: Relative weight for load balancing across the endpoint's targets.
+                minimum: 0
+                maximum: 100
+                example: 80
+        tls:
+          type: object
+          description: >
+            Optional mutual-TLS presentation and trust for this backend.
+            `identity` (string) names a gateway identity — a certificate
+            uploaded to POST /certificates with usage: identity — to
+            present on the connection. `trustedCAs` (array of string)
+            lists usage: upstream certificates to trust for this backend
+            in place of the gateway-wide trust bundle; omit to use the
+            gateway bundle. `verifyHostName` (boolean, default true)
+            controls SAN/hostname verification against the target. Every
+            target of an endpoint carrying `tls` must use https://.
+            Unknown keys are rejected.
+          additionalProperties: true
+          example:
+            identity: partner-identity
+            trustedCAs: [partner-ca]
+            verifyHostName: true
+
     LLMProviderTemplateRequest:
       type: object
       required:
@@ -7816,6 +8167,8 @@ tags:
     description: CRUD operations for A2A Agents
   - name: Certificate Management
     description: Manage custom TLS certificates for HTTPS upstream verification
+  - name: Endpoint Management
+    description: CRUD operations for gateway-wide Endpoints
   - name: LLM Provider Template Management
     description: CRUD operations for LLM Provider Template configurations
   - name: LLM Provider Management

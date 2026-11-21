@@ -48,6 +48,8 @@ const (
 	GatewayLLMProxyByIDPath    = "/llm-proxies/%s"
 	GatewayGraphQLAPIsPath     = "/graphql-apis"
 	GatewayGraphQLAPIByIDPath  = "/graphql-apis/%s"
+	GatewayEndpointsPath       = "/endpoints"
+	GatewayEndpointByIDPath    = "/endpoints/%s"
 	DevPortalHealthPath        = "/health"
 
 	// API Key Endpoints (scoped to a REST API)

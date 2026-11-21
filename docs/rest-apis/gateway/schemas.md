@@ -3170,6 +3170,153 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
 |field|string|false|none|Field that failed validation|
 |message|string|false|none|Human-readable error message|
 
+## EndpointConfigurationRequest
+
+<a id="schemaendpointconfigurationrequest"></a>
+<a id="schema_EndpointConfigurationRequest"></a>
+<a id="tocSendpointconfigurationrequest"></a>
+<a id="tocsendpointconfigurationrequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Endpoint",
+  "metadata": {
+    "name": "tenant-a",
+    "labels": {
+      "team": "orders"
+    }
+  },
+  "spec": {
+    "displayName": "Orders backend for tenant A",
+    "basePath": "/v1",
+    "upstreams": [
+      {
+        "url": "http://orders-tenant-a:9080"
+      }
+    ],
+    "timeout": {
+      "connect": "2s"
+    }
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|Endpoint specification version|
+|kind|string|true|none|Endpoint kind|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[EndpointConfigurationData](#schemaendpointconfigurationdata)|true|none|A gateway-wide backend. The fields are those of an upstreamDefinitions entry. metadata.name is the Endpoint's name: lowercase letters and digits in hyphen-separated segments, 3 to 40 characters. metadata.labels is what the dynamic-endpoint policy's endpointSelector matches against.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|Endpoint|
+
+## EndpointConfiguration
+
+<a id="schemaendpointconfiguration"></a>
+<a id="schema_EndpointConfiguration"></a>
+<a id="tocSendpointconfiguration"></a>
+<a id="tocsendpointconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Endpoint",
+  "metadata": {
+    "name": "tenant-a",
+    "labels": {
+      "team": "orders"
+    }
+  },
+  "spec": {
+    "displayName": "Orders backend for tenant A",
+    "basePath": "/v1",
+    "upstreams": [
+      {
+        "url": "http://orders-tenant-a:9080"
+      }
+    ],
+    "timeout": {
+      "connect": "2s"
+    }
+  },
+  "status": {
+    "id": "tenant-a",
+    "createdAt": "2026-11-16T07:21:13Z",
+    "updatedAt": "2026-11-16T07:21:13Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[EndpointConfigurationRequest](#schemaendpointconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+## EndpointConfigurationData
+
+<a id="schemaendpointconfigurationdata"></a>
+<a id="schema_EndpointConfigurationData"></a>
+<a id="tocSendpointconfigurationdata"></a>
+<a id="tocsendpointconfigurationdata"></a>
+
+```json
+{
+  "displayName": "Orders backend for tenant A",
+  "basePath": "/v1",
+  "timeout": {
+    "connect": "5s"
+  },
+  "upstreams": [
+    {
+      "url": "http://orders-tenant-a:9080",
+      "weight": 80
+    }
+  ],
+  "tls": {
+    "identity": "partner-identity",
+    "trustedCAs": [
+      "partner-ca"
+    ],
+    "verifyHostName": true
+  }
+}
+
+```
+
+A gateway-wide backend. The fields are those of an upstreamDefinitions entry. metadata.name is the Endpoint's name: lowercase letters and digits in hyphen-separated segments, 3 to 40 characters. metadata.labels is what the dynamic-endpoint policy's endpointSelector matches against.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|false|none|Human-readable endpoint name|
+|basePath|string|false|none|Base path prefix for all requests to this endpoint (e.g., /api/v2). Must start with '/' and must not end with '/'; omit for root.|
+|timeout|[UpstreamTimeout](#schemaupstreamtimeout)|false|none|Timeout configuration for upstream requests|
+|upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
+|» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
+|» weight|integer|false|none|Relative weight for load balancing across the endpoint's targets.|
+|tls|object|false|none|Optional mutual-TLS presentation and trust for this backend. `identity` (string) names a gateway identity — a certificate uploaded to POST /certificates with usage: identity — to present on the connection. `trustedCAs` (array of string) lists usage: upstream certificates to trust for this backend in place of the gateway-wide trust bundle; omit to use the gateway bundle. `verifyHostName` (boolean, default true) controls SAN/hostname verification against the target. Every target of an endpoint carrying `tls` must use https://. Unknown keys are rejected.|
+
 ## LLMProviderTemplateRequest
 
 <a id="schemallmprovidertemplaterequest"></a>

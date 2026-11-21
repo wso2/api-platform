@@ -298,116 +298,131 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 		}
 		namesSeen[def.Name] = true
 
-		// Validate basePath (when set) against the CRD/OpenAPI pattern. Validated raw (no trim) so it
-		// matches CRD admission exactly; omit the field for root.
-		if def.BasePath != nil && !upstreamBasePathRegex.MatchString(*def.BasePath) {
+		errors = append(errors, validateUpstreamDefinitionBody(
+			fmt.Sprintf("%s[%d]", fieldPrefix, i), "upstreamDefinitions[].basePath", def)...)
+	}
+
+	return errors
+}
+
+// validateUpstreamDefinitionBody validates everything about one upstream
+// definition except its name: basePath, the upstream targets and the connect
+// timeout. fieldPath is the definition's own path, and basePathField is how an
+// error message refers to its basePath field. It is shared by an API's
+// upstreamDefinitions entries and by gateway-wide Endpoints, whose spec has the
+// same fields, so the two can never accept different backends.
+func validateUpstreamDefinitionBody(fieldPath, basePathField string, def api.UpstreamDefinition) []ValidationError {
+	var errors []ValidationError
+
+	// Validate basePath (when set) against the CRD/OpenAPI pattern. Validated raw (no trim) so it
+	// matches CRD admission exactly; omit the field for root.
+	if def.BasePath != nil && !upstreamBasePathRegex.MatchString(*def.BasePath) {
+		errors = append(errors, ValidationError{
+			Field:   fieldPath + ".basePath",
+			Message: "Invalid basePath (must start with '/' and must not end with '/'; omit for root)",
+		})
+	}
+
+	// Validate upstreams array
+	if len(def.Upstreams) == 0 {
+		errors = append(errors, ValidationError{
+			Field:   fieldPath + ".upstreams",
+			Message: "At least one upstream target is required",
+		})
+	}
+
+	for j, upstream := range def.Upstreams {
+		if upstream.Url == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s[%d].basePath", fieldPrefix, i),
-				Message: "Invalid basePath (must start with '/' and must not end with '/'; omit for root)",
+				Field:   fmt.Sprintf("%s.upstreams[%d].url", fieldPath, j),
+				Message: "URL is required",
 			})
+			continue
 		}
 
-		// Validate upstreams array
-		if len(def.Upstreams) == 0 {
+		parsedURL, err := url.Parse(upstream.Url)
+		if err != nil {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s[%d].upstreams", fieldPrefix, i),
-				Message: "At least one upstream target is required",
+				Field:   fmt.Sprintf("%s.upstreams[%d].url", fieldPath, j),
+				Message: fmt.Sprintf("Invalid URL format: %v", err),
 			})
-		}
-
-		for j, upstream := range def.Upstreams {
-			if upstream.Url == "" {
+		} else {
+			if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
-					Message: "URL is required",
+					Field:   fmt.Sprintf("%s.upstreams[%d].url", fieldPath, j),
+					Message: "URL must use http or https scheme",
 				})
-				continue
 			}
 
-			parsedURL, err := url.Parse(upstream.Url)
-			if err != nil {
+			if parsedURL.Host == "" {
 				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
-					Message: fmt.Sprintf("Invalid URL format: %v", err),
+					Field:   fmt.Sprintf("%s.upstreams[%d].url", fieldPath, j),
+					Message: "URL must include a host",
 				})
-			} else {
-				if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
-						Message: "URL must use http or https scheme",
-					})
-				}
-
-				if parsedURL.Host == "" {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
-						Message: "URL must include a host",
-					})
-				}
-
-				// upstreamDefinitions URLs must be host[:port] only — the base path is
-				// configured exclusively via upstreamDefinitions[].basePath.
-				if parsedURL.Path != "" && parsedURL.Path != "/" {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
-						Message: "URL must not include a path; set the base path in upstreamDefinitions[].basePath instead",
-					})
-				}
-
-				// A query string or fragment is not part of the upstream cluster
-				// (host[:port] only), so it would be silently dropped. Reject it.
-				if parsedURL.RawQuery != "" || parsedURL.ForceQuery {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
-						Message: "URL must not include a query string; only host[:port] is used",
-					})
-				}
-
-				if parsedURL.Fragment != "" {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
-						Message: "URL must not include a fragment; only host[:port] is used",
-					})
-				}
 			}
 
-			// Validate weight if present
-			if upstream.Weight != nil {
-				if *upstream.Weight < 0 || *upstream.Weight > 100 {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].upstreams[%d].weight", fieldPrefix, i, j),
-						Message: "Weight must be between 0 and 100",
-					})
-				}
+			// upstreamDefinitions URLs must be host[:port] only — the base path is
+			// configured exclusively via upstreamDefinitions[].basePath.
+			if parsedURL.Path != "" && parsedURL.Path != "/" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.upstreams[%d].url", fieldPath, j),
+					Message: "URL must not include a path; set the base path in " + basePathField + " instead",
+				})
+			}
+
+			// A query string or fragment is not part of the upstream cluster
+			// (host[:port] only), so it would be silently dropped. Reject it.
+			if parsedURL.RawQuery != "" || parsedURL.ForceQuery {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.upstreams[%d].url", fieldPath, j),
+					Message: "URL must not include a query string; only host[:port] is used",
+				})
+			}
+
+			if parsedURL.Fragment != "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.upstreams[%d].url", fieldPath, j),
+					Message: "URL must not include a fragment; only host[:port] is used",
+				})
 			}
 		}
 
-		// Timeout validation is limited to connect timeout. Enforce the same single-unit duration
-		// pattern as the CRD/OpenAPI so gateway validation cannot diverge from CRD admission, then
-		// a ParseDuration guard for pathological overflow — mirroring validateResilienceTimeouts.
-		// Unlike the resilience timeouts, zero does not disable a connect timeout: the transformer
-		// requires a positive value (and Envoy rejects connect_timeout <= 0s)
-		if def.Timeout != nil && def.Timeout.Connect != nil {
-			timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
-			if timeoutStr != "" {
-				if !constants.ResilienceDurationRegex.MatchString(timeoutStr) {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
-						Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms')",
-					})
-				} else if duration, err := time.ParseDuration(timeoutStr); err != nil {
-					// The pattern guarantees a single-unit value; ParseDuration is a final guard
-					// against pathological overflow (e.g. "99999999999999999999s").
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
-						Message: fmt.Sprintf("Invalid timeout format: %v", err),
-					})
-				} else if duration <= 0 {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
-						Message: "Connect timeout must be positive",
-					})
-				}
+		// Validate weight if present
+		if upstream.Weight != nil {
+			if *upstream.Weight < 0 || *upstream.Weight > 100 {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.upstreams[%d].weight", fieldPath, j),
+					Message: "Weight must be between 0 and 100",
+				})
+			}
+		}
+	}
+
+	// Timeout validation is limited to connect timeout. Enforce the same single-unit duration
+	// pattern as the CRD/OpenAPI so gateway validation cannot diverge from CRD admission, then
+	// a ParseDuration guard for pathological overflow — mirroring validateResilienceTimeouts.
+	// Unlike the resilience timeouts, zero does not disable a connect timeout: the transformer
+	// requires a positive value (and Envoy rejects connect_timeout <= 0s)
+	if def.Timeout != nil && def.Timeout.Connect != nil {
+		timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
+		if timeoutStr != "" {
+			if !constants.ResilienceDurationRegex.MatchString(timeoutStr) {
+				errors = append(errors, ValidationError{
+					Field:   fieldPath + ".timeout.connect",
+					Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms')",
+				})
+			} else if duration, err := time.ParseDuration(timeoutStr); err != nil {
+				// The pattern guarantees a single-unit value; ParseDuration is a final guard
+				// against pathological overflow (e.g. "99999999999999999999s").
+				errors = append(errors, ValidationError{
+					Field:   fieldPath + ".timeout.connect",
+					Message: fmt.Sprintf("Invalid timeout format: %v", err),
+				})
+			} else if duration <= 0 {
+				errors = append(errors, ValidationError{
+					Field:   fieldPath + ".timeout.connect",
+					Message: "Connect timeout must be positive",
+				})
 			}
 		}
 	}

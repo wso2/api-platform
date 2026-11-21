@@ -154,6 +154,20 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     UNIQUE(gateway_id, handle)
 );
 
+-- Gateway-wide Endpoints: named backends shared by every API on the gateway.
+-- Each row has an artifacts row of kind 'Endpoint'.
+CREATE TABLE IF NOT EXISTS endpoints (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    handle TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE,
+    UNIQUE(gateway_id, handle)
+);
+
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid TEXT NOT NULL,

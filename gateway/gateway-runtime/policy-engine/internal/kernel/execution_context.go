@@ -491,6 +491,54 @@ func (ec *PolicyExecutionContext) handlePayloadTooLarge(
 	})
 }
 
+// routingResponse turns a request translator's result into the ext_proc response. A
+// translator fails with endpointUnavailableError when the chain routed the request to a
+// gateway-wide Endpoint the gateway does not have; that becomes a 503 here instead of ending
+// the ext_proc stream. Every other result passes through unchanged.
+func (ec *PolicyExecutionContext) routingResponse(
+	ctx context.Context,
+	resp *extprocv3.ProcessingResponse,
+	err error,
+) (*extprocv3.ProcessingResponse, error) {
+	var missing *endpointUnavailableError
+	if errors.As(err, &missing) {
+		return ec.handleEndpointUnavailable(ctx, missing), nil
+	}
+	return resp, err
+}
+
+// handleEndpointUnavailable builds an HTTP 503 immediate response for a request a policy
+// routed to an Endpoint the gateway does not have: a fixed target that was never created,
+// or one removed while the request was in flight. The request fails closed rather than
+// falling back to the route's own upstream, which is not where the policy sent it. The
+// client payload stays generic; the Endpoint name is logged under the correlation id.
+func (ec *PolicyExecutionContext) handleEndpointUnavailable(
+	ctx context.Context,
+	missing *endpointUnavailableError,
+) *extprocv3.ProcessingResponse {
+	errorID := uuid.New().String()
+
+	slog.WarnContext(ctx, "Rejecting request: target endpoint is not available on this gateway",
+		"error_id", errorID,
+		"request_id", ec.requestID,
+		"route_key", ec.routeKey,
+		"endpoint", missing.endpoint,
+	)
+
+	return ec.engineError(ctx, engineFailure{
+		errorID: errorID,
+		status:  http.StatusServiceUnavailable,
+		body:    fmt.Sprintf(`{"error":"Service Unavailable","error_id":"%s"}`, errorID),
+		reason:  constants.TerminalReasonEndpointUnavailable,
+		err: &policy.FaultDetails{
+			Code:      codeEndpointUnavailable,
+			Type:      policy.FaultTypeRouting,
+			Direction: policy.DirectionRequest,
+			Message:   "The request could not be routed.",
+		},
+	})
+}
+
 // engineFailure describes a failure the engine itself produced, as opposed to one a policy
 // produced or one the router reported.
 type engineFailure struct {
@@ -1042,7 +1090,8 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	if f, isFault := faultFromRequestHeaders(execResult); isFault {
 		ec.handleFault(ctx, f)
 	}
-	return TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
+	resp, err := TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
+	return ec.routingResponse(ctx, resp, err)
 }
 
 // responseHasNoBody returns true when the response carries no body and Envoy will not
@@ -1147,7 +1196,8 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 	if f, isFault := faultFromRequestBody(bodyResult); isFault {
 		ec.handleFault(ctx, f)
 	}
-	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
+	resp, err := TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
+	return ec.routingResponse(ctx, resp, err)
 }
 
 // processResponseBodyForEmptyResponse executes body policies inline during the response-headers
@@ -1265,7 +1315,8 @@ func (ec *PolicyExecutionContext) processRequestBody(
 		if f, isFault := faultFromRequestBody(execResult); isFault {
 			ec.handleFault(ctx, f)
 		}
-		return TranslateRequestBodyActions(execResult, ec.policyChain, ec)
+		resp, err := TranslateRequestBodyActions(execResult, ec.policyChain, ec)
+		return ec.routingResponse(ctx, resp, err)
 	}
 
 	return &extprocv3.ProcessingResponse{

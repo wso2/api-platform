@@ -411,7 +411,8 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 		ec.handleFault(ctx, f)
 	}
 
-	return TranslateRequestBodyActionsWithHeaderMerge(headerResult, bodyResult, ec)
+	resp, err := TranslateRequestBodyActionsWithHeaderMerge(headerResult, bodyResult, ec)
+	return ec.routingResponse(ctx, resp, err)
 }
 
 // denyResolution builds the response for a request whose operation could not be

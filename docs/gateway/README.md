@@ -11,6 +11,7 @@ Run the AI Gateway when AI traffic needs the controls you already apply to your 
 - Expose MCP servers through a central gateway, and apply authentication and access control to MCP traffic.
 - Give an A2A agent one governed address, serve its Agent Card from the gateway, and apply policies to individual A2A operations. See [Agent governance](agent-governance/index.md).
 - Authenticate callers by the client certificates they present, and present the gateway's own certificate to backends that require mutual TLS. See [Mutual TLS](mutual-tls/index.md).
+- Define a backend once for the whole gateway, and route any API to it per request or as a fixed target, without redeploying APIs when backends are added or moved. See [Global endpoints](endpoints/README.md).
 - Collect logs, traces, and analytics for the traffic the gateway handles.
 - Run the gateway on its own, or register it with AI Workspace to govern the gateways across your organization.
 
