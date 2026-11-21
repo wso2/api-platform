@@ -40,6 +40,13 @@ type ConnectionConfig struct {
 	TLSCertFile   string
 	TLSKeyFile    string
 	TLSServerName string
+
+	// The PEM fields carry certificate material inline, for the callers that supply it that
+	// way: there is no filesystem on the gateway to place a file on, so the material travels
+	// in the broker properties themselves. Each takes precedence over its file counterpart.
+	TLSCAPEM      string
+	TLSCertPEM    string
+	TLSKeyPEM     string
 	SASLMechanism string
 	SASLUsername  string
 	SASLPassword  string
@@ -57,6 +64,13 @@ func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]int
 		SASLMechanism: global.SASLMechanism,
 		SASLUsername:  global.SASLUsername,
 		SASLPassword:  global.SASLPassword,
+	}
+
+	// Translate Kafka client property names into this driver's option names before anything
+	// reads them. See config_properties.go.
+	overrides, err := canonicalizeOverrides(overrides)
+	if err != nil {
+		return ConnectionConfig{}, err
 	}
 
 	if overrides != nil {
@@ -89,6 +103,21 @@ func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]int
 			return ConnectionConfig{}, err
 		} else if ok {
 			cfg.TLSServerName = v
+		}
+		if v, ok, err := stringOverride(overrides["tls_ca_pem"]); err != nil {
+			return ConnectionConfig{}, err
+		} else if ok {
+			cfg.TLSCAPEM = v
+		}
+		if v, ok, err := stringOverride(overrides["tls_cert_pem"]); err != nil {
+			return ConnectionConfig{}, err
+		} else if ok {
+			cfg.TLSCertPEM = v
+		}
+		if v, ok, err := stringOverride(overrides["tls_key_pem"]); err != nil {
+			return ConnectionConfig{}, err
+		} else if ok {
+			cfg.TLSKeyPEM = v
 		}
 		if v, ok, err := stringOverride(overrides["sasl_mechanism"]); err != nil {
 			return ConnectionConfig{}, err
@@ -129,6 +158,9 @@ func normalizeConnectionConfig(cfg *ConnectionConfig) {
 	cfg.TLSCertFile = strings.TrimSpace(cfg.TLSCertFile)
 	cfg.TLSKeyFile = strings.TrimSpace(cfg.TLSKeyFile)
 	cfg.TLSServerName = strings.TrimSpace(cfg.TLSServerName)
+	cfg.TLSCAPEM = strings.TrimSpace(cfg.TLSCAPEM)
+	cfg.TLSCertPEM = strings.TrimSpace(cfg.TLSCertPEM)
+	cfg.TLSKeyPEM = strings.TrimSpace(cfg.TLSKeyPEM)
 }
 
 func validateConnectionConfig(cfg ConnectionConfig) error {
@@ -136,9 +168,22 @@ func validateConnectionConfig(cfg ConnectionConfig) error {
 		return fmt.Errorf("kafka brokers must not be empty")
 	}
 
+	if cfg.TLSCAFile != "" && cfg.TLSCAPEM != "" {
+		return fmt.Errorf("kafka CA certificate is configured both as a file and inline; supply one")
+	}
+	if cfg.TLSCertFile != "" && cfg.TLSCertPEM != "" {
+		return fmt.Errorf("kafka client certificate is configured both as a file and inline; supply one")
+	}
+	if cfg.TLSKeyFile != "" && cfg.TLSKeyPEM != "" {
+		return fmt.Errorf("kafka client key is configured both as a file and inline; supply one")
+	}
+
+	hasCert := cfg.TLSCertFile != "" || cfg.TLSCertPEM != ""
+	hasKey := cfg.TLSKeyFile != "" || cfg.TLSKeyPEM != ""
+
 	if !cfg.TLS {
-		if cfg.TLSCAFile != "" || cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.TLSServerName != "" {
-			return fmt.Errorf("kafka TLS files or server name require kafka.tls=true")
+		if cfg.TLSCAFile != "" || cfg.TLSCAPEM != "" || hasCert || hasKey || cfg.TLSServerName != "" {
+			return fmt.Errorf("kafka TLS material or server name requires kafka.tls=true")
 		}
 	}
 
@@ -148,15 +193,19 @@ func validateConnectionConfig(cfg ConnectionConfig) error {
 				return err
 			}
 		}
-		if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
-			if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
-				return fmt.Errorf("kafka.tls_cert_file and kafka.tls_key_file must be configured together")
+		if hasCert || hasKey {
+			if !hasCert || !hasKey {
+				return fmt.Errorf("kafka client certificate and key must be configured together")
 			}
-			if err := validateReadableFile(cfg.TLSCertFile, "kafka.tls_cert_file"); err != nil {
-				return err
+			if cfg.TLSCertFile != "" {
+				if err := validateReadableFile(cfg.TLSCertFile, "kafka.tls_cert_file"); err != nil {
+					return err
+				}
 			}
-			if err := validateReadableFile(cfg.TLSKeyFile, "kafka.tls_key_file"); err != nil {
-				return err
+			if cfg.TLSKeyFile != "" {
+				if err := validateReadableFile(cfg.TLSKeyFile, "kafka.tls_key_file"); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -208,7 +257,13 @@ func buildTLSConfig(cfg ConnectionConfig) (*tls.Config, error) {
 		ServerName: cfg.TLSServerName,
 	}
 
-	if cfg.TLSCAFile != "" {
+	if cfg.TLSCAPEM != "" {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM([]byte(cfg.TLSCAPEM)) {
+			return nil, fmt.Errorf("failed to parse the inline kafka TLS CA certificate")
+		}
+		tlsCfg.RootCAs = pool
+	} else if cfg.TLSCAFile != "" {
 		caPEM, err := os.ReadFile(cfg.TLSCAFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read kafka TLS CA file: %w", err)
@@ -220,8 +275,12 @@ func buildTLSConfig(cfg ConnectionConfig) (*tls.Config, error) {
 		tlsCfg.RootCAs = pool
 	}
 
-	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+	certPEM, keyPEM, err := clientKeyPair(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if certPEM != nil && keyPEM != nil {
+		cert, err := tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load kafka client certificate: %w", err)
 		}
@@ -229,6 +288,33 @@ func buildTLSConfig(cfg ConnectionConfig) (*tls.Config, error) {
 	}
 
 	return tlsCfg, nil
+}
+
+// clientKeyPair returns the client certificate and key as PEM bytes, from whichever of the
+// inline and file forms is configured. Both nil means no client certificate was configured.
+func clientKeyPair(cfg ConnectionConfig) ([]byte, []byte, error) {
+	certPEM := []byte(cfg.TLSCertPEM)
+	if cfg.TLSCertPEM == "" && cfg.TLSCertFile != "" {
+		read, err := os.ReadFile(cfg.TLSCertFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read kafka TLS certificate file: %w", err)
+		}
+		certPEM = read
+	}
+
+	keyPEM := []byte(cfg.TLSKeyPEM)
+	if cfg.TLSKeyPEM == "" && cfg.TLSKeyFile != "" {
+		read, err := os.ReadFile(cfg.TLSKeyFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read kafka TLS key file: %w", err)
+		}
+		keyPEM = read
+	}
+
+	if len(certPEM) == 0 || len(keyPEM) == 0 {
+		return nil, nil, nil
+	}
+	return certPEM, keyPEM, nil
 }
 
 func buildSASLMechanism(cfg ConnectionConfig) (sasl.Mechanism, error) {
