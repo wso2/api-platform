@@ -1,0 +1,49 @@
+# Traffic logging with an inline JSON template, for
+# suites/it/features/gateway/observability/traffic_log_template.feature.
+# Every value in the template is the same on every run except durationMs, so a test can compare
+# the whole line. The mock-jwks issuer lets a scenario call an operation secured with jwt-auth.
+# The template also holds a few mistakes, each reported once at startup: typo and badUnit do
+# not compile, resBody reads a body the collector does not capture, nosuch matches no field,
+# and properties are ignored while a template is used.
+
+[collector]
+request_headers = true
+
+[traffic_logging]
+enabled = true
+outputs = ["stdout"]
+exclude_fields = ["http.debug", "claims.tenant", "nosuch"]
+template = '''
+{
+  "source": "it-traffic-log-template",
+  "api": "$ctx:api.name",
+  "http": {
+    "method": "$ctx:request.method",
+    "status": "$ctx:response.status",
+    "debug": "removed by exclude_fields"
+  },
+  "auth": "$ctx:request.header['authorization']",
+  "user": "$ctx:auth.subject",
+  "claims": "$ctx:auth.property",
+  "typo": "$ctx:request.methd",
+  "fixed": [1.5, true, null, "gw"],
+  "resBody": "$ctx:response.body",
+  "error": {
+    "category": "$ctx:error.category",
+    "code": "$ctx:error.errorCode",
+    "message": "$ctx:error.errorMessage"
+  },
+  "durationMs": "$ctx:convertUnit(latencies.duration, 'ms')",
+  "badUnit": "$ctx:convertUnit(latencies.duration, 'rs')"
+}
+'''
+
+[traffic_logging.properties]
+ignored = "$ctx:api.name"
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"

@@ -18,6 +18,7 @@
 package publishers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,7 +64,7 @@ func newLogToFile(t *testing.T, cfg *config.TrafficLoggingConfig) (*Log, func() 
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = f.Close() })
 
-	l, err := NewLog(cfg)
+	l, err := NewLog(cfg, nil)
 	require.NoError(t, err)
 	useWriterSink(l, f)
 	return l, func() string {
@@ -105,7 +107,7 @@ func headerMap(t *testing.T, v interface{}) map[string]interface{} {
 }
 
 func TestNewLog_NilConfig(t *testing.T) {
-	l, err := NewLog(nil)
+	l, err := NewLog(nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, l)
 	assert.Empty(t, l.maskedHeaders)
@@ -697,7 +699,7 @@ func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing
 		Enabled:    true,
 		Outputs:    []string{config.TrafficLogSinkStdout},
 		Properties: map[string]string{"apiName": "$ctx:api.name"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Nil(t, l.globalDir.Properties, "globalDir must never carry baked-in properties")
 
@@ -741,7 +743,7 @@ func TestLog_Publish_GlobalFallback_ConcurrentPropertiesNoRace(t *testing.T) {
 		Enabled:    true,
 		Outputs:    []string{config.TrafficLogSinkStdout},
 		Properties: map[string]string{"apiName": "$ctx:api.name"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "out.log")
 	f, err := os.Create(path)
@@ -895,4 +897,104 @@ func TestLog_Publish_DoesNotMutateSharedError(t *testing.T) {
 
 	assert.Equal(t, "Valid credentials required", event.Error.Summary,
 		"exclusion is a projection of the emitted JSON, never an edit to the shared event")
+}
+
+// fixedRequestTime is the request time used where a test compares whole lines.
+var fixedRequestTime = time.Date(2026, 10, 30, 10, 15, 30, 123_000_000, time.UTC)
+
+// defaultLineEvents returns a successful request, an authentication failure and a backend
+// error, each with a fixed request time, captured headers and a captured request body.
+func defaultLineEvents() map[string]*dto.Event {
+	withCapture := func(event *dto.Event) *dto.Event {
+		event.RequestTimestamp = fixedRequestTime
+		event.Properties[dto.PropKeyRequestHeaders] = `{"authorization":"Bearer secret","x-foo":"bar"}`
+		event.Properties[dto.PropKeyResponseHeaders] = `{"content-type":"application/json"}`
+		event.Properties[dto.PropKeyRequestPayload] = `{"order":1}`
+		return event
+	}
+
+	authFailure := withCapture(createBaseEvent())
+	authFailure.ProxyResponseCode = 401
+	authFailure.TrafficLogLatencies = nil
+	authFailure.ErrorType = "AUTH"
+	authFailure.Error = &dto.Error{
+		ErrorCode:    900902,
+		ErrorMessage: dto.AuthenticationFailure,
+		Type:         "authentication",
+		Direction:    "request",
+		Summary:      "Valid credentials required",
+		Policy:       "jwt-auth",
+		PolicyPhase:  "request_headers",
+		Source:       "gateway",
+	}
+
+	backendError := withCapture(createBaseEvent())
+	backendError.ProxyResponseCode = 503
+	backendError.Target = &dto.Target{TargetResponseCode: 503, Destination: "backend.internal:8080/resource"}
+	backendError.ErrorType = "TARGET_CONNECTIVITY"
+	backendError.Error = &dto.Error{
+		ErrorCode:      101503,
+		ErrorMessage:   dto.TargetConnectivityConnectionTimeout,
+		Type:           "upstream",
+		Direction:      "response",
+		Source:         "upstream",
+		OriginalStatus: 503,
+	}
+
+	return map[string]*dto.Event{
+		"success":       withCapture(createBaseEvent()),
+		"auth failure":  authFailure,
+		"backend error": backendError,
+	}
+}
+
+// defaultLineConfigs returns a config that logs headers and the request body, and the same
+// config with exclude_fields and properties set.
+func defaultLineConfigs() map[string]*config.TrafficLoggingConfig {
+	plain := func() *config.TrafficLoggingConfig {
+		return &config.TrafficLoggingConfig{
+			Enabled:         true,
+			Outputs:         []string{config.TrafficLogSinkStdout},
+			MaskedHeaders:   []string{"authorization", "x-api-key", "x-jwt-assertion"},
+			RequestHeaders:  true,
+			RequestBody:     true,
+			ResponseHeaders: true,
+		}
+	}
+	shaped := plain()
+	shaped.ExcludeFields = []string{"operation", "requestHeaders.x-foo", "error.summary"}
+	shaped.Properties = map[string]string{"env": "prod", "api": "$ctx:api.name"}
+	return map[string]*config.TrafficLoggingConfig{"plain": plain(), "shaped": shaped}
+}
+
+// With neither template setting, the default line is byte-identical to what the code wrote
+// before templates existed, for successes and failures, with and without exclude_fields and
+// properties, and NewLog logs nothing new.
+func TestLog_DefaultLineUnchanged(t *testing.T) {
+	want := map[string]string{
+		"plain/auth failure":   `{"component":"pol","timestamp":"2026-10-30T10:15:30.123Z","correlationId":"corr-123","status":401,"api":{"id":"api-123","name":"test-api","version":"v1.0","context":"/test","kind":"Rest","projectId":"project-123"},"operation":{"method":"GET","path":"/resource"},"client":{"ip":"192.168.1.1","userAgent":"test-agent"},"errorType":"AUTH","error":{"errorCode":900902,"errorMessage":"AUTHENTICATION_FAILURE","type":"authentication","direction":"request","summary":"Valid credentials required","policy":"jwt-auth","policyPhase":"request_headers","source":"gateway"},"requestHeaders":{"authorization":"****","x-foo":"bar"},"responseHeaders":{"content-type":"application/json"},"requestBody":"{\"order\":1}"}`,
+		"plain/backend error":  `{"component":"pol","timestamp":"2026-10-30T10:15:30.123Z","correlationId":"corr-123","status":503,"api":{"id":"api-123","name":"test-api","version":"v1.0","context":"/test","kind":"Rest","projectId":"project-123"},"operation":{"method":"GET","path":"/resource"},"target":{"statusCode":503,"destination":"backend.internal:8080/resource"},"client":{"ip":"192.168.1.1","userAgent":"test-agent"},"latencies":{"durationUs":250000,"requestMediationLatencyUs":50000,"responseMediationLatencyUs":30000,"backendLatencyUs":40000},"errorType":"TARGET_CONNECTIVITY","error":{"errorCode":101503,"errorMessage":"CONNECTION_TIMEOUT","type":"upstream","direction":"response","source":"upstream","originalStatus":503},"requestHeaders":{"authorization":"****","x-foo":"bar"},"responseHeaders":{"content-type":"application/json"},"requestBody":"{\"order\":1}"}`,
+		"plain/success":        `{"component":"pol","timestamp":"2026-10-30T10:15:30.123Z","correlationId":"corr-123","status":200,"api":{"id":"api-123","name":"test-api","version":"v1.0","context":"/test","kind":"Rest","projectId":"project-123"},"operation":{"method":"GET","path":"/resource"},"client":{"ip":"192.168.1.1","userAgent":"test-agent"},"latencies":{"durationUs":250000,"requestMediationLatencyUs":50000,"responseMediationLatencyUs":30000,"backendLatencyUs":40000},"requestHeaders":{"authorization":"****","x-foo":"bar"},"responseHeaders":{"content-type":"application/json"},"requestBody":"{\"order\":1}"}`,
+		"shaped/auth failure":  `{"api":{"id":"api-123","name":"test-api","version":"v1.0","context":"/test","kind":"Rest","projectId":"project-123"},"client":{"ip":"192.168.1.1","userAgent":"test-agent"},"component":"pol","correlationId":"corr-123","error":{"direction":"request","errorCode":900902,"errorMessage":"AUTHENTICATION_FAILURE","policy":"jwt-auth","policyPhase":"request_headers","source":"gateway","type":"authentication"},"errorType":"AUTH","properties":{"api":"test-api","env":"prod"},"requestBody":"{\"order\":1}","requestHeaders":{"authorization":"****"},"responseHeaders":{"content-type":"application/json"},"status":401,"timestamp":"2026-10-30T10:15:30.123Z"}`,
+		"shaped/backend error": `{"api":{"id":"api-123","name":"test-api","version":"v1.0","context":"/test","kind":"Rest","projectId":"project-123"},"client":{"ip":"192.168.1.1","userAgent":"test-agent"},"component":"pol","correlationId":"corr-123","error":{"direction":"response","errorCode":101503,"errorMessage":"CONNECTION_TIMEOUT","originalStatus":503,"source":"upstream","type":"upstream"},"errorType":"TARGET_CONNECTIVITY","latencies":{"durationUs":250000,"requestMediationLatencyUs":50000,"responseMediationLatencyUs":30000,"backendLatencyUs":40000},"properties":{"api":"test-api","env":"prod"},"requestBody":"{\"order\":1}","requestHeaders":{"authorization":"****"},"responseHeaders":{"content-type":"application/json"},"status":503,"target":{"statusCode":503,"destination":"backend.internal:8080/resource"},"timestamp":"2026-10-30T10:15:30.123Z"}`,
+		"shaped/success":       `{"api":{"id":"api-123","name":"test-api","version":"v1.0","context":"/test","kind":"Rest","projectId":"project-123"},"client":{"ip":"192.168.1.1","userAgent":"test-agent"},"component":"pol","correlationId":"corr-123","latencies":{"durationUs":250000,"requestMediationLatencyUs":50000,"responseMediationLatencyUs":30000,"backendLatencyUs":40000},"properties":{"api":"test-api","env":"prod"},"requestBody":"{\"order\":1}","requestHeaders":{"authorization":"****"},"responseHeaders":{"content-type":"application/json"},"status":200,"timestamp":"2026-10-30T10:15:30.123Z"}`,
+	}
+
+	events := defaultLineEvents()
+	for configName, cfg := range defaultLineConfigs() {
+		for eventName, event := range events {
+			t.Run(configName+"/"+eventName, func(t *testing.T) {
+				logs := captureLogs(t)
+				l, err := NewLog(cfg, nil)
+				require.NoError(t, err)
+				assert.Empty(t, logs.String(), "NewLog must log nothing for a config without a template")
+
+				var buf bytes.Buffer
+				useWriterSink(l, &buf)
+				l.Publish(event)
+
+				assert.Equal(t, want[configName+"/"+eventName]+"\n", buf.String())
+			})
+		}
+	}
 }

@@ -152,6 +152,8 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 // definition block sweeps platform-api's engines instead: its subject is the control plane's
 // store, and the gateway only serves what was imported. So does the custom policy block: the
 // gateway reads the policy definitions from files, and the sync rules are the control plane's.
+// The traffic log template block runs one engine too: its subject is the data plane's traffic
+// log line, not the store.
 var singleEngineBlocks = map[string]components.DBType{
 	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
@@ -164,6 +166,7 @@ var singleEngineBlocks = map[string]components.DBType{
 	"gateway-mtls-hostnames-all-connections-required": components.SQLite,
 	"gateway-mtls-trust-any":                          components.SQLite,
 	"gateway-mtls-observability-default-identity":     components.SQLite,
+	"gateway-traffic-log-template":                    components.SQLite,
 	// Its scenarios stop and pause the block's Postgres server, which every component shares.
 	"health-dependency-outage": components.Postgres,
 	// Its scenarios refuse health probes, which do not depend on the gateway's database.
