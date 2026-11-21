@@ -12,7 +12,8 @@ ap gateway image build \
   [--platform <platform>] \
   [--output-dir <output_dir>] \
   [--netrc <file> | --git-credential <host>=<username>:<ENV_VAR> ...] \
-  [--go-env <KEY>[=<VALUE>] ...]
+  [--go-env <KEY>[=<VALUE>] ...] \
+  [--fetch-timeout <duration>]
 ```
 
 ## Sample Command
@@ -66,6 +67,7 @@ Even an output directory is not explicitly specified, the built images are cache
 - `--netrc`: A netrc file with credentials for private Go module hosts and proxies. See [Policies from Private Go Module Repositories](#policies-from-private-go-module-repositories).
 - `--git-credential`: A username and token for one private Go module host, as `<host>=<username>:<ENV_VAR>`. Repeat it for more hosts. Cannot be combined with `--netrc`.
 - `--go-env`: A Go module setting for the gateway-builder container, as `KEY=VALUE`, or `KEY` to copy the value from your environment. Repeatable.
+- `--fetch-timeout`: How long to wait for each `gomodule` policy to download, for example `10m`. The default is 5 minutes. A private module is fetched with git straight from its repository, including the whole repository at that version, so raise this for a large repository or a slow network. Needs a gateway-builder image that supports it; older builder images stop with `flag provided but not defined`.
 
 ## Policies from Private Go Module Repositories
 
@@ -167,6 +169,7 @@ When a private module cannot be downloaded, the builder log shows the reason rep
 - *The module was checked against the public checksum database*: set `GOPRIVATE` or `GONOSUMDB` to match the module path.
 - *The downloaded module does not match the checksum recorded for this version*: the module changed after it was published, or the download was tampered with. Do not turn checksum verification off to get past it; check the module's source, and publish a legitimate change as a new version.
 - *The builder could not reach the checksum database*: let the builder container reach `sum.golang.org`, or the database set in `GOSUMDB`.
+- *Downloading the module did not finish within 5m0s and was stopped*: the repository is large or the network is slow. Raise the limit with `--fetch-timeout`, for example `--fetch-timeout 10m`, or check that the builder container can reach the repository or module proxy.
 - *Could not reach the repository with any protocol*: check the credentials, and that the host is reachable from the builder container.
 
 The builder also logs the Go settings it received and whether a netrc file is present, in its "Go module settings" line.

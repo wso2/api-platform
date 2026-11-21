@@ -21,8 +21,10 @@ package discovery
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/goenv"
 )
@@ -57,9 +59,29 @@ func modDownloadFailure(gomodule string, stdout, stderr []byte, runErr error) er
 	return fmt.Errorf("failed to run 'go mod download -json %s' (%w): %s%s", gomodule, runErr, reason, hint)
 }
 
+// moduleFetchTimeoutError explains a module download stopped by -fetch-timeout,
+// including whatever Go printed before it was stopped.
+func moduleFetchTimeoutError(gomodule string, timeout time.Duration, stderr []byte) error {
+	msg := fmt.Sprintf("downloading %s did not finish within %s and was stopped. "+
+		"A private module is fetched with git straight from its repository, including the whole "+
+		"repository at that version, which can be slow for a large repository or a slow network. "+
+		"Raise the limit with --fetch-timeout (ap gateway image build), for example --fetch-timeout 10m, "+
+		"or check that the builder container can reach the repository or module proxy", gomodule, timeout)
+	if out := strings.TrimSpace(string(stderr)); out != "" {
+		const maxOutput = 2000
+		if len(out) > maxOutput {
+			out = "..." + out[len(out)-maxOutput:]
+		}
+		msg += "\ngo output before it was stopped:\n" + goenv.RedactCredentials(out)
+	}
+	return errors.New(msg)
+}
+
 // moduleAccessHint maps the usual private-module failures to the setting that fixes them.
 func moduleAccessHint(reason string) string {
-	lower := strings.ToLower(reason)
+	// Collapsed whitespace lets phrases that Go splits over lines ("server response:\n\tnot
+	// found") match as written below.
+	lower := strings.ToLower(strings.Join(strings.Fields(reason), " "))
 	checksumDB := containsAny(lower, "verifying module", "verifying go.mod", "sum.golang.org", "checksum database")
 	switch {
 	// Checked before everything else: the module's content changed after it was
@@ -71,8 +93,9 @@ func moduleAccessHint(reason string) string {
 			"legitimate, publish it as a new version."
 	// The public checksum database answered "not found": the module is private. Checked
 	// before credentials because Go quotes the database's own git error ("could not read
-	// Username"), which credentials cannot fix.
-	case checksumDB && containsAny(lower, "404", "410", "not found"):
+	// Username"), which credentials cannot fix. Whole response phrases, not bare status
+	// codes, so a pseudo-version timestamp such as 20260410120000 does not match.
+	case checksumDB && containsAny(lower, "404 not found", "410 gone", "server response: not found"):
 		return "the module was checked against the public checksum database, which cannot see " +
 			"private modules. Set GOPRIVATE (or GONOSUMDB) to a pattern matching the module path."
 	case checksumDB:

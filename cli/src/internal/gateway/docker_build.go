@@ -47,6 +47,7 @@ type DockerBuildConfig struct {
 	LogFilePath                string
 	OutputCopyDir              string
 	BuilderAccess              BuilderAccess // Go settings and credentials for the builder container
+	FetchTimeout               time.Duration // per gomodule policy download; 0 leaves the builder default
 }
 
 // BuildGatewayImages executes the docker build process for gateway images
@@ -113,14 +114,7 @@ func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
 	}
 	defer cleanup()
 
-	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace"}
-	args = append(args, accessArgs...)
-	args = append(args, config.GatewayBuilder,
-		"-gateway-controller-base-image", config.GatewayControllerBaseImage,
-		"-gateway-runtime-base-image", config.GatewayRuntimeBaseImage,
-	)
-
-	cmd := exec.Command("docker", args...)
+	cmd := exec.Command("docker", builderRunArgs(config, accessArgs)...)
 	cmd.Env = env
 
 	// Setup scrolling output - auto-detects TTY internally, falls back to file-only if not TTY
@@ -148,6 +142,22 @@ func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
 	// Clear the scrolled logs before returning success
 	scroller.ClearDisplay()
 	return nil
+}
+
+// builderRunArgs returns the `docker run` arguments for the gateway-builder container.
+func builderRunArgs(config DockerBuildConfig, accessArgs []string) []string {
+	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace"}
+	args = append(args, accessArgs...)
+	args = append(args, config.GatewayBuilder,
+		"-gateway-controller-base-image", config.GatewayControllerBaseImage,
+		"-gateway-runtime-base-image", config.GatewayRuntimeBaseImage,
+	)
+	// Passed only when set: builder images older than -fetch-timeout reject unknown flags,
+	// so a default build keeps working with every builder version.
+	if config.FetchTimeout > 0 {
+		args = append(args, "-fetch-timeout", config.FetchTimeout.String())
+	}
+	return args
 }
 
 // dockerRunCreateFailed is the exit code `docker run` returns when the container

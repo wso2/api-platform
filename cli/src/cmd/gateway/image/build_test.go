@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/cli/internal/gateway"
 )
@@ -158,5 +159,39 @@ func TestBuilderAccessWarnings(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFetchTimeoutFlag(t *testing.T) {
+	t.Cleanup(func() {
+		f := buildCmd.Flags().Lookup("fetch-timeout")
+		_ = f.Value.Set("0s")
+		f.Changed = false
+	})
+
+	if err := buildCmd.ParseFlags([]string{"--fetch-timeout", "10m"}); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	if fetchTimeout != 10*time.Minute || !buildCmd.Flags().Changed("fetch-timeout") {
+		t.Fatalf("fetchTimeout = %v (changed=%v), want 10m0s", fetchTimeout, buildCmd.Flags().Changed("fetch-timeout"))
+	}
+}
+
+func TestCheckFetchTimeout(t *testing.T) {
+	tests := []struct {
+		set     bool
+		value   time.Duration
+		wantErr bool
+	}{
+		{set: false, value: 0}, // not set: the builder default applies
+		{set: true, value: 10 * time.Minute},
+		{set: true, value: 0, wantErr: true},
+		{set: true, value: -time.Minute, wantErr: true},
+	}
+	for _, tt := range tests {
+		err := checkFetchTimeout(tt.set, tt.value)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("checkFetchTimeout(%v, %v) error = %v, wantErr %v", tt.set, tt.value, err, tt.wantErr)
+		}
 	}
 }

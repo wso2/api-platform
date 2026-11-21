@@ -681,7 +681,8 @@ ap gateway image build \
   [--offline] \
   [--output-dir <output_dir>] \
   [--netrc <file> | --git-credential <host>=<username>:<ENV_VAR> ...] \
-  [--go-env <KEY>[=<VALUE>] ...]
+  [--go-env <KEY>[=<VALUE>] ...] \
+  [--fetch-timeout <duration>]
 ```
 
 Example:

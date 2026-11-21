@@ -12,7 +12,8 @@ ap gateway image build \
   [--platform <platform>] \
   [--output-dir <output_dir>] \
   [--netrc <file> | --git-credential <host>=<username>:<ENV_VAR> ...] \
-  [--go-env <KEY>[=<VALUE>] ...]
+  [--go-env <KEY>[=<VALUE>] ...] \
+  [--fetch-timeout <duration>]
 ```
 
 ### Optional Flags & Defaults
@@ -25,6 +26,7 @@ ap gateway image build \
 - `--output-dir`: No output (empty) - Output directory for build artifacts
 - `--netrc`: None - netrc file mounted read-only into the gateway-builder container, for private Go module hosts and proxies
 - `--git-credential`: None - `<host>=<username>:<ENV_VAR>` (repeatable); the token is read from `ENV_VAR` and written to a temporary netrc outside the workspace. Mutually exclusive with `--netrc`
+- `--fetch-timeout`: None (the builder's default, 5m) - how long to wait for each gomodule policy to download, for example `10m`; passed to the builder as `-fetch-timeout` only when set
 - `--go-env`: None - `KEY=VALUE` or `KEY` (repeatable), limited to GOPRIVATE, GONOPROXY, GONOSUMDB, GOPROXY, GOSUMDB, GOVCS, GOINSECURE and GOAUTH. GOPRIVATE, GONOPROXY and GONOSUMDB are also copied from the environment automatically
 
 ### Directory Structure Requirements

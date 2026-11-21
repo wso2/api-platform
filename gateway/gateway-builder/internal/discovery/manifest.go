@@ -613,9 +613,19 @@ type moduleInfo struct {
 	Dir     string // Local directory path in module cache
 }
 
+// DefaultModuleFetchTimeout is how long discovery waits for one gomodule policy to
+// download. A private module is fetched with git, which brings the whole repository
+// at that version, so this matches the 5 minutes the later go get step allows.
+const DefaultModuleFetchTimeout = 5 * time.Minute
+
+// ModuleFetchTimeout bounds each module download in discovery; main sets it from
+// the -fetch-timeout flag.
+var ModuleFetchTimeout = DefaultModuleFetchTimeout
+
 // resolveModuleInfo resolves a Go module and returns full module information
 func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	timeout := ModuleFetchTimeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "go", "mod", "download", "-json", gomodule)
@@ -627,7 +637,7 @@ func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("timed out while running 'go mod download -json %s'", gomodule)
+			return nil, moduleFetchTimeoutError(gomodule, timeout, stderr.Bytes())
 		}
 		return nil, modDownloadFailure(gomodule, out, stderr.Bytes(), err)
 	}

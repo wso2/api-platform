@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/gateway"
@@ -65,6 +66,7 @@ var (
 	noCache                  bool
 	platform                 string
 	outputDir                string
+	fetchTimeout             time.Duration
 	netrcFile                string
 	gitCredentials           []string
 	goEnvFlags               []string
@@ -80,7 +82,11 @@ var buildCmd = &cobra.Command{
 	Long:    "Build a WSO2 API Platform Gateway Docker image with specified policies from build file.",
 	Example: BuildCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runBuildCommand(); err != nil {
+		err := checkFetchTimeout(cmd.Flags().Changed("fetch-timeout"), fetchTimeout)
+		if err == nil {
+			err = runBuildCommand()
+		}
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -107,6 +113,10 @@ func init() {
 		"Go module setting for the gateway-builder container as KEY=VALUE, or KEY to copy it from your environment (repeatable). Supported: "+
 			strings.Join(gateway.SupportedGoEnvKeys(), ", ")+". GOPRIVATE, GONOPROXY and GONOSUMDB are copied from your environment automatically")
 	buildCmd.MarkFlagsMutuallyExclusive("netrc", "git-credential")
+
+	// Zero means "not set": the builder then uses its own default (5m).
+	buildCmd.Flags().DurationVar(&fetchTimeout, "fetch-timeout", 0,
+		"How long to wait for each gomodule policy to download, for example 10m (default 5m)")
 }
 
 // resolveBuilderAccess validates the private-module flags before any build work
@@ -127,6 +137,14 @@ func resolveBuilderAccess() (gateway.BuilderAccess, error) {
 		return access, err
 	}
 	return access, nil
+}
+
+// checkFetchTimeout rejects an explicit --fetch-timeout that is not positive.
+func checkFetchTimeout(set bool, d time.Duration) error {
+	if set && d <= 0 {
+		return fmt.Errorf("--fetch-timeout must be greater than zero, for example 10m")
+	}
+	return nil
 }
 
 // printBuilderAccess shows which Go settings and credentials reach the builder,
@@ -310,6 +328,9 @@ func runUnifiedBuild() error {
 	fmt.Printf("    • Builder:            %s\n", gatewayBuilder)
 	fmt.Printf("    • Gateway Controller: %s\n", gatewayControllerBaseImg)
 	fmt.Printf("    • Gateway Runtime:    %s\n\n", gatewayRuntimeBaseImg)
+	if fetchTimeout > 0 {
+		fmt.Printf("  Fetch timeout per gomodule policy: %s (--fetch-timeout)\n\n", fetchTimeout)
+	}
 	printBuilderAccess(builderAccess)
 
 	// Step 3: Validate Build File and Separate Policies
@@ -417,6 +438,7 @@ func runDockerBuild(tempDir string) error {
 		LogFilePath:                logFilePath,
 		OutputCopyDir:              outputDir,
 		BuilderAccess:              builderAccess,
+		FetchTimeout:               fetchTimeout,
 	}
 
 	// Run the build

@@ -21,7 +21,9 @@ package discovery
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -155,4 +157,58 @@ func TestModDownloadFailure_NoOutputFallsBackToExitError(t *testing.T) {
 
 func TestModuleAccessHint_NoHintForUnrelatedFailure(t *testing.T) {
 	assert.Empty(t, moduleAccessHint("github.com/acme/p@v9.9.9: invalid version: unknown revision v9.9.9"))
+}
+
+func TestModuleAccessHint_PseudoVersionTimestampIsNotAStatusCode(t *testing.T) {
+	// A pseudo-version embeds a timestamp; "410" or "404" inside it is not an HTTP status.
+	for _, version := range []string{"v0.0.0-20260410120000-abcdef123456", "v0.0.0-20240404090000-abcdef123456"} {
+		reason := `github.com/acme/p@` + version + `: verifying module: github.com/acme/p@` + version +
+			`: Get "https://sum.golang.org/lookup/github.com/acme/p@` + version + `": dial tcp: lookup sum.golang.org: no such host`
+
+		hint := moduleAccessHint(reason)
+
+		assert.Contains(t, hint, "could not reach the checksum database", version)
+		assert.NotContains(t, hint, "Set GOPRIVATE", version)
+	}
+}
+
+func TestModuleAccessHint_NotFoundAnswersMeanPrivate(t *testing.T) {
+	cases := map[string]string{
+		"410 Gone": "github.com/acme/p@v1.0.0: verifying module: github.com/acme/p@v1.0.0: reading https://sum.golang.org/lookup/github.com/acme/p@v1.0.0: 410 Gone\n\tserver response: not found",
+		// Through a proxy that relays the database: no status phrase, and Go splits the
+		// response over lines.
+		"server response split over lines": "github.com/acme/p@v1.0.0: verifying module: github.com/acme/p@v1.0.0: reading https://proxy.golang.org/sumdb/sum.golang.org/lookup/github.com/acme/p@v1.0.0: unexpected status\n\tserver response:\n\tnot found: github.com/acme/p@v1.0.0: invalid version",
+	}
+	for name, reason := range cases {
+		assert.Contains(t, moduleAccessHint(reason), "Set GOPRIVATE (or GONOSUMDB)", name)
+	}
+}
+
+func TestModuleFetchTimeoutError(t *testing.T) {
+	err := moduleFetchTimeoutError(module, 5*time.Minute, []byte("go: downloading github.com/acme/policies v1.0.0\nreading https://bot:s3cret@proxy.example.com/x"))
+
+	assert.Contains(t, err.Error(), "downloading "+module+" did not finish within 5m0s and was stopped")
+	assert.Contains(t, err.Error(), "--fetch-timeout 10m")
+	assert.Contains(t, err.Error(), "go output before it was stopped:\ngo: downloading github.com/acme/policies v1.0.0")
+	assert.Contains(t, err.Error(), "https://<redacted-credentials>@proxy.example.com/x")
+	assert.NotContains(t, err.Error(), "s3cret")
+}
+
+func TestModuleFetchTimeoutError_LongOutputIsTrimmed(t *testing.T) {
+	err := moduleFetchTimeoutError(module, time.Minute, []byte(strings.Repeat("x", 5000)+"LAST-LINE"))
+
+	assert.Contains(t, err.Error(), "LAST-LINE", "the end of the output is kept")
+	assert.Less(t, len(err.Error()), 2600)
+}
+
+func TestResolveModuleInfo_TimeoutIsDescriptive(t *testing.T) {
+	previous := ModuleFetchTimeout
+	ModuleFetchTimeout = time.Nanosecond // already expired when go starts: no network needed
+	t.Cleanup(func() { ModuleFetchTimeout = previous })
+
+	_, err := resolveModuleInfo("golang.org/x/text@v0.3.0")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "downloading golang.org/x/text@v0.3.0 did not finish within 1ns and was stopped")
+	assert.Contains(t, err.Error(), "--fetch-timeout")
 }
