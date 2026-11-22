@@ -251,6 +251,12 @@ Args: the root context.
 {{- $taken := dict -}}
 {{- if $c.deployment.volumeMountPath -}}{{- $_ := set $taken (trimSuffix "/" $c.deployment.volumeMountPath) "gateway.controller.deployment.volumeMountPath" -}}{{- end -}}
 {{- if and $c.encryptionKeys.enabled $c.encryptionKeys.mountPath -}}{{- $_ := set $taken (trimSuffix "/" $c.encryptionKeys.mountPath) "gateway.controller.encryptionKeys.mountPath" -}}{{- end -}}
+{{- /* Certificate mounts, under the same conditions controller/deployment.yaml renders them. */ -}}
+{{- if (default (dict) $c.tls).enabled -}}{{- $_ := set $taken "/app/listener-certs" "the controller's listener certificate mount (gateway.controller.tls.enabled)" -}}{{- end -}}
+{{- $serverTls := default (dict) .Values.gateway.config.controller.server.tls -}}
+{{- if and $serverTls.enabled (ne (default (dict) $c.restApiTls).certificateProvider "none") -}}{{- $_ := set $taken "/app/rest-api-certs" "the controller's REST API certificate mount (gateway.config.controller.server.tls.enabled)" -}}{{- end -}}
+{{- $upstreamCerts := default (dict) $c.upstreamCerts -}}
+{{- if and $upstreamCerts.enabled (or $upstreamCerts.secretName $upstreamCerts.configMapName) -}}{{- $_ := set $taken "/app/certificates" "the controller's upstream certificate mount (gateway.controller.upstreamCerts)" -}}{{- end -}}
 {{- range $i, $m := (default (list) $c.deployment.extraVolumeMounts) -}}
 {{- if and (kindIs "map" $m) $m.mountPath -}}{{- $_ := set $taken (trimSuffix "/" (toString $m.mountPath)) (printf "gateway.controller.deployment.extraVolumeMounts[%d]" $i) -}}{{- end -}}
 {{- end -}}
@@ -359,8 +365,9 @@ Returns "true" or "".
 
 {{/*
 The [controller.auth.basic] TOML block, unindented. A user with passwordSecretRef gets the
-env or file token from gateway-operator.basicAuthUserSecrets; a user with a plain password
-renders it as before.
+env or file token from gateway-operator.basicAuthUserSecrets, or an empty password while
+basic auth is disabled (the controller then ignores the users); a user with a plain
+password renders it as before.
 Args: the root context.
 */}}
 {{- define "gateway-operator.basicAuthToml" -}}
@@ -378,6 +385,10 @@ enabled = {{ $basic.enabled }}
 username = {{ $user.username | quote }}
 {{- if $s }}
 password = {{ $s.token }}
+{{- else if and (kindIs "map" $user) $user.passwordSecretRef (not $user.password) }}
+{{- /* Basic auth is disabled, so the Secret is not resolved and the controller does not
+       read the users; keep the TOML valid without requiring the Secret. */}}
+password = ""
 {{- else }}
 password = {{ $user.password | quote }}
 {{- end }}

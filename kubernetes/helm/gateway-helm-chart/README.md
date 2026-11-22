@@ -250,8 +250,10 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
   Anywhere else, the controller refuses to start. `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` replaces the
   default directories rather than adding to them, so list every directory the controller still
   reads from, e.g. `/secrets/gateway-controller,/etc/gateway-controller,/vault/secrets`.
-- Each mounted secret needs its own `mountPath`, distinct from the encryption-key mount and from
-  any `gateway.controller.deployment.extraVolumeMounts` path; the chart fails to render otherwise.
+- Each mounted secret needs its own `mountPath`, distinct from the encryption-key mount, from
+  the certificate mounts the chart makes (`/app/listener-certs`, `/app/rest-api-certs` and
+  `/app/certificates`, while each is enabled), and from any
+  `gateway.controller.deployment.extraVolumeMounts` path; the chart fails to render otherwise.
 - With a full `dsn`, reference the mounted file in it, e.g.
   `postgres://user:{{ file "/secrets/gateway-controller/postgres/password" }}@host:5432/db`.
   The chart fails to render if the DSN does not reference that exact path. The file's contents are
@@ -299,6 +301,8 @@ gateway:
   operator manages the gateway (`APIGateway.spec.adminCredentials`): the operator needs the plain
   password to call the management API.
 - The `mountPath` rules above apply, and the Secret is mounted only while basic auth is enabled.
+  While it is disabled, a user with only a `passwordSecretRef` is rendered with an empty password,
+  which the controller ignores, and the Secret need not exist.
 - A username cannot contain `:` (HTTP Basic authentication splits on the first `:`) or control
   characters; the chart fails to render otherwise.
 - With `source: file`, trailing spaces, tabs and newlines are trimmed from the file, so a Secret
