@@ -87,9 +87,17 @@ func (s *Service) SetSpend(counters CounterStore, labels AllowanceLabels) {
 // spendTimeout bounds reading or clearing spend in the counter store.
 const spendTimeout = 5 * time.Second
 
+// spendSweepDelay is how long after a delete its spend is cleared once more: long enough
+// for a policy engine's last report (sent every second) and for the other controllers of
+// the gateway to see the delete (event hub poll), so spend they were still sending for it
+// is not left in the store.
+var spendSweepDelay = 5 * time.Second
+
 // clearSpend removes a deleted budget's spend, so a budget made again under its name
-// starts from nothing. Policy engines drop their copies when the budget leaves their set.
-// With a shared store this clears the name's spend for every gateway sharing it.
+// starts from nothing. Policy engines drop their copies when the budget leaves their set,
+// and stop charging it; spend already on its way is cleared by a second sweep, unless a
+// budget of that name exists again by then. With a shared store this clears the name's
+// spend for every gateway sharing it.
 func (s *Service) clearSpend(name string, log *slog.Logger) {
 	if s.labels != nil {
 		s.labels.Forget(name)
@@ -97,6 +105,20 @@ func (s *Service) clearSpend(name string, log *slog.Logger) {
 	if s.counters == nil {
 		return
 	}
+	s.deleteSpend(name, log)
+	time.AfterFunc(spendSweepDelay, func() {
+		if _, err := s.db.GetConfigByKindAndHandle(models.KindBudget, name); err == nil {
+			return // made again: its spend is its own now
+		}
+		if s.labels != nil {
+			s.labels.Forget(name)
+		}
+		s.deleteSpend(name, log)
+	})
+}
+
+// deleteSpend deletes every counter of the name in the store.
+func (s *Service) deleteSpend(name string, log *slog.Logger) {
 	ctx, cancel := context.WithTimeout(context.Background(), spendTimeout)
 	defer cancel()
 	prefix := budgetspend.CounterIDPrefix(name)
@@ -430,11 +452,13 @@ func (s *Service) Delete(name, correlationID string, log *slog.Logger) error {
 	}
 
 	log.Info("Budget deleted", slog.String("uuid", existing.UUID), slog.String("handle", name))
-	s.clearSpend(name, log)
 	if s.canPush() {
 		s.pusher.PushResourceDeletion(existing)
 	}
-	return s.publish("DELETE", name, correlationID, log)
+	// Policy engines first, so they stop charging it, then its spend.
+	err = s.publish("DELETE", name, correlationID, log)
+	s.clearSpend(name, log)
+	return err
 }
 
 // publish follows a committed change: it tells the other replicas, then sends
@@ -640,8 +664,10 @@ func (s *Service) DeleteControlPlaneBudget(budgetID, correlationID string, log *
 		return fmt.Errorf("failed to delete control-plane budget: %w", err)
 	}
 	log.Info("Control-plane budget deleted", slog.String("uuid", budgetID), slog.String("handle", existing.Handle))
+	// Policy engines first, so they stop charging it, then its spend.
+	err = s.publish("DELETE", existing.Handle, correlationID, log)
 	s.clearSpend(existing.Handle, log)
-	return s.publish("DELETE", existing.Handle, correlationID, log)
+	return err
 }
 
 // ControlPlaneBudgetIDs lists the stored control-plane budgets.

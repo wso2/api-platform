@@ -76,6 +76,7 @@ type EventListener struct {
 	secretResolver        funcs.SecretResolver
 	policyVersionResolver utils.PolicyVersionResolver
 	webhookSecretHandler  WebhookSecretEventHandler
+	budgetForgetter       BudgetForgetter
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -158,6 +159,19 @@ func NewEventListener(
 // handler. Passing nil (the default) means webhook-secret events are ignored.
 func (l *EventListener) SetWebhookSecretHandler(h WebhookSecretEventHandler) {
 	l.webhookSecretHandler = h
+}
+
+// BudgetForgetter drops what this replica keeps for a deleted budget: the usage totals it
+// reports to the control plane and the allowances' labels.
+type BudgetForgetter interface {
+	Forget(budget string)
+}
+
+// SetBudgetForgetter makes budget deletes made on any replica drop this replica's usage
+// totals for the budget, so a budget made again under its name is not sent the old ones
+// (on this replica's next reconnect). Call before Start; nil (the default) forgets nothing.
+func (l *EventListener) SetBudgetForgetter(f BudgetForgetter) {
+	l.budgetForgetter = f
 }
 
 // Start begins listening for events

@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/apikey"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
@@ -223,6 +224,10 @@ func (p *BudgetSystemPolicy) Mode() policy.ProcessingMode {
 type admitted struct {
 	spendKey
 	labels map[string]string
+	// budget and budgetUUID name the budget it was admitted under, so a charge that arrives
+	// after the budget was deleted (or made again) is not counted against its name.
+	budget     string
+	budgetUUID uuid.UUID
 }
 
 // OnRequestHeaders finds the budgets that cover the request and refuses it when a Block
@@ -292,7 +297,8 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 		start := periodStart(b.period, now)
 		used := false
 		for _, a := range allowances {
-			key := admitted{spendKey: spendKey{spendID: b.spendID, allowance: a.id, periodStart: start}, labels: a.labels(b.name)}
+			key := admitted{spendKey: spendKey{spendID: b.spendID, allowance: a.id, periodStart: start}, labels: a.labels(b.name),
+				budget: b.name, budgetUUID: b.uuid}
 			keys = append(keys, key)
 			if b.action == actionBlock && p.tracker.spentIn(key.spendKey) >= b.blockPoint() {
 				used = true
@@ -384,6 +390,9 @@ func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) map[string]any
 		}
 		return out
 	}
+	// A budget deleted while the request ran is not charged: its spend was cleared, and a
+	// late charge would bring it back for a budget made again under the name.
+	keys = p.catalog.stillPublished(keys)
 	if !priced {
 		p.tracker.countUnpriced(keys)
 	} else {

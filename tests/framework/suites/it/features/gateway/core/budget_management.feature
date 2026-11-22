@@ -75,7 +75,6 @@ Feature: Budget management
       | action              | allow                     |
       | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"attribute","expression":"'research' in request.Auth.Claims[\"groups\"]"}] |
       | spec.status         | inactive                  |
-      | spec.limit.blockAt  | 90                        |
       | spec.exemptions     | [{"type":"attribute","expression":"request.Auth.Claims[\"sub\"] == \"admin\""}] |
     Then the response status code should be 200
 
@@ -83,7 +82,6 @@ Feature: Budget management
     Then the response status code should be 200
     And the JSON response field "spec.limit.amount" should be "750.00"
     And the JSON response field "spec.limit.action" should be "allow"
-    And the JSON response field "spec.limit.blockAt" should be 90
     And the JSON response field "spec.status" should be "inactive"
     And the JSON response array field "spec.exemptions" should have 1 item
 
@@ -178,7 +176,7 @@ Feature: Budget management
       | amount              | "500.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"]"} |
       | spec.limit.blockAt  | 95                        |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
@@ -193,7 +191,7 @@ Feature: Budget management
       | amount              | "650.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"]"} |
       | spec.limit.blockAt  | 95                        |
     Then the response status code should be 200
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" has "limit.amount" equal to "650.00"
@@ -205,7 +203,7 @@ Feature: Budget management
       | amount              | "650.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"]"} |
       | spec.status         | inactive                  |
       | spec.limit.blockAt  | 95                        |
     Then the response status code should be 200
@@ -218,7 +216,7 @@ Feature: Budget management
       | amount              | "650.00"                  |
       | period              | month                     |
       | action              | block                     |
-      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"] != \"\""} |
+      | spec.limit.splitBy  | {"type":"attribute","expression":"request.Auth.Claims[\"sub\"]"} |
       | spec.limit.blockAt  | 95                        |
     Then the response status code should be 200
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
@@ -304,7 +302,6 @@ Feature: Budget management
       | period              | day                       |
       | action              | allow                     |
       | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"}] |
-      | spec.limit.blockAt  | 1                         |
     Then the response status code should be 201
     When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
     Then the response status code should be 200

@@ -795,6 +795,9 @@ func main() {
 		secretsService,
 		policyVersionResolver,
 	)
+	if budgetUsage != nil {
+		evtListener.SetBudgetForgetter(budgetUsage)
+	}
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
 		os.Exit(1)

@@ -243,3 +243,21 @@ func TestBudgetUsage_SendsTheAllowanceUUIDAndForgetsDeletedBudgets(t *testing.T)
 	assert.Equal(t, "b", s.messages[0].Payload.Allowances[0].Budget)
 	assert.Equal(t, "allowance-2", s.messages[0].Payload.Allowances[0].AllowanceUUID)
 }
+
+func TestBudgetUsage_AReconnectDuringASendStillSendsTheSnapshot(t *testing.T) {
+	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	r := usageReporter(&now)
+	spend := counterproto.KeyFor("budget", "a-1", time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC))
+	r.Observe([]counterproto.Add{{Key: spend, Delta: 1, Labels: map[string]string{"budget": "daily"}}},
+		[]counterproto.Total{{Key: spend, Total: 1}})
+
+	// The send goes out on a dying connection; the client reconnects (Resync) meanwhile.
+	r.flush(func([]byte) error {
+		r.Resync()
+		return nil
+	})
+	s := &sentUsage{}
+	r.flush(s.send)
+	require.Len(t, s.messages, 1, "the snapshot for the new connection is still sent")
+	assert.Equal(t, "1", s.messages[0].Payload.Allowances[0].Spent)
+}

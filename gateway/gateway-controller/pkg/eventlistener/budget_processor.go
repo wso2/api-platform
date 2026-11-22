@@ -47,6 +47,10 @@ func (l *EventListener) processBudgetEvent(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
+	if event.Action == "DELETE" && l.budgetForgetter != nil {
+		// The replica that deleted it has forgotten it; every other one does too.
+		l.budgetForgetter.Forget(event.EntityID)
+	}
 	if err := l.budgets.Publish(event.EventID); err != nil {
 		log.Error("Failed to publish budgets for replica sync", slog.Any("error", err))
 		return

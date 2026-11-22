@@ -154,6 +154,9 @@ type BudgetUsageReporter struct {
 	lastPrune time.Time
 	// lastEntryPrune is when old totals were last forgotten.
 	lastEntryPrune time.Time
+	// resyncs counts Resync calls: a send that started before one must not clear what it
+	// marked, since the snapshot is meant for the new connection.
+	resyncs uint64
 	// wake tells run that totals changed; one pending signal is enough.
 	wake   chan struct{}
 	now    func() time.Time
@@ -253,6 +256,7 @@ func (r *BudgetUsageReporter) Resync() {
 	for _, e := range r.entries {
 		e.dirty = true
 	}
+	r.resyncs++
 	r.mu.Unlock()
 	r.signal()
 }
@@ -299,6 +303,7 @@ func (r *BudgetUsageReporter) flush(send func([]byte) error) {
 		sent usageEntry
 	}
 	r.mu.Lock()
+	resyncs := r.resyncs
 	var batch []pending
 	for key, e := range r.entries {
 		if e.dirty {
@@ -337,6 +342,12 @@ func (r *BudgetUsageReporter) flush(send func([]byte) error) {
 			return
 		}
 		r.mu.Lock()
+		if r.resyncs != resyncs {
+			// A (re)connect happened while sending: what was sent may be lost with the old
+			// connection, so everything stays marked for the snapshot.
+			r.mu.Unlock()
+			return
+		}
 		for _, p := range batch[start:end] {
 			// A total that changed while sending is still marked.
 			if e := r.entries[p.key]; e != nil && e.spent == p.sent.spent && e.unpriced == p.sent.unpriced &&

@@ -60,10 +60,51 @@ return out
 // Every key carries the same hash tag, so a report's keys share one cluster slot and
 // the script runs on one node.
 type Redis struct {
-	client    *redis.Client
+	backend   redisBackend
 	prefix    string
 	retention time.Duration
 }
+
+// redisBackend is the few Redis operations the store makes, so tests can use an
+// in-memory stand-in instead of a Redis server.
+type redisBackend interface {
+	// sync runs syncScript with keys and args and returns its result.
+	sync(ctx context.Context, keys []string, args []any) ([]string, error)
+	// scan returns every key matching the SCAN pattern.
+	scan(ctx context.Context, pattern string) ([]string, error)
+	mget(ctx context.Context, keys ...string) ([]any, error)
+	unlink(ctx context.Context, keys ...string) error
+	ping(ctx context.Context) error
+	close() error
+}
+
+// goRedis is the backend on a Redis (or Valkey) server.
+type goRedis struct{ client *redis.Client }
+
+func (g goRedis) sync(ctx context.Context, keys []string, args []any) ([]string, error) {
+	return syncScript.Run(ctx, g.client, keys, args...).StringSlice()
+}
+
+func (g goRedis) scan(ctx context.Context, pattern string) ([]string, error) {
+	var keys []string
+	iter := g.client.Scan(ctx, 0, pattern, scanCount).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	return keys, iter.Err()
+}
+
+func (g goRedis) mget(ctx context.Context, keys ...string) ([]any, error) {
+	return g.client.MGet(ctx, keys...).Result()
+}
+
+func (g goRedis) unlink(ctx context.Context, keys ...string) error {
+	return g.client.Unlink(ctx, keys...).Err()
+}
+
+func (g goRedis) ping(ctx context.Context) error { return g.client.Ping(ctx).Err() }
+
+func (g goRedis) close() error { return g.client.Close() }
 
 // redisLog routes the Redis client's own messages (dial retries, pool errors) through
 // the structured logger at debug level: the failover store already logs what an operator
@@ -104,7 +145,11 @@ func NewRedis(cfg config.CountersRedisConfig, retention time.Duration) (*Redis, 
 }
 
 func newRedisWithClient(client *redis.Client, prefix string, retention time.Duration) *Redis {
-	return &Redis{client: client, prefix: prefix, retention: retention}
+	return newRedisWithBackend(goRedis{client: client}, prefix, retention)
+}
+
+func newRedisWithBackend(backend redisBackend, prefix string, retention time.Duration) *Redis {
+	return &Redis{backend: backend, prefix: prefix, retention: retention}
 }
 
 // key is the Redis key of a counter.
@@ -134,7 +179,7 @@ func (r *Redis) Sync(ctx context.Context, source, reportID string, adds []counte
 	for _, k := range keys {
 		scriptKeys = append(scriptKeys, r.key(k))
 	}
-	raw, err := syncScript.Run(ctx, r.client, scriptKeys, args...).StringSlice()
+	raw, err := r.backend.sync(ctx, scriptKeys, args)
 	if err != nil {
 		return nil, fmt.Errorf("counter store: %w", err)
 	}
@@ -162,12 +207,8 @@ var globEscaper = strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`, "[", `\[`
 // idPrefix. Every counter shares the {c} hash tag, so one node holds them all.
 func (r *Redis) keysWithPrefix(ctx context.Context, namespace, idPrefix string) ([]string, error) {
 	pattern := globEscaper.Replace(r.prefix+"{c}:"+escape(namespace)+":"+escape(idPrefix)) + "*"
-	var keys []string
-	iter := r.client.Scan(ctx, 0, pattern, scanCount).Iterator()
-	for iter.Next(ctx) {
-		keys = append(keys, iter.Val())
-	}
-	if err := iter.Err(); err != nil {
+	keys, err := r.backend.scan(ctx, pattern)
+	if err != nil {
 		return nil, fmt.Errorf("counter store: %w", err)
 	}
 	return keys, nil
@@ -200,7 +241,7 @@ func (r *Redis) Totals(ctx context.Context, namespace, idPrefix string) ([]count
 	if err != nil || len(keys) == 0 {
 		return nil, err
 	}
-	values, err := r.client.MGet(ctx, keys...).Result()
+	values, err := r.backend.mget(ctx, keys...)
 	if err != nil {
 		return nil, fmt.Errorf("counter store: %w", err)
 	}
@@ -228,7 +269,7 @@ func (r *Redis) Delete(ctx context.Context, namespace, idPrefix string) error {
 	}
 	for len(keys) > 0 {
 		n := min(len(keys), scanCount)
-		if err := r.client.Unlink(ctx, keys[:n]...).Err(); err != nil {
+		if err := r.backend.unlink(ctx, keys[:n]...); err != nil {
 			return fmt.Errorf("counter store: %w", err)
 		}
 		keys = keys[n:]
@@ -237,7 +278,7 @@ func (r *Redis) Delete(ctx context.Context, namespace, idPrefix string) error {
 }
 
 // Ping checks Redis answers.
-func (r *Redis) Ping(ctx context.Context) error { return r.client.Ping(ctx).Err() }
+func (r *Redis) Ping(ctx context.Context) error { return r.backend.ping(ctx) }
 
 // Close closes the connection.
-func (r *Redis) Close() error { return r.client.Close() }
+func (r *Redis) Close() error { return r.backend.close() }

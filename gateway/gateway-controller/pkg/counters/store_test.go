@@ -23,8 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -39,12 +37,9 @@ var (
 // stores runs a test against every Store.
 func stores(t *testing.T) map[string]Store {
 	t.Helper()
-	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
 	return map[string]Store{
 		"memory": NewMemory(0),
-		"redis":  newRedisWithClient(client, "test:", time.Hour),
+		"redis":  newRedisWithBackend(newMockRedis(), "test:", time.Hour),
 	}
 }
 
@@ -97,17 +92,15 @@ func TestStoreKeepsKeysApart(t *testing.T) {
 }
 
 func TestRedisKeysExpireAfterRetention(t *testing.T) {
-	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer client.Close()
-	store := newRedisWithClient(client, "test:", time.Hour)
+	mock := newMockRedis()
+	store := newRedisWithBackend(mock, "test:", time.Hour)
 	key := counterproto.KeyFor("budget", "alice", november)
 
 	_, err := store.Sync(context.Background(), "e", "r1", []counterproto.Add{{Key: key, Delta: 1}}, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, time.Hour, mr.TTL(store.key(key)))
-	mr.FastForward(time.Hour + time.Second)
+	assert.Equal(t, time.Hour, mock.ttl(store.key(key)), "the script sets the retention as the counter's expiry")
+	mock.advance(time.Hour + time.Second)
 	totals, err := store.Sync(context.Background(), "e", "", nil, []counterproto.Key{key})
 	require.NoError(t, err)
 	assert.Equal(t, 0.0, totals[0].Total)

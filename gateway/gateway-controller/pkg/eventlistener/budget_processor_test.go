@@ -67,3 +67,23 @@ func TestHandleEvent_Budget_PublishFailureIsLogged(t *testing.T) {
 	})
 	assert.Equal(t, []string{"publish:corr-2"}, budgets.calls)
 }
+
+type fakeBudgetForgetter struct{ forgotten []string }
+
+func (f *fakeBudgetForgetter) Forget(budget string) { f.forgotten = append(f.forgotten, budget) }
+
+func TestHandleEvent_Budget_DeleteForgetsItsUsageOnThisReplica(t *testing.T) {
+	budgets := &fakeBudgetPublisher{}
+	forgetter := &fakeBudgetForgetter{}
+	listener := &EventListener{logger: newTestLogger(), budgets: budgets}
+	listener.SetBudgetForgetter(forgetter)
+
+	for _, action := range []string{"CREATE", "UPDATE"} {
+		listener.handleEvent(eventhub.Event{EventType: eventhub.EventTypeBudget, Action: action, EntityID: "research-monthly", EventID: "c-" + action})
+	}
+	assert.Empty(t, forgetter.forgotten, "creates and updates keep the totals")
+
+	listener.handleEvent(eventhub.Event{EventType: eventhub.EventTypeBudget, Action: "DELETE", EntityID: "research-monthly", EventID: "c-del"})
+	assert.Equal(t, []string{"research-monthly"}, forgetter.forgotten, "a delete on any replica forgets the budget here")
+	assert.Equal(t, []string{"publish:c-CREATE", "publish:c-UPDATE", "publish:c-del"}, budgets.calls)
+}

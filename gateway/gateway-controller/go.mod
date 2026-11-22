@@ -4,7 +4,6 @@ go 1.26.10
 
 require (
 	cel.dev/cel-go v0.33.1
-	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/envoyproxy/go-control-plane v0.14.0
 	github.com/envoyproxy/go-control-plane/envoy v1.40.0
 	github.com/getkin/kin-openapi v0.152.0
@@ -75,7 +74,6 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
-	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.59.0 // indirect

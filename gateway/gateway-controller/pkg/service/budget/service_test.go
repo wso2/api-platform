@@ -19,6 +19,7 @@
 package budget
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -27,6 +28,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +36,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/gateway/common/counterproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
@@ -1111,3 +1114,52 @@ var costlyExpression = func() string {
 	list := "[" + strings.Repeat("1,", 99) + "1]"
 	return list + ".all(a, " + list + ".all(b, " + list + ".all(c, a == b)))"
 }()
+
+// recordingCounters records the counter deletes the service makes.
+type recordingCounters struct {
+	mu      sync.Mutex
+	deletes []string
+}
+
+func (c *recordingCounters) Totals(context.Context, string, string) ([]counterproto.Total, error) {
+	return nil, nil
+}
+
+func (c *recordingCounters) Delete(_ context.Context, namespace, prefix string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.deletes = append(c.deletes, namespace+"/"+prefix)
+	return nil
+}
+
+func (c *recordingCounters) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.deletes)
+}
+
+func TestDelete_ClearsSpendAndSweepsAgainUnlessMadeAgain(t *testing.T) {
+	old := spendSweepDelay
+	spendSweepDelay = 50 * time.Millisecond
+	t.Cleanup(func() { spendSweepDelay = old })
+
+	svc, _ := newTestService(t, false)
+	counters := &recordingCounters{}
+	svc.SetSpend(counters, nil)
+
+	_, err := svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+	require.NoError(t, svc.Delete("research-team-monthly", "", nil))
+	assert.Equal(t, 2, counters.count(), "spend and unpriced counts are cleared at once")
+	assert.Eventually(t, func() bool { return counters.count() == 4 }, 2*time.Second, 10*time.Millisecond,
+		"and again after the sweep delay, for spend that was still on its way")
+
+	// Made again before the sweep: its new spend is left alone.
+	_, err = svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+	require.NoError(t, svc.Delete("research-team-monthly", "", nil))
+	_, err = svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+	assert.Equal(t, 6, counters.count(), "no sweep for a budget made again under the name")
+}

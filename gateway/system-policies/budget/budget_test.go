@@ -851,3 +851,29 @@ func TestDeletedBudgetSpendIsForgotten(t *testing.T) {
 		t.Fatalf("after delete and create spent %v, want 2", spent())
 	}
 }
+
+// A request admitted before its budget was deleted is not charged when it ends: the
+// gateway-controller has cleared the name's spend, and a late charge would bring it back
+// for a budget made again under the name.
+func TestARequestEndingAfterItsBudgetWasDeletedIsNotCharged(t *testing.T) {
+	team := func(id string) map[string]any {
+		return budgetBody("team", id, "10", "day", "allow", allProviders, nil)
+	}
+	p, source, _ := testPolicy(t, team(testBudgetUUID))
+	key := spendKey{budgetspend.SpendID("team"), sharedAllowance("team"), periodStart(periodDay, wednesdayNoon)}
+
+	req := call{provider: "openai"}.context()
+	p.OnRequestHeaders(context.Background(), req, nil) // admitted under the first budget
+	source.set(team(otherUUID))                        // deleted and made again meanwhile
+	req.Metadata[metadataLLMCost] = "3"
+	req.Metadata[metadataLLMCostStatus] = costStatusCalculated
+	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
+
+	if got := p.tracker.spentIn(key); got != 0 {
+		t.Fatalf("spent %v after the request's budget was deleted, want 0", got)
+	}
+	send(t, p, call{provider: "openai"}, "1.0")
+	if got := p.tracker.spentIn(key); got != 1 {
+		t.Fatalf("the budget made again spent %v, want 1", got)
+	}
+}

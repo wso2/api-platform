@@ -369,6 +369,21 @@ func (c *catalog) current() []*budget {
 	return budgets
 }
 
+// stillPublished returns the keys whose budget is still published under the UUID it was
+// admitted under.
+func (c *catalog) stillPublished(keys []admitted) []admitted {
+	c.current() // picks up a delete published since the request was admitted
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := keys[:0:0]
+	for _, k := range keys {
+		if c.known[k.budget] == k.budgetUUID.String() {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // takeForgotten returns, once, the names of budgets deleted or made again since the last
 // call.
 func (c *catalog) takeForgotten() []string {

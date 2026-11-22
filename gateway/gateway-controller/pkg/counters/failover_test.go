@@ -26,8 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -43,23 +41,22 @@ var spendKey = counterproto.Key{Namespace: "budget", ID: "project-x-monthly", Wi
 // the waits it asked for are recorded.
 type failoverHarness struct {
 	f     *Failover
-	mr    *miniredis.Miniredis
+	redis *mockRedis
 	next  chan bool
 	mu    sync.Mutex
 	waits []time.Duration
 }
 
-// newFailoverHarness starts a Failover on miniredis. reachable says whether connecting
+// newFailoverHarness starts a Failover on an in-memory Redis. reachable says whether connecting
 // works; a test flips it to bring Redis back.
 func newFailoverHarness(t *testing.T, reachable *atomic.Bool) *failoverHarness {
 	t.Helper()
-	h := &failoverHarness{mr: miniredis.RunT(t), next: make(chan bool)}
+	h := &failoverHarness{redis: newMockRedis(), next: make(chan bool)}
 	connect := func(context.Context) (*Redis, error) {
 		if !reachable.Load() {
 			return nil, errors.New("connection refused")
 		}
-		client := redis.NewClient(&redis.Options{Addr: h.mr.Addr(), MaxRetries: -1})
-		return newRedisWithClient(client, "test:", time.Hour), nil
+		return newRedisWithBackend(h.redis, "test:", time.Hour), nil
 	}
 	h.f = newFailover(connect, testRetry, time.Hour, nil)
 	h.f.sleep = func(d time.Duration, stop <-chan struct{}) bool {
@@ -99,9 +96,8 @@ func (h *failoverHarness) isDown() bool {
 // redisTotal reads the total straight from Redis.
 func (h *failoverHarness) redisTotal(t *testing.T) float64 {
 	t.Helper()
-	client := redis.NewClient(&redis.Options{Addr: h.mr.Addr()})
-	defer client.Close()
-	r := newRedisWithClient(client, "test:", time.Hour)
+	h.redis.setDown(false) // read even while the store is taken away
+	r := newRedisWithBackend(h.redis, "test:", time.Hour)
 	totals, err := r.Sync(context.Background(), "reader", "", nil, []counterproto.Key{spendKey})
 	require.NoError(t, err)
 	return totals[0].Total
@@ -139,7 +135,7 @@ func TestFailoverKeepsCountingFromTheLastTotalsWhenRedisGoesAway(t *testing.T) {
 	require.False(t, h.isDown())
 	assert.Equal(t, 100.0, h.sync(t, "r1", 100))
 
-	h.mr.Close()
+	h.redis.setDown(true)
 	reachable.Store(false)
 	assert.Equal(t, 120.0, h.sync(t, "r2", 20), "counted from the last Redis total")
 	require.True(t, h.isDown())
@@ -147,7 +143,7 @@ func TestFailoverKeepsCountingFromTheLastTotalsWhenRedisGoesAway(t *testing.T) {
 	assert.Equal(t, 125.0, h.sync(t, "r3", 5), "a resent report is counted once")
 	assert.Equal(t, 125.0, h.sync(t, "", 0), "a read only returns the total")
 
-	require.NoError(t, h.mr.Restart())
+	h.redis.setDown(false)
 	reachable.Store(true)
 	h.next <- true
 	require.Eventually(t, func() bool { return !h.isDown() }, time.Second, time.Millisecond)
@@ -210,7 +206,7 @@ func TestFailoverDeleteWhileRedisIsAway(t *testing.T) {
 	h := newFailoverHarness(t, &reachable)
 	assert.Equal(t, 100.0, h.sync(t, "r1", 100))
 
-	h.mr.Close()
+	h.redis.setDown(true)
 	reachable.Store(false)
 	assert.Equal(t, 105.0, h.sync(t, "r2", 5))
 	require.True(t, h.isDown())
@@ -219,7 +215,7 @@ func TestFailoverDeleteWhileRedisIsAway(t *testing.T) {
 	assert.Equal(t, 0.0, h.sync(t, "", 0), "cleared in memory at once")
 	assert.Equal(t, 2.0, h.sync(t, "r3", 2), "counting starts again from nothing")
 
-	require.NoError(t, h.mr.Restart())
+	h.redis.setDown(false)
 	reachable.Store(true)
 	h.next <- true
 	require.Eventually(t, func() bool { return !h.isDown() }, time.Second, time.Millisecond)
