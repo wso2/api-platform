@@ -1,0 +1,36 @@
+# API 1 goes to gateway-1 and API 2 to gateway-2, chosen by the target label.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: api-1
+  namespace: gw1
+  labels:
+    gateway.api-platform.wso2.com/target: gateway-1
+spec:
+  displayName: api-1
+  version: v1.0
+  context: /api1
+  upstream:
+    main:
+      url: http://echo.echo-backend.svc.cluster.local:9080
+  operations:
+    - method: GET
+      path: /
+---
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: api-2
+  namespace: gw2
+  labels:
+    gateway.api-platform.wso2.com/target: gateway-2
+spec:
+  displayName: api-2
+  version: v1.0
+  context: /api2
+  upstream:
+    main:
+      url: http://echo.echo-backend.svc.cluster.local:9080
+  operations:
+    - method: GET
+      path: /

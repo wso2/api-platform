@@ -209,7 +209,7 @@ func (r *GatewayReconciler) decideAndProcess(
 	log := r.Logger.With(slog.String("controller", "APIGateway"), slog.String("name", gatewayConfig.Name))
 
 	// Calculate current config hash
-	currentConfigHash := ""
+	configMapValues := ""
 	if gatewayConfig.Spec.ConfigRef != nil {
 		values, err := configMapValuesYAML(ctx, r.Client, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
 		if err != nil {
@@ -219,8 +219,16 @@ func (r *GatewayReconciler) decideAndProcess(
 			// For now, let's treat it as error so we can retry
 			return ctrl.Result{}, fmt.Errorf("failed to get config map values: %w", err)
 		}
-		currentConfigHash = auth.CalculateConfigHash(values)
+		configMapValues = values
 	}
+	// The revisions of the Secrets holding basic-auth passwords (spec.adminCredentials and
+	// configRef users' passwordSecretRef) are part of the hash, so rotating a password
+	// redeploys the gateway (rolling its controller pod).
+	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, gatewayConfig, configMapValues)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	currentConfigHash := gatewayConfigHash(configMapValues, secretsVersion)
 
 	// Check if config has changed
 	configChanged := currentConfigHash != gatewayConfig.Status.ConfigHash
@@ -817,11 +825,13 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		return fmt.Errorf("failed to build CR values overlay: %w", err)
 	}
 
+	configRefValues := ""
 	if owner.Spec.ConfigRef != nil {
 		configMapValues, err := configMapValuesYAML(ctx, r.Client, owner.Spec.ConfigRef.Name, namespace)
 		if err != nil {
 			return fmt.Errorf("failed to get ConfigMap values: %w", err)
 		}
+		configRefValues = configMapValues
 		// Merge order: CR overlay (base) → ConfigMap (higher priority).
 		// MergeValuesYAML delegates to deepMergeValues, which performs a recursive
 		// per-key merge: ConfigMap entries can add or override individual keys inside
@@ -848,22 +858,75 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 			slog.String("values_file", valuesFilePath))
 	}
 
+	// spec.adminCredentials is merged last so a ConfigMap cannot override the admin
+	// user; the configRef's other basic-auth users are kept after it. Only the Secret
+	// reference reaches Helm; the password stays in the Secret.
+	if owner.Spec.AdminCredentials != nil {
+		// Fail before installing when the Secret is unusable: the operator could not
+		// authenticate to the gateway it is about to deploy.
+		if _, _, err := auth.AdminCredentialsFromSecret(ctx, r.Client, owner); err != nil {
+			return fmt.Errorf("admin credentials unavailable: %w", err)
+		}
+		// valuesYAML holds only the CR overlay and the configRef ConfigMap at this point
+		// (the operator's base values file is merged later by the Helm client), so the
+		// users kept next to the admin user are exactly those the configRef lists.
+		adminOverlay, err := buildAdminCredentialsOverlay(owner, valuesYAML)
+		if err != nil {
+			return err
+		}
+		valuesYAML, err = helm.MergeValuesYAML(valuesYAML, adminOverlay)
+		if err != nil {
+			return fmt.Errorf("failed to merge admin credentials overlay: %w", err)
+		}
+		log.Info("Configured gateway admin user from Secret",
+			slog.String("secret", owner.Spec.AdminCredentials.PasswordSecretRef.Name),
+			slog.String("source", owner.Spec.AdminCredentials.Source))
+	}
+
+	// Roll the gateway-controller pod when a Secret holding a basic-auth password
+	// changes: it reads passwords only at startup, while the operator signs in with the
+	// current Secret value right away.
+	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, owner, configRefValues)
+	if err != nil {
+		return err
+	}
+	checksumOverlay, err := basicAuthChecksumOverlay(secretsVersion)
+	if err != nil {
+		return err
+	}
+	if checksumOverlay != "" {
+		valuesYAML, err = helm.MergeValuesYAML(valuesYAML, checksumOverlay)
+		if err != nil {
+			return fmt.Errorf("failed to merge basic-auth checksum overlay: %w", err)
+		}
+	}
+
 	log.Info("Deploying gateway using Helm",
 		slog.String("chart_name", r.Config.Gateway.HelmChartName),
 		slog.String("version", r.Config.Gateway.HelmChartVersion),
 		slog.String("namespace", namespace))
 
+	// A basic-auth password from a Secret needs a gateway chart that renders
+	// passwordSecretRef: an older chart would write the user with an empty password and
+	// the gateway-controller would not start. The check runs before Helm touches the
+	// release, so the running gateway is left as it is.
+	var requiredChartFeatures []string
+	if secretsVersion != "" {
+		requiredChartFeatures = []string{helm.FeatureBasicAuthPasswordSecretRef}
+	}
+
 	if err := helmgateway.InstallOrUpgrade(ctx, helmgateway.DeployInput{
-		Logger:         r.Logger,
-		Config:         r.Config,
-		GatewayName:    owner.Name,
-		Namespace:      namespace,
-		Client:         r.Client,
-		FromGatewayAPI: false,
-		ValuesYAML:     valuesYAML,
-		ValuesFilePath: valuesFilePath,
-		DockerUsername: dockerUserName,
-		DockerPassword: dockerPassword,
+		Logger:                r.Logger,
+		Config:                r.Config,
+		GatewayName:           owner.Name,
+		Namespace:             namespace,
+		Client:                r.Client,
+		FromGatewayAPI:        false,
+		ValuesYAML:            valuesYAML,
+		ValuesFilePath:        valuesFilePath,
+		DockerUsername:        dockerUserName,
+		DockerPassword:        dockerPassword,
+		RequiredChartFeatures: requiredChartFeatures,
 	}); err != nil {
 		return fmt.Errorf("failed to install/upgrade Helm chart: %w", err)
 	}
@@ -1001,6 +1064,10 @@ func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueGatewaysForConfigMap),
 			builder.WithPredicates(configMapPred)).
+		// Admin credentials Secrets: creation matters too, so a gateway waiting on a
+		// missing Secret deploys as soon as it appears.
+		Watches(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueGatewaysForSecret)).
 		Complete(r)
 }
 
