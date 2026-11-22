@@ -15,6 +15,9 @@
 {{- $pgSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "postgres") | fromYaml -}}
 {{- $sqlSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "sqlserver") | fromYaml -}}
 {{- $secretMounts := (include "gateway-operator.controllerSecretMounts" . | fromYaml).mounts -}}
+{{- /* Basic-auth users with a file-mounted password move the whole [controller.auth.basic]
+       block into controller-secrets.toml. See gateway-operator.basicAuthInSecretsFile. */ -}}
+{{- $basicAuthInSecretsFile := include "gateway-operator.basicAuthInSecretsFile" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -339,18 +342,8 @@ data:
     allowed_clients = [{{ range $i, $c := ($router.health).allowed_clients }}{{ if $i }}, {{ end }}{{ $c | toString | quote }}{{ end }}]
 
     {{- if $gc.auth }}
-    {{- if $gc.auth.basic }}
-    [controller.auth.basic]
-    enabled = {{ $gc.auth.basic.enabled }}
-    {{- if $gc.auth.basic.users }}
-    {{- range $gc.auth.basic.users }}
-    [[controller.auth.basic.users]]
-    username = {{ .username | quote }}
-    password = {{ .password | quote }}
-    password_hashed = {{ .password_hashed | default false }}
-    roles = [{{- range $i, $role := .roles }}{{- if gt $i 0 }}, {{ end }}{{ $role | quote }}{{- end }}]
-    {{- end }}
-    {{- end }}
+    {{- if and $gc.auth.basic (not $basicAuthInSecretsFile) }}
+    {{- include "gateway-operator.basicAuthToml" . | nindent 4 }}
     {{- end }}
     {{- if $gc.auth.idp }}
     [controller.auth.idp]
@@ -911,5 +904,8 @@ data:
     {{- else }}
     password = {{ $sqlSecret.token }}
     {{- end }}
+    {{- end }}
+    {{- if $basicAuthInSecretsFile }}
+{{ include "gateway-operator.basicAuthToml" . | nindent 4 }}
     {{- end }}
   {{- end }}
