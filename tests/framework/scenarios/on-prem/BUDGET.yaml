@@ -296,3 +296,25 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/budget_agent.feature
           scenario: "Project, agent and API key budgets charge an agent's proxy calls once and leave direct provider calls alone"
+  - id: BUDGET-027
+    title: "On a gateway with two controllers sharing one database, a budget written through the controller that serves the management API reaches the runtime fed by the other controller, and follows its edit, deactivation, reactivation and deletion."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_ha.feature
+          scenario: "A budget written through one controller reaches the runtime fed by the other and follows its changes"
+  - id: BUDGET-028
+    title: "On a gateway with two controllers sharing one database and Redis, a Block budget used up through the runtime fed by one controller refuses, and raising its amount through the other controller lifts the block."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_ha.feature
+          scenario: "A budget used up through one controller's runtime is lifted by an edit through the other"

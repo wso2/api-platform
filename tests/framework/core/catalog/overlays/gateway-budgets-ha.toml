@@ -1,0 +1,20 @@
+# Budgets on a gateway with two controllers sharing one PostgreSQL database: budgets on,
+# spend counted in Redis (shared by both controllers), and a fast event poll so a budget
+# written through one controller reaches the runtime fed by the other quickly.
+[ai_cost_management.budgets]
+enabled = true
+
+[counters.redis]
+enabled = true
+address = "redis:6379"
+password = '{{ env "APIP_GW_COUNTERS_REDIS_PASSWORD" "" }}'
+
+[controller.event_hub]
+poll_interval = "200ms"
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"

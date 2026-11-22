@@ -86,7 +86,7 @@ func TestBudgetUsage_ReportsLabelledAllowanceTotals(t *testing.T) {
 	assert.Equal(t, "95", s.messages[1].Payload.Allowances[0].Spent)
 }
 
-func TestBudgetUsage_KeepsTotalsUntilSentAndResendsRecentOnes(t *testing.T) {
+func TestBudgetUsage_KeepsTotalsUntilSentAndResendsThemOnConnect(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
 	r := usageReporter(&now)
 	spend := counterproto.KeyFor("budget", "a-1", time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC))
@@ -99,16 +99,65 @@ func TestBudgetUsage_KeepsTotalsUntilSentAndResendsRecentOnes(t *testing.T) {
 	require.Len(t, s.messages, 1, "a total that failed to send is sent later")
 	assert.Empty(t, s.messages[0].Payload.Allowances[0].Allowance, "a shared budget's allowance has no values")
 
-	now = now.Add(5 * time.Minute)
-	r.markRecent()
 	r.flush(s.send)
-	assert.Len(t, s.messages, 2, "totals written in the last ten minutes are sent again every minute")
+	assert.Len(t, s.messages, 1, "a sent total is not sent again by itself")
 
-	now = now.Add(10 * time.Minute)
-	r.markRecent()
+	r.Resync()
 	r.flush(s.send)
-	assert.Len(t, s.messages, 2, "older totals are not resent")
-	assert.Empty(t, r.entries, "and are forgotten")
+	require.Len(t, s.messages, 2, "a (re)connect sends every kept total again")
+	assert.Equal(t, "1", s.messages[1].Payload.Allowances[0].Spent)
+
+	now = now.Add(33 * 24 * time.Hour)
+	other := counterproto.KeyFor("budget", "a-2", time.Date(2026, 12, 17, 0, 0, 0, 0, time.UTC))
+	r.Observe([]counterproto.Add{{Key: other, Delta: 1, Labels: map[string]string{"budget": "daily"}}},
+		[]counterproto.Total{{Key: other, Total: 1}})
+	assert.Len(t, r.entries, 1, "a sent total whose window is long over is forgotten")
+}
+
+func TestBudgetUsage_SendsAChangeAtOnceAndCoalescesWhileSending(t *testing.T) {
+	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	r := usageReporter(&now)
+	spend := counterproto.KeyFor("budget", "a-1", time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC))
+	labels := map[string]string{"budget": "daily"}
+
+	sent := make(chan BudgetUsageMessage, 10)
+	release := make(chan struct{})
+	done := make(chan struct{})
+	defer close(done)
+	first := true
+	go r.run(done, func(data []byte) error {
+		var m BudgetUsageMessage
+		if err := json.Unmarshal(data, &m); err != nil {
+			return err
+		}
+		if first {
+			first = false
+			<-release // hold the first send while totals keep changing
+		}
+		sent <- m
+		return nil
+	})
+
+	r.Observe([]counterproto.Add{{Key: spend, Delta: 1, Labels: labels}}, []counterproto.Total{{Key: spend, Total: 1}})
+	time.Sleep(50 * time.Millisecond) // the first send is now in flight
+	for total := 2.0; total <= 5; total++ {
+		r.Observe(nil, []counterproto.Total{{Key: spend, Total: total}})
+	}
+	close(release)
+
+	got := <-sent
+	assert.Equal(t, "1", got.Payload.Allowances[0].Spent, "the first change is sent at once")
+	select {
+	case got = <-sent:
+		assert.Equal(t, "5", got.Payload.Allowances[0].Spent, "changes made while sending go in one next message, latest total")
+	case <-time.After(2 * time.Second):
+		t.Fatal("the changes made while sending were not sent")
+	}
+	select {
+	case extra := <-sent:
+		t.Fatalf("expected one message for the coalesced changes, got another: %+v", extra)
+	case <-time.After(200 * time.Millisecond):
+	}
 }
 
 func TestBudgetUsage_IgnoresUnlabelledCounters(t *testing.T) {

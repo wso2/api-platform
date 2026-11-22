@@ -33,9 +33,10 @@ import (
 // usage message on the control-plane connection (Interfaces 4.2). The budget system
 // policy labels each allowance's counters with the budget and the allocated values;
 // the counter stream tells BudgetUsageReporter of every applied report, and it sends the
-// allowances' totals about every second. Every minute it sends again every total written
-// in the last ten minutes, so a lost message heals itself. While disconnected it keeps
-// only the latest total per allowance and period.
+// changed totals at once. Totals that change while a message is being sent go in the
+// next one, so messages never pile up. On every (re)connect it sends every current total
+// again (a snapshot), so totals lost with a connection or a control-plane replica reach
+// the control plane. Totals are running totals: a repeated or lost message is harmless.
 
 // Counter namespaces the budget system policy charges: budget spend, and the AI cost
 // stats ([ai_cost_management.tracking]), which count every request's cost by its values.
@@ -59,9 +60,8 @@ const (
 )
 
 const (
-	usageSendInterval   = time.Second
-	usageResendInterval = time.Minute
-	usageResendWindow   = 10 * time.Minute
+	// usageRetryInterval is how soon totals a failed send left unsent are tried again.
+	usageRetryInterval = 5 * time.Second
 	// usageMaxPerMessage bounds one usage message.
 	usageMaxPerMessage = 500
 )
@@ -152,8 +152,12 @@ type BudgetUsageReporter struct {
 	// still be current, so the gateway's budget usage can name allowances.
 	labels    map[string]*allowanceLabels
 	lastPrune time.Time
-	now       func() time.Time
-	logger    *slog.Logger
+	// lastEntryPrune is when old totals were last forgotten.
+	lastEntryPrune time.Time
+	// wake tells run that totals changed; one pending signal is enough.
+	wake   chan struct{}
+	now    func() time.Time
+	logger *slog.Logger
 }
 
 type allowanceLabels struct {
@@ -168,7 +172,10 @@ const labelsKeptFor = 32 * 24 * time.Hour
 
 // NewBudgetUsageReporter returns an empty reporter.
 func NewBudgetUsageReporter(logger *slog.Logger) *BudgetUsageReporter {
-	return &BudgetUsageReporter{entries: map[usageKey]*usageEntry{}, labels: map[string]*allowanceLabels{}, now: time.Now, logger: logger}
+	return &BudgetUsageReporter{
+		entries: map[usageKey]*usageEntry{}, labels: map[string]*allowanceLabels{},
+		wake: make(chan struct{}, 1), now: time.Now, logger: logger,
+	}
 }
 
 // Observe records the totals of budget allowances: an allowance is known once an add
@@ -200,7 +207,7 @@ func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterp
 			delete(e.allowance, usageLabelBudget)
 		}
 	}
-	now := r.now()
+	now, changed := r.now(), false
 	for _, t := range totals {
 		kind := usageKindOf(t.Key.Namespace)
 		if kind == "" {
@@ -222,46 +229,66 @@ func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterp
 		if t.Total != *field {
 			*field = t.Total
 			e.dirty, e.writtenAt = true, now
+			changed = true
+		}
+	}
+	r.pruneEntries(now)
+	if changed {
+		r.signal()
+	}
+}
+
+// signal wakes run without blocking; a signal already pending covers this one.
+func (r *BudgetUsageReporter) signal() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+}
+
+// Resync marks every kept total for sending, so the next message is a snapshot of them.
+// The client calls it on every (re)connect.
+func (r *BudgetUsageReporter) Resync() {
+	r.mu.Lock()
+	for _, e := range r.entries {
+		e.dirty = true
+	}
+	r.mu.Unlock()
+	r.signal()
+}
+
+// pruneEntries forgets, once an hour, sent totals whose window started longer ago than a
+// period can last, as for labels. Callers hold mu.
+func (r *BudgetUsageReporter) pruneEntries(now time.Time) {
+	if now.Sub(r.lastEntryPrune) < time.Hour {
+		return
+	}
+	r.lastEntryPrune = now
+	for key, e := range r.entries {
+		if !e.dirty && now.Sub(time.Unix(key.window, 0)) > labelsKeptFor {
+			delete(r.entries, key)
 		}
 	}
 }
 
-// run sends changed totals every second and every recent total every minute until done
-// is closed. send fails while the control plane is not connected; the totals are then
-// kept and sent once it is.
+// run sends changed totals as soon as they change, until done is closed. One send at a
+// time: totals that change meanwhile go in the next message. send fails while the
+// control plane is not connected; the totals stay marked, are retried every few seconds
+// and are sent in full on the next connect.
 func (r *BudgetUsageReporter) run(done <-chan struct{}, send func([]byte) error) {
 	r.mu.Lock()
 	r.sending = true
 	r.mu.Unlock()
-	sendTicker := time.NewTicker(usageSendInterval)
-	resendTicker := time.NewTicker(usageResendInterval)
-	defer sendTicker.Stop()
-	defer resendTicker.Stop()
+	retry := time.NewTicker(usageRetryInterval)
+	defer retry.Stop()
 	for {
 		select {
 		case <-done:
 			return
-		case <-resendTicker.C:
-			r.markRecent()
-		case <-sendTicker.C:
-			r.flush(send)
+		case <-r.wake:
+		case <-retry.C:
 		}
-	}
-}
-
-// markRecent marks every total written in the last ten minutes for sending again and
-// forgets older ones.
-func (r *BudgetUsageReporter) markRecent() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	now := r.now()
-	for key, e := range r.entries {
-		switch {
-		case now.Sub(e.writtenAt) <= usageResendWindow:
-			e.dirty = true
-		case !e.dirty:
-			delete(r.entries, key)
-		}
+		r.flush(send)
 	}
 }
 

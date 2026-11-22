@@ -662,6 +662,28 @@ blocks:
         features:
           - features/gateway/core/budget_redis.feature
 
+  # Budgets on one gateway with two controllers sharing one PostgreSQL database (the HA
+  # setup). One controller serves the management API; the other alone feeds the runtime, so
+  # every budget change reaches enforcement through the event path between them, and spend
+  # counted through one is read back through the other from Redis.
+  - name: gateway-budgets-ha
+    parallel: 1
+    components:
+      - name: redis
+      - name: platform-gateway
+        dependsOn: [redis]
+        overlay: tests/framework/core/catalog/overlays/gateway-budgets-ha.toml
+        db: postgres
+      - name: testbench
+    wiring:
+      platform-gateway:
+        controllers: 2
+    runners:
+      - name: budget-ha
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_ha.feature
+
   # Two gateways (replicas: 2), each with its own database, sharing one Redis for counters.
   - name: gateway-budget-redis-multigateway
     parallel: 1

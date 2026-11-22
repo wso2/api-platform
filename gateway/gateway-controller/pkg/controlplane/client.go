@@ -532,6 +532,12 @@ func (c *Client) Connect() error {
 		slog.String("connection_id", c.state.ConnectionID),
 	)
 
+	// Every (re)connect sends every current total again, so spend reported while the
+	// connection was down, or lost with the replica it was on, reaches the control plane.
+	if c.budgetUsage != nil {
+		c.budgetUsage.Resync()
+	}
+
 	// Capture a stable gateway ID for background sync work to avoid
 	// reading mutable state from goroutines.
 	gatewayID := c.state.GatewayID
