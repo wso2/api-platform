@@ -28,6 +28,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/registry"
@@ -36,6 +37,49 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+// ChartFeaturesAnnotation is the Chart.yaml annotation in which the gateway chart lists,
+// comma-separated, the operator-facing features it supports. The gateway chart and the
+// operator are released separately, so the operator checks it before deploying values
+// that only a newer chart understands, instead of letting an older chart render them
+// into a broken gateway.
+const ChartFeaturesAnnotation = "gateway.api-platform.wso2.com/features"
+
+// FeatureBasicAuthPasswordSecretRef is the chart feature for basic-auth users whose
+// password comes from a Secret (users[].passwordSecretRef), which spec.adminCredentials
+// relies on. A chart without it renders such a user with an empty password value.
+const FeatureBasicAuthPasswordSecretRef = "basicAuthPasswordSecretRef"
+
+// ErrChartFeatureUnsupported is returned, before anything is installed or upgraded, when
+// the chart does not declare a feature listed in InstallOrUpgradeOptions.RequiredFeatures.
+var ErrChartFeatureUnsupported = errors.New("gateway Helm chart does not support a required feature")
+
+// checkChartFeatures returns ErrChartFeatureUnsupported (wrapped) when ch does not list
+// every required feature in its ChartFeaturesAnnotation.
+func checkChartFeatures(ch *chart.Chart, required []string) error {
+	if len(required) == 0 {
+		return nil
+	}
+	declared := map[string]bool{}
+	if ch.Metadata != nil {
+		for _, f := range strings.Split(ch.Metadata.Annotations[ChartFeaturesAnnotation], ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				declared[f] = true
+			}
+		}
+	}
+	for _, f := range required {
+		if !declared[f] {
+			name, version := "", ""
+			if ch.Metadata != nil {
+				name, version = ch.Metadata.Name, ch.Metadata.Version
+			}
+			return fmt.Errorf("%w: chart %s %s does not declare %q in its %s annotation; use a gateway chart version that supports it",
+				ErrChartFeatureUnsupported, name, version, f, ChartFeaturesAnnotation)
+		}
+	}
+	return nil
+}
 
 // Client provides methods to install, upgrade, and uninstall Helm charts
 type Client struct {
@@ -124,6 +168,10 @@ type InstallOrUpgradeOptions struct {
 
 	// PlainHTTP forces plain HTTP instead of HTTPS for OCI registries
 	PlainHTTP bool
+
+	// RequiredFeatures lists chart features (see ChartFeaturesAnnotation) the values
+	// depend on. The release is left untouched when the chart lacks one.
+	RequiredFeatures []string
 }
 
 // UninstallOptions contains options for uninstalling a Helm release
@@ -221,6 +269,9 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 	if err != nil {
 		return fmt.Errorf("failed to load chart: %w", err)
 	}
+	if err := checkChartFeatures(chart, opts.RequiredFeatures); err != nil {
+		return err
+	}
 
 	// Parse values
 	values, err := c.parseValues(opts)
@@ -286,6 +337,9 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 	chart, err := loader.Load(chartLoadPath)
 	if err != nil {
 		return fmt.Errorf("failed to load chart: %w", err)
+	}
+	if err := checkChartFeatures(chart, opts.RequiredFeatures); err != nil {
+		return err
 	}
 
 	// Parse values

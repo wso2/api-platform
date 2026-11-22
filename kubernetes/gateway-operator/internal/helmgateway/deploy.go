@@ -48,6 +48,10 @@ type DeployInput struct {
 	// the gateway registry keeps for the same purpose.
 	Client         client.Reader
 	FromGatewayAPI bool
+
+	// RequiredChartFeatures lists gateway chart features the values depend on; the
+	// release is left untouched when the chart does not declare one of them.
+	RequiredChartFeatures []string
 }
 
 // legacyCleanupInput is what deciding the fate of a legacy release needs, shared
@@ -71,20 +75,21 @@ func InstallOrUpgrade(ctx context.Context, in DeployInput) error {
 
 	releaseName := helm.GetReleaseName(in.GatewayName)
 	if err := helmClient.InstallOrUpgrade(ctx, helm.InstallOrUpgradeOptions{
-		ReleaseName:     releaseName,
-		Namespace:       in.Namespace,
-		ChartPath:       in.Config.Gateway.HelmChartPath,
-		ChartName:       in.Config.Gateway.HelmChartName,
-		ValuesYAML:      in.ValuesYAML,
-		ValuesFilePath:  in.ValuesFilePath,
-		Version:         in.Config.Gateway.HelmChartVersion,
-		CreateNamespace: false,
-		Wait:            true,
-		Timeout:         300,
-		Username:        in.DockerUsername,
-		Password:        in.DockerPassword,
-		Insecure:        in.Config.Gateway.InsecureRegistry,
-		PlainHTTP:       in.Config.Gateway.PlainHTTP,
+		ReleaseName:      releaseName,
+		Namespace:        in.Namespace,
+		ChartPath:        in.Config.Gateway.HelmChartPath,
+		ChartName:        in.Config.Gateway.HelmChartName,
+		ValuesYAML:       in.ValuesYAML,
+		ValuesFilePath:   in.ValuesFilePath,
+		Version:          in.Config.Gateway.HelmChartVersion,
+		CreateNamespace:  false,
+		Wait:             true,
+		Timeout:          300,
+		Username:         in.DockerUsername,
+		Password:         in.DockerPassword,
+		Insecure:         in.Config.Gateway.InsecureRegistry,
+		PlainHTTP:        in.Config.Gateway.PlainHTTP,
+		RequiredFeatures: in.RequiredChartFeatures,
 	}); err != nil {
 		return err
 	}

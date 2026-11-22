@@ -31,7 +31,8 @@ import (
 )
 
 // TestCRDVersionSchemasIdentical enforces the invariant that every served
-// version of each CRD shares an identical OpenAPI schema.
+// version of each CRD shares an identical OpenAPI schema, apart from the fields
+// listed in fieldsAbsentFromVersion.
 //
 // The operator ships its CRDs (kubernetes/helm/operator-helm-chart/crds/) serving
 // v1 (storage) and v1alpha1 (served) with conversion strategy None. Kinds
@@ -48,11 +49,29 @@ import (
 // This guard fails the moment the two versions drift, so an accidental edit to
 // one version's Go types (without mirroring it in the other) cannot ship.
 //
+// The one deliberate exception is the APIGateway CRD, which also serves
+// v1alpha2. v1alpha1 keeps the APIGateway schema it had before
+// spec.adminCredentials was added, and v1alpha2 (identical to v1) serves the new
+// field. Under conversion strategy None the API server prunes the field from a
+// v1alpha1 request, so writing an APIGateway through v1alpha1 drops any
+// spec.adminCredentials set through v1 or v1alpha2. That is the accepted cost of
+// leaving v1alpha1 unchanged; fieldsAbsentFromVersion records it, and nothing
+// else may differ.
+//
 // When the versions are INTENTIONALLY diverged in the future, this test is the
 // signal to switch models: delete it, flip strategy: None -> Webhook, wire
 // SetupWebhookWithManager in cmd/main.go, replace the JSON round-trip in
 // conversion.go with explicit per-field mapping, and rely on round-trip
 // conversion tests instead.
+// fieldsAbsentFromVersion lists, per CRD and served version, the storage-version
+// fields that version deliberately does not declare. Each entry is a path of
+// property names from the schema root.
+var fieldsAbsentFromVersion = map[string]map[string][][]string{
+	"apigateways.gateway.api-platform.wso2.com": {
+		"v1alpha1": {{"spec", "adminCredentials"}},
+	},
+}
+
 func TestCRDVersionSchemasIdentical(t *testing.T) {
 	dir := crdBasesDir(t)
 	paths, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
@@ -92,17 +111,49 @@ func TestCRDVersionSchemasIdentical(t *testing.T) {
 				if v.Schema == nil || v.Schema.OpenAPIV3Schema == nil {
 					t.Fatalf("version %q of %s has no schema", v.Name, crd.Name)
 				}
-				if !reflect.DeepEqual(ref.Schema.OpenAPIV3Schema, v.Schema.OpenAPIV3Schema) {
+				want := ref.Schema.OpenAPIV3Schema
+				if absent := fieldsAbsentFromVersion[crd.Name][v.Name]; len(absent) > 0 {
+					want = want.DeepCopy()
+					for _, path := range absent {
+						if !removeSchemaProperty(want, path) {
+							t.Fatalf("storage version %q of %s has no %s; remove the stale fieldsAbsentFromVersion entry",
+								ref.Name, crd.Name, strings.Join(path, "."))
+						}
+					}
+				}
+				if !reflect.DeepEqual(want, v.Schema.OpenAPIV3Schema) {
 					t.Errorf("schema for version %q differs from storage version %q of %s.\n"+
 						"conversion strategy None requires identical schemas — mirror the change "+
-						"in both api/v1 and api/v1alpha1 (and re-run `make manifests`), or move to a "+
+						"in api/v1 and every other served version (api/v1alpha1, and api/v1alpha2 for APIGateway) "+
+						"(and re-run `make manifests`), or move to a "+
 						"real conversion webhook (see this test's doc comment).\n%s",
 						v.Name, ref.Name, crd.Name,
-						schemaDiff(ref.Schema.OpenAPIV3Schema, v.Schema.OpenAPIV3Schema))
+						schemaDiff(want, v.Schema.OpenAPIV3Schema))
 				}
 			}
 		})
 	}
+}
+
+// removeSchemaProperty deletes the property at path (property names from the
+// schema root) and reports whether it was there.
+func removeSchemaProperty(s *apiextensionsv1.JSONSchemaProps, path []string) bool {
+	if len(path) == 0 {
+		return false
+	}
+	child, ok := s.Properties[path[0]]
+	if !ok {
+		return false
+	}
+	if len(path) == 1 {
+		delete(s.Properties, path[0])
+		return true
+	}
+	if !removeSchemaProperty(&child, path[1:]) {
+		return false
+	}
+	s.Properties[path[0]] = child
+	return true
 }
 
 // storageVersion returns the version flagged storage:true, falling back to the

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gw1
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gw2
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: echo-backend
