@@ -127,17 +127,17 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     Given I generate a unique resource name from "agent-key-resync" and store it as "agentHandle"
     And I generate a unique API context from "/agent-key-resync" and store it as "agentContext"
     And I generate a unique resource name from "agent-resync-early" and store it as "agentEarlyKeyId"
-    And I generate a unique value from "agent-resync-early-value" and store it as "agentEarlyKeyValue"
+    And I generate a unique value from "agent-resync-early-value-api-key-0123456789" and store it as "agentEarlyKeyValue"
     And I generate a unique resource name from "agent-resync-key" and store it as "keyId"
-    And I generate a unique value from "agent-resync-value" and store it as "keyValue"
+    And I generate a unique value from "agent-resync-value-api-key-0123456789" and store it as "keyValue"
     And I generate a unique resource name from "agent-resync-rest" and store it as "apiHandle"
     And I generate a unique API context from "/agent-resync-rest" and store it as "apiContext"
     And I generate a unique resource name from "rest-kept" and store it as "restKeptKeyId"
-    And I generate a unique value from "rest-kept-value" and store it as "restKeptKeyValue"
+    And I generate a unique value from "rest-kept-value-api-key-0123456789" and store it as "restKeptKeyValue"
     And I generate a unique resource name from "rest-revoked" and store it as "restRevokedKeyId"
-    And I generate a unique value from "rest-revoked-value" and store it as "restRevokedKeyValue"
+    And I generate a unique value from "rest-revoked-value-api-key-0123456789" and store it as "restRevokedKeyValue"
     And I generate a unique resource name from "rest-new" and store it as "restNewKeyId"
-    And I generate a unique value from "rest-new-value" and store it as "restNewKeyValue"
+    And I generate a unique value from "rest-new-value-api-key-0123456789" and store it as "restNewKeyValue"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
       | id                            | ${CTX:agentHandle}                                                                                  |
       | displayName                   | Resynced Key Agent                                                                                  |

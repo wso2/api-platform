@@ -3093,7 +3093,7 @@ type CostRateLimitDimension struct {
 
 // CreateAPIKeyRequest defines model for CreateAPIKeyRequest.
 type CreateAPIKeyRequest struct {
-	// ApiKey Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
+	// ApiKey Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways), 36 to 128 characters long. Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
 	ApiKey *string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
 
 	// DisplayName Human-readable name for the API key
@@ -6254,7 +6254,7 @@ type TokenRotationResponse struct {
 
 // UpdateAPIKeyRequest defines model for UpdateAPIKeyRequest.
 type UpdateAPIKeyRequest struct {
-	// ApiKey The new plain text API key value that will be hashed before storage
+	// ApiKey The new plain text API key value that will be hashed before storage, 36 to 128 characters long
 	ApiKey string `json:"apiKey" yaml:"apiKey"`
 
 	// DisplayName Human-readable name for the API key

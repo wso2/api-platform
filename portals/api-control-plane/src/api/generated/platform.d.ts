@@ -5695,8 +5695,8 @@ export interface components {
              */
             displayName: string;
             /**
-             * @description Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
-             * @example sk_example_1234567890abcdef
+             * @description Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways), 36 to 128 characters long. Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
+             * @example sk_example_1234567890abcdef1234567890abcdef
              */
             apiKey?: string;
             /**
@@ -5756,8 +5756,8 @@ export interface components {
              */
             displayName: string;
             /**
-             * @description The new plain text API key value that will be hashed before storage
-             * @example sk_example_new1234567890abcdef
+             * @description The new plain text API key value that will be hashed before storage, 36 to 128 characters long
+             * @example sk_example_new1234567890abcdef1234567890abcdef
              */
             apiKey: string;
             /**
