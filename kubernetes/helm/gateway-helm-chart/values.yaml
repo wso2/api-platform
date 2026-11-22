@@ -84,6 +84,20 @@ gateway:
       auth:
         basic:
           enabled: true
+          # Each user sets either password or passwordSecretRef, never both.
+          # passwordSecretRef reads the password from a Kubernetes Secret instead of
+          # writing it into the ConfigMap. source: env (default) injects it as
+          # APIP_GW_CONTROLLER_AUTH_BASIC_USER_<index>_PASSWORD; source: file mounts the
+          # key read-only at <mountPath>/<key> and reads it with a {{ file }} token
+          # (see "Admin users with a password from a Secret" in README.md):
+          #   - username: "admin"
+          #     passwordSecretRef:
+          #       name: gateway-admin        # required
+          #       key: password              # default "password"
+          #       source: file               # env | file
+          #       mountPath: ""              # file only; default /secrets/gateway-controller/basic-auth/user-<index>
+          #     password_hashed: false       # true when the Secret holds a bcrypt hash
+          #     roles: ["admin"]
           users:
             - username: "admin"
               password: "admin"

@@ -16,3 +16,9 @@ keywords:
 maintainers:
   - name: ap-gateway-operator-maintainers
     email: contact@wso2.com
+annotations:
+  # Operator-facing features this chart supports, comma-separated. The gateway operator
+  # is released separately and checks this list before deploying values that need a
+  # feature, so an older chart fails clearly instead of rendering a broken gateway.
+  # Append to it, never remove from it, when the chart gains such a feature.
+  gateway.api-platform.wso2.com/features: "basicAuthPasswordSecretRef"
