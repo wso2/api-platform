@@ -13,7 +13,7 @@ policies:
       version: v0.11.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-authentication@v0
     - name: aws-bedrock-guardrail
-      version: v1.5.0
+      version: v1.5.1
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
     - name: azure-content-safety-content-moderation
       version: v1.1.0
@@ -24,6 +24,9 @@ policies:
     - name: backend-jwt
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt@v1
+    - name: backend-jwt
+      version: v2.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt/v2@v2
     - name: basic-auth
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1
@@ -58,7 +61,7 @@ policies:
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.6.0
+      version: v1.7.0
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.2.0
