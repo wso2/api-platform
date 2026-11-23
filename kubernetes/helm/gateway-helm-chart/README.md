@@ -108,8 +108,8 @@ Upgrade with new values:
 helm upgrade ap-gateway . -f custom-values.yaml
 ```
 
-Upgrading a release installed by an earlier chart version keeps its admin credential, including
-the old default `admin`/`admin`. See
+Upgrading a release installed by an earlier chart version that ran the old default `admin`/`admin`
+user keeps it. See
 [The management API admin credential](#the-management-api-admin-credential).
 
 ## Verifying the Installation
@@ -282,7 +282,8 @@ file, so the password is not in the ConfigMap, the pod environment or the Helm v
 | `adminCredentials.existingSecret` set | User `adminCredentials.username` (default `admin`), password from that Secret's `existingSecretKey` (default `password`). |
 | Fresh install | A random 32-character password generated into the Secret `<release>-gateway-admin-credentials` (keys `username`, `password`). The NOTES print the commands that read it. |
 | Upgrade of a release that generated its credential | The same Secret and password, reused. If the Secret was deleted, the upgrade fails instead of generating a different credential. |
-| Upgrade of a release made by an earlier chart version | That chart's default `admin`/`admin` user, unchanged, with a warning in the NOTES. Set `existingSecret` or `users` to replace it. |
+| Upgrade of a release made by an earlier chart version that ran its default `admin`/`admin` user | That user, unchanged, with a warning in the NOTES. Set `existingSecret` or `users` to replace it. |
+| Upgrade of a release made by an earlier chart version with other users, or basic auth off | A generated credential, as on a fresh install: `admin`/`admin` was not in use, so it is not introduced. |
 | `users` set in values | Exactly those users; nothing is generated. |
 
 Read a generated credential with:
