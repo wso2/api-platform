@@ -78,12 +78,12 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                   source:
-                    default: env
+                    default: file
                     description: |-
-                      Source is how the gateway-controller receives the password: "env" injects it
-                      as an environment variable from the Secret, "file" mounts the Secret key
-                      read-only and the controller reads it from the file, so the value never
-                      enters the pod environment.
+                      Source is how the gateway-controller receives the password: "file" (the
+                      default) mounts the Secret key read-only and the controller reads it from the
+                      file, so the value never enters the pod environment; "env" injects it as an
+                      environment variable from the Secret.
                     enum:
                     - env
                     - file
@@ -2906,12 +2906,12 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                   source:
-                    default: env
+                    default: file
                     description: |-
-                      Source is how the gateway-controller receives the password: "env" injects it
-                      as an environment variable from the Secret, "file" mounts the Secret key
-                      read-only and the controller reads it from the file, so the value never
-                      enters the pod environment.
+                      Source is how the gateway-controller receives the password: "file" (the
+                      default) mounts the Secret key read-only and the controller reads it from the
+                      file, so the value never enters the pod environment; "env" injects it as an
+                      environment variable from the Secret.
                     enum:
                     - env
                     - file

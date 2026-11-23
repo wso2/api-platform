@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -222,6 +223,15 @@ func PasswordAsGatewayReadsIt(value, source string) string {
 	return value
 }
 
+// AdminCredentialsSource returns spec.adminCredentials.source with its default applied:
+// an empty value means "file" (the CRD defaults it to the same value).
+func AdminCredentialsSource(source string) string {
+	if source == "" {
+		return apiv1.AdminCredentialsSourceFile
+	}
+	return source
+}
+
 // DefaultAdminUsername is the admin username used when spec.adminCredentials.username
 // is empty (the CRD defaults it to the same value).
 const DefaultAdminUsername = "admin"
@@ -250,7 +260,7 @@ func AdminCredentialsFromSecret(ctx context.Context, k8sClient client.Client, ga
 	if err != nil {
 		return "", "", err
 	}
-	password = PasswordAsGatewayReadsIt(password, creds.Source)
+	password = PasswordAsGatewayReadsIt(password, AdminCredentialsSource(creds.Source))
 	if password == "" {
 		return "", "", fmt.Errorf("spec.adminCredentials.passwordSecretRef: key %q in secret %s/%s is empty",
 			ref.Key, gateway.Namespace, ref.Name)
@@ -260,6 +270,32 @@ func AdminCredentialsFromSecret(ctx context.Context, k8sClient client.Client, ga
 		username = DefaultAdminUsername
 	}
 	return username, password, nil
+}
+
+// CheckAdminCredentialsForEnvDelivery fails when spec.adminCredentials cannot be passed
+// to the gateway-controller as an environment variable unchanged: with source "file"
+// (the default) the operator trims trailing spaces, tabs and newlines, as the
+// gateway-controller does when it reads the mounted file, but an environment variable
+// keeps them. The operator uses an environment variable only with a gateway chart that
+// cannot mount the password as a file; the two would then disagree on the password.
+func CheckAdminCredentialsForEnvDelivery(ctx context.Context, k8sClient client.Client, gateway *apiv1.APIGateway) error {
+	creds := gateway.Spec.AdminCredentials
+	if creds == nil || AdminCredentialsSource(creds.Source) != apiv1.AdminCredentialsSourceFile {
+		return nil
+	}
+	ref := creds.PasswordSecretRef.DeepCopy()
+	ref.Optional = nil
+	raw, err := secretsource.Resolve(ctx, k8sClient, "spec.adminCredentials.passwordSecretRef",
+		apiv1.SecretValueSource{ValueFrom: ref}, gateway.Namespace)
+	if err != nil {
+		return err
+	}
+	if raw != PasswordAsGatewayReadsIt(raw, apiv1.AdminCredentialsSourceFile) {
+		return fmt.Errorf("spec.adminCredentials.passwordSecretRef: the value of key %q in secret %s/%s ends in whitespace, "+
+			"and the gateway chart in use passes the password as an environment variable, which keeps it; "+
+			"remove the trailing whitespace or use a gateway chart that supports passwordSecretRef", ref.Key, gateway.Namespace, ref.Name)
+	}
+	return nil
 }
 
 // ResolveBasicCredentials returns the basic-auth credentials the operator sends to a
@@ -299,6 +335,19 @@ func ResolveBasicCredentials(ctx context.Context, k8sClient client.Client, info 
 			return username, password, nil
 		}
 	}
+	// A gateway with no basic-auth user of its own gets an operator-generated credential
+	// when the operator first deploys it.
+	if info != nil {
+		secret, err := GetGeneratedAdminSecret(ctx, k8sClient, info.Namespace, info.Name)
+		if err != nil && !errors.Is(err, ErrForeignAdminSecret) {
+			return "", "", err
+		}
+		if secret != nil {
+			return GeneratedAdminCredentials(secret)
+		}
+	}
+	// Only a gateway deployed before the operator generated credentials gets here: it
+	// keeps the admin/admin user it was deployed with.
 	username, password = GetDefaultBasicAuthCredentials()
 	return username, password, nil
 }

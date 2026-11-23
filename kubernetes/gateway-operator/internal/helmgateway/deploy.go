@@ -259,6 +259,45 @@ func Uninstall(ctx context.Context, in UninstallInput) error {
 	})
 }
 
+// ChartFeatures returns the features the operator's configured gateway chart declares
+// (see helm.ChartFeaturesAnnotation), so the operator can build values that chart version
+// supports. The operator and the gateway chart are released separately.
+func ChartFeatures(cfg *config.OperatorConfig, dockerUsername, dockerPassword string) (map[string]bool, error) {
+	helmClient, err := helm.NewClientWithOptions(cfg.Gateway.PlainHTTP)
+	if err != nil {
+		return nil, fmt.Errorf("create Helm client: %w", err)
+	}
+	return helmClient.ChartFeatures(helm.ChartRef{
+		ChartPath: cfg.Gateway.HelmChartPath,
+		ChartName: cfg.Gateway.HelmChartName,
+		Version:   cfg.Gateway.HelmChartVersion,
+		Username:  dockerUsername,
+		Password:  dockerPassword,
+		Insecure:  cfg.Gateway.InsecureRegistry,
+	})
+}
+
+// PreviousReleaseValues returns the values of the gateway's existing Helm release, and
+// whether one exists. It also looks under the release name used before the current
+// naming, so a gateway deployed by an older operator is recognised as deployed.
+func PreviousReleaseValues(cfg *config.OperatorConfig, gatewayName, namespace string) (map[string]interface{}, bool, error) {
+	helmClient, err := helm.NewClientWithOptions(cfg.Gateway.PlainHTTP)
+	if err != nil {
+		return nil, false, fmt.Errorf("create Helm client: %w", err)
+	}
+	names := []string{helm.GetReleaseName(gatewayName)}
+	if legacy := helm.LegacyReleaseName(gatewayName); legacy != names[0] {
+		names = append(names, legacy)
+	}
+	for _, name := range names {
+		values, found, err := helmClient.ReleaseValues(namespace, name)
+		if err != nil || found {
+			return values, found, err
+		}
+	}
+	return nil, false, nil
+}
+
 // ReleaseDeployed reports whether the gateway Helm release exists and its latest revision is deployed.
 func ReleaseDeployed(ctx context.Context, cfg *config.OperatorConfig, gatewayName, namespace string) (bool, error) {
 	_ = ctx

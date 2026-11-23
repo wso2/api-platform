@@ -150,11 +150,12 @@ gateway:
           auth:
             basic:
               enabled: true
-              users:
-                - username: "admin"
-                  password: "admin"
-                  password_hashed: false
-                  roles: ["admin"]
+              # No shared default user. Each gateway's admin user comes from its
+              # APIGateway spec.adminCredentials, users in its configRef values, or a
+              # password the operator generates into the Secret <gateway>-admin-credentials
+              # on first deployment. Gateways an earlier operator deployed with admin/admin
+              # keep it. Users listed here apply to every gateway.
+              users: []
             idp:
               enabled: false
               jwks_url: ""
