@@ -1526,7 +1526,7 @@ func defaultConfig() *Config {
 					"bytesTx":    "%BYTES_SENT%",
 					"dur":        "%DURATION%",
 					"upSvcT":     "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-					"xff":        "%REQ(X-FORWARDED-FOR)%",
+					"xff":        "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%",
 					"ua":         "%REQ(USER-AGENT)%",
 					"reqId":      "%REQ(X-REQUEST-ID)%",
 					"host":       "%REQ(:AUTHORITY)%",
@@ -1552,7 +1552,7 @@ func defaultConfig() *Config {
 					"%REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% " +
 					"%CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 					"%REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% " +
-					"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
+					"\"%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 					"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 			},
 			ListenerPort: 8080,
