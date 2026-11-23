@@ -42,6 +42,7 @@ import (
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/go-logr/logr"
+	choreolabsv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/choreolabs/v1"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	apiv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
@@ -65,6 +66,7 @@ func init() {
 	utilruntime.Must(apiv1.AddToScheme(scheme))
 	utilruntime.Must(apiv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(apiv2alpha1.AddToScheme(scheme))
+	utilruntime.Must(choreolabsv1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
@@ -292,6 +294,7 @@ func main() {
 		{"Agent", controller.NewAgentReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"ManagedSecret", controller.NewManagedSecretReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"Certificate", controller.NewCertificateReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"Backend", controller.NewBackendReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"ApiKey", controller.NewApiKeyReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"SubscriptionPlan", controller.NewSubscriptionPlanReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"Subscription", controller.NewSubscriptionReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},

@@ -42,6 +42,10 @@ const (
 	// CRD versions (the CRDs serve v1alpha1 and v1, with v1 as storage).
 	ManagementArtifactAPIVersion = "gateway.api-platform.wso2.com/v1"
 
+	// ChoreoLabsArtifactAPIVersion is the apiVersion of the artifact kinds the gateway added
+	// under the Choreo Labs name (Backend); the gateway rejects any other apiVersion for them.
+	ChoreoLabsArtifactAPIVersion = "gateway.choreolabs.com/v1"
+
 	restAPIsResourcePath = ManagementAPIBasePath + "/rest-apis"
 )
 

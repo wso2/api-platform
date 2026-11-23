@@ -1,0 +1,217 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: backends.gateway.choreolabs.com
+spec:
+  group: gateway.choreolabs.com
+  names:
+    kind: Backend
+    listKind: BackendList
+    plural: backends
+    singular: backend
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.basePath
+      name: Base Path
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Programmed")].status
+      name: Programmed
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Backend is a gateway-wide backend: defined once, any API on the selected gateways can route to
+          it by name with the dynamic-endpoint policy, fixed or chosen per request. Its labels are what a
+          dynamic-endpoint backendSelector matches, and they also select the gateways it is deployed to.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BackendSpec mirrors the gateway management API's BackendConfiguration.
+            properties:
+              basePath:
+                description: |-
+                  BasePath replaces the API's base path for requests routed to this Backend: the gateway
+                  strips the API context and prefixes this path. Must start with "/" and must not end with
+                  "/"; omit for root.
+                pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                type: string
+              description:
+                description: Description describes the Backend.
+                maxLength: 1023
+                type: string
+              displayName:
+                description: DisplayName is a human-readable name.
+                maxLength: 253
+                type: string
+              endpoints:
+                description: Endpoints are the Backend's targets, load-balanced by
+                  weight.
+                items:
+                  description: BackendEndpoint is one target of a Backend.
+                  properties:
+                    url:
+                      description: |-
+                        URL is the endpoint's scheme, host and port; the path comes from basePath. All endpoints of
+                        a Backend use the same scheme, and a Backend with tls uses https.
+                      pattern: ^https?://
+                      type: string
+                    weight:
+                      description: |-
+                        Weight is the endpoint's relative share of requests across the Backend's endpoints.
+                        Omitted or 0 counts as 1.
+                      maximum: 100
+                      minimum: 0
+                      type: integer
+                  required:
+                  - url
+                  type: object
+                minItems: 1
+                type: array
+              timeout:
+                description: Timeout is the connect timeout to the endpoints.
+                properties:
+                  connect:
+                    description: Connect Connection-establishment timeout duration
+                      (e.g. "5s", "500ms"). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
+              tls:
+                description: TLS configures the connection to https endpoints.
+                properties:
+                  identity:
+                    description: 'Identity names a gateway identity (a certificate
+                      with usage: identity) to present.'
+                    type: string
+                  trustedCAs:
+                    description: |-
+                      TrustedCAs names certificates (usage: upstream) to trust for this Backend in place of the
+                      gateway-wide trust bundle.
+                    items:
+                      type: string
+                    type: array
+                  verifyHostName:
+                    description: VerifyHostName checks each endpoint's certificate
+                      against its host. Defaults to true.
+                    type: boolean
+                type: object
+            required:
+            - endpoints
+            type: object
+          status:
+            description: |-
+              ResourceStatus carries the controller-managed lifecycle fields shared by
+              the new management-API CRDs.
+
+              For UUID-keyed kinds (Subscription, SubscriptionPlan, Certificate) the
+              gateway-controller assigns Id on first deploy; controllers persist it and
+              use it to address the resource for subsequent update/delete calls.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the
+                  resource's state. The standard types are Accepted and Programmed.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              id:
+                description: |-
+                  Id is the gateway-issued identifier for UUID-keyed resources. When
+                  set the controller addresses the resource via PUT/DELETE /<plural>/{id}.
+                type: string
+              lastUpdateTime:
+                description: LastUpdateTime is the last time the status was updated.
+                format: date-time
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: metadata.name must be 3 to 40 lowercase letters and digits, with
+            single hyphens between them
+          rule: size(self.metadata.name) >= 3 && size(self.metadata.name) <= 40 &&
+            self.metadata.name.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+    served: true
+    storage: true
+    subresources:
+      status: {}

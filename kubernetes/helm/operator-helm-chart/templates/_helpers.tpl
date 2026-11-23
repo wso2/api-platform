@@ -199,6 +199,32 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - update
 - apiGroups:
+  - gateway.choreolabs.com
+  resources:
+  - backends
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gateway.choreolabs.com
+  resources:
+  - backends/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gateway.choreolabs.com
+  resources:
+  - backends/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - gateway.api-platform.wso2.com
   resources:
   - apigateways

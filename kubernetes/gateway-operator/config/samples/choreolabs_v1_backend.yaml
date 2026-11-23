@@ -1,0 +1,25 @@
+---
+# A gateway-wide Backend. The operator sends it to /api/management/v1/backends on every gateway
+# whose APIGateway selects this namespace and these labels (POST, or PUT on update); deleting the
+# CR deletes the Backend through the finalizer. The gateway refuses the delete (409) while a
+# deployed API names the Backend as its fixed targetUpstream, so the CR stays terminating until
+# that API stops naming it.
+#
+# APIs route to it with the dynamic-endpoint policy (v1.1): by name (targetUpstream: orders-eu) or
+# per request (backendExpression), limited by a backendSelector that matches these labels.
+apiVersion: gateway.choreolabs.com/v1
+kind: Backend
+metadata:
+  name: orders-eu
+  labels:
+    team: orders
+spec:
+  displayName: Orders (EU)
+  basePath: /v1
+  timeout:
+    connect: 2s
+  endpoints:
+    - url: http://orders-eu-1.orders.svc.cluster.local:8080
+      weight: 70
+    - url: http://orders-eu-2.orders.svc.cluster.local:8080
+      weight: 30
