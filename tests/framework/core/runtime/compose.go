@@ -530,6 +530,11 @@ func interpolateStagedFile(path string, values map[string]string) error {
 		text = replaceDefaulted(text, key, value)
 		text = strings.ReplaceAll(text, "${"+key+"}", value)
 	}
+	// Without the block's partition, Compose would fill ${BLOCK} in from its own environment.
+	if block, ok := values[components.VarBlock]; ok && block == "" && strings.Contains(text, "${"+components.VarBlock+"}") {
+		return fmt.Errorf("runtime: staged compose file %q uses ${%s}, but the stack has no block partition",
+			path, components.VarBlock)
+	}
 
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		return fmt.Errorf("runtime: writing staged compose file %q: %w", path, err)

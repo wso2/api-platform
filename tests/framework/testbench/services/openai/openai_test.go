@@ -538,6 +538,18 @@ func TestOpenAIChatStillTakesNoCredential(t *testing.T) {
 	require.NotEmpty(t, azureChatReply(t, rec))
 }
 
+// Azure answers chat completions to POST only; other methods must not reach the default completion.
+func TestAzureChatAllowsOnlyPost(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		req := httptest.NewRequestWithContext(t.Context(), method, azureChatPath, nil)
+		req.Header.Set("api-key", ValidAPIKey)
+		rec := httptest.NewRecorder()
+		New().Handler().ServeHTTP(rec, req)
+		require.Equal(t, http.StatusMethodNotAllowed, rec.Code, method)
+		require.Equal(t, http.MethodPost, rec.Header().Get("Allow"), method)
+	}
+}
+
 // The openai-to-azure-openai-transformer suite sends an Azure deployment path with no key and
 // expects the default completion, so only the prefixed path takes the Azure credential rule.
 func TestAzureDeploymentPathOutsideThePrefixKeepsTheDefaultChat(t *testing.T) {

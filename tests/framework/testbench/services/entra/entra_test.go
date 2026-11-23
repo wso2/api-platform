@@ -557,6 +557,14 @@ func TestResourceChecksBearerAndAudience(t *testing.T) {
 	rec = callResource(t, svc, "/t1/foundry", "")
 	require.Empty(t, rec.Header().Values(HeaderToken), "no bearer token, no token header")
 
+	// A second Authorization header makes the request ambiguous, even after a valid token.
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/t1/foundry", strings.NewReader(`{}`))
+	req.Header.Add("Authorization", "Bearer "+foundryToken)
+	req.Header.Add("Authorization", "Basic abc")
+	rec = serve(t, svc.Handler(), req)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Empty(t, rec.Header().Values(HeaderToken), "an ambiguous Authorization reports no token")
+
 	rec = callResource(t, svc, "/t1/elsewhere", "Bearer "+foundryToken)
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }

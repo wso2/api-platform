@@ -74,10 +74,10 @@ func AcceptsAzureCredential(r *http.Request, apiKey string) bool {
 // resource serves a resource protected by tokens for audience: any method, any path below it.
 func resource(audience string) func(string, http.ResponseWriter, *http.Request) {
 	return func(_ string, w http.ResponseWriter, r *http.Request) {
-		token, hasBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		token, _ := BearerToken(r)
 		var claims Claims
 		valid := false
-		if hasBearer {
+		if token != "" {
 			w.Header().Set(HeaderToken, token)
 			if claims, valid = ParseToken(token); valid {
 				w.Header().Set(HeaderTenant, claims.Tid)

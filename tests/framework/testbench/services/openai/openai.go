@@ -101,13 +101,18 @@ func presentedKey(r *http.Request) string {
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.route)
-	mux.HandleFunc("POST "+AzurePathPrefix+"/openai/deployments/{deployment}/chat/completions", s.azureChat)
+	mux.HandleFunc(AzurePathPrefix+"/openai/deployments/{deployment}/chat/completions", s.azureChat)
 	return mux
 }
 
 // azureChat answers an Azure OpenAI chat completion whose reply is the deployment's name, after the
-// credential check and then the api-version check that Azure makes.
+// credential check and then the api-version check that Azure makes. It allows only POST.
 func (s *Service) azureChat(w http.ResponseWriter, r *http.Request) {
+	if strings.ToUpper(r.Method) != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
 	if err != nil {
