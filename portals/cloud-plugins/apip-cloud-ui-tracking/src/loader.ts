@@ -22,7 +22,27 @@ import { installOptanonWrapper, setConsentDefaults } from './consent';
 const COOKIEPRO_SRC = 'https://cookie-cdn.cookiepro.com/scripttemplates/otSDKStub.js';
 const GTM_SRC = 'https://www.googletagmanager.com/gtm.js';
 
+/** CookiePro's floating cookie icon. The footer's "Cookie Settings" link opens the same center. */
+const FLOATING_BUTTON_CSS = '#ot-sdk-btn-floating { display: none !important; }';
+
 let started = false;
+
+/**
+ * Hides CookiePro's floating icon. A constructable stylesheet rather than a `<style>` element,
+ * which the console's Content-Security-Policy (no inline styles) would block. A browser without
+ * them keeps the icon, which still works.
+ */
+function hideFloatingButton(doc: Document, win: Window): void {
+  const Sheet = (win as Window & { CSSStyleSheet?: typeof CSSStyleSheet }).CSSStyleSheet;
+  if (!Sheet || !('adoptedStyleSheets' in doc)) return;
+  try {
+    const sheet = new Sheet();
+    sheet.replaceSync(FLOATING_BUTTON_CSS);
+    doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+  } catch {
+    // Not supported here; the icon stays.
+  }
+}
 
 /** Whether `startTracking` has loaded GTM in this page. */
 export const isTrackingStarted = (): boolean => started;
@@ -39,6 +59,7 @@ export function startTracking(config: TrackingConfig, win: Window = window): voi
 
   setConsentDefaults(win, doc.cookie);
   installOptanonWrapper(win);
+  hideFloatingButton(doc, win);
 
   const cookiePro = doc.createElement('script');
   cookiePro.src = COOKIEPRO_SRC;

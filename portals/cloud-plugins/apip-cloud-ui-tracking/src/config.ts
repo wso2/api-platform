@@ -18,7 +18,7 @@
 
 /**
  * What the deployment gives this plugin, from the console's runtime config
- * (`window.__RUNTIME_CONFIG__`, the same object the console reads):
+ * (`window.__RUNTIME_CONFIG__` with `window.config` over it, merged the way the console reads it):
  *
  *   cookieProDomainScript  the CookiePro domain script id (a UUID, `-test` on dev)
  *   gtmContainerId         the Google Tag Manager container (`GTM-XXXX`)
@@ -37,12 +37,21 @@ export type TrackingConfig = {
 const DOMAIN_SCRIPT = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(-test)?$/i;
 const GTM_ID = /^GTM-[A-Z0-9]{4,12}$/;
 
-type RuntimeWindow = Window & { __RUNTIME_CONFIG__?: Record<string, unknown> };
+type RuntimeWindow = Window & {
+  __RUNTIME_CONFIG__?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+};
+
+/** The console's own runtime config: `window.config` over `window.__RUNTIME_CONFIG__`. */
+const mergedRuntimeConfig = (): Record<string, unknown> => {
+  const runtimeWindow = window as RuntimeWindow;
+  return { ...(runtimeWindow.__RUNTIME_CONFIG__ ?? {}), ...(runtimeWindow.config ?? {}) };
+};
 
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
 export function readTrackingConfig(
-  source: Record<string, unknown> | undefined = (window as RuntimeWindow).__RUNTIME_CONFIG__,
+  source: Record<string, unknown> | undefined = mergedRuntimeConfig(),
   warn: (message: string) => void = (message) => console.warn(message)
 ): TrackingConfig | null {
   const cookieProDomainScript = text(source?.cookieProDomainScript);

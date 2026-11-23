@@ -19,6 +19,7 @@ Both are required and format-checked. The footer's **Cookie Policy** link is not
 
 - Google consent defaults (`ad_storage`, `ad_user_data`, `ad_personalization`, `analytics_storage`) are set to denied before CookiePro or GTM load. A returning visitor starts from their saved choice in the `OptanonConsent` cookie.
 - `OptanonWrapper` passes the visitor's choice to Google consent mode on load and on every change: Performance (`C0002`) grants `analytics_storage`, Targeting (`C0004`) the three ad settings. CookiePro's own Google Consent Mode integration is off in the WSO2 account.
+- CookiePro's floating cookie icon is hidden (a constructable stylesheet, so the CSP's no-inline-styles rule does not matter). The console's footer shows a **Cookie Settings** link whenever both keys are set; it calls `OneTrust.ToggleInfoDisplay()` to open the same Cookie Preference Center.
 - CookiePro auto-blocking (`OtAutoBlock.js`) is not loaded, as in the Cloud console.
 - `<body data-clarity-mask="true">` masks all page text in Clarity recordings.
 - Each route change pushes a `virtual_page_view` to the data layer with the route **pattern** (`/organizations/:orgHandle/home`), no query or hash, the origin only of an outside referrer, `product: api-platform` and a fixed `page_title`. Redirect-only routes (`/`, the organization picker, the landing redirect) are not counted. Paths no route matches are sent as `/(not-found)`. Patterns come from the console's `routes` table; a plugin-added page is reported as `/(not-found)`.

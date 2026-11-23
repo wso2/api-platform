@@ -47,4 +47,21 @@ describe('readTrackingConfig', () => {
     expect(readTrackingConfig({ cookieProDomainScript: ID, gtmContainerId: 'GTM-1&x=2' }, warn)).toBeNull();
     expect(warn).toHaveBeenCalledTimes(2);
   });
+  it('reads window.config over window.__RUNTIME_CONFIG__, as the console does', () => {
+    const runtimeWindow = window as Window & {
+      __RUNTIME_CONFIG__?: Record<string, unknown>;
+      config?: Record<string, unknown>;
+    };
+    runtimeWindow.__RUNTIME_CONFIG__ = { cookieProDomainScript: ID, gtmContainerId: 'GTM-ABC123' };
+    runtimeWindow.config = { gtmContainerId: 'GTM-OVERRIDE1' };
+    try {
+      expect(readTrackingConfig()).toEqual({
+        cookieProDomainScript: ID,
+        gtmContainerId: 'GTM-OVERRIDE1',
+      });
+    } finally {
+      delete runtimeWindow.__RUNTIME_CONFIG__;
+      delete runtimeWindow.config;
+    }
+  });
 });

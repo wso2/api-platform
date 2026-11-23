@@ -6158,6 +6158,10 @@
     "defaultMessage": "Cookie Policy",
     "description": "Footer link to the Cookie Policy page, shown where a deployment sets one"
   },
+  "appLayout.footer.cookieSettings": {
+    "defaultMessage": "Cookie Settings",
+    "description": "Footer link that opens the cookie preference center, shown where the cookie banner is loaded"
+  },
   "appLayout.footer.documentation": {
     "defaultMessage": "Documentation",
     "description": "Footer link to the product documentation"
