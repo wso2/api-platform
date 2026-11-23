@@ -142,7 +142,8 @@ data:
     callback_url = {{ $auth.idp.callbackUrl | quote }}
     logout_url = {{ $auth.idp.logoutUrl | quote }}
     scope = {{ $auth.idp.scope | quote }}
-    audience = {{ toJson (default "" $auth.idp.audience) }}
+    {{- $aud := $auth.idp.audience }}
+    audience = {{ if kindIs "slice" $aud }}{{ if $aud }}{{ toJson (toStrings $aud) }}{{ else }}""{{ end }}{{ else if kindIs "invalid" $aud }}""{{ else }}{{ $aud | toString | quote }}{{ end }}
     certificate = {{ $auth.idp.certificate | quote }}
     sign_up_url = {{ $auth.idp.signUpUrl | quote }}
     logout_redirect_uri = {{ $auth.idp.logoutRedirectUri | quote }}
