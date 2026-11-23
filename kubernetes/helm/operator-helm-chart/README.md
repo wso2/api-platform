@@ -172,7 +172,7 @@ spec:
   # configRef: { name: my-gateway-values }   # ConfigMap with gateway Helm values
   # adminCredentials:                         # admin password from a Secret, see "Admin Credentials from a Secret"
   #   username: gw-admin
-  #   source: file                            # env (default) | file
+  #   source: file                            # file (default) | env
   #   passwordSecretRef: { name: gw-admin, key: password }
 ```
 
@@ -263,7 +263,18 @@ EOF
 
 ### Admin Credentials from a Secret
 
-By default the operator calls each gateway's management API with the first plain-text basic-auth user in the gateway's `configRef` values, falling back to `admin`/`admin`. To keep the admin password out of ConfigMaps and Helm values, reference a Secret with `spec.adminCredentials`:
+Every gateway's management API admin user comes from one of these, in this order:
+
+| Source | Admin user |
+|---|---|
+| `spec.adminCredentials` | The username and the password in the Secret it references (below). |
+| Basic-auth users in the gateway's `configRef` values, or in `gateway.values` of this chart | The first listed user. |
+| Neither, on the gateway's first deployment | A password the operator generates (below). |
+| Neither, for a gateway an earlier operator version deployed | The `admin`/`admin` user it was deployed with, kept so its credential does not change. The operator logs a warning and emits a `DefaultAdminCredentials` Event on each deployment; set `spec.adminCredentials` to replace it. |
+
+The operator chart no longer ships a default `admin`/`admin` user in `gateway.values`.
+
+To keep the admin password out of ConfigMaps and Helm values, reference a Secret with `spec.adminCredentials`:
 
 ```bash
 kubectl create namespace gw1
@@ -284,7 +295,7 @@ spec:
       gateway.api-platform.wso2.com/target: gateway-1
   adminCredentials:
     username: gw1-admin          # default "admin"
-    source: file                 # env (default) | file
+    source: file                 # file (default) | env
     passwordSecretRef:
       name: gateway-1-admin      # Secret in the APIGateway's namespace
       key: password
@@ -295,7 +306,7 @@ EOF
 |---|---|
 | `username` | Admin username. Defaults to `admin`. |
 | `passwordSecretRef` | `name` and `key` of the plain-text password in a Secret in the APIGateway's namespace. |
-| `source` | How the gateway-controller receives the password. `env` (default) injects it as an environment variable from the Secret; `file` mounts the Secret key read-only and the controller reads it from the file, so the password never enters the pod environment. |
+| `source` | How the gateway-controller receives the password. `file` (default) mounts the Secret key read-only and the controller reads it from the file, so the password never enters the pod environment; `env` injects it as an environment variable from the Secret. |
 
 - The operator passes only the Secret reference to the gateway chart (`gateway.config.controller.auth.basic.users[].passwordSecretRef`). The password never appears in Helm values, the gateway ConfigMap, or the Helm release.
 - **Several users:** the `adminCredentials` user is listed first. Any other basic-auth users in the `configRef` values are kept after it, each with its own `password` or `passwordSecretRef`. A `configRef` user with the same username is replaced, and the operator's default `admin`/`admin` user is not kept. IDP settings in the `configRef` still apply.
@@ -305,7 +316,27 @@ EOF
 - The API server rejects an empty `passwordSecretRef.name` or `key`, and a `username` containing `:` or control characters.
 - With `source: file`, trailing spaces, tabs and newlines are trimmed from the Secret value, as the gateway trims the mounted file, so a Secret created with `--from-file` works. With `source: env`, the value is used exactly as stored.
 - `adminCredentials` is served by `v1` and `v1alpha2` only. The `v1alpha1` APIGateway schema is unchanged and does not declare it: `kubectl` rejects a `v1alpha1` manifest that sets it (`unknown field "spec.adminCredentials"`), and a client without strict field validation has it silently dropped. A `v1alpha1` read does not return it, so applying or updating the gateway through `v1alpha1` removes `adminCredentials` set through `v1` or `v1alpha2`. Use `v1` (or `v1alpha2`) for a gateway that sets it.
-- Requires a gateway chart (`gateway.helm.chartVersion`) that supports `passwordSecretRef` on basic-auth users, which the chart declares in its `Chart.yaml` annotation `gateway.api-platform.wso2.com/features: basicAuthPasswordSecretRef`. The operator and the gateway chart are released separately, so the operator checks this before it installs or upgrades the gateway. If the chart does not declare it, the operator leaves the Helm release unchanged and reports `Programmed=False` with an error naming the chart version, instead of deploying a gateway-controller that cannot start. The same check applies when only a `configRef` user has a `passwordSecretRef`. Published gateway charts up to and including `2026.11.19-r1` do not declare it; the chart support is added by wso2/api-platform#4423. Gateways without a Secret-backed password are not checked and behave as before with any chart version.
+- **Works with any gateway chart version.** The operator and the gateway chart are released separately, so the operator reads the configured chart's `Chart.yaml` annotation `gateway.api-platform.wso2.com/features` before deploying:
+  - With `basicAuthPasswordSecretRef` (wso2/api-platform#4423 and later), the password is read from the Secret as described above: a mounted file, or an environment variable with `source: env`.
+  - With an older chart (published charts up to and including `2026.11.19-r1`), the operator passes the password to the gateway-controller as the environment variable `APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD` from the same Secret, through the controller's `extraEnv`, and the user's password is an `{{ env }}` token that the gateway-controller resolves at startup. The password still never enters Helm values or the ConfigMap. The operator logs a warning and emits an `AdminPasswordAsEnvVar` Event; moving to a newer chart switches to the file without changing the credential. Because an environment variable keeps trailing whitespace that file mode trims, a `source: file` Secret value ending in whitespace is refused with such a chart.
+  - Basic-auth users that set `passwordSecretRef` in the `configRef` values themselves are chart syntax only a newer chart renders. For those the operator checks the annotation and, with an older chart, leaves the Helm release unchanged and reports `Programmed=False` with an error naming the chart version.
+
+#### Generated admin credential
+
+An `APIGateway` (or a Kubernetes Gateway API `Gateway`) with no admin user of its own gets one generated by the operator on its first deployment:
+
+- The operator creates the Secret `<gateway>-admin-credentials` in the gateway's namespace, with keys `username` (`admin`) and `password` (32 random letters and digits from `crypto/rand`). It is labelled `gateway.api-platform.wso2.com/admin-credentials: generated` and owned by the gateway, so deleting the gateway deletes it.
+- The gateway-controller reads the password from the Secret mounted as a file, never an environment variable or the Helm values. The operator also turns off the gateway chart's own credential generation (`gateway.controller.adminCredentials.generate: false`), so the chart never generates a password the operator does not know.
+- The operator emits an `AdminCredentialsGenerated` Event on the gateway. Read the credential with:
+
+  ```bash
+  kubectl get secret <gateway>-admin-credentials -n <namespace> -o jsonpath='{.data.password}' | base64 -d; echo
+  ```
+
+- Upgrades and redeployments reuse the Secret. Changing its `password` rolls the gateway-controller pod of an `APIGateway`; restart a Gateway API gateway's controller yourself.
+- If the Secret is deleted after the gateway was deployed with it, the operator does not generate a different credential: it reports `Programmed=False` (and an `AdminCredentialsUnavailable` Event) until the Secret is restored or `spec.adminCredentials` is set.
+- A Secret with that name that the operator did not create (no label) is neither used nor overwritten; the gateway is not deployed until it is renamed or referenced from `spec.adminCredentials`.
+- With a gateway chart older than wso2/api-platform#4423, the generated password is passed as an environment variable instead of a mounted file (see "Works with any gateway chart version" above); everything else is the same.
 
 ### Deploy an API
 

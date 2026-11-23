@@ -35,6 +35,7 @@ import (
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 )
 
 // basicAuthCredentialsChecksumAnnotation is set on the gateway-controller pod template.
@@ -45,9 +46,15 @@ const basicAuthCredentialsChecksumAnnotation = "checksum/basic-auth-credentials"
 // basicAuthSecretNames returns, sorted and without duplicates, the Secrets in the
 // gateway's namespace whose values the gateway-controller reads as basic-auth passwords:
 // spec.adminCredentials.passwordSecretRef and the passwordSecretRef of every basic-auth
-// user in configRefValues (the APIGateway's configRef values).
-func basicAuthSecretNames(gw *apiv1.APIGateway, configRefValues string) ([]string, error) {
+// user in configRefValues (the APIGateway's configRef values), plus extra (the
+// operator-generated admin credential Secret, when the gateway uses one).
+func basicAuthSecretNames(gw *apiv1.APIGateway, configRefValues string, extra ...string) ([]string, error) {
 	names := map[string]struct{}{}
+	for _, name := range extra {
+		if name != "" {
+			names[name] = struct{}{}
+		}
+	}
 	if gw.Spec.AdminCredentials != nil && gw.Spec.AdminCredentials.PasswordSecretRef.Name != "" {
 		names[gw.Spec.AdminCredentials.PasswordSecretRef.Name] = struct{}{}
 	}
@@ -80,8 +87,8 @@ func basicAuthSecretNames(gw *apiv1.APIGateway, configRefValues string) ([]strin
 // basicAuthSecretNames, without reading their data: a hash over each Secret's UID and
 // resourceVersion, with a marker for a Secret that does not exist (so creating it later
 // changes the value). Returns "" when no Secret is referenced.
-func basicAuthSecretsVersion(ctx context.Context, c client.Client, gw *apiv1.APIGateway, configRefValues string) (string, error) {
-	names, err := basicAuthSecretNames(gw, configRefValues)
+func basicAuthSecretsVersion(ctx context.Context, c client.Client, gw *apiv1.APIGateway, configRefValues string, extra ...string) (string, error) {
+	names, err := basicAuthSecretNames(gw, configRefValues, extra...)
 	if err != nil {
 		return "", err
 	}
@@ -151,7 +158,14 @@ func basicAuthChecksumOverlay(secretsVersion string) (string, error) {
 // user from configRefValues (the APIGateway's own configRef values) except one with the
 // admin's username. Users from the operator's base values file are not carried over, so
 // its default admin/admin user never comes back.
-func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) (string, error) {
+//
+// secretRef reports whether the gateway chart supports passwordSecretRef (the
+// basicAuthPasswordSecretRef chart feature). With an older chart, the admin user's
+// password is an {{ env }} token instead and the Secret key reaches the gateway-controller
+// as the operatorAdminPasswordEnv variable through controller extraEnv, so
+// spec.adminCredentials works with any published gateway chart. baseYAML is the operator's
+// base values file, whose extraEnv entries are kept.
+func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string, secretRef bool, baseYAML string) (string, error) {
 	creds := gw.Spec.AdminCredentials
 	if creds == nil {
 		return "", nil
@@ -163,29 +177,29 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) 
 	if username == "" {
 		username = auth.DefaultAdminUsername
 	}
-	source := creds.Source
-	if source == "" {
-		source = apiv1.AdminCredentialsSourceEnv
-	}
+	source := auth.AdminCredentialsSource(creds.Source)
 	if source != apiv1.AdminCredentialsSourceEnv && source != apiv1.AdminCredentialsSourceFile {
 		return "", fmt.Errorf("spec.adminCredentials.source must be %q or %q, got %q",
 			apiv1.AdminCredentialsSourceEnv, apiv1.AdminCredentialsSourceFile, source)
 	}
 
-	users := []interface{}{
-		map[string]interface{}{
-			"username": username,
-			"passwordSecretRef": map[string]interface{}{
-				"name":   creds.PasswordSecretRef.Name,
-				"key":    creds.PasswordSecretRef.Key,
-				"source": source,
-			},
-			// The operator sends this password to the management
-			// API, so it must be stored in plain text, not hashed.
-			"password_hashed": false,
-			"roles":           []interface{}{"admin"},
-		},
+	admin := map[string]interface{}{
+		"username": username,
+		// The operator sends this password to the management
+		// API, so it must be stored in plain text, not hashed.
+		"password_hashed": false,
+		"roles":           []interface{}{"admin"},
 	}
+	if secretRef {
+		admin["passwordSecretRef"] = map[string]interface{}{
+			"name":   creds.PasswordSecretRef.Name,
+			"key":    creds.PasswordSecretRef.Key,
+			"source": source,
+		}
+	} else {
+		admin["password"] = envPasswordToken()
+	}
+	users := []interface{}{admin}
 	extra, err := configRefBasicAuthUsers(configRefValues)
 	if err != nil {
 		return "", err
@@ -215,12 +229,26 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) 
 	if err != nil {
 		return "", fmt.Errorf("marshal admin credentials overlay: %w", err)
 	}
-	return string(out), nil
+	if secretRef {
+		return string(out), nil
+	}
+	envOverlay, err := controllerExtraEnvOverlay(baseYAML, configRefValues, creds.PasswordSecretRef.Name, creds.PasswordSecretRef.Key)
+	if err != nil {
+		return "", err
+	}
+	return helm.MergeValuesYAML(string(out), envOverlay)
+}
+
+// configRefSecretRefNames returns the Secrets referenced by passwordSecretRef on the
+// basic-auth users in valuesYAML. Only the gateway chart renders those, so they need a
+// chart with the basicAuthPasswordSecretRef feature.
+func configRefSecretRefNames(valuesYAML string) ([]string, error) {
+	return basicAuthSecretNames(&apiv1.APIGateway{}, valuesYAML)
 }
 
 // enqueueGatewaysForSecret enqueues every APIGateway that reads a basic-auth password
-// from the changed Secret, through spec.adminCredentials or a configRef user's
-// passwordSecretRef.
+// from the changed Secret, through spec.adminCredentials, a configRef user's
+// passwordSecretRef, or the operator-generated admin credential.
 func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
@@ -248,9 +276,13 @@ func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj cl
 				configRefValues = values
 			}
 		}
-		names, err := basicAuthSecretNames(gw, configRefValues)
+		var generated []string
+		if gw.Spec.AdminCredentials == nil && auth.IsGeneratedAdminSecret(secret) {
+			generated = append(generated, auth.GeneratedAdminSecretName(gw.Name))
+		}
+		names, err := basicAuthSecretNames(gw, configRefValues, generated...)
 		if err != nil {
-			names, _ = basicAuthSecretNames(gw, "")
+			names, _ = basicAuthSecretNames(gw, "", generated...)
 		}
 		if !slices.Contains(names, secret.Name) {
 			continue

@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -64,6 +65,18 @@ type K8sGatewayReconciler struct {
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
 	Logger *slog.Logger
+	// Recorder emits Events on Gateways; set by SetupWithManager, nil in unit tests.
+	Recorder record.EventRecorder
+	// previousReleaseValues reads a gateway's existing Helm release values; nil uses
+	// helmgateway.PreviousReleaseValues (tests replace it).
+	previousReleaseValues func(gatewayName, namespace string) (map[string]interface{}, bool, error)
+}
+
+// recordEvent emits an Event on obj when an event recorder is configured.
+func (r *K8sGatewayReconciler) recordEvent(obj runtime.Object, eventType, reason, message string) {
+	if r.Recorder != nil {
+		r.Recorder.Event(obj, eventType, reason, message)
+	}
 }
 
 // NewK8sGatewayReconciler creates a reconciler for gateway.networking.k8s.io Gateway.
@@ -421,6 +434,72 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		return err
 	}
 
+	// Without users in the values, the operator provides the admin user: a credential it
+	// generates on first deployment, or admin/admin for a gateway an earlier operator
+	// deployed with it. The overlay also stops the gateway chart generating its own.
+	base, err := readBaseValuesFile(valuesFile)
+	if err != nil {
+		return err
+	}
+	releaseValues := r.previousReleaseValues
+	if releaseValues == nil {
+		releaseValues = func(name, namespace string) (map[string]interface{}, bool, error) {
+			return helmgateway.PreviousReleaseValues(r.Config, name, namespace)
+		}
+	}
+	adminPlan, err := planDefaultAdminCredentials(ctx, defaultAdminInput{
+		Client:         r.Client,
+		Scheme:         r.Scheme,
+		Owner:          gw,
+		GatewayName:    gw.Name,
+		Namespace:      ns,
+		BaseValuesYAML: base,
+		ValuesYAML:     valuesYAML,
+		ReleaseValues:  func() (map[string]interface{}, bool, error) { return releaseValues(gw.Name, ns) },
+	})
+	if err != nil {
+		r.recordEvent(gw, corev1.EventTypeWarning, "AdminCredentialsUnavailable", err.Error())
+		return fmt.Errorf("admin credentials unavailable: %w", err)
+	}
+	// The admin password is delivered the way the configured gateway chart supports: a
+	// mounted file (passwordSecretRef) or, with an older chart, an environment variable
+	// from the same Secret. The operator and the gateway chart are released separately.
+	chartFeatures, err := helmgateway.ChartFeatures(r.Config, dockerUser, dockerPass)
+	if err != nil {
+		return fmt.Errorf("read gateway chart features: %w", err)
+	}
+	secretRef := chartFeatures[helm.FeatureBasicAuthPasswordSecretRef]
+	adminOverlay, err := defaultAdminOverlay(adminPlan, secretRef, base, valuesYAML)
+	if err != nil {
+		return err
+	}
+	if valuesYAML, err = helm.MergeValuesYAML(valuesYAML, adminOverlay); err != nil {
+		return fmt.Errorf("merge default admin credentials overlay: %w", err)
+	}
+	// A passwordSecretRef written in the values needs a chart that renders it.
+	var requiredChartFeatures []string
+	if refs, err := configRefSecretRefNames(valuesYAML); err != nil {
+		return err
+	} else if len(refs) > 0 {
+		requiredChartFeatures = []string{helm.FeatureBasicAuthPasswordSecretRef}
+	}
+	switch adminPlan.Mode {
+	case defaultAdminGenerated:
+		if !secretRef {
+			msg := fmt.Sprintf("Gateway chart %s cannot mount the admin password as a file, so it is passed to the gateway-controller as an environment variable from Secret %s; use a gateway chart that supports passwordSecretRef to mount it instead",
+				r.Config.Gateway.HelmChartVersion, adminPlan.SecretName)
+			log.Warn(msg)
+			r.recordEvent(gw, corev1.EventTypeWarning, "AdminPasswordAsEnvVar", msg)
+		}
+		if adminPlan.Created {
+			msg := fmt.Sprintf("Generated the management API admin credential in Secret %s", adminPlan.SecretName)
+			log.Info(msg)
+			r.recordEvent(gw, corev1.EventTypeNormal, "AdminCredentialsGenerated", msg)
+		}
+	case defaultAdminLegacy:
+		log.Warn("This gateway keeps the default admin/admin management API credential it was deployed with by an earlier operator version; set basic-auth users in its Helm values ConfigMap to replace it")
+	}
+
 	sig, err := helmInstallSignature(valuesYAML, valuesFile, r.Config, gw)
 	if err != nil {
 		return err
@@ -459,6 +538,8 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 			ValuesFilePath: valuesFile,
 			DockerUsername: dockerUser,
 			DockerPassword: dockerPass,
+
+			RequiredChartFeatures: requiredChartFeatures,
 		}); err != nil {
 			return fmt.Errorf("helm: %w", err)
 		}
@@ -758,6 +839,9 @@ func (r *K8sGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		UpdateFunc:  func(event.UpdateEvent) bool { return true },
 		DeleteFunc:  func(event.DeleteEvent) bool { return true },
 		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+	if r.Recorder == nil {
+		r.Recorder = mgr.GetEventRecorderFor("gateway-operator")
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(opts).

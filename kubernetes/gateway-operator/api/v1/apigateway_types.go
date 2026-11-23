@@ -166,12 +166,12 @@ type GatewayAdminCredentials struct {
 	// +kubebuilder:validation:Required
 	PasswordSecretRef corev1.SecretKeySelector `json:"passwordSecretRef"`
 
-	// Source is how the gateway-controller receives the password: "env" injects it
-	// as an environment variable from the Secret, "file" mounts the Secret key
-	// read-only and the controller reads it from the file, so the value never
-	// enters the pod environment.
+	// Source is how the gateway-controller receives the password: "file" (the
+	// default) mounts the Secret key read-only and the controller reads it from the
+	// file, so the value never enters the pod environment; "env" injects it as an
+	// environment variable from the Secret.
 	// +kubebuilder:validation:Enum=env;file
-	// +kubebuilder:default=env
+	// +kubebuilder:default=file
 	// +optional
 	Source string `json:"source,omitempty"`
 }

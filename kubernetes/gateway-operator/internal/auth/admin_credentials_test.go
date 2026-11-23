@@ -105,7 +105,7 @@ func TestResolveBasicCredentials_MatchesGatewayTrimming(t *testing.T) {
 		"file keeps leading blanks":  {source: apiv1.AdminCredentialsSourceFile, value: "  s3cret-1\n", wantPass: "  s3cret-1"},
 		"file only newline is empty": {source: apiv1.AdminCredentialsSourceFile, value: "\n", wantErr: true},
 		"env keeps newline":          {source: apiv1.AdminCredentialsSourceEnv, value: "s3cret-1\n", wantPass: "s3cret-1\n"},
-		"unset source is env":        {source: "", value: "s3cret-1\n", wantPass: "s3cret-1\n"},
+		"unset source is file":       {source: "", value: "s3cret-1\n", wantPass: "s3cret-1"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
