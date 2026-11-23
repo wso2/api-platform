@@ -101,7 +101,7 @@ gateway:
           # Leave users empty to let the chart provide the admin user from
           # gateway.controller.adminCredentials: a password generated on install and kept
           # in a Secret, or one read from your own Secret. An upgrade of a release made by
-          # an earlier chart keeps that chart's default admin/admin user.
+          # an earlier chart keeps that chart's default admin/admin user if it was in use.
           users: []
         idp:
           enabled: false

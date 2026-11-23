@@ -296,9 +296,12 @@ Modes:
   existing  adminCredentials.existingSecret names the Secret holding the password.
   generated the chart's Secret <fullname>-admin-credentials. Reused when it exists;
             otherwise generated, on a fresh install or a render without cluster access.
-  legacy    upgrade of a release made by a chart that predates generation: it keeps the
-            admin/admin user those charts rendered by default, so the credential in use
-            does not change.
+  legacy    upgrade of a release made by a chart that predates generation, whose config
+            has basic auth enabled with that chart's default plain admin/admin user: it
+            keeps that user, so the credential in use does not change. When the earlier
+            config shows any other users, or basic auth off, admin/admin was not in use and
+            the chart generates a credential instead. A config it cannot parse keeps
+            admin/admin, as it cannot tell.
 The mode is recorded on the gateway ConfigMap (annotation
 gateway.api-platform.wso2.com/admin-credentials), which is how an upgrade tells a
 release that generated its credential from one that predates generation. Generated and
@@ -312,6 +315,30 @@ the Secret's UID and resourceVersion. Only a password the chart generated in thi
 (32 random characters, too long to guess) is hashed itself, because its Secret has no
 UID yet.
 */}}
+{{/*
+How an upgrade treats the admin credential of a release made by a chart that predates
+generation (its <fullname>-config ConfigMap has no admin-credentials annotation).
+Returns "legacy" when that config ran basic auth with the earlier charts' default plain
+admin/admin user, or when its config.toml cannot be parsed (so it cannot tell), and ""
+otherwise, which lets the chart generate a credential.
+Args: the ConfigMap from lookup.
+*/}}
+{{- define "gateway-operator.earlierChartAdminMode" -}}
+{{- $old := fromToml (toString (dig "data" "config.toml" "" .)) -}}
+{{- if hasKey $old "Error" -}}
+legacy
+{{- else -}}
+{{- $basic := dig "controller" "auth" "basic" (dict) $old -}}
+{{- if eq (toString (get $basic "enabled")) "true" -}}
+{{- $found := false -}}
+{{- range (default (list) (get $basic "users")) -}}
+{{- if and (eq (toString (get . "username")) "admin") (eq (toString (get . "password")) "admin") (ne (toString (get . "password_hashed")) "true") -}}{{- $found = true -}}{{- end -}}
+{{- end -}}
+{{- if $found -}}legacy{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "gateway-operator.adminCredentials" -}}
 {{- $c := .Values.gateway.controller -}}
 {{- if not (hasKey $c "_resolvedAdminCredentials") -}}
@@ -340,7 +367,10 @@ UID yet.
 {{- else -}}
 {{- $cm := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-config" (include "gateway-operator.fullname" .)) -}}
 {{- $previous := "" -}}
-{{- if $cm -}}{{- $previous = dig "metadata" "annotations" "gateway.api-platform.wso2.com/admin-credentials" "legacy" $cm -}}{{- end -}}
+{{- if $cm -}}
+{{- $previous = dig "metadata" "annotations" "gateway.api-platform.wso2.com/admin-credentials" "" $cm -}}
+{{- if not $previous -}}{{- $previous = include "gateway-operator.earlierChartAdminMode" $cm -}}{{- end -}}
+{{- end -}}
 {{- if eq $previous "generated" -}}
 {{- fail (printf "gateway.controller.adminCredentials: this release generated its admin credential in Secret %s, which no longer exists. Restore the Secret, or set gateway.controller.adminCredentials.existingSecret or gateway.config.controller.auth.basic.users. The chart does not generate a replacement on upgrade." $name) -}}
 {{- else if eq $previous "legacy" -}}
@@ -386,7 +416,7 @@ volume, token) and byIndex (the same entries keyed by the user's index as a stri
 {{- $byIndex := dict -}}
 {{- if $basic.enabled -}}
 {{- range $i, $u := (default (list) $basic.users) -}}
-{{- if and (kindIs "map" $u) $u.passwordSecretRef -}}
+{{- if and (kindIs "map" $u) (hasKey $u "passwordSecretRef") -}}
 {{- $field := printf "gateway.config.controller.auth.basic.users[%d].passwordSecretRef" $i -}}
 {{- $r := $u.passwordSecretRef -}}
 {{- if not (kindIs "map" $r) -}}
@@ -465,11 +495,17 @@ enabled = {{ $basic.enabled }}
 {{- if regexMatch `[:\x00-\x1f\x7f]` (toString $user.username) }}
 {{- fail (printf "gateway.config.controller.auth.basic.users[%d].username cannot contain ':' or control characters." $idx) }}
 {{- end }}
+{{- if kindIs "invalid" $user.username }}
+{{- fail (printf "gateway.config.controller.auth.basic.users[%d].username is required." $idx) }}
+{{- end }}
+{{- if and (kindIs "invalid" $user.password) (not (hasKey $user "passwordSecretRef")) }}
+{{- fail (printf "gateway.config.controller.auth.basic.users[%d] needs password or passwordSecretRef." $idx) }}
+{{- end }}
 [[controller.auth.basic.users]]
 username = {{ $user.username | quote }}
 {{- if $s }}
 password = {{ $s.token }}
-{{- else if and (kindIs "map" $user) $user.passwordSecretRef (not $user.password) }}
+{{- else if and (kindIs "map" $user) (hasKey $user "passwordSecretRef") (not $user.password) }}
 {{- /* Basic auth is disabled, so the Secret is not resolved and the controller does not
        read the users; keep the TOML valid without requiring the Secret. */}}
 password = ""
