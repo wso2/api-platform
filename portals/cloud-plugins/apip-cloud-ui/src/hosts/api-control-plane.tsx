@@ -222,7 +222,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'trial-status',
         slot: HEADER_ACTIONS_SLOT,
         order: 10,
-        render: (port) => <TrialStatusFeature port={port} />,
+        render: (port) => (
+          <TrialStatusFeature consoleUrl={runtimeConfig.cloudConsoleUrl} port={port} />
+        ),
       },
       {
         // Headless: supplies the organization's creation limits and read-only
@@ -232,7 +234,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'entitlements-gate',
         slot: APP_GATE_SLOT,
         order: 10,
-        render: (port) => <EntitlementsGate port={port} />,
+        render: (port) => (
+          <EntitlementsGate consoleUrl={runtimeConfig.cloudConsoleUrl} port={port} />
+        ),
       },
     ],
   }),
