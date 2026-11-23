@@ -233,6 +233,43 @@ func defaultAdminOverlay(plan defaultAdminPlan) (string, error) {
 	return string(out), nil
 }
 
+// syncAdminCredentialsAnnotation sets auth.AdminCredentialsSecretAnnotation on a gateway
+// object to secretName, or removes it when secretName is empty, so the gateway shows
+// which Secret holds its operator-generated admin credential. It does nothing when obj
+// already matches, and otherwise patches only that annotation on the latest object.
+func syncAdminCredentialsAnnotation(ctx context.Context, c client.Client, obj client.Object, secretName string) error {
+	key := auth.AdminCredentialsSecretAnnotation
+	if current, ok := obj.GetAnnotations()[key]; (secretName == "" && !ok) || (ok && current == secretName) {
+		return nil
+	}
+	latest, ok := obj.DeepCopyObject().(client.Object)
+	if !ok {
+		return fmt.Errorf("cannot copy %T", obj)
+	}
+	if err := c.Get(ctx, client.ObjectKeyFromObject(obj), latest); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	annotations := latest.GetAnnotations()
+	if current, ok := annotations[key]; (secretName == "" && !ok) || (ok && current == secretName) {
+		return nil
+	}
+	base, _ := latest.DeepCopyObject().(client.Object)
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	if secretName == "" {
+		delete(annotations, key)
+	} else {
+		annotations[key] = secretName
+	}
+	latest.SetAnnotations(annotations)
+	if err := c.Patch(ctx, latest, client.MergeFrom(base)); err != nil {
+		return fmt.Errorf("annotate %s with its admin credentials Secret: %w", obj.GetName(), err)
+	}
+	obj.SetAnnotations(latest.GetAnnotations())
+	return nil
+}
+
 // readBaseValuesFile returns the operator's base Helm values file, or "" when none is
 // configured or it does not exist (the Helm client treats a missing file the same way).
 func readBaseValuesFile(path string) (string, error) {
