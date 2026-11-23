@@ -267,3 +267,24 @@ Args: the root context.
 {{- end -}}
 {{- toYaml (dict "mounts" $mounts) -}}
 {{- end -}}
+
+{{/*
+Render a gateway controller probe. An httpGet probe without a port targets the management API
+listener the controller opens: "rest-tls" over HTTPS when gateway.config.controller.server.tls is
+enabled, otherwise "rest" over HTTP. A probe that names its own port, or is not an httpGet probe,
+is rendered as given. An empty or null probe renders nothing.
+Usage: include "gateway-operator.controllerProbe" (dict "probe" $probe "tls" $serverTls.enabled)
+*/}}
+{{- define "gateway-operator.controllerProbe" -}}
+{{- if .probe -}}
+{{- $tls := .tls -}}
+{{- $probe := deepCopy .probe -}}
+{{- with $probe.httpGet -}}
+{{- if not (hasKey . "port") -}}
+{{- $_ := set . "port" (ternary "rest-tls" "rest" (eq (toString $tls) "true")) -}}
+{{- $_ := set . "scheme" (ternary "HTTPS" "HTTP" (eq (toString $tls) "true")) -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $probe -}}
+{{- end -}}
+{{- end -}}

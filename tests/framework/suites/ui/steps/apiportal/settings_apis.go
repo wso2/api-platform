@@ -426,13 +426,9 @@ func (u *Steps) openLLMPanel(ctx context.Context, view string) (playwright.Page,
 	if err := panel.Locator(`.cfg-view-combo-option[data-value="` + view + `"]`).Click(); err != nil {
 		return nil, fmt.Errorf("choosing the view: %w", err)
 	}
-	// Choosing a view reloads the settings page for it, which takes longer than an assertion's
-	// default wait.
-	if err := page.WaitForURL(regexp.MustCompile(`[?&]view=`+regexp.QuoteMeta(view)+`(#|&|$)`), playwright.PageWaitForURLOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-	}); err != nil {
-		return nil, fmt.Errorf("waiting for the settings of view %q: %w", view, err)
-	}
+	// Choosing a view is a link to the settings page for it, and the click waits for that
+	// navigation. The page's own script then drops ?view= from the address, so the URL is no
+	// signal; the selector naming the view, checked next, is.
 	if err := u.expect.Locator(page.Locator("#cfg-llm .cfg-view-combo-current")).ToHaveText("IT LLM View " + view); err != nil {
 		return nil, err
 	}

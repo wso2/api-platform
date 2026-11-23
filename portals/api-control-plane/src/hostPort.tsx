@@ -134,7 +134,7 @@ export const NO_RESOURCE_LIMITS: ResourceLimitsPort = {
  * the host owns the keys, so the cache layout can change without touching a
  * plugin.
  */
-export type InvalidatableResource = 'gateways' | 'apiPortals';
+export type InvalidatableResource = 'gateways' | 'apiPortals' | 'apiDeployments';
 
 /**
  * How an extension reports that it changed data the host also caches. The

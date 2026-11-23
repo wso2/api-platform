@@ -882,13 +882,14 @@ func healthTopology(t *testing.T) *frameworkruntime.Topology {
 		{name: "platform-api", endpoint: components.Endpoint{Name: "https", Port: 9243, Scheme: "https"}, hostPort: 19243},
 		{name: "api-portal", endpoint: components.Endpoint{Name: "https", Port: 9543, Scheme: "https"}, hostPort: 19543},
 		{name: "platform-gateway", endpoint: components.Endpoint{Name: "admin", Port: 9092, Scheme: "http"},
-			extra: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}}, hostPort: 19092},
+			extra: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"},
+				{Name: "rest", Port: 9090, Scheme: "http"}}, hostPort: 19092},
 	} {
 		def := &components.Definition{Name: c.name, Image: components.ImageRef{Ref: "example/" + c.name}}
 		def.Endpoints = append([]components.Endpoint{c.endpoint}, c.extra...)
 		mapped := map[int]int{c.endpoint.Port: c.hostPort}
 		for _, e := range c.extra {
-			mapped[e.Port] = 18080
+			mapped[e.Port] = 10000 + e.Port
 		}
 		inst, err := components.NewInstance(def, 0, 1, "127.0.0.1", mapped)
 		require.NoError(t, err)
@@ -910,6 +911,8 @@ func TestHealthRequestTargetsEachComponentListener(t *testing.T) {
 		{component: "gateway controller", path: "/api/admin/v1/ready", wantURL: "http://127.0.0.1:19092/api/admin/v1/ready"},
 		{component: "gateway runtime", path: "/_gateway-health/ready",
 			wantURL: "http://127.0.0.1:18080/_gateway-health/ready", wantHost: "health.example"},
+		{component: "gateway controller management API", path: "/api/management/v1/ready",
+			wantURL: "http://127.0.0.1:19090/api/management/v1/ready"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.component, func(t *testing.T) {

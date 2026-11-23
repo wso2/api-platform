@@ -940,6 +940,9 @@
     "defaultMessage": "Params",
     "description": "Tab for the request parameters."
   },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.pathOverridden": {
+    "defaultMessage": "The path was edited in the URL bar, so the path parameters below are not used."
+  },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.problemBoolean": {
     "defaultMessage": "Must be true or false"
   },
@@ -982,6 +985,10 @@
   "apiControlPlane.components.ApiTestConsole.RequestPanel.problemXml": {
     "defaultMessage": "The body is not well-formed XML"
   },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.queryOverridden": {
+    "defaultMessage": "{names} typed here {count, plural, one {is} other {are}} replaced by the Params tab or the console, so that value is sent instead.",
+    "description": "Helper text under the URL bar. {names} is a comma-separated list of query parameter names."
+  },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.removeFile": {
     "defaultMessage": "Remove file",
     "description": "Accessible label of the button that clears a chosen file."
@@ -1001,6 +1008,9 @@
   "apiControlPlane.components.ApiTestConsole.RequestPanel.reset": {
     "defaultMessage": "Reset to example",
     "description": "Button that restores the body to the documented example. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.restorePath": {
+    "defaultMessage": "Restore generated path"
   },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.schema": {
     "defaultMessage": "Schema",
@@ -1367,8 +1377,8 @@
     "description": "Plural noun for gateways, used inside the limit-reached sentence."
   },
   "apiControlPlane.hooks.useResourceLimits.componentManagedGateways": {
-    "defaultMessage": "WSO2-managed gateways",
-    "description": "Plural noun for WSO2-managed gateways, used inside the limit-reached sentence."
+    "defaultMessage": "cloud gateways",
+    "description": "Plural noun for cloud gateways, used inside the limit-reached sentence."
   },
   "apiControlPlane.hooks.useResourceLimits.componentPortals": {
     "defaultMessage": "portals",
@@ -3783,7 +3793,7 @@
     "defaultMessage": "Create an API Proxy"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide": {
-    "defaultMessage": "Get Started with the WSO2 API Platform"
+    "defaultMessage": "Get Started with the Choreo API Management"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedRestFromScratch": {
     "defaultMessage": "Create a REST API Proxy from Scratch"
@@ -4426,6 +4436,25 @@
     "defaultMessage": "tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
     "description": "Token-count limit unit. {amount} and {timeUnit} describe the window."
   },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.graphql": {
+    "defaultMessage": "GraphQL APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.grpc": {
+    "defaultMessage": "gRPC APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.rest": {
+    "defaultMessage": "REST APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.supports": {
+    "defaultMessage": "Supports",
+    "description": "Lead-in to a rotating list of the API types the product supports."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.websocket": {
+    "defaultMessage": "WebSocket APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ApiTypeTicker.websub": {
+    "defaultMessage": "WebSub APIs"
+  },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.back": {
     "defaultMessage": "Back to projects"
   },
@@ -4481,6 +4510,59 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.title": {
     "defaultMessage": "Create a project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.createApi": {
+    "defaultMessage": "Create API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayConnect": {
+    "defaultMessage": "Connect a gateway"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayCount": {
+    "defaultMessage": "{count, plural, one {# gateway} other {# gateways}}",
+    "description": "Chip showing how many gateways the organization has."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayDescription": {
+    "defaultMessage": "Deploy to a managed gateway or a self-hosted one in your own cluster."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayManage": {
+    "defaultMessage": "Manage gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayTitle": {
+    "defaultMessage": "Run on any gateway"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.greeting": {
+    "defaultMessage": "Hello, {name}",
+    "description": "{name} is the name the user is greeted by. Never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroDescription": {
+    "defaultMessage": "Turn any service into a managed API with OAuth2, rate limits, and policies. Import a definition or point to a backend URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroTitle": {
+    "defaultMessage": "Expose and secure APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.intro": {
+    "defaultMessage": "You're in the <strong>{projectName}</strong> project. It's empty for now, so start creating.",
+    "description": "{projectName} is the name of the project the user is in. Never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalCount": {
+    "defaultMessage": "{count, plural, one {# portal} other {# portals}}",
+    "description": "Chip showing how many developer portals exist."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalCreate": {
+    "defaultMessage": "Create a portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalDescription": {
+    "defaultMessage": "List APIs in a developer portal so consumers can subscribe and get keys."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalManage": {
+    "defaultMessage": "Manage portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalTitle": {
+    "defaultMessage": "Publish to developers"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.startHere": {
+    "defaultMessage": "Start here",
+    "description": "Small label above the main call to action on an empty project."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
@@ -5313,6 +5395,10 @@
   "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.title": {
     "defaultMessage": "Page not found"
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationLandingPage.loading": {
+    "defaultMessage": "Loading organization",
+    "description": "Shown while the organization's projects are read to choose where to land."
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyDescription": {
     "defaultMessage": "Your account is authenticated, but it is not associated with an organization."
   },
@@ -5426,12 +5512,12 @@
     "description": "Accessible label for the toggle between the two views."
   },
   "apiControlPlane.pages.auth.LoginPage.brandLockup": {
-    "defaultMessage": "<brand>WSO2</brand> API Platform",
-    "description": "Compact brand lockup shown above the sign-in card on narrow screens. WSO2 is the company name and stays as-is; the brand tag only styles it."
+    "defaultMessage": "<brand>Choreo</brand> API Management",
+    "description": "Compact brand lockup shown above the sign-in card on narrow screens. Choreo is the brand name and stays as-is; the brand tag only styles it."
   },
   "apiControlPlane.pages.auth.LoginPage.brandName": {
-    "defaultMessage": "WSO2",
-    "description": "Company name in the brand lockup. Do not translate."
+    "defaultMessage": "Choreo",
+    "description": "Brand name in the brand lockup. Do not translate."
   },
   "apiControlPlane.pages.auth.LoginPage.browserUnsupported": {
     "defaultMessage": "This console is optimized for Google Chrome and Mozilla Firefox."
@@ -5496,8 +5582,8 @@
     "defaultMessage": "Privacy policy"
   },
   "apiControlPlane.pages.auth.LoginPage.productName": {
-    "defaultMessage": "<emphasis>API</emphasis> Platform",
-    "description": "Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight."
+    "defaultMessage": "<emphasis>API</emphasis> Management",
+    "description": "Product name under the Choreo wordmark. The emphasis tag marks the part set in the stronger weight."
   },
   "apiControlPlane.pages.auth.LoginPage.redirecting": {
     "defaultMessage": "Signing you in",
@@ -6068,6 +6154,10 @@
   "appLayout.breadcrumb.home": {
     "defaultMessage": "Home"
   },
+  "appLayout.footer.cookiePolicy": {
+    "defaultMessage": "Cookie Policy",
+    "description": "Footer link to the Cookie Policy page, shown where a deployment sets one"
+  },
   "appLayout.footer.documentation": {
     "defaultMessage": "Documentation",
     "description": "Footer link to the product documentation"
@@ -6156,8 +6246,8 @@
     "defaultMessage": "Runtime logs for {apiHandler}."
   },
   "branding.BrandLockup.name": {
-    "defaultMessage": "<bold>API</bold> Management",
-    "description": "Product name in the brand lockup. API is bold, Management regular — keep the bold tag around the equivalent of API."
+    "defaultMessage": "Choreo API Management",
+    "description": "Product name in the brand lockup. Choreo is a product name — leave it untranslated."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."
@@ -6338,8 +6428,8 @@
     "description": "Chip for a gateway serving ordinary HTTP API traffic."
   },
   "gatewayCard.mode.managed": {
-    "defaultMessage": "WSO2-managed",
-    "description": "Chip for a gateway WSO2 runs on the customer’s behalf."
+    "defaultMessage": "Cloud gateway",
+    "description": "Chip for a cloud gateway, one the platform runs on the customer’s behalf."
   },
   "gatewayCard.mode.selfHosted": {
     "defaultMessage": "Self-hosted",
@@ -6859,7 +6949,7 @@
     "defaultMessage": "Total gateways"
   },
   "gateways.subtitle": {
-    "defaultMessage": "Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients."
+    "defaultMessage": "Provision and manage self-hosted or cloud gateways to expose your APIs to clients."
   },
   "gateways.title": {
     "defaultMessage": "Gateways"

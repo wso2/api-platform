@@ -18,6 +18,7 @@
 
 import { Fragment, type ReactNode } from 'react';
 import {
+  alpha,
   Avatar,
   AvatarGroup,
   Box,
@@ -91,6 +92,16 @@ function ProjectHeaderExtensionActions({
   );
 }
 
+/**
+ * The project heading's cloud actions (Settings, in the cloud console) on
+ * their own, for a view that replaces the heading but keeps those actions.
+ * Renders nothing in a standalone console, which registers none.
+ */
+export function ProjectHeaderActions() {
+  const entries = useSlot<ApiControlPlaneHeaderAction>(PROJECT_HEADER_ACTIONS_SLOT);
+  return entries.length > 0 ? <ProjectHeaderExtensionActions entries={entries} /> : null;
+}
+
 export function ProjectMetadata({ project }: ProjectMetadataProps) {
   const intl = useIntl();
   // Cloud-only entries; empty in a standalone console, which registers none.
@@ -117,7 +128,12 @@ export function ProjectMetadata({ project }: ProjectMetadataProps) {
         marginTop={2}
       >
         <Stack alignItems="flex-start" direction="row" spacing={2.5} sx={{ minWidth: 0, flex: 1 }}>
-          <PageTitleAvatar>
+          <PageTitleAvatar
+            sx={(theme) => ({
+              bgcolor: alpha(theme.palette.primary.main, 0.16),
+              color: 'primary.main',
+            })}
+          >
             <BoxIcon size={28} />
           </PageTitleAvatar>
           <Stack spacing={1.5} sx={{ minWidth: 0, flex: 1 }}>

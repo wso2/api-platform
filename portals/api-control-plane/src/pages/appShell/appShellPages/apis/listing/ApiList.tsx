@@ -149,10 +149,20 @@ export function ApiList({
   typeFilter = null,
   sidebar,
   onClearTypeFilter,
+  renderFirstRun,
+  onFirstRunChange,
 }: {
   typeFilter?: ApiTypeFilter | null;
   sidebar?: ReactNode;
   onClearTypeFilter?: () => void;
+  /**
+   * Replaces the first-run prompt shown for a project with no APIs. Receives
+   * the action that opens API creation, so the replacement needs no routing of
+   * its own.
+   */
+  renderFirstRun?: (createApi: () => void) => ReactNode;
+  /** Told whether the first-run replacement is showing, so a page can drop what it replaces. */
+  onFirstRunChange?: (showing: boolean) => void;
 }) {
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
@@ -265,6 +275,16 @@ export function ApiList({
   // Show the create prompt only for an empty project, not an empty search.
   const isFirstRun = total === 0 && !isSearching;
 
+  // Not while loading (an unloaded list is not an empty one), and not while an
+  // error is shown in its place: neither displays the replacement.
+  const showingFirstRun = !isPending && !error && isFirstRun && renderFirstRun !== undefined;
+  useEffect(() => {
+    onFirstRunChange?.(showingFirstRun);
+  }, [onFirstRunChange, showingFirstRun]);
+  // Leaving takes the replacement with it, so a page that stays does not keep
+  // hiding what it replaced.
+  useEffect(() => () => onFirstRunChange?.(false), [onFirstRunChange]);
+
   useEffect(() => {
     if (page > lastPage)
       setPaging((current) => ({ ...current, [view]: { ...current[view], page: lastPage } }));
@@ -301,11 +321,13 @@ export function ApiList({
   const createApi = (entryPoint: Exclude<ApiCreationEntryPoint, 'direct'>) =>
     navigate(routes.newApi(orgHandle, projectHandler), apiCreationEntry(entryPoint));
 
+  // The type panel sits beside the list only where the list keeps room for its columns: with
+  // the left navigation open, anything narrower than `xl` clips the table, so it drops below.
   const layoutSx = {
     display: 'grid',
     gridTemplateColumns: {
       xs: 'minmax(0, 1fr)',
-      lg: sidebar ? 'minmax(0, 1fr) 280px' : 'minmax(0, 1fr)',
+      xl: sidebar ? 'minmax(0, 1fr) 280px' : 'minmax(0, 1fr)',
     },
     gap: 4,
     alignItems: 'start',
@@ -329,7 +351,9 @@ export function ApiList({
 
   return (
     <>
-      {isFirstRun ? (
+      {isFirstRun && renderFirstRun ? (
+        renderFirstRun(() => createApi('api-list-empty-state'))
+      ) : isFirstRun ? (
         /*
           Same `restApis` verdict as the populated list's create button below:
           an empty project says nothing about the organization's quota, which

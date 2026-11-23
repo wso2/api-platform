@@ -1803,7 +1803,7 @@ This endpoint allows external platforms to rotate API keys on hybrid gateways.
 {
   "name": "production-key-01",
   "displayName": "Production API Key (Updated)",
-  "apiKey": "sk_example_new1234567890abcdef",
+  "apiKey": "sk_example_new1234567890abcdef1234567890abcdef",
   "externalRefId": "ext-ref-12345",
   "expiresAt": "2027-12-31T23:59:59Z",
   "expiresIn": {

@@ -112,6 +112,12 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for artifact %s in org %s", req.ArtifactID, orgId))
 	}
+	// The token is issued here. sub.SubscriptionToken holds the value generated in-process
+	// by the repository; it is returned to the creator, and afterwards only to the
+	// subscription's own subscriber (see addOwnerSubscriptionToken).
+	if sub.SubscriptionToken != "" {
+		resp["subscriptionToken"] = sub.SubscriptionToken
+	}
 	setLocation(w, "subscriptions", sub.UUID)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
@@ -203,12 +209,27 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 		billingMap = nil
 	}
 	items := make([]map[string]any, 0, len(list))
+	disclosed, withheld := 0, 0
 	for _, sub := range list {
 		item := h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap, createdByMap)
 		if b := billingMap[sub.UUID]; b != nil {
 			item["billing"] = billingResponse(b)
 		}
+		if addOwnerSubscriptionToken(item, r, sub) {
+			disclosed++
+		} else if sub.SubscriptionToken != "" {
+			withheld++
+		}
 		items = append(items, item)
+	}
+	// A list is summarised in one log line rather than one audit row per subscription: a
+	// publisher listing an API's subscribers withholds a token on nearly every item, which
+	// would bury the audit table in rows that carry no signal. The single-subscription read
+	// below is the one that is recorded.
+	if disclosed > 0 || withheld > 0 {
+		h.slogger.Info("Served subscription tokens on a list",
+			"organizationId", orgId, "performedBy", h.auditActor(r),
+			"disclosed", disclosed, "withheld", withheld)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"list":  items,
@@ -244,6 +265,16 @@ func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Req
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for subscription %s in org %s", subscriptionId, orgId))
+	}
+	if sub.SubscriptionToken != "" {
+		// Both outcomes are recorded. A read by someone other than the subscriber is the
+		// event worth seeing: on its own it is an ordinary read of subscription metadata,
+		// but repeated across subscriptions it is someone walking the organization's tokens.
+		if addOwnerSubscriptionToken(resp, r, sub) {
+			h.subscriptionService.RecordTokenRead(sub.UUID, orgId, h.auditActor(r))
+		} else {
+			h.subscriptionService.RecordTokenReadDenied(sub.UUID, orgId, h.auditActor(r))
+		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -293,6 +324,8 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for subscription %s in org %s", subscriptionId, orgId))
 	}
+	// An update already records its own audit row, so the disclosure is not recorded twice.
+	addOwnerSubscriptionToken(resp, r, sub)
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
 }
@@ -329,6 +362,61 @@ func requireSubscriptionSubscriberQuery(r *http.Request) (string, error) {
 		return "", apperror.ValidationFailed.New("subscriberId query parameter is required")
 	}
 	return q, nil
+}
+
+// subscriberSystemActor is the subscriber_id the API Portal sends for a subscription
+// created by a machine credential rather than a user (its SYSTEM_ACTOR, "system"). It
+// identifies no caller, so it must never satisfy the ownership check below.
+const subscriberSystemActor = "system"
+
+// callerOwnsSubscription reports whether the caller behind r is the subscriber that the
+// subscription belongs to. subscriptions.subscriber_id holds the owner's identity-provider
+// subject — the API Portal resolves it to the user's idp_id before sending it — which is
+// the same value GetActorIdentityFromRequest resolves for the caller, so the two compare
+// directly without a lookup.
+//
+// Sentinel subscriber ids belong to no caller and never match: "system" for a
+// machine-credential subscription, constants.DeletedUser for one whose user is gone.
+func callerOwnsSubscription(r *http.Request, sub *model.Subscription) bool {
+	if sub == nil || sub.SubscriberID == "" ||
+		sub.SubscriberID == subscriberSystemActor || sub.SubscriberID == constants.DeletedUser {
+		return false
+	}
+	identity, ok := middleware.GetActorIdentityFromRequest(r)
+	return ok && identity != "" && identity == sub.SubscriberID
+}
+
+// addOwnerSubscriptionToken adds the subscription's token to resp when the caller owns the
+// subscription, and leaves the key out otherwise. It reports whether the token was added.
+//
+// A subscription token is an invocation credential belonging to one subscriber, so a read
+// scopes it to that subscriber: get, list and update return it to the owner only. Creation
+// is unaffected and still returns the token it issued.
+func addOwnerSubscriptionToken(resp map[string]any, r *http.Request, sub *model.Subscription) bool {
+	if sub.SubscriptionToken == "" || !callerOwnsSubscription(r, sub) {
+		return false
+	}
+	resp["subscriptionToken"] = sub.SubscriptionToken
+	return true
+}
+
+// auditActor is the internal user UUID recorded against a token disclosure, as the audit
+// columns elsewhere hold it. An unauthenticated caller is recorded as the empty actor
+// rather than as a freshly minted UUID: a token read is not a write that must be
+// attributed to someone, and minting here would fill user_idp_references with rows for
+// callers that have no identity. A mapping failure is logged and treated the same way,
+// because it must not fail the read it is recording.
+func (h *SubscriptionHandler) auditActor(r *http.Request) string {
+	identity, ok := middleware.GetActorIdentityFromRequest(r)
+	if !ok || identity == "" {
+		return ""
+	}
+	actor, err := h.identity.ToInternalUUID(identity)
+	if err != nil {
+		h.slogger.Warn("Failed to resolve the caller's identity for a subscription token audit record", "error", err)
+		return ""
+	}
+	return actor
 }
 
 func (h *SubscriptionHandler) RegisterRoutes(mux router.Router) {
@@ -379,10 +467,10 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 			}
 		}
 	}
-	// subscriptionToken is decrypted from DB; empty for legacy hashed tokens
-	if sub.SubscriptionToken != "" {
-		resp["subscriptionToken"] = sub.SubscriptionToken
-	}
+	// subscriptionToken is deliberately absent here: it is a credential, not a field of
+	// the subscription. CreateSubscription adds it for the subscription it just issued,
+	// and a read adds it through addOwnerSubscriptionToken, which gives it to the
+	// subscription's own subscriber only.
 	h.addBilling(resp, sub, orgId)
 	return resp, nil
 }
@@ -424,9 +512,8 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 			resp["subscriptionPlanName"] = name
 		}
 	}
-	if sub.SubscriptionToken != "" {
-		resp["subscriptionToken"] = sub.SubscriptionToken
-	}
+	// subscriptionToken is deliberately absent here; ListSubscriptions adds it per item
+	// through addOwnerSubscriptionToken. See toSubscriptionResponse.
 	return resp
 }
 

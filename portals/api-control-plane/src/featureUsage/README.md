@@ -415,6 +415,7 @@ search and view toggles report nothing.
 |              | `gateway.custom-policy-sync-click`                                                                               | Sync, on a custom policy in the Policies tab          | `sync_kind`                                                                  |
 |              | `policies.gateway-policies-view`                                                                                 | Policies tab, first open per visit                    | —                                                                            |
 | Organization | `admin.project-create-click` / `project-delete-click`                                                            | Create; delete confirm                                | —                                                                            |
+|              | `admin.landing-page-open`                                                                                        | landing page (organization home) after sign-in or return, once per visit | —                                                                            |
 |              | `security.service-account-create-click` / `-update-click` / `-enable-click` / `-disable-click` / `-delete-click` | create, edit, enable, disable confirm, delete confirm | —                                                                            |
 |              | `security.service-account-secret-regenerate-click`                                                               | regenerate confirm                                    | —                                                                            |
 |              | `security.service-account-test-token-get-click`                                                                  | Get token                                             | —                                                                            |
@@ -444,14 +445,24 @@ documentation links, and the test key minted automatically on page load.
 Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
 `page.graphqlApiDeploy`). They report the same features through the host port's
 `trackFeature(code, dimensions)` (`useTrackFeatureByName`, built into the port in
-`AppLayout`), which drops any code or value the taxonomy doesn't list:
+`AppLayout`), which drops any code or value the taxonomy doesn't list. The
+cloud-only Portals and Insights pages report their own features the same way:
 
 | Cloud page                              | Reports                                                                                                  |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Gateways: open the add form            | `gateway-add-open` (`entry_point`: `gateways-list` or `gateways-empty-state`; `gateway_hosting` from a hosting card) |
 | Gateways: Add or Save                   | `gateway-register-click` (`gateway_hosting`, `gateway_type`), `gateway-update-click`                     |
 | Gateway overview                        | `gateway-setup-command-copy` (`install_method`, `setup_step`), `gateway-token-regenerate-click`          |
 | Deploy: Deploy or promote, Stop         | `api-deploy-click` (no `gateway_hosting`), `deployment-undeploy-click`                                   |
 | Deploy: add a gateway, its setup drawer | `gateway-register-click`, `gateway-setup-command-copy` (`quick-start`), `gateway-token-regenerate-click` |
+| Portals: open the add form              | `portal-add-open` (`entry_point`: `portals-list` or `portals-empty-state`)                               |
+| Portals: Add Portal                     | `portal-create-click` (`self_signup`)                                                                    |
+| Portals: Open Portal, Save, Delete      | `portal-open`, `portal-update-click` (`*_changed` yes/no per field), `portal-delete-click`               |
+| Gateways: Delete                        | `gateway-delete-click` (`gateway_hosting`)                                                               |
+| Gateways: Configure, its settings drawer | `gateway-settings-open`, `key-manager-discover-click`, `gateway-configuration-update-click` (`settings_changed`, `key_managers_changed`) |
+| Deploy: open the Deploy/Promote dialog  | `api-deploy-open` (`deploy_mode`: `deploy`, `build-and-deploy` or `promote`); Deploy/Promote also sends `deploy_mode` on `api-deploy-click` |
+| Deploy: delete a build                  | `build-delete-click`                                                                                     |
+| Insights (organization or project)      | `insights-open` (`scope`), once per visit                                                                |
 
 The cloud pages have no redeploy, restore, deployment delete or deployment
 history, and their gateway Policies tab shows no policies yet, so

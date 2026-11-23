@@ -77,6 +77,10 @@ blocks:
       - name: api-keys
         features:
           - features/gateway/security/api_keys.feature
+      - name: api-key-value-length
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/api_key_value_length.feature
       - name: subscription-management
         tags: "gateway-version>1.2.0"
         features:
@@ -119,6 +123,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/path_normalization.feature
+      - name: path-variants
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/routes/path_variants.feature
       - name: header-routing
         tags: "gateway-version>=1.2.0"
         features:

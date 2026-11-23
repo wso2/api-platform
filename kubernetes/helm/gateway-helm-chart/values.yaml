@@ -139,10 +139,11 @@ gateway:
       # config.toml — see defaultConfig() in pkg/config/config.go. Adding it here
       # only makes the existing implicit default explicit and overridable.
       admin_server:
-        # Kept enabled by default because it also serves /health, used by the
-        # controller's livenessProbe/readinessProbe (see deployment.livenessProbe
-        # above) — disabling this would crash-loop the pod. Gate the sensitive
-        # /config_dump route specifically via config_dump.enabled below instead.
+        # Kept enabled by default because it also serves the health endpoints
+        # (/api/admin/v1/health and /ready), which answer while the controller is still
+        # starting. The chart's probes use the management API's health endpoints, so
+        # disabling this does not affect them. Gate the sensitive /config_dump route
+        # specifically via config_dump.enabled below instead.
         enabled: true
         port: 9092
         allowed_ips: ["*"]
@@ -498,6 +499,9 @@ gateway:
         # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
         # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
         path_with_escaped_slashes_action: KEEP_UNCHANGED
+        # Let a request whose path matches a route only case-insensitively fall through to a
+        # broader route instead of getting a 404
+        allow_path_case_variants: false
 
         # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
         timeouts:
@@ -1040,25 +1044,28 @@ gateway:
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
-      # All three probes use the admin health endpoint, which answers 503 while the
-      # controller's database is down and while it is still starting. Every controller
-      # release serves it. The admin ready endpoint (/api/admin/v1/ready) is newer and adds
-      # only an earlier exit from the Service while the controller shuts down; point
-      # readiness at it once the controller image serves it. Readiness takes the pod out of the Service after
-      # about 15 s of failed answers; liveness restarts it only after about 2 minutes, so
-      # a short database outage never causes a restart.
+      # The probes call the health endpoints on the management API, which answer 503 while
+      # the controller's database is down. They leave out port and scheme: the chart fills in
+      # the management listener, "rest" over HTTP, or "rest-tls" over HTTPS when
+      # gateway.config.controller.server.tls.enabled is true. A probe that sets its own port is
+      # rendered as given. The listener opens only once startup has finished, so the probes
+      # fail with a refused connection until then; the startup probe allows for that.
+      # Readiness takes the pod out of the Service after about 15 s of failed answers;
+      # liveness restarts it only after about 2 minutes, so a short database outage never
+      # causes a restart.
+      # These paths need a controller image that serves them. With an older image, probe the
+      # admin server instead: path /api/admin/v1/health with port: admin.
+      # To remove a probe, set it to null (for example --set gateway.controller.deployment.livenessProbe=null).
+      # An empty map ({}) does not remove it: Helm merges it with the default probe.
       livenessProbe:
         httpGet:
-          # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
-          path: /api/admin/v1/health
-          port: admin
+          path: /api/management/v1/health
         periodSeconds: 10
         timeoutSeconds: 5
         failureThreshold: 12
       readinessProbe:
         httpGet:
-          path: /api/admin/v1/health
-          port: admin
+          path: /api/management/v1/ready
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 3
@@ -1067,8 +1074,7 @@ gateway:
       # not the probe, decides when a database wait gives up. Set to null to disable.
       startupProbe:
         httpGet:
-          path: /api/admin/v1/health
-          port: admin
+          path: /api/management/v1/health
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 72

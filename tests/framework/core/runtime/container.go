@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -120,6 +121,9 @@ type Container struct {
 	Instance  *components.Instance
 	container testcontainers.Container
 	def       *components.Definition
+	// stoppedAt holds the exit time Docker recorded when Halt last stopped the container on
+	// purpose, so only an exit that differs from it is reported. Empty when none is recorded.
+	stoppedAt atomic.Value
 }
 
 // Launch starts one instance and waits for its container-level readiness strategy.
@@ -391,11 +395,46 @@ func (c *Container) Stop(ctx context.Context) error {
 		return nil
 	}
 	inner := c.container
+	warnIfExited(ctx, c.def.Name, inner, recorded(&c.stoppedAt))
 	if err := inner.Terminate(ctx); err != nil {
 		return fmt.Errorf("runtime: terminating %s: %w", c.def, err)
 	}
 	c.container = nil
 	return nil
+}
+
+// exitTime is the exit time Docker records for the container's latest execution, or "" when it
+// cannot be read. Recording "" leaves nothing to match, so a later exit is reported, not hidden.
+func exitTime(ctx context.Context, c testcontainers.Container) string {
+	state, err := c.State(ctx)
+	if err != nil {
+		return ""
+	}
+	return state.FinishedAt
+}
+
+// recorded returns the exit time a deliberate stop stored in v, or "" when none was stored.
+func recorded(v *atomic.Value) string {
+	s, _ := v.Load().(string)
+	return s
+}
+
+// warnIfExited logs a container that is no longer running, with its exit code and whether it
+// was killed for running out of memory, unless its exit is the deliberate stop whose exit time
+// is deliberate. Without it, a container that died mid-run leaves only connection errors in the
+// scenarios that called it. A container whose state cannot be read is not reported, and it
+// returns whether the state could be read.
+func warnIfExited(ctx context.Context, name string, c testcontainers.Container, deliberate string) bool {
+	state, err := c.State(ctx)
+	if err != nil {
+		return false
+	}
+	if state.Running || deliberate != "" && state.FinishedAt == deliberate {
+		return true
+	}
+	slog.Warn("container had exited before teardown", "container", name, "status", state.Status,
+		"exitCode", state.ExitCode, "oomKilled", state.OOMKilled, "finishedAt", state.FinishedAt, "error", state.Error)
+	return true
 }
 
 // Halt stops the container's processes without removing the container, so Resume can start
@@ -405,8 +444,16 @@ func (c *Container) Halt(ctx context.Context) error {
 	if c == nil || c.container == nil {
 		return fmt.Errorf("runtime: no container to halt")
 	}
+	// Stopping an already exited container succeeds, so an exit of its own is reported before
+	// the deliberate stop is recorded over it.
+	readBefore := warnIfExited(ctx, c.def.Name, c.container, recorded(&c.stoppedAt))
 	if err := c.container.Stop(ctx, nil); err != nil {
 		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
+	}
+	// When the state before the stop could not be read, the container may already have exited
+	// on its own, so the stop is not recorded and the earlier record, if any, stands.
+	if readBefore {
+		c.stoppedAt.Store(exitTime(ctx, c.container))
 	}
 	return nil
 }

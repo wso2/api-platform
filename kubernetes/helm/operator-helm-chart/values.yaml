@@ -85,7 +85,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "1.2.0"
+    chartVersion: "2026.11.19-r1"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
@@ -328,6 +328,9 @@ gateway:
             # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
             # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
             path_with_escaped_slashes_action: KEEP_UNCHANGED
+            # Let a request whose path matches a route only case-insensitively fall through to a
+            # broader route instead of getting a 404
+            allow_path_case_variants: false
 
             # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
             timeouts:
@@ -465,7 +468,7 @@ gateway:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "1.2.0"
+          tag: "latest"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -571,29 +574,26 @@ gateway:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
-          # Use named port admin (controller admin HTTP server), not rest. GET /health on :9090
-          # goes through Gin + basic auth and returns 401 for kube-probe; standalone chart defaults
-          # use admin :9092 where /health is probe-safe.
-          # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
-          # All three probes use the admin health endpoint, which answers 503 while the
-          # controller's database is down and while it is still starting. Every controller
-          # release serves it. The admin ready endpoint (/api/admin/v1/ready) is newer and adds
-          # only an earlier exit from the Service while the controller shuts down; point
-          # readiness at it once the controller image serves it. Readiness takes the pod out of the Service after
-          # about 15 s of failed answers; liveness restarts it only after about 2 minutes, so
-          # a short database outage never causes a restart. These match the gateway chart's
-          # defaults.
+          # The probes call the controller's management API health endpoints, which answer 503 while
+          # the database is down. They leave out port and scheme: the gateway chart fills in the
+          # management listener, "rest" over HTTP, or "rest-tls" over HTTPS when
+          # gateway.config.controller.server.tls.enabled is true. The listener opens only once startup
+          # has finished, so the probes fail with a refused connection until then; the startup probe
+          # allows for that. Readiness takes the pod out of the Service after about 15 s of failed
+          # answers; liveness restarts it only after about 2 minutes, so a short database outage never
+          # causes a restart. These match the gateway chart's defaults.
+          # They need a gateway chart and a controller image that serve them (gateway chart
+          # 2026.11.19-r1 or later). With an older chart or image, probe the admin server
+          # instead: path /api/admin/v1/health with port: admin.
           livenessProbe:
             httpGet:
-              path: /api/admin/v1/health
-              port: admin
+              path: /api/management/v1/health
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 12
           readinessProbe:
             httpGet:
-              path: /api/admin/v1/health
-              port: admin
+              path: /api/management/v1/ready
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
@@ -602,8 +602,7 @@ gateway:
           # not the probe, decides when a database wait gives up. Set to null to disable.
           startupProbe:
             httpGet:
-              path: /api/admin/v1/health
-              port: admin
+              path: /api/management/v1/health
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 72
@@ -625,7 +624,7 @@ gateway:
       gatewayRuntime:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-runtime
-          tag: "1.2.0"
+          tag: "latest"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -673,9 +672,6 @@ gateway:
           # probe gives up. Readiness takes the pod out of the Service after
           # about 15 s of failed answers; liveness restarts it only after about 2 minutes
           # of no answer. These match the gateway chart's defaults.
-          # With the pinned 1.2.0 images Envoy answers these routes itself with a static 200;
-          # they check the policy engine and its dependencies once the controller and runtime
-          # images include the gateway health work.
           livenessProbe:
             httpGet:
               path: /_gateway-health/healthy

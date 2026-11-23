@@ -376,3 +376,36 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/health_endpoints.feature
           scenario: "Runtime health routes refuse the <method> method on <path>"
+  - id: HEALTH-034
+    title: Probe the gateway controller liveness and readiness endpoints on the management API port without credentials; each answers 200 with every check up.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "The controller <role> endpoint on the management API reports every check up without credentials"
+  - id: HEALTH-035
+    title: Call another management API path without credentials while the management health endpoints answer; it is refused with 401.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Other management API paths still require credentials"
+  - id: HEALTH-036
+    title: Probe the unprefixed /health and /ready paths on the management API port; neither is answered as a health endpoint.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "The management API has no unprefixed <path> health path"

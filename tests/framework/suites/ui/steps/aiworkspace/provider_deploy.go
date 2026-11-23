@@ -159,18 +159,21 @@ func (u *Steps) invokeURL(ctx context.Context) (string, error) {
 		return "", err
 	}
 	field := invokeURLField(page)
-	if visible, _ := field.IsVisible(); visible {
-		url, err := field.InputValue()
-		if err != nil {
-			return "", fmt.Errorf("reading the invoke URL: %w", err)
-		}
-		return url, tcontext.Set(ctx, keyLatestInvokeURL, url)
-	}
+	// A provider's invoke URL never changes, so once the overview has shown it the remembered
+	// one stands in when the field is gone. Before that, wait for the field to render.
 	v, _ := tcontext.Get(ctx, keyLatestInvokeURL)
 	if url, ok := v.(string); ok && url != "" {
-		return url, nil
+		if visible, _ := field.IsVisible(); !visible {
+			return url, nil
+		}
+	} else if err := u.expect.Locator(field).ToBeVisible(); err != nil {
+		return "", fmt.Errorf("the overview shows no invoke URL and none was seen earlier: %w", err)
 	}
-	return "", fmt.Errorf("the overview shows no invoke URL and none was seen earlier")
+	url, err := field.InputValue()
+	if err != nil {
+		return "", fmt.Errorf("reading the invoke URL: %w", err)
+	}
+	return url, tcontext.Set(ctx, keyLatestInvokeURL, url)
 }
 
 // callsProvider sends a chat completion with the user's message and the generated key, and
@@ -361,13 +364,21 @@ func (u *Steps) editsGuardrail(ctx context.Context, name string, table *godog.Ta
 		return fmt.Errorf("opening the %q guardrail: %w", name, err)
 	}
 	drawer := page.Locator(".MuiDrawer-paper")
+	// A section's open state is fixed when the drawer renders, so wait for the drawer before
+	// reading it; read while the drawer is still opening, an open section looks closed.
+	if err := u.expect.Locator(drawer.Locator(`[data-testid="policy-param-submit"]`)).ToBeVisible(); err != nil {
+		return fmt.Errorf("waiting for the %q guardrail's parameters: %w", name, err)
+	}
 	expanded := map[string]bool{}
 	for _, row := range table.Rows {
 		path, value := row.Cells[0].Value, row.Cells[1].Value
 		field := drawer.Locator(`[data-testid="field-` + path + `"]`)
 		if section, _, nested := strings.Cut(path, "."); nested && !expanded[section] {
+			label := drawer.GetByText(section, playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).First()
+			if err := u.expect.Locator(label).ToBeVisible(); err != nil {
+				return fmt.Errorf("finding the %q parameters: %w", section, err)
+			}
 			if visible, _ := field.IsVisible(); !visible {
-				label := drawer.GetByText(section, playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).First()
 				if err := label.Locator("xpath=../../..").Locator("svg").First().Click(); err != nil {
 					return fmt.Errorf("expanding the %q parameters: %w", section, err)
 				}

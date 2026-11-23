@@ -31,6 +31,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -102,6 +103,11 @@ type ComposeStack struct {
 	// stopLogProducers stops each service's attached log producer, populated only when
 	// the block is capturing container output.
 	stopLogProducers []func() error
+
+	// stopped maps each service StopService stopped on purpose, such as for coverage collection
+	// before teardown, to the exit time Docker recorded for that stop, so only an exit that
+	// differs from it is reported.
+	stopped sync.Map
 }
 
 // LaunchCompose starts a compose-backed component and presents it as one instance.
@@ -592,6 +598,13 @@ func (c *ComposeStack) Stop(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
+	if c.stack != nil {
+		for _, svc := range c.services() {
+			if container, err := c.stack.ServiceContainer(ctx, svc); err == nil {
+				warnIfExited(ctx, svc, container, c.stoppedAt(svc))
+			}
+		}
+	}
 	for _, stop := range c.stopLogProducers {
 		_ = stop()
 	}
@@ -745,11 +758,26 @@ func (c *ComposeStack) StopService(ctx context.Context, service string) error {
 	if err != nil {
 		return err
 	}
+	// Stopping an already exited service succeeds, so an exit of its own is reported before the
+	// deliberate stop is recorded over it.
+	readBefore := warnIfExited(ctx, service, container, c.stoppedAt(service))
 	timeout := 30 * time.Second
 	if err := container.Stop(ctx, &timeout); err != nil {
 		return fmt.Errorf("runtime: stopping service %q: %w", service, err)
 	}
+	// When the state before the stop could not be read, the service may already have exited on
+	// its own, so the stop is not recorded and the earlier record, if any, stands.
+	if readBefore {
+		c.stopped.Store(service, exitTime(ctx, container))
+	}
 	return nil
+}
+
+// stoppedAt returns the exit time recorded when StopService last stopped service, or "".
+func (c *ComposeStack) stoppedAt(service string) string {
+	v, _ := c.stopped.Load(service)
+	s, _ := v.(string)
+	return s
 }
 
 // StartService starts a stopped service and refreshes its published ports.

@@ -50,6 +50,21 @@ const SPEC = {
         responses: {},
       },
     },
+    '/*': {
+      get: { responses: {} },
+    },
+    '/files/*': {
+      get: { responses: {} },
+    },
+    '/search': {
+      get: {
+        parameters: [
+          { in: 'query', name: 'q', required: true, schema: { type: 'string' } },
+          { in: 'query', name: 'page', schema: { type: 'integer' } },
+        ],
+        responses: {},
+      },
+    },
     '/form': {
       post: {
         requestBody: {
@@ -367,7 +382,11 @@ describe('buildSendRequest — preview', () => {
       draft({ params: { 'path:id': '7', 'query:limit': 'nope', 'query:status': 'a' } }),
     );
     expect(result.request).toBeUndefined();
-    expect(result.preview).toEqual({ path: '/books/7', query: [['status', 'a']] });
+    expect(result.preview).toEqual({
+      path: '/books/7',
+      query: [['status', 'a']],
+      overriddenQuery: [],
+    });
   });
 });
 
@@ -466,5 +485,110 @@ describe('buildSendRequest query arrays and values', () => {
       operation,
     });
     expect(result.request?.body).toBeUndefined();
+  });
+});
+
+describe('buildSendRequest — typed path', () => {
+  it('sends the typed path instead of the operation’s', () => {
+    const result = build('GET /books/{id}', draft({ pathOverride: '/books/42/extra' }));
+    expect(result.problems).toEqual({});
+    expect(result.request?.path).toBe('/books/42/extra');
+  });
+
+  it('does not ask for a path parameter the typed path replaces', () => {
+    const typed = build('GET /books/{id}', draft({ pathOverride: '/books/7' }));
+    expect(typed.request?.path).toBe('/books/7');
+  });
+
+  it('adds a typed query string to the others', () => {
+    const result = build(
+      'GET /books/{id}',
+      draft({ params: { 'query:limit': '5' }, pathOverride: '/books/1?q=a%20b' }),
+    );
+    expect(result.request?.path).toBe('/books/1');
+    expect(result.request?.query).toEqual([
+      ['q', 'a b'],
+      ['limit', '5'],
+    ]);
+  });
+
+  it.each(['', 'books', '//evil.example/x', '/a/../b', '/a#frag', '/a?x=1#frag'])(
+    'refuses the typed path %j',
+    (typed) => {
+      const result = build('GET /books/{id}', draft({ pathOverride: typed }));
+      expect(result.request).toBeUndefined();
+      expect(result.problems.path).toEqual({ code: 'path' });
+    },
+  );
+
+  it('lets a console-owned credential replace the same name typed into the path', () => {
+    const result = build('GET /books/{id}', draft({ pathOverride: '/books/1?api_key=mine&q=1' }), {
+      autoQuery: [{ name: 'api_key', secret: true, value: 'console-secret' }],
+    });
+    expect(result.request?.query).toEqual([
+      ['q', '1'],
+      ['api_key', 'console-secret'],
+    ]);
+  });
+
+  it('counts a required query value typed into the path as supplied', () => {
+    const result = build('GET /search', draft({ pathOverride: '/search?q=needle' }));
+    expect(result.problems).toEqual({});
+    expect(result.request?.query).toEqual([['q', 'needle']]);
+  });
+
+  it('still asks for a required query value that neither source supplies', () => {
+    const blank = build('GET /search', draft({ pathOverride: '/search' }));
+    expect(blank.problems[paramProblemKey({ in: 'query', name: 'q' })]).toEqual({
+      code: 'required',
+    });
+    const empty = build('GET /search', draft({ pathOverride: '/search?q=' }));
+    expect(empty.request).toBeUndefined();
+  });
+
+  it('prefers the value on the Params tab over the same name typed into the path', () => {
+    const result = build(
+      'GET /search',
+      draft({ params: { 'query:q': 'from-tab' }, pathOverride: '/search?q=typed&page=2' }),
+    );
+    expect(result.request?.query).toEqual([
+      ['page', '2'],
+      ['q', 'from-tab'],
+    ]);
+  });
+
+  it('drops the trailing wildcard of a catch-all route instead of sending it', () => {
+    expect(build('GET /*', draft()).request?.path).toBe('/');
+    expect(build('GET /files/*', draft()).request?.path).toBe('/files/');
+    expect(build('GET /*', draft()).preview.path).toBe('/');
+  });
+
+  it('holds a typed query value to the parameter’s declared type', () => {
+    const bad = build('GET /search', draft({ pathOverride: '/search?q=needle&page=abc' }));
+    expect(bad.request).toBeUndefined();
+    expect(bad.problems[paramProblemKey({ in: 'query', name: 'page' })]).toEqual({
+      code: 'integer',
+    });
+
+    const good = build('GET /search', draft({ pathOverride: '/search?q=needle&page=3' }));
+    expect(good.problems).toEqual({});
+    expect(good.request?.query).toEqual([
+      ['q', 'needle'],
+      ['page', '3'],
+    ]);
+  });
+
+  it('leaves a typed name the operation does not declare unchecked', () => {
+    const result = build('GET /search', draft({ pathOverride: '/search?q=x&extra=anything' }));
+    expect(result.problems).toEqual({});
+  });
+
+  it('reports the typed query names that the Params tab or the console replaced', () => {
+    const result = build(
+      'GET /search',
+      draft({ params: { 'query:page': '2' }, pathOverride: '/search?q=x&page=9&api_key=mine' }),
+      { autoQuery: [{ name: 'api_key', secret: true, value: 'console-secret' }] },
+    );
+    expect(result.preview.overriddenQuery).toEqual(['page', 'api_key']);
   });
 });

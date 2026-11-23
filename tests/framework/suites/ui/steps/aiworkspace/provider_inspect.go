@@ -284,7 +284,15 @@ func (u *Steps) providerOfferedForProxyInProject(ctx context.Context, providerNa
 		return err
 	}
 	// Projects are opened from the organization's project list, so leave any project first.
-	if inProject, _ := page.Locator(`button[aria-label="Go to organization level"]`).IsVisible(); inProject {
+	// The header offers "Go to organization level" only inside a project and the sidebar
+	// offers Projects only outside one, so wait for either before deciding where the page is.
+	toOrganization := page.Locator(`button[aria-label="Go to organization level"]`)
+	if err := toOrganization.Or(cyid(page, "nav-projects")).First().WaitFor(); err != nil {
+		return fmt.Errorf("waiting for the workspace navigation: %w", err)
+	}
+	if inProject, err := toOrganization.IsVisible(); err != nil {
+		return fmt.Errorf("finding the organization level button: %w", err)
+	} else if inProject {
 		if err := u.returnsToOrganizationLevel(ctx); err != nil {
 			return err
 		}
