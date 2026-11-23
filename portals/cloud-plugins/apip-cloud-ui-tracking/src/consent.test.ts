@@ -19,8 +19,9 @@
 import { describe, expect, it } from 'vitest';
 import { DENIED, activeGroups, consentForGroups, installOptanonWrapper, savedGroups, setConsentDefaults } from './consent';
 
+// As CookiePro writes it: fields joined by `&`, each value encoded on its own.
 const cookie = (groups: string) =>
-  `a=b; OptanonConsent=${encodeURIComponent(`isGpcEnabled=0&groups=${groups}&hosts=`)}`;
+  `a=b; OptanonConsent=isGpcEnabled=0&groups=${encodeURIComponent(groups)}&hosts=`;
 
 describe('consent mapping', () => {
   it('denies everything without Performance or Targeting', () => {
@@ -38,7 +39,14 @@ describe('consent mapping', () => {
   it('reads the saved choice, and treats a missing or malformed cookie as none', () => {
     expect([...savedGroups(cookie('C0001:1,C0002:1,C0004:0'))!]).toEqual(['C0001', 'C0002']);
     expect(savedGroups('a=b')).toBeNull();
+    expect(savedGroups('OptanonConsent=isGpcEnabled=0&hosts=')).toBeNull();
     expect(savedGroups('OptanonConsent=%E0%A4%A')).toBeNull();
+  });
+  it('is not fooled by an encoded groups field inside another value', () => {
+    const landing = encodeURIComponent('https://console.example/?x=1&groups=C0002:1');
+    const spoofed = `OptanonConsent=landingPath=${landing}&groups=${encodeURIComponent('C0001:1,C0002:0')}`;
+    expect([...savedGroups(spoofed)!]).toEqual(['C0001']);
+    expect(consentForGroups(savedGroups(spoofed)!).analytics_storage).toBe('denied');
   });
   it('parses CookiePro active groups', () => {
     expect([...activeGroups(',C0001,C0002,')]).toEqual(['C0001', 'C0002']);

@@ -72,11 +72,14 @@ describe('AppPageContent', () => {
       expect(link).toHaveAttribute('target', '_blank');
     });
 
-    it('leaves out a URL that is not https', () => {
-      runtimeConfig.cookiePolicyLink = 'javascript:alert(1)';
-      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
-      expect(screen.queryByRole('link', { name: 'Cookie Policy' })).not.toBeInTheDocument();
-    });
+    it.each(['javascript:alert(1)', 'http://choreolabs.com/cookie-policy/', 'https://', 'https://exa mple.com'])(
+      'leaves out %s, which is not a usable https URL',
+      (value) => {
+        runtimeConfig.cookiePolicyLink = value;
+        renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+        expect(screen.queryByRole('link', { name: 'Cookie Policy' })).not.toBeInTheDocument();
+      }
+    );
   });
 
   it('replaces or removes the footer through the footer prop', () => {

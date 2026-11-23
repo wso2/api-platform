@@ -27,6 +27,16 @@ import { APP_FOOTER_ID } from '../pages/appShell/appLayoutConstants';
 /** Every footer link leaves the console, so each opens in a new tab, cut off from this page. */
 const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
+/** True for a well-formed `https:` URL with a host; anything else is not shown as a link. */
+const isHttpsUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname !== '';
+  } catch {
+    return false;
+  }
+};
+
 /**
  * True below an `AppPageContent`, which has already put the footer under its
  * content. A page container nested inside one (a built-in page an extension
@@ -77,7 +87,7 @@ function PageFooter() {
             description="Footer link to the Privacy Policy page"
           />
         </Footer.Link>
-        {runtimeConfig.cookiePolicyLink.startsWith('https://') && (
+        {isHttpsUrl(runtimeConfig.cookiePolicyLink) && (
           <Footer.Link href={runtimeConfig.cookiePolicyLink} {...NEW_TAB}>
             <FormattedMessage
               id="appLayout.footer.cookiePolicy"

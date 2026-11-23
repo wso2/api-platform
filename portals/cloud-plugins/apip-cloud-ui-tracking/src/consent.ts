@@ -52,13 +52,26 @@ export function consentForGroups(groups: ReadonlySet<string>): ConsentState {
   };
 }
 
-/** The groups the visitor accepted, from CookiePro's OptanonConsent cookie; null if absent or malformed. */
+/**
+ * The groups the visitor accepted, from CookiePro's OptanonConsent cookie; null if
+ * absent or malformed. The cookie is `key=value&key=value`, each *value* encoded
+ * (`landingPath` holds a whole URL, query included), so it is split into fields
+ * first and only then decoded: decoding the whole cookie first would turn an
+ * encoded `&groups=...` inside `landingPath` into a field of its own.
+ */
 export function savedGroups(cookies: string): Set<string> | null {
   const entry = cookies.split(';').map((part) => part.trim()).find((part) => part.startsWith('OptanonConsent='));
   if (!entry) return null;
   try {
-    const value = decodeURIComponent(entry.slice('OptanonConsent='.length));
-    const groups = new URLSearchParams(value).get('groups');
+    const raw = entry.slice('OptanonConsent='.length);
+    let groups: string | null = null;
+    for (const field of raw.split('&')) {
+      const at = field.indexOf('=');
+      if (at > 0 && field.slice(0, at) === 'groups') {
+        groups = decodeURIComponent(field.slice(at + 1));
+        break;
+      }
+    }
     if (!groups) return null;
     const active = new Set<string>();
     for (const item of groups.split(',')) {

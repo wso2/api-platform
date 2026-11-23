@@ -44,7 +44,13 @@ import {
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
 import { isFeatureDisabled } from '../../../../api-control-plane/src/config/features';
 import { runtimeConfig } from '../../../../api-control-plane/src/config/runtime';
-import { routes } from '../../../../api-control-plane/src/routes/paths';
+import {
+  apiScopedPaths,
+  projectScopedPaths,
+  routes,
+  type ApiPathBuilder,
+  type ProjectPathBuilder,
+} from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
@@ -86,22 +92,50 @@ export const cloudBrandLogo: BrandLogo = {
  * use site: the gateways feature asks the server for exactly these kinds, and a
  * fresh array on every render would make that request repeat.
  */
-// Every route pattern the console serves, read from its route table (the helpers' own
-// `:param` defaults), so a new route is covered without a list to keep in sync.
-const CONSOLE_ROUTE_PATTERNS: string[] = ['/', ...Object.values(routes).flatMap((route) => {
-  if (typeof route === 'string') return [route];
-  if (typeof route !== 'function') return [];
-  try {
-    const pattern = (route as () => unknown)();
-    return typeof pattern === 'string' ? [pattern] : [];
-  } catch {
-    return [];
+// Every route pattern the console serves, read from its route table so a new route is
+// covered without a list to keep in sync. Each builder is called the way `AppRoutes`
+// registers it: with its `:param` defaults, and with the project and API left out for the
+// scope-selection aliases (`/organizations/:orgHandle/select-scope/...`). Patterns a
+// builder could not have produced (a `null` or `undefined` segment from an argument that
+// is not a scope) are dropped.
+const CONSOLE_ROUTE_PATTERNS: string[] = (() => {
+  const patterns = new Set<string>(['/']);
+  const add = (value: unknown) => {
+    if (typeof value === 'string' && !/\/(null|undefined)(\/|$)/.test(value)) patterns.add(value);
+  };
+  for (const route of Object.values(routes)) {
+    if (typeof route === 'string') {
+      add(route);
+    } else if (typeof route === 'function') {
+      const build = route as unknown as ApiPathBuilder & ProjectPathBuilder;
+      for (const produce of [
+        () => (route as unknown as () => unknown)(),
+        () => projectScopedPaths(build),
+        () => apiScopedPaths(build),
+      ]) {
+        try {
+          const produced = produce();
+          (Array.isArray(produced) ? produced : [produced]).forEach(add);
+        } catch {
+          // A builder that needs arguments we cannot guess contributes nothing here.
+        }
+      }
+    }
   }
-})];
+  return [...patterns];
+})();
 
-// Routes that only redirect (to the user's organization, or on to a project): the page
-// they land on is the page view, so these are not counted.
-const NON_PAGE_PATTERNS: string[] = ['/', routes.organizations, routes.organizationLanding()];
+// Routes that are not pages of their own, so they are not counted: the ones that only
+// redirect (to the user's organization, on to a project, and, because this host replaces
+// the Gateways page with one self-contained flow, from a gateway's `new` and detail URLs
+// back to the index). The page they land on is the page view.
+const NON_PAGE_PATTERNS: string[] = [
+  '/',
+  routes.organizations,
+  routes.organizationLanding(),
+  routes.newGateway(),
+  routes.gateway(),
+];
 
 const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
 
