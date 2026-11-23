@@ -77,6 +77,15 @@ function PageFooter() {
             description="Footer link to the Privacy Policy page"
           />
         </Footer.Link>
+        {runtimeConfig.cookiePolicyLink.startsWith('https://') && (
+          <Footer.Link href={runtimeConfig.cookiePolicyLink} {...NEW_TAB}>
+            <FormattedMessage
+              id="appLayout.footer.cookiePolicy"
+              defaultMessage="Cookie Policy"
+              description="Footer link to the Cookie Policy page, shown where a deployment sets one"
+            />
+          </Footer.Link>
+        )}
       </Footer>
     </Box>
   );

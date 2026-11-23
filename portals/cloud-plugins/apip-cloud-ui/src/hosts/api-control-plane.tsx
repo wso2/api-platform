@@ -19,6 +19,7 @@ import {
   PORTAL_OPERATIONS,
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
 import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
+import { TrackingGate } from '@wso2-enterprise/apip-cloud-ui-tracking';
 // TODO: add SettingsButton back to this import when the header settings icon returns.
 import { ManageProjectButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
@@ -85,6 +86,23 @@ export const cloudBrandLogo: BrandLogo = {
  * use site: the gateways feature asks the server for exactly these kinds, and a
  * fresh array on every render would make that request repeat.
  */
+// Every route pattern the console serves, read from its route table (the helpers' own
+// `:param` defaults), so a new route is covered without a list to keep in sync.
+const CONSOLE_ROUTE_PATTERNS: string[] = ['/', ...Object.values(routes).flatMap((route) => {
+  if (typeof route === 'string') return [route];
+  if (typeof route !== 'function') return [];
+  try {
+    const pattern = (route as () => unknown)();
+    return typeof pattern === 'string' ? [pattern] : [];
+  } catch {
+    return [];
+  }
+})];
+
+// Routes that only redirect (to the user's organization, or on to a project): the page
+// they land on is the page view, so these are not counted.
+const NON_PAGE_PATTERNS: string[] = ['/', routes.organizations, routes.organizationLanding()];
+
 const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
 
 /**
@@ -200,6 +218,24 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         render: (port) => (
           <MarketingConsentGate port={port} proxyBase={runtimeConfig.platformApiBaseUrl} />
         ),
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    // WSO2 Cloud's one CookiePro account and one Google Tag Manager container (GA4 and
+    // Clarity are set up inside it). Headless `app.gate` entry: loads CookiePro and GTM
+    // when the deployment's runtime config sets `cookieProDomainScript` and
+    // `gtmContainerId`, and reports one `virtual_page_view` per route change carrying the
+    // route pattern, never the real path. Does nothing when they are not set.
+    // Console-only; the AI Workspace host registers nothing.
+    id: 'tracking',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'tracking-gate',
+        slot: APP_GATE_SLOT,
+        order: 30,
+        render: () => <TrackingGate routePatterns={CONSOLE_ROUTE_PATTERNS} nonPagePatterns={NON_PAGE_PATTERNS} />,
       },
     ],
   }),

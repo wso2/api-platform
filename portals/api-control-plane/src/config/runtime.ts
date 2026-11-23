@@ -161,6 +161,8 @@ export type RuntimeConfig = {
   /** Footer "Documentation" link. */
   documentationLink: string;
   privacyPolicyLink: string;
+  /** Footer "Cookie Policy" link. Empty hides it; only an `https://` URL is shown. */
+  cookiePolicyLink: string;
   projectApiBaseUrl: string;
   /** Footer "Support" link. */
   supportLink: string;
@@ -234,6 +236,7 @@ type LegacyWindowConfig = Partial<{
   API_DESIGNER_DOCS_URL: string;
   DOCUMENTATION_LINK: string;
   PRIVACY_POLICY_LINK: string;
+  COOKIE_POLICY_LINK: string;
   PROJECT_API_BASE_URL: string;
   SUPPORT_LINK: string;
   TERMS_OF_USE_LINK: string;
@@ -262,6 +265,7 @@ type LegacyWindowConfig = Partial<{
   organizationApiUrl: string;
   documentationLink: string;
   privacyPolicyLink: string;
+  cookiePolicyLink: string;
   projectApiBaseUrl: string;
   supportLink: string;
   termsOfUseLink: string;
@@ -553,6 +557,11 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().privacyPolicyLink ||
     import.meta.env.VITE_PRIVACY_POLICY_LINK ||
     'https://wso2.com/privacy-policy',
+  cookiePolicyLink:
+    fromWindow().COOKIE_POLICY_LINK ||
+    fromWindow().cookiePolicyLink ||
+    import.meta.env.VITE_COOKIE_POLICY_LINK ||
+    '',
   projectApiBaseUrl:
     fromWindow().PROJECT_API_BASE_URL ||
     fromWindow().projectApiBaseUrl ||

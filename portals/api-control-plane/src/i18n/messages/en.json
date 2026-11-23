@@ -6154,6 +6154,10 @@
   "appLayout.breadcrumb.home": {
     "defaultMessage": "Home"
   },
+  "appLayout.footer.cookiePolicy": {
+    "defaultMessage": "Cookie Policy",
+    "description": "Footer link to the Cookie Policy page, shown where a deployment sets one"
+  },
   "appLayout.footer.documentation": {
     "defaultMessage": "Documentation",
     "description": "Footer link to the product documentation"
