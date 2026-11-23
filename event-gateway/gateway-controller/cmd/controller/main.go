@@ -643,10 +643,14 @@ func main() {
 		authMiddleWare,
 	}
 
+	// Budgets are an AI gateway feature: the event gateway keeps none, so its publisher
+	// only ever publishes an empty set. The shared listener and API server require one.
+	budgets := utils.NewBudgetPublisher(db, lazyResourceXDSManager)
+
 	// Event listener — multi-replica sync, with this binary's own webhook-secret handler wired in.
 	evtListener := coreeventlistener.NewEventListener(
 		eventHubInstance, configStore, db, snapshotManager, subscriptionSnapshotManager,
-		apiKeyXDSManager, lazyResourceXDSManager, clientAuthorities, policyManager, &cfg.Router, log, cfg,
+		apiKeyXDSManager, lazyResourceXDSManager, clientAuthorities, budgets, policyManager, &cfg.Router, log, cfg,
 		policyDefinitions, secretsService, policyVersionResolver,
 	)
 	if webhookSecretService != nil {
@@ -658,7 +662,7 @@ func main() {
 	}
 
 	apiServer, err := handlers.NewAPIServer(
-		configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, clientAuthorities, log, cpClient,
+		configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, clientAuthorities, budgets, log, cpClient,
 		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance,
 		subscriptionSnapshotManager, secretsService, restAPIService, httpClient, agentSvc,
 	)

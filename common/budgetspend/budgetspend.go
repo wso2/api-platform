@@ -35,6 +35,15 @@ const (
 	NamespaceUnpriced = "budget-unpriced"
 )
 
+// Counter namespaces of the AI cost stats ([ai_cost_management.tracking]): USD, and
+// requests charged $0 by reason. The budget system policy counts them; the
+// gateway-controller reports them to the control plane.
+const (
+	NamespaceCost                 = "ai-cost"
+	NamespaceCostMissingPrice     = "ai-cost-missing-price"
+	NamespaceCostUsageUnavailable = "ai-cost-usage-unavailable"
+)
+
 // spendNamespace roots the IDs spend is counted under. Never change it: every gateway
 // sharing a counter store must derive the same IDs.
 var spendNamespace = uuid.MustParse("8d740d5b-3b73-4e13-84a6-5336674f813f")

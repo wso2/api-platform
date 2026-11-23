@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/wso2/api-platform/common/budgetspend"
 	"github.com/wso2/api-platform/sdk/core/counters"
 )
 
@@ -36,9 +37,9 @@ import (
 
 // Counter namespaces of the cost stats: USD, and requests charged $0 by reason.
 const (
-	namespaceCost                 = "ai-cost"
-	namespaceCostMissingPrice     = "ai-cost-missing-price"
-	namespaceCostUsageUnavailable = "ai-cost-usage-unavailable"
+	namespaceCost                 = budgetspend.NamespaceCost
+	namespaceCostMissingPrice     = budgetspend.NamespaceCostMissingPrice
+	namespaceCostUsageUnavailable = budgetspend.NamespaceCostUsageUnavailable
 	metadataCostCaller            = "x-wso2-cost-caller"
 	metadataUsage                 = "llm:usage:v1"
 	costLabelProject              = "project"

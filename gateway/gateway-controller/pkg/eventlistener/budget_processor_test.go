@@ -19,10 +19,12 @@
 package eventlistener
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/wso2/api-platform/common/budgetspend"
 	"github.com/wso2/api-platform/common/eventhub"
 )
 
@@ -86,4 +88,31 @@ func TestHandleEvent_Budget_DeleteForgetsItsUsageOnThisReplica(t *testing.T) {
 	listener.handleEvent(eventhub.Event{EventType: eventhub.EventTypeBudget, Action: "DELETE", EntityID: "research-monthly", EventID: "c-del"})
 	assert.Equal(t, []string{"research-monthly"}, forgetter.forgotten, "a delete on any replica forgets the budget here")
 	assert.Equal(t, []string{"publish:c-CREATE", "publish:c-UPDATE", "publish:c-del"}, budgets.calls)
+}
+
+type recordingSpend struct{ deleted []string }
+
+func (r *recordingSpend) Delete(_ context.Context, namespace, idPrefix string) error {
+	r.deleted = append(r.deleted, namespace+"/"+idPrefix)
+	return nil
+}
+
+func TestHandleEvent_Budget_DeleteClearsSpendKeptInThisReplicasMemory(t *testing.T) {
+	spend := &recordingSpend{}
+	listener := &EventListener{logger: newTestLogger(), budgets: &fakeBudgetPublisher{}}
+	listener.SetLocalSpend(spend)
+
+	listener.handleEvent(eventhub.Event{EventType: eventhub.EventTypeBudget, Action: "UPDATE", EntityID: "team-a", EventID: "c-1"})
+	assert.Empty(t, spend.deleted, "an update keeps the spend")
+
+	listener.handleEvent(eventhub.Event{EventType: eventhub.EventTypeBudget, Action: "DELETE", EntityID: "team-a", EventID: "c-2"})
+	prefix := budgetspend.CounterIDPrefix("team-a")
+	assert.Equal(t, []string{budgetspend.NamespaceSpend + "/" + prefix, budgetspend.NamespaceUnpriced + "/" + prefix}, spend.deleted,
+		"a delete on another replica clears this replica's own spend for the budget")
+}
+
+func TestHandleEvent_Budget_DeleteLeavesASharedStoreAlone(t *testing.T) {
+	listener := &EventListener{logger: newTestLogger(), budgets: &fakeBudgetPublisher{}}
+	// No local spend set (Redis): nothing to clear here, and no panic.
+	listener.handleEvent(eventhub.Event{EventType: eventhub.EventTypeBudget, Action: "DELETE", EntityID: "team-a", EventID: "c-1"})
 }

@@ -877,3 +877,15 @@ func TestARequestEndingAfterItsBudgetWasDeletedIsNotCharged(t *testing.T) {
 		t.Fatalf("the budget made again spent %v, want 1", got)
 	}
 }
+
+// A proxy route that does not know its provider (no provider_name) does not evaluate the
+// request, so it does not stamp it: the provider route it forwards to counts it instead.
+func TestProxyRouteWithoutAProviderLeavesTheRequestToTheProviderRoute(t *testing.T) {
+	p, _, _ := testPolicy(t, budgetBody("all", testBudgetUUID, "1", "day", "block", allProviders, nil))
+	req := call{provider: "", project: "api-platform", params: agentRoute("support-agent")}.context()
+	action := p.OnRequestHeaders(context.Background(), req, agentRoute("support-agent"))
+	mods, _ := action.(policy.UpstreamRequestHeaderModifications)
+	if _, stamped := mods.HeadersToSet[headerAdmitted]; stamped {
+		t.Fatalf("a proxy route that did not evaluate the request stamped it: %+v", mods.HeadersToSet)
+	}
+}

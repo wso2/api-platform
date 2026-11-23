@@ -77,6 +77,7 @@ type EventListener struct {
 	policyVersionResolver utils.PolicyVersionResolver
 	webhookSecretHandler  WebhookSecretEventHandler
 	budgetForgetter       BudgetForgetter
+	localSpend            SpendDeleter
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -172,6 +173,19 @@ type BudgetForgetter interface {
 // (on this replica's next reconnect). Call before Start; nil (the default) forgets nothing.
 func (l *EventListener) SetBudgetForgetter(f BudgetForgetter) {
 	l.budgetForgetter = f
+}
+
+// SpendDeleter deletes counters by ID prefix (counters.Store).
+type SpendDeleter interface {
+	Delete(ctx context.Context, namespace, idPrefix string) error
+}
+
+// SetLocalSpend makes a budget deleted on another replica clear its spend in this
+// replica's own counter store. Only for counters kept in memory: each replica then holds
+// its own copy, which the deleting replica cannot reach. Not for a shared store (Redis),
+// which the deleting replica has cleared already. Call before Start.
+func (l *EventListener) SetLocalSpend(s SpendDeleter) {
+	l.localSpend = s
 }
 
 // Start begins listening for events

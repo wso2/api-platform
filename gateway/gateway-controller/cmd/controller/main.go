@@ -798,6 +798,11 @@ func main() {
 	if budgetUsage != nil {
 		evtListener.SetBudgetForgetter(budgetUsage)
 	}
+	if !cfg.Counters.Redis.Enabled {
+		// Each replica counts in its own memory: a budget deleted on another replica is
+		// cleared here too. A shared Redis is cleared by the replica that deleted it.
+		evtListener.SetLocalSpend(counterStore)
+	}
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
 		os.Exit(1)

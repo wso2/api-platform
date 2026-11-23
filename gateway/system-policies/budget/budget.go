@@ -258,6 +258,10 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 	}
 	provider, _ := reqCtx.Metadata[metadataProviderName].(string)
 	if provider == "" {
+		if rp.role == roleProxy {
+			// Not evaluated here, so not stamped: the provider route it forwards to counts it.
+			return policy.UpstreamRequestHeaderModifications{}
+		}
 		return pass
 	}
 	who := p.callerOf(reqCtx, rp)

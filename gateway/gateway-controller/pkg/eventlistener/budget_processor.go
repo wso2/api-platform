@@ -19,8 +19,11 @@
 package eventlistener
 
 import (
+	"context"
 	"log/slog"
+	"time"
 
+	"github.com/wso2/api-platform/common/budgetspend"
 	"github.com/wso2/api-platform/common/eventhub"
 )
 
@@ -47,13 +50,33 @@ func (l *EventListener) processBudgetEvent(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
-	if event.Action == "DELETE" && l.budgetForgetter != nil {
+	if event.Action == "DELETE" {
 		// The replica that deleted it has forgotten it; every other one does too.
-		l.budgetForgetter.Forget(event.EntityID)
+		if l.budgetForgetter != nil {
+			l.budgetForgetter.Forget(event.EntityID)
+		}
+		if l.localSpend != nil {
+			l.clearLocalSpend(event.EntityID, log)
+		}
 	}
 	if err := l.budgets.Publish(event.EventID); err != nil {
 		log.Error("Failed to publish budgets for replica sync", slog.Any("error", err))
 		return
 	}
 	log.Info("Budget change applied from replica sync")
+}
+
+// clearLocalSpend deletes a budget's spend from this replica's in-memory counters, as the
+// replica that deleted it did with its own.
+func (l *EventListener) clearLocalSpend(name string, log *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	prefix := budgetspend.CounterIDPrefix(name)
+	for _, namespace := range []string{budgetspend.NamespaceSpend, budgetspend.NamespaceUnpriced} {
+		if err := l.localSpend.Delete(ctx, namespace, prefix); err != nil {
+			log.Error("Failed to clear the deleted budget's spend on this replica", slog.Any("error", err))
+			return
+		}
+	}
+	log.Info("Deleted budget's spend cleared on this replica")
 }

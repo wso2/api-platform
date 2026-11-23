@@ -41,13 +41,13 @@ import (
 // Counter namespaces the budget system policy charges: budget spend, and the AI cost
 // stats ([ai_cost_management.tracking]), which count every request's cost by its values.
 const (
-	usageNamespaceSpend    = "budget"
-	usageNamespaceUnpriced = "budget-unpriced"
+	usageNamespaceSpend    = budgetspend.NamespaceSpend
+	usageNamespaceUnpriced = budgetspend.NamespaceUnpriced
 	usageLabelBudget       = "budget"
 
-	usageNamespaceCost                 = "ai-cost"
-	usageNamespaceCostMissingPrice     = "ai-cost-missing-price"
-	usageNamespaceCostUsageUnavailable = "ai-cost-usage-unavailable"
+	usageNamespaceCost                 = budgetspend.NamespaceCost
+	usageNamespaceCostMissingPrice     = budgetspend.NamespaceCostMissingPrice
+	usageNamespaceCostUsageUnavailable = budgetspend.NamespaceCostUsageUnavailable
 )
 
 // Kinds of usage entries.
