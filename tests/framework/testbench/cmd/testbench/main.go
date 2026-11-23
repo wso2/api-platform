@@ -107,6 +107,7 @@ func services() ([]testbench.Service, error) {
 	}
 	jevSvc := jev.New()
 	specsSvc := specs.New()
+	interceptorSvc := interceptor.New()
 	stripeSvc := stripe.New()
 	moesifSvc, err := moesif.New(stripeSvc)
 	if err != nil {
@@ -118,7 +119,7 @@ func services() ([]testbench.Service, error) {
 		backend.New(),
 		aws.NewBedrock(),
 		openai.New(),
-		interceptor.New(),
+		interceptorSvc,
 		mcp.New(),
 		mcp.NewLegacy(),
 		embeddings.New(),
@@ -146,6 +147,15 @@ func services() ([]testbench.Service, error) {
 			return nil, fmt.Errorf("building jev TLS service: %w", err)
 		}
 		services = append(services, jevTLS)
+	}
+	// The gateway runtime trusts the Jev certificate, so the interceptor mock serves HTTPS with it
+	// too: a policy can then call it at https://testbench with a certificate the runtime trusts.
+	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
+		interceptorTLS, err := interceptorSvc.OverTLS([]byte(cert), []byte(key))
+		if err != nil {
+			return nil, fmt.Errorf("building interceptor TLS service: %w", err)
+		}
+		services = append(services, interceptorTLS)
 	}
 	if cert, key := os.Getenv(specs.EnvTLSCert), os.Getenv(specs.EnvTLSKey); cert != "" || key != "" {
 		specsTLS, err := specsSvc.OverTLS([]byte(cert), []byte(key))

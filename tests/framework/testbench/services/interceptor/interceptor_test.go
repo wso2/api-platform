@@ -20,15 +20,26 @@ package interceptor
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wso2/api-platform/tests/framework/testbench"
 )
 
 func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
@@ -384,4 +395,86 @@ func TestScriptedConcurrentCallsGetTheirOwnReplies(t *testing.T) {
 	for err := range errs {
 		t.Error(err)
 	}
+}
+
+func TestOverTLSServesTheSameRepliesOverHTTPS(t *testing.T) {
+	certPEM, keyPEM := selfSignedPEM(t)
+	secure, err := New().OverTLS(certPEM, keyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secure.Name() != "interceptor-tls" || secure.Port() != TLSPort || secure.Stateful() {
+		t.Fatalf("got name %q port %d stateful %v", secure.Name(), secure.Port(), secure.Stateful())
+	}
+	tlsService, ok := secure.(testbench.TLSService)
+	if !ok || len(tlsService.TLSConfig().Certificates) != 1 {
+		t.Fatal("the HTTPS service must declare its TLS configuration with one certificate")
+	}
+
+	srv := httptest.NewUnstartedServer(secure.Handler())
+	srv.TLS = tlsService.TLSConfig()
+	srv.StartTLS()
+	defer srv.Close()
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certPEM) {
+		t.Fatal("could not add the test certificate to the pool")
+	}
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, ServerName: "testbench"}}}
+
+	hdr := map[string]string{controlName(phaseRequest, "Reply"): b64(`{"headersToAdd":{"X-A":"1"}}`)}
+	resp, err := client.Post(srv.URL+hookPath(phaseRequest), jsonContentType, strings.NewReader(payload(t, phaseRequest, hdr)))
+	if err != nil {
+		t.Fatalf("a client trusting the certificate must connect: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != `{"headersToAdd":{"X-A":"1"}}` {
+		t.Fatalf("scripted reply over HTTPS: got %d %s", resp.StatusCode, body)
+	}
+
+	resp, err = client.Post(srv.URL+"/handle-request", jsonContentType, strings.NewReader(`{"invocationContext":{"path":"/api/other"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "{}" {
+		t.Fatalf("fixed reply over HTTPS: got %d %s", resp.StatusCode, body)
+	}
+
+	untrusting := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{ServerName: "testbench"}}}
+	if _, err := untrusting.Post(srv.URL+"/handle-request", jsonContentType, strings.NewReader(`{}`)); err == nil {
+		t.Fatal("a client that does not trust the certificate must fail the handshake")
+	}
+}
+
+func TestOverTLSRejectsAnInvalidKeyPair(t *testing.T) {
+	if _, err := New().OverTLS([]byte("not a certificate"), []byte("not a key")); err == nil {
+		t.Fatal("want an error for an invalid key pair")
+	}
+}
+
+func selfSignedPEM(t *testing.T) ([]byte, []byte) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "testbench"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		DNSNames:     []string{"testbench"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 }

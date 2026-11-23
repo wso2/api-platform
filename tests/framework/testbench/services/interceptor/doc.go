@@ -55,6 +55,14 @@
 // POST /scripted/<id>/reflect/handle-request (or handle-response), so it works when no request
 // headers reach the interceptor. Reflect cannot be combined with a reply or a status.
 //
+// # HTTPS
+//
+// The same service answers on https://testbench:3027 when the testbench is given the Jev TLS
+// certificate and key (TESTBENCH_JEV_TLS_CERT and TESTBENCH_JEV_TLS_KEY). The gateway runtime
+// trusts that certificate, so a policy pointed at https://testbench:3027 or
+// https://testbench:3027/scripted/<id> passes its certificate check. Every route behaves as on
+// port 3003.
+//
 // # Validation
 //
 // A scripted call must carry a JSON object of the contract's shape: requestHeaders,
