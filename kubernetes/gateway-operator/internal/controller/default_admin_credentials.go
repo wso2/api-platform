@@ -32,7 +32,6 @@ import (
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 )
 
 // defaultAdminMode is where the admin credential of a gateway without
@@ -179,86 +178,13 @@ func createGeneratedAdminSecret(ctx context.Context, in defaultAdminInput, name 
 	return nil
 }
 
-// operatorAdminPasswordEnv is the gateway-controller environment variable that carries the
-// admin password from its Secret when the gateway chart cannot mount it as a file (a chart
-// without the basicAuthPasswordSecretRef feature). The user's password is then an
-// {{ env }} token, which every gateway-controller since 1.2.0 resolves at startup; the
-// policy engine, which loads the same config.toml without the variable, resolves it to "".
-const operatorAdminPasswordEnv = "APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD"
-
-// envPasswordToken is the password value of a user whose password arrives through
-// operatorAdminPasswordEnv.
-func envPasswordToken() string {
-	return `{{ env "` + operatorAdminPasswordEnv + `" "" }}`
-}
-
-// controllerExtraEnvOverlay returns Helm values that add operatorAdminPasswordEnv, read
-// from the Secret key, to gateway.controller.deployment.extraEnv. Helm replaces lists, so
-// the overlay carries the whole list: the entries valuesYAML sets (or, when it sets none,
-// baseYAML), minus any earlier entry of the same name, then the operator's.
-func controllerExtraEnvOverlay(baseYAML, valuesYAML, secretName, key string) (string, error) {
-	var env []interface{}
-	for _, doc := range []string{baseYAML, valuesYAML} {
-		if doc == "" {
-			continue
-		}
-		var values map[string]interface{}
-		if err := yaml.Unmarshal([]byte(doc), &values); err != nil {
-			return "", fmt.Errorf("parse Helm values for controller extraEnv: %w", err)
-		}
-		node := interface{}(values)
-		found := true
-		for _, k := range []string{"gateway", "controller", "deployment", "extraEnv"} {
-			m, ok := node.(map[string]interface{})
-			if !ok {
-				found = false
-				break
-			}
-			if node, ok = m[k]; !ok {
-				found = false
-				break
-			}
-		}
-		if found {
-			env, _ = node.([]interface{})
-		}
-	}
-	list := make([]interface{}, 0, len(env)+1)
-	for _, e := range env {
-		if m, ok := e.(map[string]interface{}); ok && fmt.Sprint(m["name"]) == operatorAdminPasswordEnv {
-			continue
-		}
-		list = append(list, e)
-	}
-	list = append(list, map[string]interface{}{
-		"name": operatorAdminPasswordEnv,
-		"valueFrom": map[string]interface{}{
-			"secretKeyRef": map[string]interface{}{"name": secretName, "key": key},
-		},
-	})
-	out, err := yaml.Marshal(map[string]interface{}{
-		"gateway": map[string]interface{}{
-			"controller": map[string]interface{}{
-				"deployment": map[string]interface{}{"extraEnv": list},
-			},
-		},
-	})
-	if err != nil {
-		return "", fmt.Errorf("marshal controller extraEnv overlay: %w", err)
-	}
-	return string(out), nil
-}
-
 // defaultAdminOverlay returns the Helm values for plan. Every mode turns off the gateway
 // chart's own credential generation (gateway.controller.adminCredentials.generate), so
 // the chart never generates a password the operator does not know; charts that predate
 // the setting ignore it. A legacy gateway keeps the admin/admin user earlier operators
-// deployed. A generated credential is read from its Secret as a mounted file when the
-// chart supports it (secretRef); with an older chart it is passed as the
-// operatorAdminPasswordEnv environment variable from the same Secret, so the operator
-// works with any published gateway chart. baseYAML and valuesYAML are the values the
-// overlay is merged over, needed to keep their controller extraEnv entries.
-func defaultAdminOverlay(plan defaultAdminPlan, secretRef bool, baseYAML, valuesYAML string) (string, error) {
+// deployed. A generated credential is read from its Secret as a mounted file
+// (passwordSecretRef), so it needs a chart with the basicAuthPasswordSecretRef feature.
+func defaultAdminOverlay(plan defaultAdminPlan) (string, error) {
 	values := map[string]interface{}{
 		"gateway": map[string]interface{}{
 			"controller": map[string]interface{}{
@@ -273,15 +199,11 @@ func defaultAdminOverlay(plan defaultAdminPlan, secretRef bool, baseYAML, values
 			"username":        auth.DefaultAdminUsername,
 			"password_hashed": false,
 			"roles":           []interface{}{"admin"},
-		}
-		if secretRef {
-			user["passwordSecretRef"] = map[string]interface{}{
+			"passwordSecretRef": map[string]interface{}{
 				"name":   plan.SecretName,
 				"key":    auth.GeneratedAdminPasswordKey,
 				"source": apiv1.AdminCredentialsSourceFile,
-			}
-		} else {
-			user["password"] = envPasswordToken()
+			},
 		}
 	case defaultAdminLegacy:
 		username, password := auth.GetDefaultBasicAuthCredentials()
@@ -308,14 +230,7 @@ func defaultAdminOverlay(plan defaultAdminPlan, secretRef bool, baseYAML, values
 	if err != nil {
 		return "", fmt.Errorf("marshal admin credentials overlay: %w", err)
 	}
-	if plan.Mode != defaultAdminGenerated || secretRef {
-		return string(out), nil
-	}
-	envOverlay, err := controllerExtraEnvOverlay(baseYAML, valuesYAML, plan.SecretName, auth.GeneratedAdminPasswordKey)
-	if err != nil {
-		return "", err
-	}
-	return helm.MergeValuesYAML(string(out), envOverlay)
+	return string(out), nil
 }
 
 // readBaseValuesFile returns the operator's base Helm values file, or "" when none is

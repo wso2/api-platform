@@ -158,6 +158,15 @@ func (r *GatewayReconciler) planDefaultAdmin(ctx context.Context, gw *apiv1.APIG
 	})
 }
 
+// reportGeneratedAdminCredentials logs and emits an Event for a newly generated admin
+// credential. It is called by whichever step created the Secret: usually the reconcile
+// that precedes the first deployment.
+func (r *GatewayReconciler) reportGeneratedAdminCredentials(gw *apiv1.APIGateway, secretName string) {
+	msg := fmt.Sprintf("Generated the management API admin credential in Secret %s", secretName)
+	r.Logger.Info(msg, slog.String("controller", "APIGateway"), slog.String("name", gw.Name))
+	r.recordEvent(gw, corev1.EventTypeNormal, "AdminCredentialsGenerated", msg)
+}
+
 // recordEvent emits an Event on obj when an event recorder is configured.
 func (r *GatewayReconciler) recordEvent(obj runtime.Object, eventType, reason, message string) {
 	if r.Recorder != nil {
@@ -272,6 +281,9 @@ func (r *GatewayReconciler) decideAndProcess(
 		log.Warn("Cannot resolve the gateway's admin credential yet", slog.Any("error", planErr))
 	} else if plan.Mode == defaultAdminGenerated {
 		generatedSecret = plan.SecretName
+		if plan.Created {
+			r.reportGeneratedAdminCredentials(gatewayConfig, plan.SecretName)
+		}
 	}
 	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, gatewayConfig, configMapValues, generatedSecret)
 	if err != nil {
@@ -907,26 +919,6 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 			slog.String("values_file", valuesFilePath))
 	}
 
-	// The operator and the gateway chart are released separately, so the admin password
-	// is delivered the way the configured chart supports: read from its Secret as a
-	// mounted file (passwordSecretRef), or, with a chart that predates it, as an
-	// environment variable from the same Secret. Either way it never enters Helm values.
-	baseValues, err := readBaseValuesFile(valuesFilePath)
-	if err != nil {
-		return err
-	}
-	chartFeatures, err := helmgateway.ChartFeatures(r.Config, dockerUserName, dockerPassword)
-	if err != nil {
-		return fmt.Errorf("read gateway chart features: %w", err)
-	}
-	secretRef := chartFeatures[helm.FeatureBasicAuthPasswordSecretRef]
-	envDeliveryWarning := func(secretName string) {
-		msg := fmt.Sprintf("Gateway chart %s cannot mount the admin password as a file, so it is passed to the gateway-controller as an environment variable from Secret %s; use a gateway chart that supports passwordSecretRef to mount it instead",
-			r.Config.Gateway.HelmChartVersion, secretName)
-		log.Warn(msg)
-		r.recordEvent(owner, corev1.EventTypeWarning, "AdminPasswordAsEnvVar", msg)
-	}
-
 	// spec.adminCredentials is merged last so a ConfigMap cannot override the admin
 	// user; the configRef's other basic-auth users are kept after it. Only the Secret
 	// reference reaches Helm; the password stays in the Secret.
@@ -936,16 +928,10 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		if _, _, err := auth.AdminCredentialsFromSecret(ctx, r.Client, owner); err != nil {
 			return fmt.Errorf("admin credentials unavailable: %w", err)
 		}
-		if !secretRef {
-			if err := auth.CheckAdminCredentialsForEnvDelivery(ctx, r.Client, owner); err != nil {
-				return fmt.Errorf("admin credentials unavailable: %w", err)
-			}
-			envDeliveryWarning(owner.Spec.AdminCredentials.PasswordSecretRef.Name)
-		}
 		// valuesYAML holds only the CR overlay and the configRef ConfigMap at this point
 		// (the operator's base values file is merged later by the Helm client), so the
 		// users kept next to the admin user are exactly those the configRef lists.
-		adminOverlay, err := buildAdminCredentialsOverlay(owner, valuesYAML, secretRef, baseValues)
+		adminOverlay, err := buildAdminCredentialsOverlay(owner, valuesYAML)
 		if err != nil {
 			return err
 		}
@@ -967,7 +953,7 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		r.recordEvent(owner, corev1.EventTypeWarning, "AdminCredentialsUnavailable", err.Error())
 		return fmt.Errorf("admin credentials unavailable: %w", err)
 	}
-	defaultOverlay, err := defaultAdminOverlay(plan, secretRef, baseValues, valuesYAML)
+	defaultOverlay, err := defaultAdminOverlay(plan)
 	if err != nil {
 		return err
 	}
@@ -979,13 +965,8 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 	switch plan.Mode {
 	case defaultAdminGenerated:
 		generatedSecret = plan.SecretName
-		if !secretRef {
-			envDeliveryWarning(plan.SecretName)
-		}
 		if plan.Created {
-			msg := fmt.Sprintf("Generated the management API admin credential in Secret %s", plan.SecretName)
-			log.Info(msg)
-			r.recordEvent(owner, corev1.EventTypeNormal, "AdminCredentialsGenerated", msg)
+			r.reportGeneratedAdminCredentials(owner, plan.SecretName)
 		}
 	case defaultAdminLegacy:
 		msg := "This gateway keeps the default admin/admin management API credential it was deployed with by an earlier operator version; set spec.adminCredentials to replace it"
@@ -1016,15 +997,17 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		slog.String("version", r.Config.Gateway.HelmChartVersion),
 		slog.String("namespace", namespace))
 
-	// A passwordSecretRef written in the configRef values needs a gateway chart that
-	// renders it: an older chart would write the user with an empty password and the
-	// gateway-controller would not start. The check runs before Helm touches the release,
-	// so the running gateway is left as it is. (The operator's own admin user adapts to the
-	// chart above and needs no check.)
+	// A password read from a Secret (spec.adminCredentials, the generated credential, or a
+	// passwordSecretRef in the configRef values) needs a gateway chart that renders
+	// passwordSecretRef: an older chart would write the user with an empty password and
+	// the gateway-controller would not start. The check runs before Helm touches the
+	// release, so the running gateway is left as it is.
 	var requiredChartFeatures []string
-	if refs, err := configRefSecretRefNames(configRefValues); err != nil {
+	refs, err := configRefSecretRefNames(configRefValues)
+	if err != nil {
 		return err
-	} else if len(refs) > 0 {
+	}
+	if owner.Spec.AdminCredentials != nil || plan.Mode == defaultAdminGenerated || len(refs) > 0 {
 		requiredChartFeatures = []string{helm.FeatureBasicAuthPasswordSecretRef}
 	}
 

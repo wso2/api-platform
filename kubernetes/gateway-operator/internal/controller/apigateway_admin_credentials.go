@@ -35,7 +35,6 @@ import (
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 )
 
 // basicAuthCredentialsChecksumAnnotation is set on the gateway-controller pod template.
@@ -150,22 +149,16 @@ func basicAuthChecksumOverlay(secretsVersion string) (string, error) {
 
 // buildAdminCredentialsOverlay returns the Helm values that configure the gateway's
 // admin user from spec.adminCredentials, or "" when it is unset. It carries only the
-// Secret reference and delivery mode; the gateway chart turns them into an env var or
-// a read-only file mount. The password itself is never written into Helm values.
+// Secret reference and delivery mode (passwordSecretRef), which the gateway chart turns
+// into an env var or a read-only file mount, so it needs a chart with the
+// basicAuthPasswordSecretRef feature. The password itself is never written into Helm values.
 //
 // The caller merges it after the ConfigMap values, and Helm values replace lists, so the
 // overlay carries the complete users list: the admin user first, then every basic-auth
 // user from configRefValues (the APIGateway's own configRef values) except one with the
 // admin's username. Users from the operator's base values file are not carried over, so
 // its default admin/admin user never comes back.
-//
-// secretRef reports whether the gateway chart supports passwordSecretRef (the
-// basicAuthPasswordSecretRef chart feature). With an older chart, the admin user's
-// password is an {{ env }} token instead and the Secret key reaches the gateway-controller
-// as the operatorAdminPasswordEnv variable through controller extraEnv, so
-// spec.adminCredentials works with any published gateway chart. baseYAML is the operator's
-// base values file, whose extraEnv entries are kept.
-func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string, secretRef bool, baseYAML string) (string, error) {
+func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) (string, error) {
 	creds := gw.Spec.AdminCredentials
 	if creds == nil {
 		return "", nil
@@ -189,15 +182,11 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string, 
 		// API, so it must be stored in plain text, not hashed.
 		"password_hashed": false,
 		"roles":           []interface{}{"admin"},
-	}
-	if secretRef {
-		admin["passwordSecretRef"] = map[string]interface{}{
+		"passwordSecretRef": map[string]interface{}{
 			"name":   creds.PasswordSecretRef.Name,
 			"key":    creds.PasswordSecretRef.Key,
 			"source": source,
-		}
-	} else {
-		admin["password"] = envPasswordToken()
+		},
 	}
 	users := []interface{}{admin}
 	extra, err := configRefBasicAuthUsers(configRefValues)
@@ -229,14 +218,7 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string, 
 	if err != nil {
 		return "", fmt.Errorf("marshal admin credentials overlay: %w", err)
 	}
-	if secretRef {
-		return string(out), nil
-	}
-	envOverlay, err := controllerExtraEnvOverlay(baseYAML, configRefValues, creds.PasswordSecretRef.Name, creds.PasswordSecretRef.Key)
-	if err != nil {
-		return "", err
-	}
-	return helm.MergeValuesYAML(string(out), envOverlay)
+	return string(out), nil
 }
 
 // configRefSecretRefNames returns the Secrets referenced by passwordSecretRef on the

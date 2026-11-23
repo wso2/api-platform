@@ -20,6 +20,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"regexp"
 	"testing"
 
@@ -30,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
@@ -238,7 +241,7 @@ func TestPlanDefaultAdmin_ForeignSecretFails(t *testing.T) {
 
 func overlayValues(t *testing.T, plan defaultAdminPlan) map[string]interface{} {
 	t.Helper()
-	out, err := defaultAdminOverlay(plan, true, "", "")
+	out, err := defaultAdminOverlay(plan)
 	require.NoError(t, err)
 	var v map[string]interface{}
 	require.NoError(t, yaml.Unmarshal([]byte(out), &v))
@@ -293,85 +296,17 @@ func TestEnqueueGatewaysForGeneratedSecret(t *testing.T) {
 		"a gateway with spec.adminCredentials does not use a generated Secret")
 }
 
-const extraEnvValues = `
-gateway:
-  controller:
-    deployment:
-      extraEnv:
-        - name: FROM_VALUES
-          value: "1"
-        - name: APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD
-          value: stale
-`
-
-const extraEnvBase = `
-gateway:
-  controller:
-    deployment:
-      extraEnv:
-        - name: FROM_BASE
-          value: "1"
-`
-
-func controllerExtraEnv(t *testing.T, v map[string]interface{}) []interface{} {
-	t.Helper()
-	env, _ := v["gateway"].(map[string]interface{})["controller"].(map[string]interface{})["deployment"].(map[string]interface{})["extraEnv"].([]interface{})
-	return env
-}
-
-func envNames(env []interface{}) []string {
-	var names []string
-	for _, e := range env {
-		names = append(names, e.(map[string]interface{})["name"].(string))
+// A newly generated credential is announced with an AdminCredentialsGenerated Event on
+// the gateway, naming the Secret and never the value.
+func TestReportGeneratedAdminCredentials(t *testing.T) {
+	gw := plainGateway()
+	rec := record.NewFakeRecorder(10)
+	r := &GatewayReconciler{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Recorder: rec}
+	r.reportGeneratedAdminCredentials(gw, generatedName)
+	select {
+	case e := <-rec.Events:
+		assert.Equal(t, "Normal AdminCredentialsGenerated Generated the management API admin credential in Secret "+generatedName, e)
+	default:
+		t.Fatal("no event")
 	}
-	return names
-}
-
-// With a gateway chart that predates passwordSecretRef, the generated password reaches
-// the gateway-controller as an environment variable from the same Secret, and the
-// values' own extraEnv entries are kept (the values' list wins over the base file's).
-func TestDefaultAdminOverlay_OlderChartUsesEnv(t *testing.T) {
-	out, err := defaultAdminOverlay(defaultAdminPlan{Mode: defaultAdminGenerated, SecretName: generatedName}, false, extraEnvBase, extraEnvValues)
-	require.NoError(t, err)
-	assert.NotContains(t, out, "passwordSecretRef")
-	var v map[string]interface{}
-	require.NoError(t, yaml.Unmarshal([]byte(out), &v))
-
-	u := basicAuthUsersIn(v)[0].(map[string]interface{})
-	assert.Equal(t, `{{ env "APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD" "" }}`, u["password"])
-
-	env := controllerExtraEnv(t, v)
-	assert.Equal(t, []string{"FROM_VALUES", "APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD"}, envNames(env))
-	assert.Equal(t, map[string]interface{}{"secretKeyRef": map[string]interface{}{"name": generatedName, "key": "password"}},
-		env[1].(map[string]interface{})["valueFrom"])
-
-	// Without extraEnv in the values, the base file's entries are kept.
-	out, err = defaultAdminOverlay(defaultAdminPlan{Mode: defaultAdminGenerated, SecretName: generatedName}, false, extraEnvBase, "")
-	require.NoError(t, err)
-	require.NoError(t, yaml.Unmarshal([]byte(out), &v))
-	assert.Equal(t, []string{"FROM_BASE", "APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD"}, envNames(controllerExtraEnv(t, v)))
-}
-
-// The legacy admin/admin user and "not needed" never add the variable.
-func TestDefaultAdminOverlay_OlderChartLegacyUnchanged(t *testing.T) {
-	for _, mode := range []defaultAdminMode{defaultAdminLegacy, defaultAdminNotNeeded} {
-		out, err := defaultAdminOverlay(defaultAdminPlan{Mode: mode}, false, extraEnvBase, extraEnvValues)
-		require.NoError(t, err)
-		assert.NotContains(t, out, "extraEnv", mode)
-	}
-}
-
-func TestBuildAdminCredentialsOverlay_OlderChartUsesEnv(t *testing.T) {
-	out, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), extraEnvValues, false, extraEnvBase)
-	require.NoError(t, err)
-	assert.NotContains(t, out, "passwordSecretRef")
-	var v map[string]interface{}
-	require.NoError(t, yaml.Unmarshal([]byte(out), &v))
-	u := basicAuthUsersIn(v)[0].(map[string]interface{})
-	assert.Equal(t, "gw1-admin", u["username"])
-	assert.Equal(t, `{{ env "APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD" "" }}`, u["password"])
-	env := controllerExtraEnv(t, v)
-	assert.Equal(t, []string{"FROM_VALUES", "APIP_GW_CONTROLLER_OPERATOR_ADMIN_PASSWORD"}, envNames(env))
-	assert.Equal(t, map[string]interface{}{"secretKeyRef": map[string]interface{}{"name": "gateway-1-admin", "key": "password"}},
-		env[1].(map[string]interface{})["valueFrom"])
 }

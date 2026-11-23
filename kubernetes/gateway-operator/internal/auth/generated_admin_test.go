@@ -146,32 +146,3 @@ func TestAdminCredentialsSourceDefaultsToFile(t *testing.T) {
 	assert.Equal(t, apiv1.AdminCredentialsSourceFile, AdminCredentialsSource(""))
 	assert.Equal(t, apiv1.AdminCredentialsSourceEnv, AdminCredentialsSource(apiv1.AdminCredentialsSourceEnv))
 }
-
-// With an older gateway chart the password is passed as an environment variable, which
-// keeps trailing whitespace that file mode trims; such a value is refused rather than
-// leaving the operator and the gateway with different passwords.
-func TestCheckAdminCredentialsForEnvDelivery(t *testing.T) {
-	cases := map[string]struct {
-		source, value string
-		wantErr       bool
-	}{
-		"file, clean value":         {source: apiv1.AdminCredentialsSourceFile, value: "s3cret"},
-		"file, trailing newline":    {source: apiv1.AdminCredentialsSourceFile, value: "s3cret\n", wantErr: true},
-		"default, trailing newline": {source: "", value: "s3cret\n", wantErr: true},
-		"env, trailing newline":     {source: apiv1.AdminCredentialsSourceEnv, value: "s3cret\n"},
-	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password")
-			gw.Spec.AdminCredentials.Source = tc.source
-			c := newFakeClient(t, gw, passwordSecret("gateway-1-admin", map[string]string{"password": tc.value}))
-			err := CheckAdminCredentialsForEnvDelivery(context.Background(), c, gw)
-			if tc.wantErr {
-				require.Error(t, err)
-				assert.NotContains(t, err.Error(), "s3cret", "the error never carries the value")
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
-}
