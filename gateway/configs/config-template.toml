@@ -471,6 +471,8 @@ bytesRx = "%BYTES_RECEIVED%"
 bytesTx = "%BYTES_SENT%"
 dur = "%DURATION%"
 upSvcT = "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+# The resolved client address. For a request rejected before X-Forwarded-For is read
+# (respCdDtl path_normalization_failed or http1.*) it is the connection peer, which may be a proxy.
 xff = "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
 ua = "%REQ(USER-AGENT)%"
 reqId = "%REQ(X-REQUEST-ID)%"
