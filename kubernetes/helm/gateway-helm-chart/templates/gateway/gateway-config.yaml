@@ -18,16 +18,19 @@
 {{- /* Basic-auth users with a file-mounted password move the whole [controller.auth.basic]
        block into controller-secrets.toml. See gateway-operator.basicAuthInSecretsFile. */ -}}
 {{- $basicAuthInSecretsFile := include "gateway-operator.basicAuthInSecretsFile" . -}}
+{{- $adminCredentials := include "gateway-operator.adminCredentials" . | fromYaml -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "gateway-operator.fullname" . }}-config
   labels:
     {{- include "gateway-operator.resourceLabels" (list . .Values.gateway.configMap.labels) | nindent 4 }}
-  {{- with (include "gateway-operator.annotations" (list . .Values.gateway.configMap.annotations)) }}
   annotations:
+    {{- /* Read back on upgrade by gateway-operator.adminCredentials; do not remove. */}}
+    gateway.api-platform.wso2.com/admin-credentials: {{ $adminCredentials.mode | quote }}
+    {{- with (include "gateway-operator.annotations" (list . .Values.gateway.configMap.annotations)) }}
     {{- . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 data:
   config.toml: |
     {{- /*
