@@ -80,11 +80,7 @@ export type ResourceLimitsPort = {
 
 /** What `EntitlementsGate` needs from the host. */
 export type EntitlementsHostPort = {
-  /**
-   * The organization's handle. Used to key the shared store and to build the
-   * upgrade link — see `runtimeConfig.upgradeUrl` on why a handle rather than a
-   * separate UUID.
-   */
+  /** The organization's handle. Keys the shared entitlement store. */
   orgHandle: string;
   /** Changes on navigation; a cheap signal that counts may be stale. */
   projectHandle?: string;

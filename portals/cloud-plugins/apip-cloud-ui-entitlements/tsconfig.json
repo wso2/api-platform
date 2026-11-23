@@ -23,5 +23,5 @@
   "include": ["src"],
   // Tests resolve `vitest` from this package's own node_modules, which these
   // `paths` do not cover; `npm test` (vitest) typechecks and runs them.
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }
