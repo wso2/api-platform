@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { Link, Route, Routes, useParams } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -27,7 +27,7 @@ import { routes } from '@/routes/paths';
 import { aProject, aRestApi, apiUrl, collection, resource } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 
 import { ProjectHomePage } from './ProjectHomePage';
 
@@ -94,6 +94,67 @@ describe('ProjectHomePage', () => {
     expect(await screen.findByText('Expose and secure APIs')).toBeInTheDocument();
     expect(screen.getByText(/It's empty for now/)).toBeInTheDocument();
     expect(screen.queryByText(/Owned by/)).not.toBeInTheDocument();
+  });
+
+  it('shows a single skeleton, not two loaders, while the project and its APIs load', async () => {
+    server.use(
+      http.get(apiUrl(`/projects/${PROJECT}`), async () => {
+        await delay(150);
+        return HttpResponse.json(aProject({ id: PROJECT, displayName: 'Retail APIs' }));
+      }),
+      collection('/rest-apis', [aRestApi({ id: 'orders-api', displayName: 'Orders API' })]),
+      collection('/graphql-apis', []),
+      collection('/gateways', []),
+      collection('/api-portals', []),
+      http.get(
+        apiUrl('/apis/:apiType/:apiId/thumbnail'),
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { container } = renderHome();
+
+    // While anything is still loading: one skeleton, and neither spinner label.
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryByText('Loading project')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading APIs')).not.toBeInTheDocument();
+
+    expect(await screen.findByText('Orders API')).toBeInTheDocument();
+    expect(await screen.findByText('Retail APIs')).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).toBeNull());
+  });
+
+  it('shows the welcome view, never an empty project name, when the APIs load before the project', async () => {
+    server.use(
+      http.get(apiUrl(`/projects/${PROJECT}`), async () => {
+        await delay(150);
+        return HttpResponse.json(aProject({ id: PROJECT, displayName: 'Retail APIs' }));
+      }),
+      collection('/rest-apis', []),
+      collection('/graphql-apis', []),
+      collection('/gateways', []),
+      collection('/api-portals', []),
+    );
+    const { container } = renderHome();
+
+    // The list is empty but the project is not known yet: a skeleton, not "You're in the  project".
+    await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).not.toBeNull());
+    expect(screen.queryByText(/It's empty for now/)).not.toBeInTheDocument();
+
+    expect(await screen.findByText('Expose and secure APIs')).toBeInTheDocument();
+    expect(screen.getByText('Retail APIs')).toBeInTheDocument();
+  });
+
+  it('says the project was not found when it fails to load', async () => {
+    server.use(
+      http.get(apiUrl(`/projects/${PROJECT}`), () =>
+        HttpResponse.json({ message: 'not found' }, { status: 404 }),
+      ),
+      collection('/rest-apis', []),
+      collection('/graphql-apis', []),
+    );
+    renderHome();
+
+    expect(await screen.findByText('Project not found')).toBeInTheDocument();
   });
 
   it('forgets the API type filter when the user moves to another project', async () => {
