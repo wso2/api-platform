@@ -305,7 +305,12 @@ release that generated its credential from one that predates generation. Generat
 existing users read the password from a mounted file, never an environment variable.
 
 Returns YAML: mode, secretName, key, username, password (generated only), new, offline,
-checksum (of the Secret name and password, when known; rolls the controller on change).
+checksum (rolls the controller when the password changes). The checksum is on the pod
+template, which anyone who can read Deployments, ReplicaSets or Pods sees, so it never
+hashes a password a person may have chosen: for a Secret read from the cluster it hashes
+the Secret's UID and resourceVersion. Only a password the chart generated in this render
+(32 random characters, too long to guess) is hashed itself, because its Secret has no
+UID yet.
 */}}
 {{- define "gateway-operator.adminCredentials" -}}
 {{- $c := .Values.gateway.controller -}}
@@ -319,7 +324,7 @@ checksum (of the Secret name and password, when known; rolls the controller on c
 {{- if $ac.existingSecret -}}
 {{- $r = dict "mode" "existing" "secretName" $ac.existingSecret "key" (default "password" $ac.existingSecretKey) "username" $username -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $ac.existingSecret -}}
-{{- with $existing.data -}}{{- with (get . $r.key) -}}{{- $_ := set $r "checksum" (sha256sum (printf "%s/%s" $r.secretName .)) -}}{{- end -}}{{- end -}}
+{{- with $existing.metadata -}}{{- $_ := set $r "checksum" (sha256sum (printf "%s/%s" .uid .resourceVersion)) -}}{{- end -}}
 {{- else if not (and (hasKey $ac "generate") (eq (toString $ac.generate) "false")) -}}
 {{- $name := printf "%s-admin-credentials" (include "gateway-operator.fullname" .) -}}
 {{- /* kube-root-ca.crt exists in every namespace, so an empty lookup means the chart is
@@ -331,6 +336,7 @@ checksum (of the Secret name and password, when known; rolls the controller on c
 {{- with $existing.data -}}{{- $password = b64dec (toString (default "" (get . "password"))) -}}{{- end -}}
 {{- if $password -}}
 {{- $_ := set $r "password" $password -}}
+{{- $_ := set $r "checksum" (sha256sum (printf "%s/%s" $existing.metadata.uid $existing.metadata.resourceVersion)) -}}
 {{- else -}}
 {{- $cm := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-config" (include "gateway-operator.fullname" .)) -}}
 {{- $previous := "" -}}
@@ -342,9 +348,9 @@ checksum (of the Secret name and password, when known; rolls the controller on c
 {{- else -}}
 {{- $_ := set $r "password" (randAlphaNum 32) -}}
 {{- $_ := set $r "new" true -}}
+{{- $_ := set $r "checksum" (sha256sum (printf "%s/%s" $name $r.password)) -}}
 {{- end -}}
 {{- end -}}
-{{- if $r.password -}}{{- $_ := set $r "checksum" (sha256sum (printf "%s/%s" $name $r.password)) -}}{{- end -}}
 {{- else if not (dig "idp" "enabled" false $auth) -}}
 {{- fail "gateway.config.controller.auth.basic is enabled with no users, gateway.controller.adminCredentials.generate is false and IDP auth is off, so the management API would accept every request. Add users, set adminCredentials.existingSecret, or let the chart generate the credential." -}}
 {{- end -}}
