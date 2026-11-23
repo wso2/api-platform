@@ -303,6 +303,23 @@ const fromWindow = (): LegacyWindowConfig => ({
   ...(window.config ?? {}),
 });
 
+/**
+ * The formats the cloud tracking plugin accepts for the cookie banner's two ids
+ * (portals/cloud-plugins/apip-cloud-ui-tracking/src/config.ts keeps the same patterns). The footer's
+ * "Cookie Settings" link must agree with that plugin about whether the banner is loaded, so it
+ * applies the same checks rather than only testing for non-empty values.
+ */
+const COOKIE_PRO_DOMAIN_SCRIPT = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(-test)?$/i;
+const GTM_CONTAINER_ID = /^GTM-[A-Z0-9]{4,12}$/;
+
+/** Whether the cookie banner is loaded: both ids set and in the formats the tracking plugin accepts. */
+export const isCookieConsentConfigured = (config: {
+  cookieProDomainScript: string;
+  gtmContainerId: string;
+}): boolean =>
+  COOKIE_PRO_DOMAIN_SCRIPT.test(config.cookieProDomainScript) &&
+  GTM_CONTAINER_ID.test(config.gtmContainerId);
+
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
 /** "video, iframe" → ["video", "iframe"]: trimmed, blanks dropped. */

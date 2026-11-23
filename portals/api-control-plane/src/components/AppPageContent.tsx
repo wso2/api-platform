@@ -22,7 +22,7 @@ import { createContext, useContext } from 'react';
 import type { MouseEvent } from 'react';
 import { FormattedMessage } from 'react-intl';
 
-import { runtimeConfig } from '../config/runtime';
+import { isCookieConsentConfigured, runtimeConfig } from '../config/runtime';
 import { APP_FOOTER_ID } from '../pages/appShell/appLayoutConstants';
 
 /** Every footer link leaves the console, so each opens in a new tab, cut off from this page. */
@@ -97,8 +97,8 @@ function PageFooter() {
             description="Footer link to the Privacy Policy page"
           />
         </Footer.Link>
-        {/* The cookie banner is cloud only; it is loaded when both of its ids are configured. */}
-        {runtimeConfig.cookieProDomainScript !== '' && runtimeConfig.gtmContainerId !== '' && (
+        {/* The cookie banner is cloud only; it is loaded when both of its ids are configured and valid. */}
+        {isCookieConsentConfigured(runtimeConfig) && (
           <Footer.Link href="#" onClick={openCookieSettings}>
             <FormattedMessage
               id="appLayout.footer.cookieSettings"
