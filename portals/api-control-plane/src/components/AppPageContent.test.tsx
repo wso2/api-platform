@@ -16,7 +16,9 @@
  * under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { runtimeConfig } from '@/config/runtime';
 
 import { renderWithProviders, screen } from '@/test/utils';
 
@@ -50,6 +52,34 @@ describe('AppPageContent', () => {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
     });
+  });
+
+  describe('Cookie Policy link', () => {
+    afterEach(() => {
+      runtimeConfig.cookiePolicyLink = '';
+    });
+
+    it('is hidden unless a deployment sets one', () => {
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      expect(screen.queryByRole('link', { name: 'Cookie Policy' })).not.toBeInTheDocument();
+    });
+
+    it('shows the https link in a new tab', () => {
+      runtimeConfig.cookiePolicyLink = 'https://choreolabs.com/cookie-policy/';
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      const link = screen.getByRole('link', { name: 'Cookie Policy' });
+      expect(link).toHaveAttribute('href', 'https://choreolabs.com/cookie-policy/');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it.each(['javascript:alert(1)', 'http://choreolabs.com/cookie-policy/', 'https://', 'https://exa mple.com'])(
+      'leaves out %s, which is not a usable https URL',
+      (value) => {
+        runtimeConfig.cookiePolicyLink = value;
+        renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+        expect(screen.queryByRole('link', { name: 'Cookie Policy' })).not.toBeInTheDocument();
+      }
+    );
   });
 
   it('replaces or removes the footer through the footer prop', () => {
