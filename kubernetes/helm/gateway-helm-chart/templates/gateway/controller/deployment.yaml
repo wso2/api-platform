@@ -46,6 +46,11 @@ spec:
       {{- $podAnnotations := omit (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.commonAnnotations)) "checksum/config" }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/gateway/gateway-config.yaml") . | sha256sum }}
+        {{- with (include "gateway-operator.adminCredentials" . | fromYaml).checksum }}
+        {{- /* The controller reads the mounted password only at startup, so a changed
+               password rolls the pod. */}}
+        checksum/admin-credentials: {{ . }}
+        {{- end }}
         {{- with $podAnnotations }}
         {{- include "gateway-operator.renderStringMap" . | nindent 8 }}
         {{- end }}

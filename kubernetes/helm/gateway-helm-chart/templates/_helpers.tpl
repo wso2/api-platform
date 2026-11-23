@@ -284,6 +284,82 @@ Args: the root context.
 {{- end -}}
 
 {{/*
+The admin credential the chart provides when basic auth is enabled but
+gateway.config.controller.auth.basic.users is empty (gateway.controller.adminCredentials).
+Resolved once per render and cached under .Values.gateway.controller, so every template
+sees the same result and a new password is generated at most once. When it applies, it
+also sets gateway.config.controller.auth.basic.users to that one user, so the config,
+the Secret mounts and the Route guard render it like a user given in values.
+
+Modes:
+  none      basic auth is disabled, users are given in values, or generate is false.
+  existing  adminCredentials.existingSecret names the Secret holding the password.
+  generated the chart's Secret <fullname>-admin-credentials. Reused when it exists;
+            otherwise generated, on a fresh install or a render without cluster access.
+  legacy    upgrade of a release made by a chart that predates generation: it keeps the
+            admin/admin user those charts rendered by default, so the credential in use
+            does not change.
+The mode is recorded on the gateway ConfigMap (annotation
+gateway.api-platform.wso2.com/admin-credentials), which is how an upgrade tells a
+release that generated its credential from one that predates generation. Generated and
+existing users read the password from a mounted file, never an environment variable.
+
+Returns YAML: mode, secretName, key, username, password (generated only), new, offline,
+checksum (of the Secret name and password, when known; rolls the controller on change).
+*/}}
+{{- define "gateway-operator.adminCredentials" -}}
+{{- $c := .Values.gateway.controller -}}
+{{- if not (hasKey $c "_resolvedAdminCredentials") -}}
+{{- $ac := default (dict) $c.adminCredentials -}}
+{{- $auth := default (dict) .Values.gateway.config.controller.auth -}}
+{{- $basic := default (dict) $auth.basic -}}
+{{- $r := dict "mode" "none" -}}
+{{- if and $basic.enabled (not $basic.users) -}}
+{{- $username := default "admin" $ac.username -}}
+{{- if $ac.existingSecret -}}
+{{- $r = dict "mode" "existing" "secretName" $ac.existingSecret "key" (default "password" $ac.existingSecretKey) "username" $username -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $ac.existingSecret -}}
+{{- with $existing.data -}}{{- with (get . $r.key) -}}{{- $_ := set $r "checksum" (sha256sum (printf "%s/%s" $r.secretName .)) -}}{{- end -}}{{- end -}}
+{{- else if not (and (hasKey $ac "generate") (eq (toString $ac.generate) "false")) -}}
+{{- $name := printf "%s-admin-credentials" (include "gateway-operator.fullname" .) -}}
+{{- /* kube-root-ca.crt exists in every namespace, so an empty lookup means the chart is
+       rendered without cluster access (helm template, Argo CD, --dry-run=client). */ -}}
+{{- $online := lookup "v1" "ConfigMap" .Release.Namespace "kube-root-ca.crt" -}}
+{{- $r = dict "mode" "generated" "secretName" $name "key" "password" "username" $username "new" false "offline" (not $online) -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name -}}
+{{- $password := "" -}}
+{{- with $existing.data -}}{{- $password = b64dec (toString (default "" (get . "password"))) -}}{{- end -}}
+{{- if $password -}}
+{{- $_ := set $r "password" $password -}}
+{{- else -}}
+{{- $cm := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-config" (include "gateway-operator.fullname" .)) -}}
+{{- $previous := "" -}}
+{{- if $cm -}}{{- $previous = dig "metadata" "annotations" "gateway.api-platform.wso2.com/admin-credentials" "legacy" $cm -}}{{- end -}}
+{{- if eq $previous "generated" -}}
+{{- fail (printf "gateway.controller.adminCredentials: this release generated its admin credential in Secret %s, which no longer exists. Restore the Secret, or set gateway.controller.adminCredentials.existingSecret or gateway.config.controller.auth.basic.users. The chart does not generate a replacement on upgrade." $name) -}}
+{{- else if eq $previous "legacy" -}}
+{{- $r = dict "mode" "legacy" -}}
+{{- else -}}
+{{- $_ := set $r "password" (randAlphaNum 32) -}}
+{{- $_ := set $r "new" true -}}
+{{- end -}}
+{{- end -}}
+{{- if $r.password -}}{{- $_ := set $r "checksum" (sha256sum (printf "%s/%s" $name $r.password)) -}}{{- end -}}
+{{- else if not (dig "idp" "enabled" false $auth) -}}
+{{- fail "gateway.config.controller.auth.basic is enabled with no users, gateway.controller.adminCredentials.generate is false and IDP auth is off, so the management API would accept every request. Add users, set adminCredentials.existingSecret, or let the chart generate the credential." -}}
+{{- end -}}
+{{- if has $r.mode (list "existing" "generated") -}}
+{{- $_ := set $basic "users" (list (dict "username" $r.username "passwordSecretRef" (dict "name" $r.secretName "key" $r.key "source" "file") "password_hashed" false "roles" (list "admin"))) -}}
+{{- else if eq $r.mode "legacy" -}}
+{{- $_ := set $basic "users" (list (dict "username" "admin" "password" "admin" "password_hashed" false "roles" (list "admin"))) -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $c "_resolvedAdminCredentials" $r -}}
+{{- end -}}
+{{- toYaml (get $c "_resolvedAdminCredentials") -}}
+{{- end -}}
+
+{{/*
 Basic-auth users whose password comes from a Kubernetes Secret
 (gateway.config.controller.auth.basic.users[i].passwordSecretRef), resolved the same
 way as gateway-operator.controllerSecret: delivered as an environment variable
@@ -297,6 +373,7 @@ Returns YAML: list (each entry: index, field, name, key, source, mountPath, path
 volume, token) and byIndex (the same entries keyed by the user's index as a string).
 */}}
 {{- define "gateway-operator.basicAuthUserSecrets" -}}
+{{- $_ := include "gateway-operator.adminCredentials" . -}}
 {{- $auth := default (dict) .Values.gateway.config.controller.auth -}}
 {{- $basic := default (dict) $auth.basic -}}
 {{- $list := list -}}
@@ -371,6 +448,7 @@ password renders it as before.
 Args: the root context.
 */}}
 {{- define "gateway-operator.basicAuthToml" -}}
+{{- $_ := include "gateway-operator.adminCredentials" . -}}
 {{- $basic := .Values.gateway.config.controller.auth.basic -}}
 {{- $secrets := (include "gateway-operator.basicAuthUserSecrets" . | fromYaml).byIndex -}}
 [controller.auth.basic]

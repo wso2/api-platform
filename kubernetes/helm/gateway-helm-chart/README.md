@@ -83,6 +83,9 @@ The file must set `gateway.controller.encryptionKeys.enabled=true` and `secretNa
 helm install ap-gateway . -f custom-values.yaml
 ```
 
+Unless you configure admin users, the install generates the management API admin credential and
+the NOTES print how to read it. See [The management API admin credential](#the-management-api-admin-credential).
+
 ## Uninstalling the Chart
 
 ```bash
@@ -104,6 +107,10 @@ Upgrade with new values:
 ```bash
 helm upgrade ap-gateway . -f custom-values.yaml
 ```
+
+Upgrading a release installed by an earlier chart version keeps its admin credential, including
+the old default `admin`/`admin`. See
+[The management API admin credential](#the-management-api-admin-credential).
 
 ## Verifying the Installation
 
@@ -263,6 +270,47 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
 - Like the env var, the file is read once at startup: restart the controller after rotating the
   Secret.
 
+#### The management API admin credential
+
+The chart ships no default credential. When `gateway.config.controller.auth.basic` is enabled
+and its `users` list is empty (the default), the chart provides one admin user from
+`gateway.controller.adminCredentials`. The user reads its password from a Secret mounted as a
+file, so the password is not in the ConfigMap, the pod environment or the Helm values:
+
+| Situation | Admin credential |
+|---|---|
+| `adminCredentials.existingSecret` set | User `adminCredentials.username` (default `admin`), password from that Secret's `existingSecretKey` (default `password`). |
+| Fresh install | A random 32-character password generated into the Secret `<release>-gateway-admin-credentials` (keys `username`, `password`). The NOTES print the commands that read it. |
+| Upgrade of a release that generated its credential | The same Secret and password, reused. If the Secret was deleted, the upgrade fails instead of generating a different credential. |
+| Upgrade of a release made by an earlier chart version | That chart's default `admin`/`admin` user, unchanged, with a warning in the NOTES. Set `existingSecret` or `users` to replace it. |
+| `users` set in values | Exactly those users; nothing is generated. |
+
+Read a generated credential with:
+
+```bash
+kubectl get secret <release>-gateway-admin-credentials -o jsonpath='{.data.username}' | base64 -d; echo
+kubectl get secret <release>-gateway-admin-credentials -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+- The chart records which case applied in the annotation
+  `gateway.api-platform.wso2.com/admin-credentials` on the `<release>-gateway-config` ConfigMap and
+  reads it back on the next upgrade. Do not remove it.
+- The generated Secret has `helm.sh/resource-policy: keep`, so `helm uninstall` leaves it and a
+  reinstall with the same release name reuses it. Delete it yourself to get a new credential on the
+  next install.
+- The chart reads the existing Secret with `lookup`, which needs cluster access. A render without
+  it (`helm template`, Argo CD, `--dry-run=client`) generates a new password every time, replacing
+  the previous one; the rendered Secret and the NOTES carry a warning. With such tools, create the
+  Secret yourself and set `adminCredentials.existingSecret`.
+- The generated password appears base64-encoded in the release manifest (`helm get manifest`,
+  `helm install --debug`), which is stored in a Secret in the same namespace.
+- Changing the password in the Secret rolls the controller on the next `helm upgrade` (the pod
+  carries a checksum of it). Until then the controller keeps the password it read at startup.
+- `adminCredentials.generate: false` turns generation off. Basic auth then needs `users`,
+  `existingSecret`, or IDP auth enabled; otherwise the chart fails to render, because a
+  basic-auth block with no users would let every request through. The gateway operator sets it,
+  and always passes the admin user itself.
+
 #### Admin users with a password from a Secret
 
 A basic-auth user in `gateway.config.controller.auth.basic.users` can take its password from a
@@ -310,8 +358,10 @@ gateway:
   value is used exactly as stored.
 - The chart declares this support in its `Chart.yaml` annotation
   `gateway.api-platform.wso2.com/features: basicAuthPasswordSecretRef`. The gateway operator,
-  released separately, refuses to deploy a Secret-backed password with a chart that does not
-  declare it. Keep the feature in that list in every later chart version.
+  released separately, reads it to decide how to deliver the admin password: through
+  `passwordSecretRef` (a mounted file) when the chart declares it, or as an environment variable
+  through the controller's `extraEnv` with an older chart. Keep the feature in that list in every
+  later chart version.
 - The password is read once at startup, so the controller must restart after the Secret is rotated:
   - With a plain Helm install, restart it yourself (`kubectl rollout restart deployment
     <release>-gateway-controller`); Helm does not watch Secrets.
