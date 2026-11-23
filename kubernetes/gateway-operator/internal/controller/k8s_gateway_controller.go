@@ -488,6 +488,15 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	case defaultAdminLegacy:
 		log.Warn("This gateway keeps the default admin/admin management API credential it was deployed with by an earlier operator version; set basic-auth users in its Helm values ConfigMap to replace it")
 	}
+	generatedSecret := ""
+	if adminPlan.Mode == defaultAdminGenerated {
+		generatedSecret = adminPlan.SecretName
+	}
+	// Show on the Gateway which Secret holds its generated credential. Informational
+	// only (not part of the Helm signature), so a failure is just logged.
+	if err := syncAdminCredentialsAnnotation(ctx, r.Client, gw, generatedSecret); err != nil {
+		log.Warn("Cannot annotate the gateway with its admin credentials Secret", slog.Any("error", err))
+	}
 
 	sig, err := helmInstallSignature(valuesYAML, valuesFile, r.Config, gw)
 	if err != nil {

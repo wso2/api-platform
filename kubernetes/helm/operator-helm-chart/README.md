@@ -324,6 +324,7 @@ An `APIGateway` (or a Kubernetes Gateway API `Gateway`) with no admin user of it
 
 - The operator creates the Secret `<gateway>-admin-credentials` in the gateway's namespace, with keys `username` (`admin`) and `password` (32 random letters and digits from `crypto/rand`). It is labelled `gateway.api-platform.wso2.com/admin-credentials: generated` and owned by the gateway, so deleting the gateway deletes it.
 - The gateway-controller reads the password from the Secret mounted as a file, never an environment variable or the Helm values. The operator also turns off the gateway chart's own credential generation (`gateway.controller.adminCredentials.generate: false`), so the chart never generates a password the operator does not know.
+- The operator annotates the gateway with `gateway.api-platform.wso2.com/admin-credentials-secret: <gateway>-admin-credentials`, so the gateway object shows where its password is. The annotation is informational: it is not part of the gateway's spec (GitOps tools that apply the spec leave it alone), and the operator removes it when the gateway stops using a generated credential, for example once `spec.adminCredentials` is set.
 - The operator emits an `AdminCredentialsGenerated` Event on the gateway. Read the credential with:
 
   ```bash

@@ -279,10 +279,17 @@ func (r *GatewayReconciler) decideAndProcess(
 	generatedSecret := ""
 	if plan, planErr := r.planDefaultAdmin(ctx, gatewayConfig, configMapValues); planErr != nil {
 		log.Warn("Cannot resolve the gateway's admin credential yet", slog.Any("error", planErr))
-	} else if plan.Mode == defaultAdminGenerated {
-		generatedSecret = plan.SecretName
-		if plan.Created {
-			r.reportGeneratedAdminCredentials(gatewayConfig, plan.SecretName)
+	} else {
+		if plan.Mode == defaultAdminGenerated {
+			generatedSecret = plan.SecretName
+			if plan.Created {
+				r.reportGeneratedAdminCredentials(gatewayConfig, plan.SecretName)
+			}
+		}
+		// Show on the APIGateway which Secret holds its generated credential (removed
+		// when it no longer uses one). Informational only, so a failure is just logged.
+		if err := syncAdminCredentialsAnnotation(ctx, r.Client, gatewayConfig, generatedSecret); err != nil {
+			log.Warn("Cannot annotate the gateway with its admin credentials Secret", slog.Any("error", err))
 		}
 	}
 	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, gatewayConfig, configMapValues, generatedSecret)

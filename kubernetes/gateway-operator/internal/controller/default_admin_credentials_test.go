@@ -310,3 +310,38 @@ func TestReportGeneratedAdminCredentials(t *testing.T) {
 		t.Fatal("no event")
 	}
 }
+
+// The gateway is annotated with the Secret holding its generated credential, the
+// annotation is left alone while it matches, and removed once the gateway stops using
+// a generated credential. Other annotations are kept.
+func TestSyncAdminCredentialsAnnotation(t *testing.T) {
+	ctx := context.Background()
+	gw := plainGateway()
+	gw.Annotations = map[string]string{"keep": "me"}
+	c := adminCredsClient(t, gw)
+	read := func() map[string]string {
+		got := &apiv1.APIGateway{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: "gw1", Name: "gateway-1"}, got))
+		return got.Annotations
+	}
+
+	require.NoError(t, syncAdminCredentialsAnnotation(ctx, c, gw, generatedName))
+	assert.Equal(t, map[string]string{"keep": "me", auth.AdminCredentialsSecretAnnotation: generatedName}, read())
+	assert.Equal(t, generatedName, gw.Annotations[auth.AdminCredentialsSecretAnnotation], "the caller's object is updated")
+
+	got := &apiv1.APIGateway{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: "gw1", Name: "gateway-1"}, got))
+	rv := got.ResourceVersion
+	require.NoError(t, syncAdminCredentialsAnnotation(ctx, c, gw, generatedName))
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: "gw1", Name: "gateway-1"}, got))
+	assert.Equal(t, rv, got.ResourceVersion, "no write when the annotation already matches")
+
+	require.NoError(t, syncAdminCredentialsAnnotation(ctx, c, gw, ""))
+	assert.Equal(t, map[string]string{"keep": "me"}, read())
+
+	// A gateway that never had it is not written to.
+	other := plainGateway()
+	other.Name = "other"
+	c2 := adminCredsClient(t, other)
+	require.NoError(t, syncAdminCredentialsAnnotation(ctx, c2, other, ""))
+}

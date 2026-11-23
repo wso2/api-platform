@@ -46,6 +46,11 @@ const (
 	GeneratedAdminCredentialsLabelValue = "generated"
 	// GeneratedAdminCredentialsGatewayAnnotation names the gateway the Secret belongs to.
 	GeneratedAdminCredentialsGatewayAnnotation = "gateway.api-platform.wso2.com/gateway"
+	// AdminCredentialsSecretAnnotation is set by the operator on a gateway (APIGateway or
+	// Gateway API Gateway) that uses an operator-generated admin credential, naming the
+	// Secret that holds it. It is informational: the operator finds the Secret by name and
+	// label, and removes the annotation when the gateway stops using it.
+	AdminCredentialsSecretAnnotation = "gateway.api-platform.wso2.com/admin-credentials-secret"
 
 	GeneratedAdminUsernameKey = "username"
 	GeneratedAdminPasswordKey = "password"
