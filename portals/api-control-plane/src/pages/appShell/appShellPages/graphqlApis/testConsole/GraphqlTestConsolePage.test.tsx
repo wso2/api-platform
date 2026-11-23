@@ -19,14 +19,26 @@
 import { act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aDeployment, aGateway, aGraphQLApiDetail, apiUrl, collection, resource } from '@/test/msw';
+import { makeAuthState } from '@/test/mockAuthState';
+import {
+  aDeployment,
+  aGateway,
+  aGraphQLApiDetail,
+  accepts,
+  apiUrl,
+  collection,
+  failure,
+  recorder,
+  resource,
+} from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
+import { writeStoredCallMode } from '../../test/utils/callMode';
 import { resetTestApiKeys } from '../../test/utils/useTestApiKey';
 import { GraphqlTestConsolePage } from './GraphqlTestConsolePage';
 
@@ -87,7 +99,7 @@ vi.mock('@graphiql/toolkit', async () => {
   };
 });
 
-function renderPage() {
+function renderPage(options: { scopes?: string[] } = {}) {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <Routes>
@@ -100,8 +112,34 @@ function renderPage() {
     {
       route: `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${API}/test/console`,
       scope: makeConsoleScope({ params: { orgHandle: ORG, projectHandler: PROJECT } }),
+      ...(options.scopes && {
+        authState: makeAuthState({
+          user: { name: 'Test User', email: 'test.user@example.com', scopes: options.scopes },
+        }),
+        permissionMode: 'enforce' as const,
+      }),
     },
   );
+}
+
+/** Runs the page's fetcher the way GraphiQL consumes it, returning its first result or error. */
+async function runFetcher(params: { query: string; operationName?: string }) {
+  const fetcher = lastGraphiQLProps?.fetcher as (
+    p: typeof params,
+  ) => Promise<AsyncIterator<unknown> | unknown>;
+  let outcome: { value?: unknown; error?: unknown } = {};
+  await act(async () => {
+    try {
+      const result = await fetcher(params);
+      const iterator = result as AsyncIterator<unknown>;
+      outcome = {
+        value: typeof iterator?.next === 'function' ? (await iterator.next()).value : result,
+      };
+    } catch (error) {
+      outcome = { error };
+    }
+  });
+  return outcome;
 }
 
 const serveApi = (
@@ -121,6 +159,7 @@ beforeEach(() => {
   lastGraphiQLProps = undefined;
   lastFetcherOptions = undefined;
   resetTestApiKeys();
+  window.localStorage.clear();
 });
 
 describe('GraphqlTestConsolePage — before anything is deployed', () => {
@@ -179,9 +218,8 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     expect(lastGraphiQLProps?.defaultQuery).toContain('# Welcome to GraphiQL');
   });
 
-  // The console calls the gateway directly — the API's CORS policy must allow
-  // it — so the fetcher targets the same invoke URL the page shows, with no
-  // console-internal headers such as the BFF's CSRF header.
+  // The fetcher targets the same invoke URL the page shows, with no
+  // console-internal headers such as the BFF's CSRF header, in either mode.
   it('points the fetcher at the gateway’s invoke URL', async () => {
     serveApi([deployment]);
 
@@ -214,6 +252,7 @@ describe('GraphqlTestConsolePage — once deployed', () => {
   // reflecting the failure too.
   it('shows a helpful toast when the endpoint fetch fails at the network level', async () => {
     serveApi([deployment]);
+    writeStoredCallMode('direct');
     const originalFetch = global.fetch;
     global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
@@ -250,6 +289,7 @@ describe('GraphqlTestConsolePage — once deployed', () => {
   // named". The fetcher this page wires must drop the stale name.
   it('does not send a stale operationName for an anonymous query', async () => {
     serveApi([deployment]);
+    writeStoredCallMode('direct');
     const originalFetch = global.fetch;
     const fetchSpy = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ data: { hello: 'hi' } }), {
@@ -294,6 +334,116 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     await user.click(screen.getByRole('button', { name: 'Copy endpoint URL' }));
 
     expect(writeText).toHaveBeenCalledWith('https://gw.example.com/countries-graphql-api/v1.0.0');
+  });
+});
+
+describe('GraphqlTestConsolePage — through the proxy or directly', () => {
+  const deployment = aDeployment({ gatewayId: 'edge-gateway', status: 'DEPLOYED' });
+  const RELAY = '/gateway-relay/invoke';
+  const relayed = {
+    outcome: 'response',
+    response: {
+      status: 200,
+      statusText: 'OK',
+      headers: [{ name: 'Content-Type', value: 'application/json' }],
+      body: JSON.stringify({ data: { hello: 'hi' } }),
+      bodyEncoding: 'utf8',
+      truncated: false,
+      durationMs: 3,
+    },
+  };
+  const gatewayResponse = () =>
+    new Response(JSON.stringify({ data: { hello: 'hi' } }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('relays GraphiQL’s request through the Platform API by default', async () => {
+    serveApi([deployment]);
+    const requests = recorder();
+    server.use(accepts('post', RELAY, relayed, { record: requests, status: 200 }));
+    const fetchSpy = vi.spyOn(global, 'fetch');
+
+    renderPage();
+    await screen.findByText('GraphiQL ready with schema');
+    const { value } = await runFetcher({ query: '{ hello }' });
+
+    expect(value).toEqual({ data: { hello: 'hi' } });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const sent = JSON.parse(requests.last()!.body);
+    expect(sent).toMatchObject({
+      apiType: 'graphql-api',
+      apiId: API,
+      gatewayId: 'edge-gateway',
+      query: [],
+    });
+    expect(JSON.parse(sent.body)).toMatchObject({ query: '{ hello }' });
+    expect(sent.headers).toContainEqual({ name: 'content-type', value: 'application/json' });
+  });
+
+  it('shows why a request was not relayed, not the browser’s CORS hint', async () => {
+    serveApi([deployment]);
+    server.use(failure('post', RELAY, 403, 'GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED'));
+
+    renderPage();
+    await screen.findByText('GraphiQL ready with schema');
+    const { error } = await runFetcher({ query: '{ hello }' });
+
+    expect((error as Error).message).toMatch(/not configured to reach this gateway/);
+    expect(screen.queryByText(/Could not reach the gateway/)).not.toBeInTheDocument();
+  });
+
+  it('sends from the browser once Direct is chosen, and remembers the choice', async () => {
+    serveApi([deployment]);
+    const requests = recorder();
+    server.use(accepts('post', RELAY, relayed, { record: requests, status: 200 }));
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(gatewayResponse());
+
+    const { user } = renderPage();
+    await screen.findByText('GraphiQL ready with schema');
+    await user.click(screen.getByRole('button', { name: 'Direct' }));
+    await runFetcher({ query: '{ hello }' });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://gw.example.com/countries-graphql-api/v1.0.0',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(requests.count()).toBe(0);
+    expect(window.localStorage.getItem('apicp.test.callMode')).toBe('direct');
+  });
+
+  it('relays for a caller who may only read the API', async () => {
+    serveApi([deployment]);
+    const requests = recorder();
+    server.use(accepts('post', RELAY, relayed, { record: requests, status: 200 }));
+
+    renderPage({
+      scopes: [
+        'ap:graphql_api:read',
+        'ap:graphql_api:gateway:read',
+        'ap:graphql_api:deployment:read',
+      ],
+    });
+    await screen.findByText('GraphiQL ready with schema');
+    await runFetcher({ query: '{ hello }' });
+
+    expect(screen.getByRole('button', { name: 'Through proxy' })).toBeInTheDocument();
+    expect(requests.count()).toBe(1);
+  });
+
+  it('offers no switch, and sends directly, to a caller who may not relay', async () => {
+    serveApi([deployment]);
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(gatewayResponse());
+
+    renderPage({ scopes: ['ap:gateway:read'] });
+    await screen.findByText('GraphiQL ready with schema');
+    await runFetcher({ query: '{ hello }' });
+
+    expect(screen.queryByRole('button', { name: 'Through proxy' })).not.toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });
 
@@ -347,6 +497,40 @@ describe('GraphqlTestConsolePage — with an api-key-auth policy', () => {
       ),
     );
     expect(lastFetcherOptions?.headers).not.toHaveProperty('apikey');
+  });
+
+  it('relays a query-parameter key as a query parameter', async () => {
+    serveApi([deployment], securedApi({ in: 'query', key: 'apikey' }));
+    serveKeyMint();
+    const requests = recorder();
+    server.use(
+      accepts(
+        'post',
+        '/gateway-relay/invoke',
+        {
+          outcome: 'response',
+          response: {
+            status: 200,
+            statusText: 'OK',
+            headers: [],
+            body: '{"data":{}}',
+            bodyEncoding: 'utf8',
+            truncated: false,
+            durationMs: 1,
+          },
+        },
+        { record: requests, status: 200 },
+      ),
+    );
+
+    renderPage();
+    await screen.findByText('GraphiQL ready with schema');
+    await vi.waitFor(() => expect(lastFetcherOptions?.url).toContain('apikey='));
+    await runFetcher({ query: '{ hello }' });
+
+    expect(JSON.parse(requests.last()!.body).query).toEqual([
+      { name: 'apikey', value: 'graphql-test-credential' },
+    ]);
   });
 });
 

@@ -27,6 +27,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -604,6 +606,7 @@ type PolicyEngine struct {
 	XDS            XDSConfig            `koanf:"xds"`
 	FileConfig     FileConfigConfig     `koanf:"file_config"`
 	Logging        LoggingConfig        `koanf:"logging"`
+	Health         HealthConfig         `koanf:"health"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	FaultPolicies  FaultPoliciesConfig  `koanf:"fault_policies"`
 	// HTTPClient configures the single shared outbound *http.Client built once at
@@ -623,6 +626,34 @@ type PolicyEngine struct {
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
+}
+
+// HealthConfig tunes the policy engine's health checks ([policy_engine.health]).
+// Settings that belong to one dependency live in that dependency's sub-table.
+type HealthConfig struct {
+	// CacheTTL is how long an evaluated health result is reused before the
+	// checks run again.
+	CacheTTL time.Duration `koanf:"cache_ttl"`
+	// XDSConnection tunes the xds_connection check.
+	XDSConnection HealthXDSConnectionConfig `koanf:"xds_connection"`
+	// PythonExecutor tunes the python_executor check.
+	PythonExecutor HealthPythonExecutorConfig `koanf:"python_executor"`
+}
+
+// HealthXDSConnectionConfig tunes the xds_connection check
+// ([policy_engine.health.xds_connection]).
+type HealthXDSConnectionConfig struct {
+	// Grace is how long the connection to the controller may be down before the
+	// runtime stops counting as ready. The last configuration keeps being served
+	// meanwhile, so a routine controller restart never takes runtimes out of service.
+	Grace time.Duration `koanf:"grace"`
+}
+
+// HealthPythonExecutorConfig tunes the python_executor check
+// ([policy_engine.health.python_executor]).
+type HealthPythonExecutorConfig struct {
+	// CheckTimeout is the deadline for each run of the check.
+	CheckTimeout time.Duration `koanf:"check_timeout"`
 }
 
 // FaultPoliciesConfig tunes which failures reach an API's fault policies
@@ -1163,6 +1194,12 @@ func Load(configPaths ...string) (*Config, error) {
 		return nil, err
 	}
 
+	// Unknown keys in the health tables would otherwise be silently ignored and leave
+	// the defaults in effect. Fail loudly instead.
+	if err := checkHealthKeys(k); err != nil {
+		return nil, err
+	}
+
 	// Unmarshal into pre-populated config struct with defaults
 	// Koanf will merge: fields from file/env overwrite defaults, unset fields keep defaults
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
@@ -1383,6 +1420,11 @@ func defaultConfig() *Config {
 			Logging: LoggingConfig{
 				Level:  "info",
 				Format: "text",
+			},
+			Health: HealthConfig{
+				CacheTTL:       3 * time.Second,
+				XDSConnection:  HealthXDSConnectionConfig{Grace: 5 * time.Minute},
+				PythonExecutor: HealthPythonExecutorConfig{CheckTimeout: 2 * time.Second},
 			},
 			PythonExecutor: PythonExecutorConfig{
 				Server: PythonExecutorServerConfig{
@@ -1694,6 +1736,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid logging.format: %s (must be json or text)", c.PolicyEngine.Logging.Format)
 	}
 
+	if err := c.validateHealthConfig(); err != nil {
+		return err
+	}
 	if err := c.validateCollectorConfig(); err != nil {
 		return err
 	}
@@ -2160,6 +2205,85 @@ func (c *Config) validateAnalyticsConfig() error {
 				return fmt.Errorf("unknown publisher type in enabled_publishers: %s", publisherName)
 			}
 		}
+	}
+	return nil
+}
+
+// checkHealthKeys rejects an unknown key in the policy engine's health tables, which
+// would otherwise be silently ignored and leave the default in effect. It inspects only
+// the policy_engine subtree, since the gateway configuration file is shared with other
+// components.
+func checkHealthKeys(k *koanf.Koanf) error {
+	for _, table := range []struct {
+		path  string
+		known map[string]bool
+	}{
+		{"policy_engine.health", koanfKeys(reflect.TypeOf(HealthConfig{}))},
+		{"policy_engine.health.xds_connection", koanfKeys(reflect.TypeOf(HealthXDSConnectionConfig{}))},
+		{"policy_engine.health.python_executor", koanfKeys(reflect.TypeOf(HealthPythonExecutorConfig{}))},
+	} {
+		if err := checkTableKeys(k, table.path, table.known); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkTableKeys rejects a key in the table at path that is not one of known. A missing
+// table is fine; a value set where the table belongs is not.
+func checkTableKeys(k *koanf.Koanf, path string, known map[string]bool) error {
+	if !k.Exists(path) {
+		return nil
+	}
+	table, ok := k.Get(path).(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("%s must be a table", path)
+	}
+	keys := make([]string, 0, len(table))
+	for key := range table {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !known[key] {
+			return fmt.Errorf("%s: unknown key %q", path, key)
+		}
+	}
+	return nil
+}
+
+// koanfKeys returns the koanf key names of a struct type's fields.
+func koanfKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
+			keys[tag] = true
+		}
+	}
+	return keys
+}
+
+// defaultProbeTimeout is the probe timeout health checkers apply by default;
+// a check deadline at or above it can outlast the probe that asked for it.
+const defaultProbeTimeout = 5 * time.Second
+
+// validateHealthConfig validates the health section.
+func (c *Config) validateHealthConfig() error {
+	h := &c.PolicyEngine.Health
+
+	if h.CacheTTL <= 0 {
+		return fmt.Errorf("policy_engine.health.cache_ttl must be > 0")
+	}
+	if h.XDSConnection.Grace <= 0 {
+		return fmt.Errorf("policy_engine.health.xds_connection.grace must be > 0")
+	}
+	if h.PythonExecutor.CheckTimeout <= 0 {
+		return fmt.Errorf("policy_engine.health.python_executor.check_timeout must be > 0")
+	}
+	if h.PythonExecutor.CheckTimeout >= defaultProbeTimeout {
+		slog.Warn("policy_engine.health.python_executor.check_timeout is at or above the default 5s probe timeout; "+
+			"probes may give up before the python_executor check completes",
+			"check_timeout", h.PythonExecutor.CheckTimeout)
 	}
 	return nil
 }

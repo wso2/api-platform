@@ -47,6 +47,7 @@ func testHashToken(token string) string {
 // gatewaySecretTestEnv holds everything needed to exercise the gateway secret endpoints.
 type gatewaySecretTestEnv struct {
 	router     http.Handler
+	handler    *GatewayInternalAPIHandler
 	sqlDB      *sql.DB
 	db         *database.DB
 	svc        *service.SecretService
@@ -132,6 +133,7 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 
 	env := &gatewaySecretTestEnv{
 		router:     mux,
+		handler:    h,
 		sqlDB:      sqlDB,
 		db:         db,
 		svc:        secretSvc,

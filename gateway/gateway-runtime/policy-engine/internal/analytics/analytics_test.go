@@ -63,6 +63,11 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 			ConfigMode: config.ConfigModeConfig{Mode: "file"},
 			FileConfig: config.FileConfigConfig{Path: "configs/policy-chains.yaml"},
 			Logging:    config.LoggingConfig{Level: "info", Format: "json"},
+			Health: config.HealthConfig{
+				CacheTTL:       3 * time.Second,
+				XDSConnection:  config.HealthXDSConnectionConfig{Grace: 5 * time.Minute},
+				PythonExecutor: config.HealthPythonExecutorConfig{CheckTimeout: 2 * time.Second},
+			},
 			PythonExecutor: config.PythonExecutorConfig{
 				Server:  config.PythonExecutorServerConfig{Port: 9010, Host: "localhost"},
 				Timeout: 30 * time.Second,

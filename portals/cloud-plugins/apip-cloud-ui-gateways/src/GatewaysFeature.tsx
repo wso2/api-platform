@@ -17,7 +17,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
-import { Alert, Box, CircularProgress, PageContent, PageTitle } from '@wso2/oxygen-ui';
+import { Alert, Box, PageContent, PageTitle } from '@wso2/oxygen-ui';
+import { ChoreoLoader } from './components/ChoreoLoader';
 import GatewayForm from './GatewayForm';
 import GatewayOverview from './components/GatewayOverview';
 import GatewaysList from './GatewaysList';
@@ -26,7 +27,7 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
+import { GATEWAY_ADD_OPEN, GATEWAY_DELETE_CLICK, GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
 import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
 import { hostingBlocked } from './utils/limits';
 import type {
@@ -161,7 +162,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
         setEnvironments(environmentResult.value);
         if (!silent && (managedResult.status === 'rejected' || selfHostedResult.status === 'rejected')) {
           notify(
-            `${managedResult.status === 'rejected' ? 'WSO2 managed' : 'Self-hosted'} gateways could not be loaded.`,
+            `${managedResult.status === 'rejected' ? 'Cloud' : 'Self-hosted'} gateways could not be loaded.`,
             'warning'
           );
         }
@@ -292,10 +293,13 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
       // gateway can otherwise be deleted while the first is still in flight.
       if (deletingRef.current) return;
       deletingRef.current = true;
+      const target = gateways.find((candidate) => candidate.id === id);
+      // The confirmed click, before the request: whether it succeeds is the
+      // server's to report.
+      if (target) port.trackFeature?.(GATEWAY_DELETE_CLICK, { gateway_hosting: target.hosting });
       try {
         // A gateway torn down in the background stays listed as deleting, and the
         // status poll drops it once it is gone.
-        const target = gateways.find((candidate) => candidate.id === id);
         let deletionPending = false;
         if (target?.hosting === 'self-hosted') {
           await selfHostedClient.deleteGateway(id);
@@ -342,9 +346,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
 
   if (loading) {
     return (
-      <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 8, width: '100%' }}>
-        <CircularProgress />
-      </Box>
+      <ChoreoLoader />
     );
   }
 
@@ -453,7 +455,13 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
       canDelete={canDelete}
       canReadConfiguration={canReadConfiguration}
       canWriteConfiguration={canWriteConfiguration}
-      onAddClick={(hosting) => {
+      onAddClick={(entryPoint, hosting) => {
+        // The first step of the add-gateway funnel; Add API Gateway on the form
+        // (GATEWAY_REGISTER_CLICK) is the last.
+        port.trackFeature?.(GATEWAY_ADD_OPEN, {
+          entry_point: entryPoint,
+          ...(hosting ? { gateway_hosting: hosting } : {}),
+        });
         setInitialHosting(hosting ?? null);
         setView('create');
       }}

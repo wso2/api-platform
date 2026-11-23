@@ -1,0 +1,41 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import { renderWithProviders, screen } from '@/test/utils';
+
+import { BrandLockup } from './BrandLockup';
+
+describe('BrandLockup', () => {
+  it('names the product "Choreo API Management", all in regular weight', () => {
+    renderWithProviders(<BrandLockup height={32} />);
+
+    const name = screen.getByText('Choreo API Management');
+    expect(name).toBeInTheDocument();
+    expect(name.querySelector('b, strong')).toBeNull();
+    expect(getComputedStyle(name).fontWeight).toBe('400');
+  });
+
+  it('takes the logo height and the name size as CSS lengths', () => {
+    renderWithProviders(<BrandLockup fontSize="1.125rem" height="1.75rem" />);
+
+    expect(screen.getByText('Choreo API Management')).toHaveStyle({ fontSize: '1.125rem' });
+    expect(document.querySelector('img')).toHaveStyle({ height: '1.75rem' });
+  });
+});

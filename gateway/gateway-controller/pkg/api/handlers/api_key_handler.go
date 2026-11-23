@@ -90,7 +90,7 @@ func (s *APIServer) CreateAPIKey(w http.ResponseWriter, r *http.Request, id stri
 				Status:  "error",
 				Message: err.Error(),
 			})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) || errors.Is(err, utils.ErrInvalidAPIKeyValue) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
@@ -249,7 +249,7 @@ func (s *APIServer) UpdateAPIKey(w http.ResponseWriter, r *http.Request, id stri
 				Status:  "error",
 				Message: err.Error(),
 			})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) || errors.Is(err, utils.ErrInvalidAPIKeyValue) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),

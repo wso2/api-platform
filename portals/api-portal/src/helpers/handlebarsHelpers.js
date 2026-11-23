@@ -19,6 +19,7 @@
 const Handlebars = require('handlebars');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
+const { ownValue } = require('../utils/handlebarsUtils');
 const { typeLabel } = require('../keymanagers/core/registry');
 
 const helpers = {
@@ -154,7 +155,8 @@ const helpers = {
     },
 
     // Object helpers
-    getValue: (obj, key) => obj[key],
+    // An object's own property only; see utils/handlebarsUtils.js.
+    getValue: ownValue,
 
     // Display / formatting helpers
     isMiddle: (index, length) => index === Math.floor(length / 2),

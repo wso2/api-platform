@@ -29,7 +29,9 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 
+import { PORTAL_UPDATE_CLICK, yesNo } from './featureUsage';
 import { useManagedPortal, useOrgEnvironments } from './hooks';
+import { usePortalFeature } from './portContext';
 import type { ManagedPortal, UpdateManagedPortalInput } from './types';
 import { validatePortalName } from './utils/name';
 import { SELF_SIGNUP_HINT } from './utils/selfSignup';
@@ -98,6 +100,7 @@ type EditFormProps = {
 };
 
 function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
+  const { host } = usePortalFeature();
   const { environments, isLoading: envsLoading, error: envsError } = useOrgEnvironments();
 
   const [name, setName] = useState(portal.name);
@@ -131,6 +134,14 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    // The click that commits the form, after client-side validation and before
+    // the request. canSubmit means at least one field changed.
+    host.trackFeature?.(PORTAL_UPDATE_CLICK, {
+      name_changed: yesNo(trimmedName !== portal.name),
+      description_changed: yesNo(trimmedDescription !== (portal.description ?? '')),
+      login_environment_changed: yesNo(loginChanged),
+      self_signup_changed: yesNo(selfSignupChanged),
+    });
     setSubmitting(true);
     try {
       const patch: UpdateManagedPortalInput = {

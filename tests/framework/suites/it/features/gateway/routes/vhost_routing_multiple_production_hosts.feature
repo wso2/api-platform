@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@vhost-routing-multiple-production-hosts
+@SVR @vhost-routing-multiple-production-hosts
 Feature: Multiple production vhosts in API routing
   As an API user
   I want multiple production vhosts configured on an API to route to the main upstream
@@ -26,6 +26,7 @@ Feature: Multiple production vhosts in API routing
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
+  @SVR-027
   Scenario: Semicolon-separated main vhosts route listed production hosts to the main upstream
     Given I generate a unique value from "vhost-routing-multi-4" and store it as "apiName4"
     And I generate a unique API context from "/vhost-routing-multi-4" and store it as "apiContext4"

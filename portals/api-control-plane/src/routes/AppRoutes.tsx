@@ -24,6 +24,7 @@ import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-do
 
 import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { OrganizationLandingPage } from '@/pages/appShell/appShellPages/system/OrganizationLandingPage';
 import {
   NotFoundPage,
   OrganizationRedirectPage,
@@ -516,6 +517,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path="/" element={<OrganizationRedirectPage />} />
           <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
           <Route path={routes.organizationHome()} element={<OrganizationHomePage />} />
+          <Route path={routes.organizationLanding()} element={<OrganizationLandingPage />} />
           <Route path={routes.projects()} element={<ProjectListPage />} />
           <Route path={routes.newProject()} element={<ProjectCreatePage />} />
           <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />

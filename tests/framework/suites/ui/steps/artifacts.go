@@ -20,6 +20,7 @@ package steps
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -106,7 +107,10 @@ func (u *UI) stopTracing(ctx context.Context, name string, keep bool) {
 		return
 	}
 	tracePath := filepath.Join(artifactsDir, name+"-trace.zip")
-	if err := bctx.Tracing().Stop(tracePath); err == nil {
-		_ = os.Chmod(tracePath, 0o600)
+	if err := bctx.Tracing().Stop(tracePath); err != nil {
+		// Still best-effort, but a failure that leaves no trace should say why.
+		slog.Warn("ui: keeping the failed scenario's trace failed", "scenario", name, "error", err)
+		return
 	}
+	_ = os.Chmod(tracePath, 0o600)
 }

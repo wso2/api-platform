@@ -44,7 +44,7 @@ function PageFooter() {
   return (
     <Box id={APP_FOOTER_ID}>
       <Footer variant="plain">
-        <Footer.Copyright>© {new Date().getFullYear()} WSO2 LLC.</Footer.Copyright>
+        <Footer.Copyright>© {new Date().getFullYear()} Choreo Labs LLC.</Footer.Copyright>
         {/* Show the environment label only for pinned on-prem builds. */}
         {runtimeConfig.deploymentMode === 'onprem' && (
           <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>

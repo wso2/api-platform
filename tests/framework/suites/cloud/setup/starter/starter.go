@@ -14,14 +14,6 @@
  * limitations under the License.
  */
 
-// Package starter makes sure the shared organisation holds what a cloud suite run needs before
-// any scenario starts.
-//
-// The finalizer package removes what a run left behind; a Starter is its counterpart at the
-// other end of the run. It holds the prerequisites of an organisation, such as the gateway the
-// scenarios deploy to, and brings each of them into existence when it is missing. A prerequisite
-// outlives the run: it carries no runner suffix, so the finalizer never sweeps it. The cloud
-// suite's step packages supply the Prerequisites of the platform they drive.
 package starter
 
 import (
@@ -53,6 +45,9 @@ type Starter struct {
 type outcome struct {
 	ready chan struct{}
 	err   error
+	// abandoned is set when the preparation failed because its caller's context ended. Such an
+	// outcome is dropped, and the callers that waited for it prepare the organisation again.
+	abandoned bool
 }
 
 // New returns a Starter that has prepared no organisation yet. A nil logger selects the default
@@ -67,8 +62,10 @@ func New(log *slog.Logger) *Starter {
 // Ensure makes sure the organisation named by key holds every prerequisite. The first caller for a
 // key runs them in order and stops at the first failure; every other caller for that key waits for
 // that run and receives its result, so a failed preparation is reported to every runner instead of
-// being tried again by each. Callers that give up waiting return the context's error and leave the
-// preparation running.
+// being tried again by each. A run that failed only because its own caller's context ended is not
+// kept: callers that waited for it, and later ones, prepare the organisation again under their own
+// context. Callers that give up waiting return the context's error and leave the preparation
+// running.
 func (s *Starter) Ensure(ctx context.Context, key string, prerequisites []Prerequisite) error {
 	if key == "" {
 		return errors.New("starter: an organisation key is required")
@@ -79,28 +76,45 @@ func (s *Starter) Ensure(ctx context.Context, key string, prerequisites []Prereq
 		}
 	}
 
-	s.mu.Lock()
-	current, running := s.outcome[key]
-	if !running {
-		current = &outcome{ready: make(chan struct{})}
-		s.outcome[key] = current
-	}
-	s.mu.Unlock()
+	for {
+		s.mu.Lock()
+		current, running := s.outcome[key]
+		if !running {
+			current = &outcome{ready: make(chan struct{})}
+			s.outcome[key] = current
+		}
+		s.mu.Unlock()
 
-	if running {
+		if !running {
+			return s.prepare(ctx, key, current, prerequisites)
+		}
 		select {
 		case <-current.ready:
+			if current.abandoned && ctx.Err() == nil {
+				continue
+			}
 			return current.err
 		case <-ctx.Done():
 			return fmt.Errorf("waiting for the organisation's prerequisites: %w", ctx.Err())
 		}
 	}
+}
 
+// prepare runs the prerequisites for the first caller of a key and publishes the result.
+func (s *Starter) prepare(ctx context.Context, key string, current *outcome, prerequisites []Prerequisite) error {
 	defer close(current.ready)
 	for _, prerequisite := range prerequisites {
 		s.log.Info("ensuring a cloud run prerequisite", "prerequisite", prerequisite.Name)
 		if err := prerequisite.Ensure(ctx); err != nil {
 			current.err = fmt.Errorf("prerequisite %q: %w", prerequisite.Name, err)
+			if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+				current.abandoned = true
+				s.mu.Lock()
+				if s.outcome[key] == current {
+					delete(s.outcome, key)
+				}
+				s.mu.Unlock()
+			}
 			return current.err
 		}
 	}

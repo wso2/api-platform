@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/counters"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/health"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pkg/cel"
@@ -303,8 +304,17 @@ func main() {
 	}
 
 	// Create and start ext_proc gRPC server
+	// The gateway's health routes reach the policy engine like API traffic and are
+	// answered by these checkers.
+	var pythonExecutorCheck health.CheckFunc
+	if pythonbridge.IsAvailable(cfg.PolicyEngine.PythonExecutor) {
+		pythonExecutorCheck = pythonbridge.NewHealthCheck(pythonbridge.GetStreamManager())
+	}
+	livenessChecker, readinessChecker := buildHealthCheckers(cfg, logger, healthProvider, xdsClient, pythonExecutorCheck)
+
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,
-		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults))
+		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults),
+		kernel.WithHealthRoutes(livenessChecker, readinessChecker))
 
 	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener

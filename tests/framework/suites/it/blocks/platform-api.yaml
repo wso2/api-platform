@@ -41,6 +41,20 @@ blocks:
         features:
           - features/management-portal/webhook-secrets/webhook_secret_legacy_disabled.feature
 
+  # The request body cap (CPLIM): a 64 KiB server.max_request_body_bytes, so a scenario can cross
+  # it without a 10 MiB body. Every route is capped, so the lowered cap would refuse bodies the
+  # shared blocks' scenarios send; it gets its own instance. A single engine is enough: the cap is
+  # on the listener, not storage-engine-specific.
+  - name: platform-api-request-body-limit
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-request-body-limit.toml
+    runners:
+      - name: request-body-limit
+        features:
+          - features/management-portal/request-limits/request_body_limit.feature
+
   # Network access control in allow mode (NETAC): the platform-api only reaches testbench through a
   # tenant- or user-supplied URL. That setting would refuse every other host the shared blocks'
   # scenarios use, so it gets its own instance. A single engine is enough: the check is on the

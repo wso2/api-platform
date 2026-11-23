@@ -52,8 +52,8 @@ const messages = defineMessages({
   },
   componentManagedGateways: {
     id: 'apiControlPlane.hooks.useResourceLimits.componentManagedGateways',
-    defaultMessage: 'WSO2-managed gateways',
-    description: 'Plural noun for WSO2-managed gateways, used inside the limit-reached sentence.',
+    defaultMessage: 'cloud gateways',
+    description: 'Plural noun for cloud gateways, used inside the limit-reached sentence.',
   },
   componentSelfHostedGateways: {
     id: 'apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways',

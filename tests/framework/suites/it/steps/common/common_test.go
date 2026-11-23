@@ -95,6 +95,18 @@ func TestGenerateUUIDAndStore(t *testing.T) {
 	require.ErrorContains(t, GenerateUUIDAndStore(commonContext(), " "), "empty key")
 }
 
+func TestGenerateStringAndStore(t *testing.T) {
+	ctx := commonContext()
+	require.NoError(t, GenerateStringAndStore(ctx, 70000, "padding"))
+	value, err := StoredValue(ctx, "padding")
+	require.NoError(t, err)
+	require.Len(t, value, 70000)
+	require.Equal(t, strings.Repeat("a", 70000), value)
+
+	require.ErrorContains(t, GenerateStringAndStore(ctx, -1, "padding"), "0 or more")
+	require.ErrorContains(t, GenerateStringAndStore(context.Background(), 1, "padding"), "runner context")
+}
+
 func TestGenerateAndStoreRejectsInvalidContext(t *testing.T) {
 	require.ErrorContains(t, GenerateAndStore(context.Background(), "api", "name"), "runner context")
 	require.ErrorContains(t, GenerateAndStore(commonContext(), "api", " "), "empty key")

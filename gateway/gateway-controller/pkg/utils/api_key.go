@@ -48,9 +48,12 @@ import (
 // fault. createAPIKeyFromRequest, updateAPIKeyFromRequest, and regenerateAPIKey wrap one of
 // these into every expiry-validation error they return (via fmt.Errorf's %w), so handlers can
 // map them to 400 with errors.Is instead of falling through to a generic 500.
+// ErrInvalidAPIKeyValue does the same for a caller-supplied key value outside the configured
+// length (ValidateAPIKeyValue).
 var (
 	ErrAPIKeyExpirationInPast          = errors.New("API key expiration time must be in the future")
 	ErrUnsupportedAPIKeyExpirationUnit = errors.New("unsupported expiration unit")
+	ErrInvalidAPIKeyValue              = errors.New("invalid API key value")
 )
 
 // APIKeyCreationParams contains parameters for API key creation operations.
@@ -997,6 +1000,9 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	if request.ApiKey != nil && strings.TrimSpace(*request.ApiKey) != "" {
 		// External key injection via REST API: plain-text key provided, hash it before storage
 		plainAPIKeyValue = strings.TrimSpace(*request.ApiKey)
+		if err := s.ValidateAPIKeyValue(plainAPIKeyValue); err != nil {
+			return nil, err
+		}
 		hashedAPIKeyValue, err = s.hashAPIKey(plainAPIKeyValue)
 		if err != nil {
 			return nil, fmt.Errorf("failed to hash API key: %w", err)
@@ -1210,6 +1216,9 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 	if request.ApiKey != nil && strings.TrimSpace(*request.ApiKey) != "" {
 		// Plain-text key from REST API: hash it before storage
 		plainKey := strings.TrimSpace(*request.ApiKey)
+		if err := s.ValidateAPIKeyValue(plainKey); err != nil {
+			return nil, err
+		}
 		hashedAPIKeyValue, err = s.hashAPIKey(plainKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to hash API key: %w", err)

@@ -689,3 +689,135 @@ func TestDatabaseWaitFailsFastWhenTheDatabaseRejectsTheConnection(t *testing.T) 
 		})
 	}
 }
+
+// recordingChain stands in for the management API's middleware chain: it notes that it
+// was reached and, like the authentication middleware, refuses the unauthenticated request.
+type recordingChain struct{ reached int }
+
+func (c *recordingChain) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	c.reached++
+	w.WriteHeader(http.StatusUnauthorized)
+}
+
+// serveManagement sends one request through withManagementHealth and returns the answer.
+func serveManagement(t *testing.T, chain http.Handler, healthHandler http.Handler, method, path, remote string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
+	if remote != "" {
+		req.RemoteAddr = remote
+	}
+	rec := httptest.NewRecorder()
+	withManagementHealth(chain, healthHandler).ServeHTTP(rec, req)
+	return rec
+}
+
+func TestWithManagementHealthAnswersHealthAndReady(t *testing.T) {
+	var databaseDown atomic.Bool
+	checker := newTestChecker(pingFunc(func(context.Context) error {
+		if databaseDown.Load() {
+			return errors.New("connection refused")
+		}
+		return nil
+	}))
+
+	for _, path := range []string{"/api/management/v1/health", "/api/management/v1/ready"} {
+		chain := &recordingChain{}
+
+		databaseDown.Store(true)
+		rec := serveManagement(t, chain, checker.Handler(), http.MethodGet, path, "")
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code, path)
+		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"), path)
+		assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"), path)
+		assert.Contains(t, rec.Body.String(), `"database":{"status":"down"`, path)
+
+		databaseDown.Store(false)
+		rec = serveManagement(t, chain, checker.Handler(), http.MethodGet, path, "")
+		assert.Equal(t, http.StatusOK, rec.Code, path)
+		assert.Contains(t, rec.Body.String(), `"status":"healthy"`, path)
+
+		assert.Zero(t, chain.reached, "%s must be answered without authentication, logging or metrics", path)
+	}
+}
+
+func TestWithManagementHealthPassesOtherPathsToTheChain(t *testing.T) {
+	checker := newTestChecker(pingFunc(func(context.Context) error { return nil }))
+
+	for _, path := range []string{
+		"/api/management/v1/rest-apis",
+		"/api/management/v1/health/",
+		"/api/management/v1/healthz",
+		"/api/management/v1/health/x",
+		"/api/management/v1/../v1/health",
+		"/health",
+		"/ready",
+		"/api/admin/v1/health",
+	} {
+		chain := &recordingChain{}
+		rec := serveManagement(t, chain, checker.Handler(), http.MethodGet, path, "")
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, "%s must stay behind authentication", path)
+		assert.Equal(t, 1, chain.reached, path)
+	}
+
+	// Positive control: the exact path is answered by the health handler.
+	chain := &recordingChain{}
+	rec := serveManagement(t, chain, checker.Handler(), http.MethodGet, "/api/management/v1/health", "")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Zero(t, chain.reached)
+}
+
+func TestWithManagementHealthAppliesAllowedClients(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Controller.Health = config.HealthConfig{CacheTTL: time.Second,
+		AllowedClients: config.ClientList{"10.0.0.0/8"}}
+	checker, err := newHealthChecker(cfg, discardLogger())
+	require.NoError(t, err)
+
+	for _, path := range []string{"/api/management/v1/health", "/api/management/v1/ready"} {
+		chain := &recordingChain{}
+
+		allowed := serveManagement(t, chain, checker.Handler(), http.MethodGet, path, "10.1.2.3:4000")
+		assert.Equal(t, http.StatusOK, allowed.Code, path)
+
+		refused := serveManagement(t, chain, checker.Handler(), http.MethodGet, path, "127.0.0.1:4000")
+		assert.Equal(t, http.StatusForbidden, refused.Code, path)
+		assert.JSONEq(t, `{"status":"forbidden"}`, refused.Body.String(), path)
+
+		assert.Zero(t, chain.reached, "a refused probe must not fall through to authentication on %s", path)
+	}
+}
+
+func TestWithManagementHealthMethods(t *testing.T) {
+	checker := newTestChecker(pingFunc(func(context.Context) error { return nil }))
+
+	for _, path := range []string{"/api/management/v1/health", "/api/management/v1/ready"} {
+		chain := &recordingChain{}
+
+		post := serveManagement(t, chain, checker.Handler(), http.MethodPost, path, "")
+		assert.Equal(t, http.StatusMethodNotAllowed, post.Code, path)
+		assert.Equal(t, "GET, HEAD", post.Header().Get("Allow"), path)
+
+		head := serveManagement(t, chain, checker.Handler(), http.MethodHead, path, "")
+		assert.Equal(t, http.StatusOK, head.Code, path)
+		assert.Empty(t, head.Body.String(), path)
+
+		assert.Zero(t, chain.reached, path)
+	}
+}
+
+func TestWithManagementHealthSharesTheAdminEvaluation(t *testing.T) {
+	var pings atomic.Int32
+	checker := health.NewChecker(health.Options{HealthyStatus: "healthy", CacheTTL: time.Minute})
+	checker.Register("database", newIdleDatabaseCheck(pingFunc(func(context.Context) error {
+		pings.Add(1)
+		return nil
+	}), time.Second))
+
+	admin := httptest.NewRecorder()
+	checker.Handler().ServeHTTP(admin, httptest.NewRequest(http.MethodGet, "/api/admin/v1/health", nil))
+	management := serveManagement(t, &recordingChain{}, checker.Handler(), http.MethodGet, "/api/management/v1/ready", "")
+
+	assert.Equal(t, http.StatusOK, admin.Code)
+	assert.Equal(t, admin.Code, management.Code)
+	assert.Equal(t, admin.Body.String(), management.Body.String(), "both ports serve one cached evaluation")
+	assert.Equal(t, int32(1), pings.Load(), "the database is checked once for both answers")
+}

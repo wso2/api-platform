@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type { ReactNode } from 'react';
 import {
   Box,
   FormControl,
@@ -32,6 +33,7 @@ import { Server } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
+import { SecondaryText } from '@/components/common/SecondaryText';
 import { CopyButton } from '../curl/components/CopyButton';
 
 const messages = defineMessages({
@@ -65,6 +67,8 @@ const messages = defineMessages({
 });
 
 type GatewaySectionProps = {
+  /** Controls for the section's top-right corner: how requests are sent, downloading the definition. */
+  actions?: ReactNode;
   endpoint: string;
   gateways: Gateway[];
   onSelect: (gatewayId: string) => void;
@@ -88,6 +92,7 @@ type GatewaySectionProps = {
  * no gateways are deployed.
  */
 export function GatewaySection({
+  actions,
   endpoint,
   gateways,
   onSelect,
@@ -114,12 +119,13 @@ export function GatewaySection({
               <FormattedMessage {...messages.title} />
             </Typography>
           </Stack>
+          {actions}
         </Stack>
 
         {gateways.length === 0 ? (
-          <Typography color="text.secondary" variant="body2">
+          <SecondaryText variant="body2">
             <FormattedMessage {...messages.noGateways} />
-          </Typography>
+          </SecondaryText>
         ) : (
           <Grid container spacing={1}>
             <Grid size={{ sm: 4, xs: 12 }}>

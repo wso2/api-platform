@@ -905,6 +905,9 @@ func main() {
 		outerMiddlewares = append(outerMiddlewares, middleware.MetricsMiddleware())
 	}
 	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
+	// The management API's health and readiness paths are answered ahead of every
+	// middleware above, by the same handler the admin server serves.
+	handler = withManagementHealth(handler, healthChecker.Handler())
 
 	// The admin server has been serving health since startup; its debug endpoints
 	// become available now that the controller is running.

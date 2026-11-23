@@ -46,6 +46,7 @@ func (s *Steps) registerDeploySteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a GraphQL API "([^"]*)" exists in project "([^"]*)" on the control plane$`, s.graphQLAPIExists)
 	sc.Step(`^the user clicks "([^"]*)" on gateway "([^"]*)" in the Management Portal$`, s.clickOnGateway)
 	sc.Step(`^the user clicks "([^"]*)" in the Management Portal$`, s.click)
+	sc.Step(`^the user opens gateway "([^"]*)" in the Management Portal$`, s.openGateway)
 	sc.Step(`^the user selects deployment "([^"]*)" in the Management Portal$`, s.selectDeployment)
 	sc.Step(`^the Management Portal confirms a deployment started and stores its name as "([^"]*)"$`, s.deploymentStarted)
 	sc.Step(`^the Management Portal confirms (stopping|redeploying|deleting) deployment "([^"]*)"$`, s.confirms)
@@ -162,6 +163,32 @@ func (s *Steps) gatewayButtonState(ctx context.Context, button, gateway, state s
 
 // click presses a button anywhere on the page. An open drawer hides the page behind it from
 // role queries, so a button of the drawer is the one found.
+// openGateway opens a gateway's card if it is collapsed. The page opens only the first gateway's
+// card, and another scenario's connected gateway can sort ahead of this one, hiding the buttons in
+// this card's body, such as "View More". The summary is a native button without an expand icon of
+// its own, so Enter toggles it.
+func (s *Steps) openGateway(ctx context.Context, gateway string) error {
+	card, err := s.gatewayCard(ctx, gateway)
+	if err != nil {
+		return err
+	}
+	summary := card.Locator(".MuiAccordionSummary-root").First()
+	expanded, err := summary.GetAttribute("aria-expanded")
+	if err != nil {
+		return fmt.Errorf("reading whether gateway %q is open: %w", gateway, err)
+	}
+	if expanded == "true" {
+		return nil
+	}
+	if err := summary.Press("Enter"); err != nil {
+		return fmt.Errorf("opening gateway %q: %w", gateway, err)
+	}
+	if err := card.Locator(".MuiAccordionSummary-root[aria-expanded='true']").WaitFor(); err != nil {
+		return fmt.Errorf("waiting for gateway %q to open: %w", gateway, err)
+	}
+	return nil
+}
+
 func (s *Steps) click(ctx context.Context, button string) error {
 	locator, err := s.button(ctx, button)
 	if err != nil {

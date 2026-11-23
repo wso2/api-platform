@@ -1053,6 +1053,13 @@ func (t *Translator) TranslateConfigs(
 	// Create a virtual host for each vhost
 	var virtualHosts []*route.VirtualHost
 	for vhost, routes := range vhostMap {
+		if !t.routerConfig.HTTPListener.AllowPathCaseVariants {
+			routes, err = appendCaseVariantGuards(routes)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		// Sort routes by priority (highest priority first) before adding to vhost
 		routes = SortRoutesByPriority(routes)
 
@@ -1067,42 +1074,15 @@ func (t *Translator) TranslateConfigs(
 		routes = append(append([]*route.Route{}, gatewayHealthRoutes...), routes...)
 
 		// Append the catch-all 404 route as the last route for each vhost (lowest priority).
-		extProcDisabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
-			Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
+		notFound, err := buildNotFoundRoute("no-api-found", &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{
+				Prefix: "/",
+			},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for catch-all route: %w", err)
+			return nil, err
 		}
-		routes = append(routes, &route.Route{
-			Name: "no-api-found",
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
-				},
-			},
-			Action: &route.Route_DirectResponse{
-				DirectResponse: &route.DirectResponseAction{
-					Status: 404,
-					Body: &core.DataSource{
-						Specifier: &core.DataSource_InlineString{
-							// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
-							InlineString: `{"error":"Not Found"}`,
-						},
-					},
-				},
-			},
-			ResponseHeadersToAdd: []*core.HeaderValueOption{
-				{
-					Header: &core.HeaderValue{
-						Key:   "content-type",
-						Value: "application/json",
-					},
-				},
-			},
-			TypedPerFilterConfig: map[string]*anypb.Any{
-				constants.ExtProcFilterName: extProcDisabledAny,
-			},
-		})
+		routes = append(routes, notFound)
 		virtualHost := &route.VirtualHost{
 			Name:    vhost,
 			Domains: t.getVHostDomains(vhost),

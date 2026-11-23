@@ -642,6 +642,27 @@ func (db *DB) IsDuplicateKeyError(err error) bool {
 		strings.Contains(lowerMsg, "unique constraint failed")
 }
 
+// IsValueTooLongError reports whether err is the database refusing a value that
+// is longer than its column holds. SQLite does not enforce column widths.
+func (db *DB) IsValueTooLongError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		// 22001: string_data_right_truncation
+		return pgErr.Code == "22001"
+	}
+
+	var msErr mssql.Error
+	if errors.As(err, &msErr) {
+		// 8152 and 2628: String or binary data would be truncated
+		return msErr.Number == 8152 || msErr.Number == 2628
+	}
+	return false
+}
+
 func buildSQLServerDSN(cfg *config.Database) string {
 	encrypt := "disable"
 	trustServerCertificate := "true"

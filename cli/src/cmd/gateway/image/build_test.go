@@ -21,7 +21,12 @@ package image
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/wso2/api-platform/cli/internal/gateway"
 )
 
 func TestGetDockerBuildLogPathUsesPersistentLogsDirectory(t *testing.T) {
@@ -54,5 +59,139 @@ func TestGetDockerBuildLogPathUsesPersistentLogsDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(logPath)); err != nil {
 		t.Fatalf("expected logs directory to survive workspace cleanup: %v", err)
+	}
+}
+
+// resetPrivateModuleFlags clears the package-level flag state the tests below set.
+func resetPrivateModuleFlags(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		for _, name := range []string{"netrc", "git-credential", "go-env"} {
+			f := buildCmd.Flags().Lookup(name)
+			if sv, ok := f.Value.(interface{ Replace([]string) error }); ok {
+				_ = sv.Replace(nil)
+			} else {
+				_ = f.Value.Set("")
+			}
+			f.Changed = false
+		}
+	})
+}
+
+func TestGoEnvFlagKeepsCommasInValues(t *testing.T) {
+	resetPrivateModuleFlags(t)
+
+	err := buildCmd.ParseFlags([]string{
+		"--go-env", "GOPRIVATE=github.com/acme/*,gitlab.acme.com",
+		"--go-env", "GOPROXY=https://goproxy.acme.com,direct",
+	})
+	if err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+
+	want := []string{"GOPRIVATE=github.com/acme/*,gitlab.acme.com", "GOPROXY=https://goproxy.acme.com,direct"}
+	if !slices.Equal(goEnvFlags, want) {
+		t.Fatalf("goEnvFlags = %q, want %q", goEnvFlags, want)
+	}
+}
+
+func TestNetrcAndGitCredentialAreMutuallyExclusive(t *testing.T) {
+	resetPrivateModuleFlags(t)
+
+	err := buildCmd.ParseFlags([]string{"--netrc", "/tmp/netrc", "--git-credential", "github.com=x:TOKEN"})
+	if err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	if err := buildCmd.ValidateFlagGroups(); err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+		t.Fatalf("ValidateFlagGroups() error = %v, want a mutually exclusive flags error", err)
+	}
+}
+
+func TestBuilderAccessWarnings(t *testing.T) {
+	const builder = "ghcr.io/wso2/api-platform/gateway-builder:2026.09.24"
+	setting := func(k, v string) gateway.GoEnvSetting { return gateway.GoEnvSetting{Key: k, Value: v} }
+	creds := []gateway.GitCredential{{Host: "github.com", Username: "acme"}}
+
+	tests := []struct {
+		name    string
+		access  gateway.BuilderAccess
+		builder string
+		want    []string // substrings that must appear
+		mustNot []string // substrings that must not appear
+	}{
+		{name: "nothing configured", builder: builder,
+			mustNot: []string{"!"}},
+		{name: "GOSUMDB=off without credentials still warns", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOSUMDB", "off")}},
+			want:    []string{"GOSUMDB=off turns off checksum verification for every module", "GOSUMDB=off also makes Go toolchain downloads fail"},
+			mustNot: []string{"GOPRIVATE is not set"}},
+		{name: "GOSUMDB=off with credentials replaces the GOPRIVATE warning", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOSUMDB", "off")}, GitCredentials: creds},
+			want:    []string{"GOSUMDB=off turns off"},
+			mustNot: []string{"GOPRIVATE is not set"}},
+		{name: "GOINSECURE with credentials", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOINSECURE", "git.acme.com"), setting("GOPRIVATE", "git.acme.com")}, NetrcFile: "/home/u/netrc"},
+			want:    []string{"GOINSECURE allows plain-HTTP downloads", "credentials"},
+			mustNot: []string{"GOPRIVATE is not set"}},
+		{name: "GOINSECURE without credentials", builder: builder,
+			access:  gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOINSECURE", "git.acme.com")}},
+			mustNot: []string{"GOINSECURE"}},
+		{name: "credentials without GOPRIVATE", builder: builder,
+			access: gateway.BuilderAccess{GitCredentials: creds},
+			want:   []string{"GOPRIVATE is not set"}},
+		{name: "non-default builder with credentials", builder: "registry.acme.com/gateway-builder:custom",
+			access: gateway.BuilderAccess{GoEnv: []gateway.GoEnvSetting{setting("GOPRIVATE", "github.com/acme/*")}, GitCredentials: creds},
+			want:   []string{"Credentials will be passed to builder image registry.acme.com/gateway-builder:custom"}},
+		{name: "non-default builder without credentials", builder: "registry.acme.com/gateway-builder:custom",
+			mustNot: []string{"Credentials will be passed"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := strings.Join(builderAccessWarnings(tt.access, tt.builder, builder, "2026.09.24"), "\n")
+			for _, w := range tt.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("warnings %q missing %q", got, w)
+				}
+			}
+			for _, w := range tt.mustNot {
+				if strings.Contains(got, w) {
+					t.Errorf("warnings %q unexpectedly contain %q", got, w)
+				}
+			}
+		})
+	}
+}
+
+func TestFetchTimeoutFlag(t *testing.T) {
+	t.Cleanup(func() {
+		f := buildCmd.Flags().Lookup("fetch-timeout")
+		_ = f.Value.Set("0s")
+		f.Changed = false
+	})
+
+	if err := buildCmd.ParseFlags([]string{"--fetch-timeout", "10m"}); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	if fetchTimeout != 10*time.Minute || !buildCmd.Flags().Changed("fetch-timeout") {
+		t.Fatalf("fetchTimeout = %v (changed=%v), want 10m0s", fetchTimeout, buildCmd.Flags().Changed("fetch-timeout"))
+	}
+}
+
+func TestCheckFetchTimeout(t *testing.T) {
+	tests := []struct {
+		set     bool
+		value   time.Duration
+		wantErr bool
+	}{
+		{set: false, value: 0}, // not set: the builder default applies
+		{set: true, value: 10 * time.Minute},
+		{set: true, value: 0, wantErr: true},
+		{set: true, value: -time.Minute, wantErr: true},
+	}
+	for _, tt := range tests {
+		err := checkFetchTimeout(tt.set, tt.value)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("checkFetchTimeout(%v, %v) error = %v, wantErr %v", tt.set, tt.value, err, tt.wantErr)
+		}
 	}
 }
