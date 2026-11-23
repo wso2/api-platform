@@ -206,7 +206,7 @@ async function startServer() {
         // TLS version bounds + ECDH/group preference list, config-gated — see
         // js-post-quantum-cryptography.md. Throws (caught below) on an invalid
         // value, so a bad config fails startup rather than silently degrading.
-        const tlsOptions = buildTLSOptions(config.server.https);
+        const tlsOptions = buildTLSOptions(config.server.https, 'server.https');
 
         server = https.createServer({
             key: serverKey,
