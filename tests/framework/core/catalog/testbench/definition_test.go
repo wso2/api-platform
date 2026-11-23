@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 )
 
@@ -35,7 +36,7 @@ func TestTestbenchDefinition(t *testing.T) {
 	require.Equal(t, "testbench", definition.Name)
 	require.True(t, definition.Shared)
 	require.NotNil(t, definition.Health)
-	for _, endpoint := range []string{"backend", "jwks", "echo", "analytics", "jev", "jev-tls", "mcp-scripted"} {
+	for _, endpoint := range []string{"backend", "jwks", "echo", "interceptor", "interceptor-tls", "analytics", "jev", "jev-tls", "mcp-scripted"} {
 		_, ok := definition.Endpoint(endpoint)
 		require.True(t, ok, endpoint)
 	}
@@ -50,6 +51,14 @@ func TestTestbenchEndpointsHaveDistinctPorts(t *testing.T) {
 		require.False(t, taken, "%s and %s both use port %d", other, endpoint.Name, endpoint.Port)
 		seen[endpoint.Port] = endpoint.Name
 	}
+}
+
+func TestTheInterceptorServesHTTPSOnItsOwnPort(t *testing.T) {
+	endpoint, ok := Testbench().Endpoint("interceptor-tls")
+	require.True(t, ok)
+	require.Equal(t, interceptor.TLSPort, endpoint.Port)
+	require.Equal(t, "https", endpoint.Scheme)
+	require.True(t, endpoint.AwaitListening)
 }
 
 func TestTheIdentityProviderServesHTTPSWithTheSharedCertificate(t *testing.T) {
