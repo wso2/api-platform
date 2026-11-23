@@ -163,6 +163,13 @@ export type RuntimeConfig = {
   privacyPolicyLink: string;
   /** Footer "Cookie Policy" link. Empty hides it; only an `https://` URL is shown. */
   cookiePolicyLink: string;
+  /**
+   * CookiePro domain script id and GTM container id, set by the cloud deployment. Read here only
+   * to tell whether the cookie banner is loaded, which decides the footer's "Cookie Settings" link;
+   * the cloud tracking plugin validates them and loads the scripts.
+   */
+  cookieProDomainScript: string;
+  gtmContainerId: string;
   projectApiBaseUrl: string;
   /** Footer "Support" link. */
   supportLink: string;
@@ -266,6 +273,8 @@ type LegacyWindowConfig = Partial<{
   documentationLink: string;
   privacyPolicyLink: string;
   cookiePolicyLink: string;
+  cookieProDomainScript: string;
+  gtmContainerId: string;
   projectApiBaseUrl: string;
   supportLink: string;
   termsOfUseLink: string;
@@ -562,6 +571,8 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().cookiePolicyLink ||
     import.meta.env.VITE_COOKIE_POLICY_LINK ||
     '',
+  cookieProDomainScript: String(fromWindow().cookieProDomainScript ?? '').trim(),
+  gtmContainerId: String(fromWindow().gtmContainerId ?? '').trim(),
   projectApiBaseUrl:
     fromWindow().PROJECT_API_BASE_URL ||
     fromWindow().projectApiBaseUrl ||
