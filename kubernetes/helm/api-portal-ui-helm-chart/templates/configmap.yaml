@@ -123,7 +123,7 @@ data:
     callback_url = {{ $auth.idp.callbackUrl | quote }}
     logout_url = {{ $auth.idp.logoutUrl | quote }}
     scope = {{ $auth.idp.scope | quote }}
-    audience = {{ $auth.idp.audience | quote }}
+    audience = {{ toJson (default "" $auth.idp.audience) }}
     certificate = {{ $auth.idp.certificate | quote }}
     sign_up_url = {{ $auth.idp.signUpUrl | quote }}
     logout_redirect_uri = {{ $auth.idp.logoutRedirectUri | quote }}

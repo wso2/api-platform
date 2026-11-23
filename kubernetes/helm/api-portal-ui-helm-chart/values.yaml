@@ -138,6 +138,8 @@ config:
       callbackUrl: ""
       logoutUrl: ""
       scope: "openid profile email"
+      # Accepted token audience(s) ("aud"): a string or a list, e.g.
+      # ["api-portal", "account"]. Empty ("" or []) skips the audience check.
       audience: ""
       certificate: ""            # PEM to pin the IDP's signing cert (optional)
       signUpUrl: ""
