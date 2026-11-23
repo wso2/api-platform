@@ -19,8 +19,6 @@ package helm
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,28 +65,4 @@ func TestCheckChartFeatures(t *testing.T) {
 	}
 	assert.ErrorIs(t, checkChartFeatures(&chart.Chart{}, []string{FeatureBasicAuthPasswordSecretRef}), ErrChartFeatureUnsupported,
 		"a chart without metadata supports nothing")
-}
-
-// ChartFeatures reads the annotation from a local chart, so the operator can pick values
-// a chart version supports before deploying it.
-func TestChartFeatures_LocalChart(t *testing.T) {
-	writeChart := func(t *testing.T, annotations string) string {
-		t.Helper()
-		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "Chart.yaml"),
-			[]byte("apiVersion: v2\nname: gateway\nversion: 1.0.0\n"+annotations), 0o600))
-		return dir
-	}
-	c, err := NewClientWithOptions(false)
-	require.NoError(t, err)
-
-	features, err := c.ChartFeatures(ChartRef{ChartPath: writeChart(t,
-		"annotations:\n  gateway.api-platform.wso2.com/features: \"basicAuthPasswordSecretRef, other\"\n")})
-	require.NoError(t, err)
-	assert.True(t, features[FeatureBasicAuthPasswordSecretRef])
-	assert.True(t, features["other"])
-
-	features, err = c.ChartFeatures(ChartRef{ChartPath: writeChart(t, "")})
-	require.NoError(t, err)
-	assert.False(t, features[FeatureBasicAuthPasswordSecretRef], "a chart without the annotation supports nothing")
 }

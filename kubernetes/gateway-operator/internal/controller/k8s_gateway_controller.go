@@ -461,36 +461,25 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		r.recordEvent(gw, corev1.EventTypeWarning, "AdminCredentialsUnavailable", err.Error())
 		return fmt.Errorf("admin credentials unavailable: %w", err)
 	}
-	// The admin password is delivered the way the configured gateway chart supports: a
-	// mounted file (passwordSecretRef) or, with an older chart, an environment variable
-	// from the same Secret. The operator and the gateway chart are released separately.
-	chartFeatures, err := helmgateway.ChartFeatures(r.Config, dockerUser, dockerPass)
-	if err != nil {
-		return fmt.Errorf("read gateway chart features: %w", err)
-	}
-	secretRef := chartFeatures[helm.FeatureBasicAuthPasswordSecretRef]
-	adminOverlay, err := defaultAdminOverlay(adminPlan, secretRef, base, valuesYAML)
+	adminOverlay, err := defaultAdminOverlay(adminPlan)
 	if err != nil {
 		return err
 	}
 	if valuesYAML, err = helm.MergeValuesYAML(valuesYAML, adminOverlay); err != nil {
 		return fmt.Errorf("merge default admin credentials overlay: %w", err)
 	}
-	// A passwordSecretRef written in the values needs a chart that renders it.
+	// A password read from a Secret (the generated admin credential, or a
+	// passwordSecretRef written in the values) needs a chart that renders passwordSecretRef.
 	var requiredChartFeatures []string
-	if refs, err := configRefSecretRefNames(valuesYAML); err != nil {
+	refs, err := configRefSecretRefNames(valuesYAML)
+	if err != nil {
 		return err
-	} else if len(refs) > 0 {
+	}
+	if adminPlan.Mode == defaultAdminGenerated || len(refs) > 0 {
 		requiredChartFeatures = []string{helm.FeatureBasicAuthPasswordSecretRef}
 	}
 	switch adminPlan.Mode {
 	case defaultAdminGenerated:
-		if !secretRef {
-			msg := fmt.Sprintf("Gateway chart %s cannot mount the admin password as a file, so it is passed to the gateway-controller as an environment variable from Secret %s; use a gateway chart that supports passwordSecretRef to mount it instead",
-				r.Config.Gateway.HelmChartVersion, adminPlan.SecretName)
-			log.Warn(msg)
-			r.recordEvent(gw, corev1.EventTypeWarning, "AdminPasswordAsEnvVar", msg)
-		}
 		if adminPlan.Created {
 			msg := fmt.Sprintf("Generated the management API admin credential in Secret %s", adminPlan.SecretName)
 			log.Info(msg)

@@ -77,7 +77,7 @@ func TestBuildAdminCredentialsOverlay_Sources(t *testing.T) {
 		{"", "file"}, // unset defaults to file, like the CRD default
 	} {
 		t.Run("source="+tc.source, func(t *testing.T) {
-			out, err := buildAdminCredentialsOverlay(adminCredsGateway(tc.source), "", true, "")
+			out, err := buildAdminCredentialsOverlay(adminCredsGateway(tc.source), "")
 			require.NoError(t, err)
 
 			users := basicUsers(t, out)
@@ -96,13 +96,13 @@ func TestBuildAdminCredentialsOverlay_Sources(t *testing.T) {
 }
 
 func TestBuildAdminCredentialsOverlay_Unset(t *testing.T) {
-	out, err := buildAdminCredentialsOverlay(&apiv1.APIGateway{}, "", true, "")
+	out, err := buildAdminCredentialsOverlay(&apiv1.APIGateway{}, "")
 	require.NoError(t, err)
 	assert.Empty(t, out)
 }
 
 func TestBuildAdminCredentialsOverlay_InvalidSource(t *testing.T) {
-	_, err := buildAdminCredentialsOverlay(adminCredsGateway("vault"), "", true, "")
+	_, err := buildAdminCredentialsOverlay(adminCredsGateway("vault"), "")
 	require.Error(t, err)
 }
 
@@ -136,7 +136,7 @@ gateway:
       podAnnotations:
         team: platform
 `
-	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), configMapValues, true, "")
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), configMapValues)
 	require.NoError(t, err)
 	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ gateway:
               password: dev-plain
               roles: ["developer"]
 `
-	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceEnv), configMapValues, true, "")
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceEnv), configMapValues)
 	require.NoError(t, err)
 	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func TestAdminCredentialsOverlayWithoutConfigRefUsers(t *testing.T) {
 		"unrelated values": "commonLabels:\n  team: platform\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), values, true, "")
+			overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), values)
 			require.NoError(t, err)
 			baseFile := "gateway:\n  config:\n    controller:\n      auth:\n        basic:\n          enabled: true\n          users:\n            - {username: admin, password: admin, roles: [admin]}\n"
 			merged, err := helm.MergeValuesYAML(baseFile, overlay)
@@ -211,7 +211,7 @@ func TestAdminCredentialsOverlayWithoutConfigRefUsers(t *testing.T) {
 }
 
 func TestAdminCredentialsOverlayRejectsInvalidConfigRefValues(t *testing.T) {
-	_, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "gateway: [unclosed", true, "")
+	_, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "gateway: [unclosed")
 	require.Error(t, err)
 }
 

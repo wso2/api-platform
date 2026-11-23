@@ -272,32 +272,6 @@ func AdminCredentialsFromSecret(ctx context.Context, k8sClient client.Client, ga
 	return username, password, nil
 }
 
-// CheckAdminCredentialsForEnvDelivery fails when spec.adminCredentials cannot be passed
-// to the gateway-controller as an environment variable unchanged: with source "file"
-// (the default) the operator trims trailing spaces, tabs and newlines, as the
-// gateway-controller does when it reads the mounted file, but an environment variable
-// keeps them. The operator uses an environment variable only with a gateway chart that
-// cannot mount the password as a file; the two would then disagree on the password.
-func CheckAdminCredentialsForEnvDelivery(ctx context.Context, k8sClient client.Client, gateway *apiv1.APIGateway) error {
-	creds := gateway.Spec.AdminCredentials
-	if creds == nil || AdminCredentialsSource(creds.Source) != apiv1.AdminCredentialsSourceFile {
-		return nil
-	}
-	ref := creds.PasswordSecretRef.DeepCopy()
-	ref.Optional = nil
-	raw, err := secretsource.Resolve(ctx, k8sClient, "spec.adminCredentials.passwordSecretRef",
-		apiv1.SecretValueSource{ValueFrom: ref}, gateway.Namespace)
-	if err != nil {
-		return err
-	}
-	if raw != PasswordAsGatewayReadsIt(raw, apiv1.AdminCredentialsSourceFile) {
-		return fmt.Errorf("spec.adminCredentials.passwordSecretRef: the value of key %q in secret %s/%s ends in whitespace, "+
-			"and the gateway chart in use passes the password as an environment variable, which keeps it; "+
-			"remove the trailing whitespace or use a gateway chart that supports passwordSecretRef", ref.Key, gateway.Namespace, ref.Name)
-	}
-	return nil
-}
-
 // ResolveBasicCredentials returns the basic-auth credentials the operator sends to a
 // registered gateway's management API.
 //

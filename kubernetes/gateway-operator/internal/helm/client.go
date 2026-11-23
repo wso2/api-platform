@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -55,26 +54,20 @@ const FeatureBasicAuthPasswordSecretRef = "basicAuthPasswordSecretRef"
 // the chart does not declare a feature listed in InstallOrUpgradeOptions.RequiredFeatures.
 var ErrChartFeatureUnsupported = errors.New("gateway Helm chart does not support a required feature")
 
-// declaredChartFeatures returns the features ch lists in its ChartFeaturesAnnotation.
-func declaredChartFeatures(ch *chart.Chart) map[string]bool {
-	declared := map[string]bool{}
-	if ch != nil && ch.Metadata != nil {
-		for _, f := range strings.Split(ch.Metadata.Annotations[ChartFeaturesAnnotation], ",") {
-			if f = strings.TrimSpace(f); f != "" {
-				declared[f] = true
-			}
-		}
-	}
-	return declared
-}
-
 // checkChartFeatures returns ErrChartFeatureUnsupported (wrapped) when ch does not list
 // every required feature in its ChartFeaturesAnnotation.
 func checkChartFeatures(ch *chart.Chart, required []string) error {
 	if len(required) == 0 {
 		return nil
 	}
-	declared := declaredChartFeatures(ch)
+	declared := map[string]bool{}
+	if ch.Metadata != nil {
+		for _, f := range strings.Split(ch.Metadata.Annotations[ChartFeaturesAnnotation], ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				declared[f] = true
+			}
+		}
+	}
 	for _, f := range required {
 		if !declared[f] {
 			name, version := "", ""
@@ -84,74 +77,6 @@ func checkChartFeatures(ch *chart.Chart, required []string) error {
 			return fmt.Errorf("%w: chart %s %s does not declare %q in its %s annotation; use a gateway chart version that supports it",
 				ErrChartFeatureUnsupported, name, version, f, ChartFeaturesAnnotation)
 		}
-	}
-	return nil
-}
-
-// ChartRef identifies the gateway chart for ChartFeatures, as InstallOrUpgradeOptions does.
-type ChartRef struct {
-	ChartPath string
-	ChartName string
-	Version   string
-	Username  string
-	Password  string
-	Insecure  bool
-}
-
-// chartFeaturesCache holds the features of remote chart versions already loaded. A
-// published chart version never changes, so it is read once per operator process.
-var chartFeaturesCache sync.Map // "name@version" -> map[string]bool
-
-// ChartFeatures returns the features the chart declares in its ChartFeaturesAnnotation,
-// so values can be built for what that chart version supports. A remote chart with a
-// pinned version is loaded once and cached; a local chart path is read every time.
-func (c *Client) ChartFeatures(ref ChartRef) (map[string]bool, error) {
-	cacheKey := ""
-	if ref.ChartPath == "" && ref.Version != "" {
-		cacheKey = ref.ChartName + "@" + ref.Version
-		if cached, ok := chartFeaturesCache.Load(cacheKey); ok {
-			return cached.(map[string]bool), nil
-		}
-	}
-	loadPath := ref.ChartPath
-	if loadPath == "" {
-		if err := c.login(ref.ChartName, ref.Username, ref.Password, ref.Insecure); err != nil {
-			return nil, err
-		}
-		locator := action.NewInstall(&action.Configuration{RegistryClient: c.registryClient})
-		locator.Version = ref.Version
-		located, err := locator.ChartPathOptions.LocateChart(ref.ChartName, c.settings)
-		if err != nil {
-			return nil, fmt.Errorf("failed to locate chart %s: %w", ref.ChartName, err)
-		}
-		loadPath = located
-	}
-	ch, err := loader.Load(loadPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load chart: %w", err)
-	}
-	features := declaredChartFeatures(ch)
-	if cacheKey != "" {
-		chartFeaturesCache.Store(cacheKey, features)
-	}
-	return features, nil
-}
-
-// login authenticates to the chart's OCI registry when credentials are given.
-func (c *Client) login(chartName, username, password string, insecure bool) error {
-	if username == "" || password == "" {
-		return nil
-	}
-	registryHost, err := extractRegistryHost(chartName)
-	if err != nil {
-		return fmt.Errorf("failed to extract registry host: %w", err)
-	}
-	if err := c.registryClient.Login(
-		registryHost,
-		registry.LoginOptBasicAuth(username, password),
-		registry.LoginOptInsecure(insecure),
-	); err != nil {
-		return fmt.Errorf("failed to login to registry: %w", err)
 	}
 	return nil
 }
@@ -317,8 +242,19 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 		chartLoadPath = opts.ChartPath
 	} else {
 		// Handle registry authentication if provided
-		if err := c.login(opts.ChartName, opts.Username, opts.Password, opts.Insecure); err != nil {
-			return err
+		if opts.Username != "" && opts.Password != "" {
+			registryHost, err := extractRegistryHost(opts.ChartName)
+			if err != nil {
+				return fmt.Errorf("failed to extract registry host: %w", err)
+			}
+
+			if err := c.registryClient.Login(
+				registryHost,
+				registry.LoginOptBasicAuth(opts.Username, opts.Password),
+				registry.LoginOptInsecure(opts.Insecure),
+			); err != nil {
+				return fmt.Errorf("failed to login to registry: %w", err)
+			}
 		}
 
 		// Locate and load chart from remote repository or OCI registry
@@ -375,8 +311,19 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 		chartLoadPath = opts.ChartPath
 	} else {
 		// Handle registry authentication if provided
-		if err := c.login(opts.ChartName, opts.Username, opts.Password, opts.Insecure); err != nil {
-			return err
+		if opts.Username != "" && opts.Password != "" {
+			registryHost, err := extractRegistryHost(opts.ChartName)
+			if err != nil {
+				return fmt.Errorf("failed to extract registry host: %w", err)
+			}
+
+			if err := c.registryClient.Login(
+				registryHost,
+				registry.LoginOptBasicAuth(opts.Username, opts.Password),
+				registry.LoginOptInsecure(opts.Insecure),
+			); err != nil {
+				return fmt.Errorf("failed to login to registry: %w", err)
+			}
 		}
 
 		// Locate and load chart from remote repository or OCI registry
