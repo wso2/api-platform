@@ -308,6 +308,7 @@ data:
     return_request_id_in_response = {{ $router.http_listener.return_request_id_in_response }}
     path_with_escaped_slashes_action = {{ $router.http_listener.path_with_escaped_slashes_action | quote }}
     allow_path_case_variants = {{ $router.http_listener.allow_path_case_variants | default false }}
+    xff_num_trusted_hops = {{ $router.http_listener.xff_num_trusted_hops | default 0 | int64 }}
 
     [router.http_listener.timeouts]
     request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}

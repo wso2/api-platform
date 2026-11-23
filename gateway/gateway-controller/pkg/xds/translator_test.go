@@ -38,6 +38,7 @@ import (
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+	headermutationv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_mutation/v3"
 	rbacv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
@@ -4185,6 +4186,59 @@ func TestSnapshotReferencesSDSSecret(t *testing.T) {
 		"a cluster's CombinedValidationContext must be recognised")
 	assert.False(t, SnapshotReferencesSDSSecret(clusters, listeners, "some-unreferenced-secret"),
 		"a secret name referenced by nothing in the snapshot must report false")
+}
+
+// The HCM resolves the client address from the peer or xff_num_trusted_hops, never from a
+// caller-set X-Forwarded-For, and keeps a caller's x-request-id as before.
+func TestTranslator_CreateListener_ClientAddress(t *testing.T) {
+	for _, hops := range []uint32{0, 2} {
+		t.Run(fmt.Sprintf("xff_num_trusted_hops=%d", hops), func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.XffNumTrustedHops = hops
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+			require.NoError(t, err)
+
+			lis, _, err := translator.createListener(nil, false, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			require.NotNil(t, manager.GetUseRemoteAddress(), "use_remote_address must be explicitly set")
+			assert.True(t, manager.GetUseRemoteAddress().GetValue())
+			assert.Equal(t, hops, manager.GetXffNumTrustedHops())
+			assert.True(t, manager.GetPreserveExternalRequestId())
+		})
+	}
+}
+
+// The first HTTP filter overwrites X-Forwarded-For with the resolved client address, so the
+// policy engine, the access log and the backend never see a caller-set entry.
+func TestTranslator_CreateListener_ClientAddressFilterFirst(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+	require.NoError(t, err)
+
+	lis, _, err := translator.createListener(nil, false, false)
+	require.NoError(t, err)
+
+	filters := extractHCM(t, lis).GetHttpFilters()
+	require.NotEmpty(t, filters)
+	assert.Equal(t, constants.ClientAddressFilterName, filters[0].GetName())
+
+	mutation := &headermutationv3.HeaderMutation{}
+	require.NoError(t, filters[0].GetTypedConfig().UnmarshalTo(mutation))
+	reqMutations := mutation.GetMutations().GetRequestMutations()
+	require.Len(t, reqMutations, 1)
+	appendOp := reqMutations[0].GetAppend()
+	require.NotNil(t, appendOp)
+	assert.Equal(t, "x-forwarded-for", appendOp.GetHeader().GetKey())
+	assert.Equal(t, "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%", appendOp.GetHeader().GetValue())
+	assert.Equal(t, core.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD, appendOp.GetAppendAction())
 }
 
 // The HCM uses SANITIZE_SET, so a forged x-forwarded-client-cert never
