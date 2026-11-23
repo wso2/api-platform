@@ -274,6 +274,37 @@ func TestScriptedControlsMatchWithoutRegardToCaseAndPerPhase(t *testing.T) {
 	}
 }
 
+func TestScriptedLocation(t *testing.T) {
+	h := New().Handler()
+	for _, ph := range []phase{phaseRequest, phaseResponse} {
+		hdr := map[string]string{
+			controlName(ph, "Status"):   "307",
+			controlName(ph, "Location"): "https://elsewhere.test/hook?x=1",
+		}
+		rec := post(h, hookPath(ph), payload(t, ph, hdr))
+		if rec.Code != http.StatusTemporaryRedirect || rec.Header().Get("Location") != "https://elsewhere.test/hook?x=1" || rec.Body.String() != "{}" {
+			t.Fatalf("%s: got %d Location %q body %q", ph, rec.Code, rec.Header().Get("Location"), rec.Body.String())
+		}
+	}
+	if rec := post(h, hookPath(phaseRequest), payload(t, phaseRequest, nil)); rec.Header().Get("Location") != "" {
+		t.Fatalf("no Location control must send no Location header, got %q", rec.Header().Get("Location"))
+	}
+	other := map[string]string{controlName(phaseResponse, "Location"): "http://elsewhere.test"}
+	if rec := post(h, hookPath(phaseRequest), payload(t, phaseRequest, other)); rec.Header().Get("Location") != "" {
+		t.Fatalf("the other phase's Location must be ignored, got %q", rec.Header().Get("Location"))
+	}
+	for _, value := range []string{"/relative", "ftp://elsewhere.test", "http://", "not a url", "http://elsewhere.test/%zz"} {
+		hdr := map[string]string{controlName(phaseRequest, "Location"): value}
+		if rec := post(h, hookPath(phaseRequest), payload(t, phaseRequest, hdr)); rec.Code != http.StatusBadRequest {
+			t.Fatalf("Location %q: got %d, want 400", value, rec.Code)
+		}
+	}
+	hdr := map[string]string{controlName(phaseRequest, "Mode"): "reflect", controlName(phaseRequest, "Location"): "http://elsewhere.test"}
+	if rec := post(h, hookPath(phaseRequest), payload(t, phaseRequest, hdr)); rec.Code != http.StatusBadRequest {
+		t.Fatalf("reflect with a location: got %d, want 400", rec.Code)
+	}
+}
+
 func TestScriptedRejectsBadControls(t *testing.T) {
 	h := New().Handler()
 	for name, hdr := range map[string]map[string]string{

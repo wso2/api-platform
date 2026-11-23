@@ -29,6 +29,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -59,10 +60,11 @@ const (
 
 // controls is the reply a scripted call asked for.
 type controls struct {
-	reply   []byte
-	status  int
-	delay   time.Duration
-	reflect bool
+	reply    []byte
+	status   int
+	delay    time.Duration
+	reflect  bool
+	location string
 }
 
 // scripted serves one scripted hook. pathReflect selects reflect mode from the route, for
@@ -109,6 +111,9 @@ func (s *Service) scripted(ph phase, pathReflect bool) http.HandlerFunc {
 			status = http.StatusOK
 		}
 		w.Header().Set("Content-Type", jsonContentType)
+		if ctl.location != "" {
+			w.Header().Set("Location", ctl.location)
+		}
 		w.WriteHeader(status)
 		if _, err := w.Write(body); err != nil {
 			log.Printf("interceptor: failed to write scripted reply: %v", err)
@@ -232,7 +237,7 @@ func decodeStringMap(fields map[string]json.RawMessage, name string) (map[string
 func parseControls(ph phase, headers map[string]string, pathReflect bool) (controls, error) {
 	ctl := controls{reply: []byte(defaultReplyBody), status: http.StatusOK, reflect: pathReflect}
 	prefix := controlPrefix + string(ph) + "-"
-	var haveReply, haveStatus bool
+	var haveReply, haveStatus, haveLocation bool
 	seen := make(map[string]string, len(headers))
 	for name, value := range headers {
 		lower := strings.ToLower(name)
@@ -263,6 +268,12 @@ func parseControls(ph phase, headers map[string]string, pathReflect bool) (contr
 				return controls{}, fmt.Errorf("%s must be an integer from 0 to %d", name, maxScriptedDelay.Milliseconds())
 			}
 			ctl.delay = time.Duration(n) * time.Millisecond
+		case "location":
+			target, err := url.Parse(value)
+			if err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Host == "" {
+				return controls{}, fmt.Errorf("%s must be an absolute http or https URL", name)
+			}
+			ctl.location, haveLocation = value, true
 		case "mode":
 			if !strings.EqualFold(value, modeReflect) {
 				return controls{}, fmt.Errorf("%s must be %q", name, modeReflect)
@@ -272,8 +283,8 @@ func parseControls(ph phase, headers map[string]string, pathReflect bool) (contr
 			return controls{}, fmt.Errorf("%s is not a known control", name)
 		}
 	}
-	if ctl.reflect && (haveReply || haveStatus) {
-		return controls{}, fmt.Errorf("reflect cannot be combined with a reply or a status")
+	if ctl.reflect && (haveReply || haveStatus || haveLocation) {
+		return controls{}, fmt.Errorf("reflect cannot be combined with a reply, a status or a location")
 	}
 	return ctl, nil
 }

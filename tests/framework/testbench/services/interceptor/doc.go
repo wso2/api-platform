@@ -44,6 +44,8 @@
 //	X-Testbench-Interceptor-Request-Status    the status to answer with, 200-599 (default 200)
 //	X-Testbench-Interceptor-Request-Delay-Ms  wait this long first, 0-10000
 //	X-Testbench-Interceptor-Request-Mode      "reflect": answer with the payload received
+//	X-Testbench-Interceptor-Request-Location  an absolute http or https URL to send as the
+//	                                          Location header, for a redirect status
 //
 // and the same with Response in place of Request. The reply bytes are sent as given, so a
 // scenario can answer with malformed JSON on purpose.
@@ -53,7 +55,7 @@
 // application/json, the payload as the body. In the response phase the reply replaces the
 // response body with the payload and sets the content type. Reflect is also selected by the path
 // POST /scripted/<id>/reflect/handle-request (or handle-response), so it works when no request
-// headers reach the interceptor. Reflect cannot be combined with a reply or a status.
+// headers reach the interceptor. Reflect cannot be combined with a reply, a status or a location.
 //
 // # HTTPS
 //
