@@ -43,9 +43,9 @@ describe('AppPageContent', () => {
 
     const expected: Record<string, string> = {
       Documentation: 'https://wso2.com/api-platform/docs/',
-      Support: 'https://discord.com/invite/wso2',
-      'Terms of Use': 'https://wso2.com/api-platform/terms-of-use/',
-      'Privacy Policy': 'https://wso2.com/privacy-policy',
+      Support: 'https://choreolabs.com/subscription',
+      'Terms of Use': 'https://choreolabs.com/cloud/terms-of-use/',
+      'Privacy Policy': 'https://choreolabs.com/privacy-policy',
     };
     Object.entries(expected).forEach(([name, href]) => {
       const link = screen.getByRole('link', { name });

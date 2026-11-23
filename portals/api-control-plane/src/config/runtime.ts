@@ -565,7 +565,7 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().PRIVACY_POLICY_LINK ||
     fromWindow().privacyPolicyLink ||
     import.meta.env.VITE_PRIVACY_POLICY_LINK ||
-    'https://wso2.com/privacy-policy',
+    'https://choreolabs.com/privacy-policy',
   cookiePolicyLink:
     fromWindow().COOKIE_POLICY_LINK ||
     fromWindow().cookiePolicyLink ||
@@ -582,12 +582,12 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().SUPPORT_LINK ||
     fromWindow().supportLink ||
     import.meta.env.VITE_SUPPORT_LINK ||
-    'https://discord.com/invite/wso2',
+    'https://choreolabs.com/subscription',
   termsOfUseLink:
     fromWindow().TERMS_OF_USE_LINK ||
     fromWindow().termsOfUseLink ||
     import.meta.env.VITE_TERMS_OF_USE_LINK ||
-    'https://wso2.com/api-platform/terms-of-use/',
+    'https://choreolabs.com/cloud/terms-of-use/',
   toSServiceName:
     fromWindow().TOS_SERVICE_NAME ||
     fromWindow().toSServiceName ||
