@@ -940,6 +940,12 @@ func TestAcceptsAzureCredential(t *testing.T) {
 		{"a token for another resource", map[string]string{"Authorization": "Bearer " + other}, "the-key", false},
 		{"Bearer with no token", map[string]string{"Authorization": "Bearer "}, "the-key", false},
 		{"a bad bearer with the right key", map[string]string{"Authorization": "Bearer not-a-testbench-token", "api-key": "the-key"}, "the-key", false},
+		{"a bare Bearer with the right key", map[string]string{"Authorization": "Bearer", "api-key": "the-key"}, "the-key", false},
+		{"an empty Authorization with the right key", map[string]string{"Authorization": "", "api-key": "the-key"}, "the-key", false},
+		{"a lowercase bearer with the right key", map[string]string{"Authorization": "bearer " + cognitive, "api-key": "the-key"}, "the-key", false},
+		{"a lowercase bearer alone", map[string]string{"Authorization": "bearer " + cognitive}, "the-key", false},
+		{"another scheme with the right key", map[string]string{"Authorization": "Basic dXNlcjpwYXNz", "api-key": "the-key"}, "the-key", false},
+		{"a token with no scheme", map[string]string{"Authorization": cognitive}, "the-key", false},
 		{"the right key alone", map[string]string{"api-key": "the-key"}, "the-key", true},
 		{"a wrong key", map[string]string{"api-key": "wrong"}, "the-key", false},
 		{"nothing", nil, "the-key", false},
@@ -952,6 +958,53 @@ func TestAcceptsAzureCredential(t *testing.T) {
 				r.Header.Set(k, v)
 			}
 			require.Equal(t, tc.want, AcceptsAzureCredential(r, tc.apiKey))
+		})
+	}
+}
+
+// A server receives "Bearer " with its trailing space trimmed; the key must not rescue it.
+func TestAcceptsAzureCredentialRejectsAnEmptyBearerSentWithAKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !AcceptsAzureCredential(r, "the-key") {
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer ")
+	req.Header.Set("api-key", "the-key")
+	resp, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestBearerToken(t *testing.T) {
+	cases := []struct {
+		name      string
+		values    []string
+		wantToken string
+		wantAuth  bool
+	}{
+		{"no Authorization header", nil, "", false},
+		{"Bearer and a token", []string{"Bearer abc"}, "abc", true},
+		{"a bare Bearer", []string{"Bearer"}, "", true},
+		{"an empty header", []string{""}, "", true},
+		{"a lowercase scheme", []string{"bearer abc"}, "", true},
+		{"another scheme", []string{"Basic abc"}, "", true},
+		{"two headers", []string{"Bearer abc", "Bearer def"}, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
+			for _, v := range tc.values {
+				r.Header.Add("Authorization", v)
+			}
+			token, hasAuth := BearerToken(r)
+			require.Equal(t, tc.wantToken, token)
+			require.Equal(t, tc.wantAuth, hasAuth)
 		})
 	}
 }

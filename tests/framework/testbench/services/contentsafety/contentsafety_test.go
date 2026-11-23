@@ -216,11 +216,29 @@ func TestAnalyzeRejectsAnyOtherBearerToken(t *testing.T) {
 	}
 }
 
-// A bearer token decides on its own: a rejected token is not rescued by a key.
-func TestABearerTokenIsJudgedEvenWithAKey(t *testing.T) {
+// An Authorization header decides on its own: a rejected one is not rescued by a key.
+func TestAnAuthorizationHeaderIsJudgedEvenWithAKey(t *testing.T) {
+	for name, header := range map[string]string{
+		"a token for another audience": "Bearer " + entraToken(t, entra.FoundryAudience),
+		"a lowercase bearer":           "bearer " + entraToken(t, entra.CognitiveAudience),
+		"a bare Bearer":                "Bearer",
+		"another scheme":               "Basic dXNlcjpwYXNz",
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, analyzeURL, strings.NewReader(`{"text":"hello"}`))
+			req.Header.Set("Authorization", header)
+			req.Header.Set(keyHeader, SubscriptionKey)
+			recorder := httptest.NewRecorder()
+			New().Handler().ServeHTTP(recorder, req)
+			require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		})
+	}
+}
+
+// The scheme must be exactly "Bearer", as the policies send it.
+func TestAnalyzeRejectsALowercaseBearerScheme(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, analyzeURL, strings.NewReader(`{"text":"hello"}`))
-	req.Header.Set("Authorization", "Bearer "+entraToken(t, entra.FoundryAudience))
-	req.Header.Set(keyHeader, SubscriptionKey)
+	req.Header.Set("Authorization", "bearer "+entraToken(t, entra.CognitiveAudience))
 	recorder := httptest.NewRecorder()
 	New().Handler().ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusUnauthorized, recorder.Code)

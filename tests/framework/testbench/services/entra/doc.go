@@ -117,9 +117,11 @@
 //     the app identity's real client ID, and issues tokens valid for 3599 seconds rather than
 //     Container Apps' 24 hours. Its 400 messages for a malformed request are its own.
 //
-// The fixture federated token is "testbench-federated-identity-token" and every issued token
-// starts with "testbench-entra.", so a response body or log line without either discloses no
-// credential.
+// The fixture credentials are the federated token "testbench-federated-identity-token" and the
+// identity header IdentityHeader, and every issued token starts with "testbench-entra.", so a
+// response body or log line with none of the three discloses no fixture credential. The request
+// logs return the client assertion and identity header as the caller sent them, so callers must
+// send fixture credentials only.
 //
 // The oauth2 service is not reused: it serves plain HTTP only, a different path, one state per
 // block rather than per tenant, ignores client assertions, and has neither Entra ID's error shape

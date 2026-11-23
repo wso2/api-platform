@@ -46,10 +46,25 @@ const (
 	HeaderAppID = "X-Testbench-Entra-Appid"
 )
 
+// BearerToken returns the token of a single Authorization header of the exact form "Bearer <token>",
+// and whether r has an Authorization header at all. Any other Authorization yields an empty token.
+func BearerToken(r *http.Request) (token string, hasAuthorization bool) {
+	values, ok := r.Header["Authorization"]
+	if !ok {
+		return "", false
+	}
+	if len(values) == 1 {
+		if token, ok := strings.CutPrefix(values[0], "Bearer "); ok {
+			return token, true
+		}
+	}
+	return "", true
+}
+
 // AcceptsAzureCredential reports whether r carries an issued token for either Azure audience or, with
-// no bearer token, the api-key apiKey. An empty apiKey accepts no key.
+// no Authorization header, the api-key apiKey. An empty apiKey accepts no key.
 func AcceptsAzureCredential(r *http.Request, apiKey string) bool {
-	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+	if token, ok := BearerToken(r); ok {
 		claims, valid := ParseToken(token)
 		return valid && (claims.Aud == CognitiveAudience || claims.Aud == FoundryAudience)
 	}

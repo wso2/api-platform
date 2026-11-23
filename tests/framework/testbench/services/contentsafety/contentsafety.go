@@ -239,9 +239,9 @@ func (s *Service) analyze(w http.ResponseWriter, r *http.Request) {
 
 // authorized reports whether the request carries a credential Azure would accept: a Microsoft
 // Entra ID bearer token for Azure AI services, as the testbench Entra mock issues it, or the
-// subscription key. A bearer token is judged on its own: a rejected token is not rescued by a key.
+// subscription key. An Authorization header is judged on its own: a key never rescues it.
 func authorized(r *http.Request) bool {
-	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+	if token, ok := entra.BearerToken(r); ok {
 		claims, valid := entra.ParseToken(token)
 		return valid && claims.Aud == entra.CognitiveAudience
 	}
