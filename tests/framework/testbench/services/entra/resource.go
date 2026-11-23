@@ -46,6 +46,16 @@ const (
 	HeaderAppID = "X-Testbench-Entra-Appid"
 )
 
+// AcceptsAzureCredential reports whether r carries an issued token for either Azure audience or, with
+// no bearer token, the api-key apiKey. An empty apiKey accepts no key.
+func AcceptsAzureCredential(r *http.Request, apiKey string) bool {
+	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+		claims, valid := ParseToken(token)
+		return valid && (claims.Aud == CognitiveAudience || claims.Aud == FoundryAudience)
+	}
+	return apiKey != "" && r.Header.Get("api-key") == apiKey
+}
+
 // resource serves a resource protected by tokens for audience: any method, any path below it.
 func resource(audience string) func(string, http.ResponseWriter, *http.Request) {
 	return func(_ string, w http.ResponseWriter, r *http.Request) {

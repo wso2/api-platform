@@ -19,6 +19,7 @@
 package openai
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,6 +28,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 )
 
 func send(t *testing.T, path, body string) *httptest.ResponseRecorder {
@@ -430,4 +433,118 @@ func TestScriptedRepliesAreIndependentUnderConcurrentUse(t *testing.T) {
 	for i := 0; i < requests; i++ {
 		require.NoError(t, <-errs)
 	}
+}
+
+const azureChatPath = AzurePathPrefix + "/openai/deployments/coding/chat/completions?api-version=2024-10-21"
+
+// entraToken is a token the testbench Entra mock issues for audience.
+func entraToken(t *testing.T, audience string) string {
+	t.Helper()
+	claims, err := json.Marshal(entra.Claims{Aud: audience, Tid: "7f3c2a10-4b5e-4c6d-8e9f-0a1b2c3d4e5f", AppID: "system-assigned", N: 1})
+	require.NoError(t, err)
+	return entra.TokenPrefix + base64.RawURLEncoding.EncodeToString(claims)
+}
+
+// postAzureChat posts a chat request to the Azure route; an empty path means the default deployment URL.
+func postAzureChat(t *testing.T, path string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	if path == "" {
+		path = azureChatPath
+	}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path,
+		strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	New().Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+// azureErrorCode returns the code of an answer in Azure's error envelope.
+func azureErrorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body), rec.Body.String())
+	return body.Error.Code
+}
+
+// azureChatReply returns the reply of a chat completion.
+func azureChatReply(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var completion struct {
+		Object  string `json:"object"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &completion), rec.Body.String())
+	require.Equal(t, "chat.completion", completion.Object)
+	require.Len(t, completion.Choices, 1)
+	return completion.Choices[0].Message.Content
+}
+
+func TestAzureChatAnswersWithTheDeploymentName(t *testing.T) {
+	rec := postAzureChat(t, "", map[string]string{"api-key": ValidAPIKey})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "coding", azureChatReply(t, rec))
+
+	rec = postAzureChat(t, AzurePathPrefix+"/openai/deployments/travel/chat/completions?api-version=2024-10-21", map[string]string{"api-key": ValidAPIKey})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "travel", azureChatReply(t, rec))
+}
+
+func TestAzureChatAcceptsEntraTokensForBothAudiences(t *testing.T) {
+	for _, audience := range []string{entra.CognitiveAudience, entra.FoundryAudience} {
+		rec := postAzureChat(t, "", map[string]string{"Authorization": "Bearer " + entraToken(t, audience)})
+		require.Equal(t, http.StatusOK, rec.Code, "%s: %s", audience, rec.Body.String())
+		require.Equal(t, "coding", azureChatReply(t, rec))
+	}
+}
+
+func TestAzureChatRejectsOtherCredentials(t *testing.T) {
+	for name, headers := range map[string]map[string]string{
+		"no credential":                nil,
+		"a wrong key":                  {"api-key": "wrong"},
+		"a token for another resource": {"Authorization": "Bearer " + entraToken(t, "api://other")},
+	} {
+		rec := postAzureChat(t, "", headers)
+		require.Equal(t, http.StatusUnauthorized, rec.Code, name)
+		require.Equal(t, "401", azureErrorCode(t, rec), name)
+	}
+}
+
+func TestAzureChatRequiresAnAPIVersion(t *testing.T) {
+	rec := postAzureChat(t, AzurePathPrefix+"/openai/deployments/coding/chat/completions", map[string]string{"api-key": ValidAPIKey})
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "400", azureErrorCode(t, rec))
+}
+
+func TestAzureChatChecksTheCredentialBeforeTheAPIVersion(t *testing.T) {
+	rec := postAzureChat(t, AzurePathPrefix+"/openai/deployments/coding/chat/completions", nil)
+	require.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
+	require.Equal(t, "401", azureErrorCode(t, rec))
+}
+
+func TestOpenAIChatStillTakesNoCredential(t *testing.T) {
+	rec := send(t, "/openai/v1/chat/completions", `{"messages":[{"role":"user","content":"hi"}]}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NotEmpty(t, azureChatReply(t, rec))
+}
+
+// The openai-to-azure-openai-transformer suite sends an Azure deployment path with no key and
+// expects the default completion, so only the prefixed path takes the Azure credential rule.
+func TestAzureDeploymentPathOutsideThePrefixKeepsTheDefaultChat(t *testing.T) {
+	rec := send(t, "/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21",
+		`{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	model, content := chatContent(t, rec)
+	require.Equal(t, "gpt-4o", model)
+	require.Equal(t, "Hello from the testbench.", content)
 }

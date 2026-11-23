@@ -921,3 +921,37 @@ func TestIdentityEndpointStateIsScopedToTheBlock(t *testing.T) {
 	}
 	require.Equal(t, 0, identityRecorded(t, svc, "block-c", testManagedClientID).Count, "a block that sent nothing has an empty log")
 }
+
+func TestAcceptsAzureCredential(t *testing.T) {
+	svc := New()
+	token := func(scope string) string {
+		return issued(t, requestToken(t, svc, "t1", validForm(scope))).AccessToken
+	}
+	foundry, cognitive, other := token(foundryScope), token(cogScope), token("api://other/.default")
+
+	cases := []struct {
+		name    string
+		headers map[string]string
+		apiKey  string
+		want    bool
+	}{
+		{"a token for the Azure AI Foundry audience", map[string]string{"Authorization": "Bearer " + foundry}, "the-key", true},
+		{"a token for the Azure AI services audience", map[string]string{"Authorization": "Bearer " + cognitive}, "the-key", true},
+		{"a token for another resource", map[string]string{"Authorization": "Bearer " + other}, "the-key", false},
+		{"Bearer with no token", map[string]string{"Authorization": "Bearer "}, "the-key", false},
+		{"a bad bearer with the right key", map[string]string{"Authorization": "Bearer not-a-testbench-token", "api-key": "the-key"}, "the-key", false},
+		{"the right key alone", map[string]string{"api-key": "the-key"}, "the-key", true},
+		{"a wrong key", map[string]string{"api-key": "wrong"}, "the-key", false},
+		{"nothing", nil, "the-key", false},
+		{"nothing, when the service has no key", nil, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
+			for k, v := range tc.headers {
+				r.Header.Set(k, v)
+			}
+			require.Equal(t, tc.want, AcceptsAzureCredential(r, tc.apiKey))
+		})
+	}
+}

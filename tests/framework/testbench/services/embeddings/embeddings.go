@@ -128,7 +128,7 @@ func (s *Service) embeddings(w http.ResponseWriter, r *http.Request) {
 func (s *Service) azureEmbeddings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if !authorized(r) {
+	if !entra.AcceptsAzureCredential(r, APIKey) {
 		writeAzureError(w, http.StatusUnauthorized, "Access denied due to missing or invalid credentials.")
 		return
 	}
@@ -138,16 +138,6 @@ func (s *Service) azureEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeEmbeddings(w, r)
-}
-
-// authorized reports whether the request carries a credential Azure would accept: an Entra ID
-// bearer token for either Azure audience, or the api-key. A bearer token is judged on its own.
-func authorized(r *http.Request) bool {
-	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
-		claims, valid := entra.ParseToken(token)
-		return valid && (claims.Aud == entra.CognitiveAudience || claims.Aud == entra.FoundryAudience)
-	}
-	return r.Header.Get("api-key") == APIKey
 }
 
 // writeAzureError answers in Azure's error envelope.
