@@ -19,9 +19,10 @@
     "@wso2-enterprise/apip-cloud-ui-managed-portals": "file:../apip-cloud-ui-managed-portals",
     "@wso2-enterprise/apip-cloud-ui-settings": "file:../apip-cloud-ui-settings",
     "@wso2-enterprise/apip-cloud-ui-trial-status": "file:../apip-cloud-ui-trial-status",
+    "@wso2-enterprise/apip-cloud-ui-tracking": "file:../apip-cloud-ui-tracking",
     "@wso2-enterprise/apip-cloud-ui-user-profile": "file:../apip-cloud-ui-user-profile",
-    "@wso2/oxygen-ui": "0.26.0",
-    "@wso2/oxygen-ui-icons-react": "0.26.0",
+    "@wso2/oxygen-ui": "0.27.0",
+    "@wso2/oxygen-ui-icons-react": "0.27.0",
     "react": "19.2.3"
   },
   "devDependencies": {

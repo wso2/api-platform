@@ -151,6 +151,7 @@ export function ApiList({
   onClearTypeFilter,
   renderFirstRun,
   onFirstRunChange,
+  renderLoading,
 }: {
   typeFilter?: ApiTypeFilter | null;
   sidebar?: ReactNode;
@@ -163,6 +164,8 @@ export function ApiList({
   renderFirstRun?: (createApi: () => void) => ReactNode;
   /** Told whether the first-run replacement is showing, so a page can drop what it replaces. */
   onFirstRunChange?: (showing: boolean) => void;
+  /** Replaces the loader shown while the list loads, e.g. with a skeleton shaped like the page. */
+  renderLoading?: () => ReactNode;
 }) {
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
@@ -337,7 +340,11 @@ export function ApiList({
   // route's org/project resolve, and in that window `isLoading` is already
   // false with no data, which would flash the "No APIs yet" empty state.
   if (isPending) {
-    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+    return renderLoading ? (
+      <>{renderLoading()}</>
+    ) : (
+      <LoadingState label={intl.formatMessage(messages.loading)} />
+    );
   }
   if (error) {
     // The sidebar (the type statistics and their filters) outlives a failed list.

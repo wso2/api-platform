@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -161,28 +162,20 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 				modVersion = parts[1]
 			}
 
+			// A policy can be built at more than one major (backend-jwt@v1 and
+			// backend-jwt/v2@v2), so a candidate is taken only when it is the module
+			// the entry names and its version satisfies the entry's selector. There is
+			// no looser fallback: picking another candidate would record that
+			// candidate's version against this entry.
 			for _, c := range candidates {
-				// Prefer matching declared module path in candidate's go.mod
-				if c.GoModPath != "" {
-					if data, err := os.ReadFile(c.GoModPath); err == nil {
-						if mf, err := modfile.Parse(c.GoModPath, data, nil); err == nil && mf.Module != nil {
-							if mf.Module.Mod.Path == modPath {
-								// If version specified, ensure it matches discovered policy version (normalize 'v' prefix)
-								if modVersion == "" || strings.TrimPrefix(modVersion, "v") == strings.TrimPrefix(c.Version, "v") {
-									found = c
-									break
-								}
-							}
-						}
-					}
+				if candidateModulePath(c) != modPath {
+					continue
 				}
-
-				// Fallback to path comparison (support file paths as well)
-				cAbs, _ := filepath.Abs(c.Path)
-				if c.Path != "" && (c.Path == me.Gomodule || cAbs == c.Path) {
-					found = c
-					break
+				if modVersion != "" && !versionSelectorMatches(modVersion, candidateVersion(c)) {
+					continue
 				}
+				found = c
+				break
 			}
 		} else if me.PipPackage != "" {
 			for _, c := range candidates {
@@ -224,4 +217,48 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 	}
 
 	return nil
+}
+
+// candidateModulePath is the Go module path a discovered policy was resolved as:
+// the path discovery recorded, else the module declared in its go.mod.
+func candidateModulePath(c *types.DiscoveredPolicy) string {
+	if c.GoModulePath != "" {
+		return c.GoModulePath
+	}
+	if c.GoModPath == "" {
+		return ""
+	}
+	data, err := os.ReadFile(c.GoModPath)
+	if err != nil {
+		return ""
+	}
+	mf, err := modfile.Parse(c.GoModPath, data, nil)
+	if err != nil || mf.Module == nil {
+		return ""
+	}
+	return mf.Module.Mod.Path
+}
+
+// candidateVersion is the version a discovered policy was resolved at: the module
+// version for a gomodule entry, else the policy definition's version.
+func candidateVersion(c *types.DiscoveredPolicy) string {
+	if c.GoModuleVersion != "" {
+		return c.GoModuleVersion
+	}
+	return c.Version
+}
+
+var semverSelector = regexp.MustCompile(`^\d+(\.\d+){0,2}$`)
+
+// versionSelectorMatches reports whether version satisfies the version part of a
+// gomodule entry. A full version must match exactly; a major-only (v2) or
+// major.minor (v2.1) selector matches any version in that line, as `go get`
+// resolves it. A selector that is not a version (latest, a branch, a commit) cannot
+// be compared here, so it accepts the module's only resolution.
+func versionSelectorMatches(selector, version string) bool {
+	sel := strings.TrimPrefix(selector, "v")
+	if !semverSelector.MatchString(sel) {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimPrefix(version, "v")+".", sel+".")
 }

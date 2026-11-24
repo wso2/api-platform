@@ -47,6 +47,11 @@ spec:
       {{- $podAnnotations := omit (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.commonAnnotations)) "checksum/config" }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/gateway/gateway-config.yaml") . | sha256sum }}
+        {{- with (include "gateway-operator.adminCredentials" . | fromYaml).checksum }}
+        {{- /* The controller reads the mounted password only at startup, so a changed
+               password rolls the pod. */}}
+        checksum/admin-credentials: {{ . }}
+        {{- end }}
         {{- with $podAnnotations }}
         {{- include "gateway-operator.renderStringMap" . | nindent 8 }}
         {{- end }}
@@ -146,6 +151,15 @@ spec:
                 secretKeyRef:
                   name: {{ $redisSecret.name }}
                   key: {{ $redisSecret.key }}
+            {{- end }}
+            {{- range (include "gateway-operator.basicAuthUserSecrets" $ | fromYaml).list }}
+            {{- if eq .source "env" }}
+            - name: {{ .envVar }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | quote }}
+            {{- end }}
             {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
@@ -302,10 +316,10 @@ spec:
         {{- range $secretMounts }}
         - name: {{ .volume }}
           secret:
-            secretName: {{ .secretName }}
+            secretName: {{ .secretName | quote }}
             items:
-              - key: {{ .key }}
-                path: {{ .key }}
+              - key: {{ .key | quote }}
+                path: {{ .key | quote }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

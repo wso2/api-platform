@@ -22,11 +22,12 @@ import { useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
 import { useProject } from '@/api/resources/projects';
-import { ErrorState, LoadingState } from '@/components/StateViews';
+import { ErrorState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ApiList } from '@/pages/appShell/appShellPages/apis/listing';
 import type { ApiTypeFilter } from '@/pages/appShell/appShellPages/apis/listing/apiTypeFilter';
 import { ProjectMetadata } from './components/ProjectMetadata';
+import { ProjectHomeSkeleton } from './components/ProjectHomeSkeletons';
 import { ProjectWelcome } from './components/ProjectWelcome';
 import { ProjectStatistics } from './components/ProjectStatistics';
 
@@ -52,8 +53,10 @@ function ProjectHomePageContent() {
   const { organization } = useConsoleScope();
   const projectQuery = useProject(projectHandler);
 
-  if (projectQuery.isLoading) return <LoadingState label="Loading project" />;
-  if (projectQuery.error || !projectQuery.data) {
+  // The project and its APIs load side by side. Waiting for the project before even mounting the
+  // API list showed two loaders back to back ("Loading project", then "Loading APIs"), so the
+  // page keeps its layout while the project loads and the API list's loader is the only one.
+  if (!projectQuery.isLoading && (projectQuery.error || !projectQuery.data)) {
     return <ErrorState message={projectQuery.error?.message} title="Project not found" />;
   }
   const project = projectQuery.data;
@@ -61,7 +64,7 @@ function ProjectHomePageContent() {
   return (
     <>
       <Grid container spacing={3} sx={{ m: 0, width: '100%' }}>
-        {!showingWelcome && (
+        {!showingWelcome && project && (
           <>
             <Grid size={{ xs: 12 }}>
               <ProjectMetadata project={project} />
@@ -78,14 +81,19 @@ function ProjectHomePageContent() {
             typeFilter={apiTypeFilter}
             onClearTypeFilter={() => setApiTypeFilter(null)}
             onFirstRunChange={setShowingWelcome}
-            renderFirstRun={(createApi) => (
-              <ProjectWelcome
-                onCreateApi={createApi}
-                orgDisplayName={organization?.displayName ?? ''}
-                orgHandle={orgHandle}
-                projectName={project.displayName}
-              />
-            )}
+            renderLoading={() => <ProjectHomeSkeleton />}
+            renderFirstRun={(createApi) =>
+              project ? (
+                <ProjectWelcome
+                  onCreateApi={createApi}
+                  orgDisplayName={organization?.displayName ?? ''}
+                  orgHandle={orgHandle}
+                  projectName={project.displayName}
+                />
+              ) : (
+                <ProjectHomeSkeleton />
+              )
+            }
             sidebar={
               <ProjectStatistics
                 onTypeFilterChange={setApiTypeFilter}

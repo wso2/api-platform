@@ -19,13 +19,33 @@
 import { Box, Footer, PageContent } from '@wso2/oxygen-ui';
 import type { PageContentProps } from '@wso2/oxygen-ui';
 import { createContext, useContext } from 'react';
+import type { MouseEvent } from 'react';
 import { FormattedMessage } from 'react-intl';
 
-import { runtimeConfig } from '../config/runtime';
+import { isCookieConsentConfigured, runtimeConfig } from '../config/runtime';
 import { APP_FOOTER_ID } from '../pages/appShell/appLayoutConstants';
 
 /** Every footer link leaves the console, so each opens in a new tab, cut off from this page. */
 const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
+
+/** True for a well-formed `https:` URL with a host; anything else is not shown as a link. */
+const isHttpsUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname !== '';
+  } catch {
+    return false;
+  }
+};
+
+/** CookiePro's global once its script has loaded; `ToggleInfoDisplay` opens the preference center. */
+type CookieProWindow = Window & { OneTrust?: { ToggleInfoDisplay?: () => void } };
+
+/** Opens CookiePro's Cookie Preference Center, where the visitor reviews or changes their choices. */
+const openCookieSettings = (event: MouseEvent) => {
+  event.preventDefault();
+  (window as CookieProWindow).OneTrust?.ToggleInfoDisplay?.();
+};
 
 /**
  * True below an `AppPageContent`, which has already put the footer under its
@@ -77,6 +97,25 @@ function PageFooter() {
             description="Footer link to the Privacy Policy page"
           />
         </Footer.Link>
+        {/* The cookie banner is cloud only; it is loaded when both of its ids are configured and valid. */}
+        {isCookieConsentConfigured(runtimeConfig) && (
+          <Footer.Link href="#" onClick={openCookieSettings}>
+            <FormattedMessage
+              id="appLayout.footer.cookieSettings"
+              defaultMessage="Cookie Settings"
+              description="Footer link that opens the cookie preference center, shown where the cookie banner is loaded"
+            />
+          </Footer.Link>
+        )}
+        {isHttpsUrl(runtimeConfig.cookiePolicyLink) && (
+          <Footer.Link href={runtimeConfig.cookiePolicyLink} {...NEW_TAB}>
+            <FormattedMessage
+              id="appLayout.footer.cookiePolicy"
+              defaultMessage="Cookie Policy"
+              description="Footer link to the Cookie Policy page, shown where a deployment sets one"
+            />
+          </Footer.Link>
+        )}
       </Footer>
     </Box>
   );

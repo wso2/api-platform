@@ -84,11 +84,25 @@ gateway:
       auth:
         basic:
           enabled: true
-          users:
-            - username: "admin"
-              password: "admin"
-              password_hashed: false
-              roles: ["admin"]
+          # Each user sets either password or passwordSecretRef, never both.
+          # passwordSecretRef reads the password from a Kubernetes Secret instead of
+          # writing it into the ConfigMap. source: env (default) injects it as
+          # APIP_GW_CONTROLLER_AUTH_BASIC_USER_<index>_PASSWORD; source: file mounts the
+          # key read-only at <mountPath>/<key> and reads it with a {{ file }} token
+          # (see "Admin users with a password from a Secret" in README.md):
+          #   - username: "admin"
+          #     passwordSecretRef:
+          #       name: gateway-admin        # required
+          #       key: password              # default "password"
+          #       source: file               # env | file
+          #       mountPath: ""              # file only; default /secrets/gateway-controller/basic-auth/user-<index>
+          #     password_hashed: false       # true when the Secret holds a bcrypt hash
+          #     roles: ["admin"]
+          # Leave users empty to let the chart provide the admin user from
+          # gateway.controller.adminCredentials: a password generated on install and kept
+          # in a Secret, or one read from your own Secret. An upgrade of a release made by
+          # an earlier chart keeps that chart's default admin/admin user if it was in use.
+          users: []
         idp:
           enabled: false
           jwks_url: ""
@@ -917,6 +931,25 @@ gateway:
         # env var replaces the default directories rather than adding to them, so list every
         # directory the controller still reads from.
         mountPath: /secrets/gateway-controller/controlplane
+    # The management API admin user, used only when gateway.config.controller.auth.basic
+    # is enabled and its users list is empty. The password is always read from a Secret
+    # mounted as a file, never an environment variable or the ConfigMap.
+    #   - existingSecret set: the password is read from that Secret's existingSecretKey.
+    #   - otherwise, on install, the chart generates a random password into the Secret
+    #     <fullname>-admin-credentials (keys username, password). Upgrades reuse it and
+    #     helm uninstall keeps it. If that Secret is deleted, upgrades fail rather than
+    #     generate a different credential.
+    #   - an upgrade of a release made by a chart version without this setting keeps
+    #     that chart's admin/admin user, so its credential does not change.
+    # Rendering without cluster access (helm template, Argo CD, --dry-run=client)
+    # cannot read the existing Secret and generates a new password every time; set
+    # existingSecret for those tools.
+    adminCredentials:
+      # false disables generation; then basic auth needs users, existingSecret or IDP auth.
+      generate: true
+      username: admin
+      existingSecret: ""
+      existingSecretKey: password
     # TLS certificate configuration for downstream (listener) HTTPS
     tls:
       # Enable TLS certificate management

@@ -83,6 +83,9 @@ The file must set `gateway.controller.encryptionKeys.enabled=true` and `secretNa
 helm install ap-gateway . -f custom-values.yaml
 ```
 
+Unless you configure admin users, the install generates the management API admin credential and
+the NOTES print how to read it. See [The management API admin credential](#the-management-api-admin-credential).
+
 ## Uninstalling the Chart
 
 ```bash
@@ -104,6 +107,10 @@ Upgrade with new values:
 ```bash
 helm upgrade ap-gateway . -f custom-values.yaml
 ```
+
+Upgrading a release installed by an earlier chart version that ran the old default `admin`/`admin`
+user keeps it. See
+[The management API admin credential](#the-management-api-admin-credential).
 
 ## Verifying the Installation
 
@@ -251,8 +258,10 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
   Anywhere else, the controller refuses to start. `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` replaces the
   default directories rather than adding to them, so list every directory the controller still
   reads from, e.g. `/secrets/gateway-controller,/etc/gateway-controller,/vault/secrets`.
-- Each mounted secret needs its own `mountPath`, distinct from the encryption-key mount and from
-  any `gateway.controller.deployment.extraVolumeMounts` path; the chart fails to render otherwise.
+- Each mounted secret needs its own `mountPath`, distinct from the encryption-key mount, from
+  the certificate mounts the chart makes (`/app/listener-certs`, `/app/rest-api-certs` and
+  `/app/certificates`, while each is enabled), and from any
+  `gateway.controller.deployment.extraVolumeMounts` path; the chart fails to render otherwise.
 - With a full `dsn`, reference the mounted file in it, e.g.
   `postgres://user:{{ file "/secrets/gateway-controller/postgres/password" }}@host:5432/db`.
   The chart fails to render if the DSN does not reference that exact path. The file's contents are
@@ -261,6 +270,109 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
   fields (`host`, `user`, ...) instead of a DSN. The same applies to the `{{ env }}` token.
 - Like the env var, the file is read once at startup: restart the controller after rotating the
   Secret.
+
+#### The management API admin credential
+
+The chart ships no default credential. When `gateway.config.controller.auth.basic` is enabled
+and its `users` list is empty (the default), the chart provides one admin user from
+`gateway.controller.adminCredentials`. The user reads its password from a Secret mounted as a
+file, so the password is not in the ConfigMap, the pod environment or the Helm values:
+
+| Situation | Admin credential |
+|---|---|
+| `adminCredentials.existingSecret` set | User `adminCredentials.username` (default `admin`), password from that Secret's `existingSecretKey` (default `password`). |
+| Fresh install | A random 32-character password generated into the Secret `<release>-gateway-admin-credentials` (keys `username`, `password`). The NOTES print the commands that read it. |
+| Upgrade of a release that generated its credential | The same Secret and password, reused. If the Secret was deleted, the upgrade fails instead of generating a different credential. |
+| Upgrade of a release made by an earlier chart version that ran its default `admin`/`admin` user | That user, unchanged, with a warning in the NOTES. Set `existingSecret` or `users` to replace it. |
+| Upgrade of a release made by an earlier chart version with other users, or basic auth off | A generated credential, as on a fresh install: `admin`/`admin` was not in use, so it is not introduced. |
+| `users` set in values | Exactly those users; nothing is generated. |
+
+Read a generated credential with:
+
+```bash
+kubectl get secret <release>-gateway-admin-credentials -o jsonpath='{.data.username}' | base64 -d; echo
+kubectl get secret <release>-gateway-admin-credentials -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+- The chart records which case applied in the annotation
+  `gateway.api-platform.wso2.com/admin-credentials` on the `<release>-gateway-config` ConfigMap and
+  reads it back on the next upgrade. Do not remove it.
+- The generated Secret has `helm.sh/resource-policy: keep`, so `helm uninstall` leaves it and a
+  reinstall with the same release name reuses it. Delete it yourself to get a new credential on the
+  next install.
+- The chart reads the existing Secret with `lookup`, which needs cluster access. A render without
+  it (`helm template`, Argo CD, `--dry-run=client`) generates a new password every time, replacing
+  the previous one; the rendered Secret and the NOTES carry a warning. With such tools, create the
+  Secret yourself and set `adminCredentials.existingSecret`.
+- The generated password appears base64-encoded in the release manifest (`helm get manifest`,
+  `helm install --debug`), which is stored in a Secret in the same namespace.
+- Changing the password in the Secret rolls the controller on the next `helm upgrade` (the pod
+  carries a checksum of it). Until then the controller keeps the password it read at startup.
+- `adminCredentials.generate: false` turns generation off. Basic auth then needs `users`,
+  `existingSecret`, or IDP auth enabled; otherwise the chart fails to render, because a
+  basic-auth block with no users would let every request through. The gateway operator sets it,
+  and always passes the admin user itself.
+
+#### Admin users with a password from a Secret
+
+A basic-auth user in `gateway.config.controller.auth.basic.users` can take its password from a
+Kubernetes Secret through `passwordSecretRef` instead of `password`, so the password never appears
+in the ConfigMap or the Helm release. It takes the same `source` switch as the secrets above:
+
+```yaml
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: gw-admin
+              passwordSecretRef:
+                name: gateway-admin   # required
+                key: password         # default "password"
+                source: file          # env (default) | file
+              roles: ["admin"]
+```
+
+| `source` | How the controller receives the password |
+|---|---|
+| `env` | Env var `APIP_GW_CONTROLLER_AUTH_BASIC_USER_<index>_PASSWORD` from the Secret, read by a `{{ env }}` token in `config.toml` |
+| `file` | The key mounted read-only at `<mountPath>/<key>` (default `mountPath`: `/secrets/gateway-controller/basic-auth/user-<index>`), read by a `{{ file }}` token |
+
+- A user sets `password` or `passwordSecretRef`, never both; the chart fails to render otherwise.
+- `key` follows the Kubernetes Secret key rules (letters, digits, `-`, `_`, `.`; at most 253
+  characters; not starting with `..`). With `source: file` it also cannot contain `..`, because the
+  controller rejects a `{{ file }}` path containing `..`.
+- When any user uses `source: file`, the whole `[controller.auth.basic]` block, every user included,
+  is rendered into `controller-secrets.toml` instead of `config.toml`. The second `-config` file
+  replaces arrays rather than merging them, so the users list has to stay together.
+- Set `password_hashed: true` if the Secret holds a bcrypt hash. Leave it `false` when the gateway
+  operator manages the gateway (`APIGateway.spec.adminCredentials`): the operator needs the plain
+  password to call the management API.
+- The `mountPath` rules above apply, and the Secret is mounted only while basic auth is enabled.
+  While it is disabled, a user with only a `passwordSecretRef` is rendered with an empty password,
+  which the controller ignores, and the Secret need not exist.
+- A username cannot contain `:` (HTTP Basic authentication splits on the first `:`) or control
+  characters; the chart fails to render otherwise.
+- With `source: file`, trailing spaces, tabs and newlines are trimmed from the file, so a Secret
+  created with `kubectl create secret generic --from-file` works as is. With `source: env`, the
+  value is used exactly as stored.
+- The chart declares this support in its `Chart.yaml` annotation
+  `gateway.api-platform.wso2.com/features: basicAuthPasswordSecretRef`. The gateway operator,
+  released separately, reads it to decide how to deliver the admin password: through
+  `passwordSecretRef` (a mounted file) when the chart declares it, or as an environment variable
+  through the controller's `extraEnv` with an older chart. Keep the feature in that list in every
+  later chart version.
+- The password is read once at startup, so the controller must restart after the Secret is rotated:
+  - With a plain Helm install, restart it yourself (`kubectl rollout restart deployment
+    <release>-gateway-controller`); Helm does not watch Secrets.
+  - For an `APIGateway` managed by the gateway operator, the operator rolls the controller pod when
+    any Secret referenced by `spec.adminCredentials` or by a `passwordSecretRef` in the
+    `spec.configRef` values changes.
+  - For a Kubernetes Gateway API `Gateway` managed by the operator, the operator does not roll the
+    pod: restart the controller yourself. Until then the operator, which signs in with the current
+    Secret value, gets 401 from the management API.
 
 ### Raw config passthrough (`gateway.config_toml`)
 

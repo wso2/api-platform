@@ -1,6 +1,6 @@
 {
   // Console-only plugin, so the default config resolves against the API Control
-  // Plane's dependency tree (oxygen-ui 0.21.0), like apip-cloud-ui-entitlements.
+  // Plane's dependency tree, like apip-cloud-ui-entitlements.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

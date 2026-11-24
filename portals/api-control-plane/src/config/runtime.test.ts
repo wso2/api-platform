@@ -371,3 +371,30 @@ describe('runtimeConfig', () => {
     expect((await loadRuntimeConfig()).featureUsageCollectorPath).toBe('');
   });
 });
+
+describe('isCookieConsentConfigured', () => {
+  const DOMAIN_SCRIPT = '0198a8a4-0000-7000-8000-000000000000';
+
+  it('needs both ids, in the formats the tracking plugin accepts', async () => {
+    vi.resetModules();
+    const { isCookieConsentConfigured } = await import('./runtime');
+
+    expect(
+      isCookieConsentConfigured({ cookieProDomainScript: DOMAIN_SCRIPT, gtmContainerId: 'GTM-ABCD123' }),
+    ).toBe(true);
+    expect(
+      isCookieConsentConfigured({
+        cookieProDomainScript: `${DOMAIN_SCRIPT}-test`,
+        gtmContainerId: 'GTM-ABCD123',
+      }),
+    ).toBe(true);
+    expect(isCookieConsentConfigured({ cookieProDomainScript: '', gtmContainerId: 'GTM-ABCD123' })).toBe(false);
+    expect(isCookieConsentConfigured({ cookieProDomainScript: DOMAIN_SCRIPT, gtmContainerId: '' })).toBe(false);
+    expect(
+      isCookieConsentConfigured({ cookieProDomainScript: 'x" onload="y', gtmContainerId: 'GTM-ABCD123' }),
+    ).toBe(false);
+    expect(
+      isCookieConsentConfigured({ cookieProDomainScript: DOMAIN_SCRIPT, gtmContainerId: 'GTM-1&x=2' }),
+    ).toBe(false);
+  });
+});
