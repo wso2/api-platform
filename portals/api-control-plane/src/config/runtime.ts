@@ -577,7 +577,7 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().DOCUMENTATION_LINK ||
     fromWindow().documentationLink ||
     import.meta.env.VITE_DOCUMENTATION_LINK ||
-    'https://wso2.com/api-platform/docs/',
+    'https://choreolabs.com/documentation/api-management/cloud/',
   privacyPolicyLink:
     fromWindow().PRIVACY_POLICY_LINK ||
     fromWindow().privacyPolicyLink ||
