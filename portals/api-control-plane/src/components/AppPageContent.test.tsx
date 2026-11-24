@@ -42,7 +42,7 @@ describe('AppPageContent', () => {
     renderWithProviders(<AppPageContent>Page body</AppPageContent>);
 
     const expected: Record<string, string> = {
-      Documentation: 'https://wso2.com/api-platform/docs/',
+      Documentation: 'https://choreolabs.com/documentation/api-management/cloud/',
       Support: 'https://choreolabs.com/subscription',
       'Terms of Use': 'https://choreolabs.com/cloud/terms-of-use/',
       'Privacy Policy': 'https://choreolabs.com/privacy-policy',
