@@ -30,10 +30,10 @@ import (
 	"cel.dev/cel-go/cel"
 	"cel.dev/cel-go/common/types"
 	"github.com/getkin/kin-openapi/openapi3"
-	"gopkg.in/yaml.v3"
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
 var (
@@ -60,18 +60,19 @@ func requestSchema() (*openapi3.Schema, error) {
 	return schema, schemaErr
 }
 
-// decode turns a JSON or YAML body into a BudgetRequest. The spec's
-// BudgetRequest schema is the source of every field rule; defaults are filled
-// in from it too. The one rule it cannot express is checked here.
-func decode(body []byte) (*api.BudgetRequest, error) {
+// decode turns a JSON or YAML body into a BudgetRequest, read as its content type says
+// (config.Parser.Parse's rule: JSON or YAML by type, either when the type is neither). The
+// spec's BudgetRequest schema is the source of every field rule; defaults are filled in
+// from it too. The one rule it cannot express is checked here.
+func decode(body []byte, contentType string) (*api.BudgetRequest, error) {
 	var doc any
-	if err := yaml.Unmarshal(body, &doc); err != nil {
-		return nil, &ValidationError{Errors: []FieldError{{Message: "the body is not valid JSON or YAML"}}}
+	if err := new(config.Parser).Parse(body, contentType, &doc); err != nil {
+		return nil, &ParseError{Cause: err}
 	}
 	// Round-trip through JSON so maps and numbers have the types the validator expects.
 	raw, err := json.Marshal(doc)
 	if err != nil {
-		return nil, &ValidationError{Errors: []FieldError{{Message: "the body is not valid JSON or YAML"}}}
+		return nil, &ParseError{Cause: err}
 	}
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {
@@ -96,9 +97,9 @@ func decode(body []byte) (*api.BudgetRequest, error) {
 		return nil, fmt.Errorf("failed to decode budget: %w", err)
 	}
 
-	if budget.Spec.Limit.Action == api.BudgetActionAllow {
+	if budget.Spec.Limit.Action == api.Allow {
 		if blockAtGiven {
-			return nil, &ValidationError{Errors: []FieldError{{
+			return nil, &ValidationError{Errors: []config.ValidationError{{
 				Field: "spec.limit.blockAt", Message: "applies only to the block action",
 			}}}
 		}
@@ -165,7 +166,7 @@ func addProjectFilter(budget *api.BudgetRequest) {
 // the kind means the same wherever it is applied; it is not split by project; and it
 // exempts only that project's agents. The annotation itself scopes nothing;
 // addProjectFilter adds the filter when it is left out.
-func projectOwner(budget api.BudgetRequest) []FieldError {
+func projectOwner(budget api.BudgetRequest) []config.ValidationError {
 	if budget.Metadata.Annotations == nil {
 		return nil
 	}
@@ -175,9 +176,9 @@ func projectOwner(budget api.BudgetRequest) []FieldError {
 	}
 	project = strings.TrimSpace(project)
 	if project == "" {
-		return []FieldError{{Field: "metadata.annotations", Message: commonconstants.AnnotationProjectID + " must name a project"}}
+		return []config.ValidationError{{Field: "metadata.annotations", Message: commonconstants.AnnotationProjectID + " must name a project"}}
 	}
-	var errs []FieldError
+	var errs []config.ValidationError
 	listed := false
 	if budget.Spec.Filters != nil {
 		for i, f := range *budget.Spec.Filters {
@@ -185,7 +186,7 @@ func projectOwner(budget api.BudgetRequest) []FieldError {
 				continue
 			}
 			if f.Id == nil || *f.Id != project {
-				errs = append(errs, FieldError{
+				errs = append(errs, config.ValidationError{
 					Field:   fmt.Sprintf("spec.filters[%d].id", i),
 					Message: fmt.Sprintf("a budget of project %s counts only that project: its project filter is that project", project),
 				})
@@ -195,22 +196,22 @@ func projectOwner(budget api.BudgetRequest) []FieldError {
 		}
 	}
 	if !listed && len(errs) == 0 {
-		errs = append(errs, FieldError{
+		errs = append(errs, config.ValidationError{
 			Field:   "spec.filters",
 			Message: fmt.Sprintf("a budget of project %s must filter on that project: {type: project, id: %s}", project, project),
 		})
 	}
 	if split := budget.Spec.Limit.SplitBy; split != nil && split.Type == api.BudgetSplitTypeProject {
-		errs = append(errs, FieldError{Field: "spec.limit.splitBy.type", Message: fmt.Sprintf("a budget of project %s cannot be split by project", project)})
+		errs = append(errs, config.ValidationError{Field: "spec.limit.splitBy.type", Message: fmt.Sprintf("a budget of project %s cannot be split by project", project)})
 	}
 	if budget.Spec.Exemptions != nil {
 		for i, e := range *budget.Spec.Exemptions {
 			field := fmt.Sprintf("spec.exemptions[%d]", i)
 			switch {
 			case e.Type == api.BudgetExemptionTypeProject:
-				errs = append(errs, FieldError{Field: field + ".type", Message: fmt.Sprintf("a budget of project %s cannot exempt a project", project)})
+				errs = append(errs, config.ValidationError{Field: field + ".type", Message: fmt.Sprintf("a budget of project %s cannot exempt a project", project)})
 			case e.Type == api.BudgetExemptionTypeAgent && (e.Project == nil || *e.Project != project):
-				errs = append(errs, FieldError{Field: field + ".project", Message: fmt.Sprintf("a budget of project %s can exempt only its agents", project)})
+				errs = append(errs, config.ValidationError{Field: field + ".project", Message: fmt.Sprintf("a budget of project %s can exempt only its agents", project)})
 			}
 		}
 	}
@@ -222,10 +223,12 @@ func projectOwner(budget api.BudgetRequest) []FieldError {
 // project or API key filter only its id, or nothing for any one; an agent filter its id and
 // project, or neither for any agent; each filter type but attribute is used once; a split takes an expression for an attribute and nothing else otherwise, and is not
 // by a type that is also a filter, except attribute.
-func selectionShapes(spec api.BudgetSpec) []FieldError {
-	var errs []FieldError
+func selectionShapes(spec api.BudgetSpec) []config.ValidationError {
+	var errs []config.ValidationError
 	set := func(p *string) bool { return p != nil && *p != "" }
-	add := func(field, message string) { errs = append(errs, FieldError{Field: field, Message: message}) }
+	add := func(field, message string) {
+		errs = append(errs, config.ValidationError{Field: field, Message: message})
+	}
 	filtered := map[api.BudgetFilterType]bool{}
 	// pinned marks the types a filter narrows to one value; such a type cannot be split.
 	pinned := map[api.BudgetFilterType]bool{}
@@ -307,8 +310,8 @@ func selectionShapes(spec api.BudgetSpec) []FieldError {
 
 // schemaErrors flattens the validator's errors into field paths such as
 // spec.filters[0].expression.
-func schemaErrors(err error) []FieldError {
-	var out []FieldError
+func schemaErrors(err error) []config.ValidationError {
+	var out []config.ValidationError
 	var walk func(error)
 	walk = func(e error) {
 		var multi openapi3.MultiError
@@ -324,10 +327,10 @@ func schemaErrors(err error) []FieldError {
 			if se.SchemaField == "pattern" && se.Schema != nil && se.Schema.Description != "" {
 				message = "has an invalid format: " + se.Schema.Description
 			}
-			out = append(out, FieldError{Field: fieldPath(se.JSONPointer()), Message: message})
+			out = append(out, config.ValidationError{Field: fieldPath(se.JSONPointer()), Message: message})
 			return
 		}
-		out = append(out, FieldError{Message: e.Error()})
+		out = append(out, config.ValidationError{Message: e.Error()})
 	}
 	walk(err)
 	return out
@@ -358,16 +361,16 @@ var celEnv = sync.OnceValues(func() (*cel.Env, error) {
 // so a budget the policy would skip is refused instead: it must compile, and return bool
 // as a condition (a filter or an exemption) or a string or list as the value a split
 // divides the limit by. Claims are dynamic, so most types are known only at run.
-func expressionErrors(spec api.BudgetSpec) []FieldError {
+func expressionErrors(spec api.BudgetSpec) []config.ValidationError {
 	env, err := celEnv()
 	if err != nil {
-		return []FieldError{{Field: "spec", Message: "expressions cannot be checked: " + err.Error()}}
+		return []config.ValidationError{{Field: "spec", Message: "expressions cannot be checked: " + err.Error()}}
 	}
-	var errs []FieldError
+	var errs []config.ValidationError
 	check := func(field, expression string, split bool) {
 		ast, issues := env.Compile(expression)
 		if issues != nil && issues.Err() != nil {
-			errs = append(errs, FieldError{Field: field, Message: "does not compile: " + issues.Err().Error()})
+			errs = append(errs, config.ValidationError{Field: field, Message: "does not compile: " + issues.Err().Error()})
 			return
 		}
 		out := ast.OutputType()
@@ -375,14 +378,14 @@ func expressionErrors(spec api.BudgetSpec) []FieldError {
 			return
 		}
 		if split && out != types.StringType && out.Kind() != types.ListKind {
-			errs = append(errs, FieldError{Field: field, Message: fmt.Sprintf("must return a string or a list of strings for a split, not %s", out)})
+			errs = append(errs, config.ValidationError{Field: field, Message: fmt.Sprintf("must return a string or a list of strings for a split, not %s", out)})
 		}
 		if !split && out != types.BoolType {
-			errs = append(errs, FieldError{Field: field, Message: fmt.Sprintf("must return bool, not %s", out)})
+			errs = append(errs, config.ValidationError{Field: field, Message: fmt.Sprintf("must return bool, not %s", out)})
 			return
 		}
 		if tooCostly(env, ast) {
-			errs = append(errs, FieldError{Field: field, Message: "is too costly to run on every request"})
+			errs = append(errs, config.ValidationError{Field: field, Message: "is too costly to run on every request"})
 		}
 	}
 	if spec.Filters != nil {
@@ -428,19 +431,19 @@ func tooCostly(env *cel.Env, ast *cel.Ast) bool {
 // form; repeats are checked here.
 var labelWord = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$`)
 
-func labelKeyErrors(labels *[]string) []FieldError {
+func labelKeyErrors(labels *[]string) []config.ValidationError {
 	if labels == nil {
 		return nil
 	}
-	var errs []FieldError
+	var errs []config.ValidationError
 	seen := map[string]bool{}
 	for _, l := range *labels {
 		switch {
 		case !labelWord.MatchString(l):
-			errs = append(errs, FieldError{Field: "metadata.labels", Message: fmt.Sprintf(
+			errs = append(errs, config.ValidationError{Field: "metadata.labels", Message: fmt.Sprintf(
 				"label %q must be one word of 1-63 letters, digits, '.', '_' or '-', starting and ending with a letter or digit", l)})
 		case seen[l]:
-			errs = append(errs, FieldError{Field: "metadata.labels", Message: fmt.Sprintf("label %q is listed twice", l)})
+			errs = append(errs, config.ValidationError{Field: "metadata.labels", Message: fmt.Sprintf("label %q is listed twice", l)})
 		}
 		seen[l] = true
 	}

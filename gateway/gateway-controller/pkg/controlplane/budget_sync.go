@@ -31,24 +31,6 @@ import (
 // connection, and on every connect the gateway fetches the full list (GET /budgets), saves
 // the newer ones and drops the control-plane budgets no longer listed.
 
-// BudgetEvent is a budget.created or budget.updated event.
-type BudgetEvent struct {
-	Type          string                   `json:"type"`
-	Payload       utils.ControlPlaneBudget `json:"payload"`
-	Timestamp     string                   `json:"timestamp"`
-	CorrelationID string                   `json:"correlationId"`
-}
-
-// BudgetDeletedEvent is a budget.deleted event.
-type BudgetDeletedEvent struct {
-	Type    string `json:"type"`
-	Payload struct {
-		BudgetID string `json:"budgetId"`
-	} `json:"payload"`
-	Timestamp     string `json:"timestamp"`
-	CorrelationID string `json:"correlationId"`
-}
-
 // SetBudgetApplier sets what stores the budgets the control plane sends: the budget service.
 func (c *Client) SetBudgetApplier(applier utils.ControlPlaneBudgetApplier) {
 	c.budgetApplierMu.Lock()

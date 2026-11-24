@@ -16,7 +16,7 @@
 # they share [counters.redis] and carry a budget of the same name.
 #
 # Each API key of openai-provider (openai-provider.yaml) may spend $50 a
-# day; requests from a key are refused (429 BUDGET_EXCEEDED) once it has
+# day; requests from a key are refused (429, throttling fault 900806) once it has
 # spent $45 (blockAt: 90). Requests with the header x-team: admin are
 # not counted. Spend resets at 00:00 UTC.
 #

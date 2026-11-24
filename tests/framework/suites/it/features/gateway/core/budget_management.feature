@@ -52,7 +52,8 @@ Feature: Budget management
       | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerName}"},{"type":"attribute","expression":"'research' in request.Auth.Claims[\"groups\"]"}] |
     Then the response status code should be 201
     And the JSON response field "status.id" should be "${CTX:budgetName}"
-    And the JSON response field "status.state" should be "deployed"
+    And the JSON response field "status.state" should not exist
+    And the JSON response field "status.deployedAt" should not exist
     And the JSON response field "spec.status" should be "active"
     And the JSON response field "spec.limit.currency" should be "USD"
     And the JSON response field "spec.limit.blockAt" should be 100
@@ -272,7 +273,7 @@ Feature: Budget management
       """
       {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the JSON response field "code" should be "BUDGET_EXCEEDED"
+    Then the JSON response field "code" should be "900806"
     And the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
     And the JSON response field "budgets[0].limit" should be "0.01"
     And the JSON response field "budgets[0].period" should be "day"

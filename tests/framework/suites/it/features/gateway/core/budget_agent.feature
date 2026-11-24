@@ -130,7 +130,7 @@ Feature: Budgets on an agent's LLM proxy
       """
       {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the JSON response field "code" should be "BUDGET_EXCEEDED"
+    Then the JSON response field "code" should be "900806"
     And the JSON response array "budgets" should contain an item with "budget" equal to "${CTX:projectBudget}"
     And the JSON response array "budgets" should contain an item with "budget" equal to "${CTX:agentBudget}"
     And the JSON response array "budgets" should contain an item with "budget" equal to "${CTX:keyBudget}"

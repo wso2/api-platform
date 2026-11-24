@@ -8,6 +8,7 @@
 {{- $cpTokenSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "token") | fromYaml -}}
 {{- $pgSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "postgres") | fromYaml -}}
 {{- $sqlSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "sqlserver") | fromYaml -}}
+{{- $redisSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "redis") | fromYaml -}}
 {{- $secretMounts := (include "gateway-operator.controllerSecretMounts" . | fromYaml).mounts -}}
 {{- if $deployment.enabled }}
 {{- if and $serverTls.enabled (eq $restApiTls.certificateProvider "secret") (not $restApiTls.secret.name) }}
@@ -138,6 +139,13 @@ spec:
                 secretKeyRef:
                   name: {{ $controller.sqlserver.passwordSecretRef.name }}
                   key: {{ $controller.sqlserver.passwordSecretRef.key | default "password" }}
+            {{- end }}
+            {{- if and $redisSecret.inUse (eq $redisSecret.source "env") }}
+            - name: APIP_GW_COUNTERS_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $redisSecret.name }}
+                  key: {{ $redisSecret.key }}
             {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}

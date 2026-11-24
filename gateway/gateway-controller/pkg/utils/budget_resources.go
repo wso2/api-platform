@@ -118,7 +118,7 @@ func budgetResource(cfg *models.StoredConfig) (*storage.LazyResource, bool, erro
 	if !ok {
 		return nil, false, fmt.Errorf("budget %q has configuration of type %T", cfg.Handle, cfg.SourceConfiguration)
 	}
-	if budget.Spec.Status != nil && *budget.Spec.Status != api.BudgetStatusActive {
+	if budget.Spec.Status != nil && *budget.Spec.Status != api.BudgetSpecStatusActive {
 		return nil, false, nil
 	}
 	body := map[string]interface{}{

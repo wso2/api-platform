@@ -182,8 +182,12 @@ func TestBlockBudgetRefusesAtItsBlockPoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := refusedBudget{Budget: "team-daily", Limit: "10.00", Currency: "USD", Period: "day", ResetsAt: "2026-11-12T00:00:00Z"}
-	if body.Code != "BUDGET_EXCEEDED" || len(body.Budgets) != 1 || body.Budgets[0] != want {
+	if body.Code != policy.FaultCodeThrottledCustomPolicy || len(body.Budgets) != 1 || body.Budgets[0] != want {
 		t.Fatalf("body %+v", body)
+	}
+	if !refused.IsFault || refused.Fault == nil || refused.Fault.Code != policy.FaultCodeThrottledCustomPolicy ||
+		refused.Fault.Type != policy.FaultTypeThrottling || refused.Fault.Direction != policy.DirectionRequest {
+		t.Fatalf("not declared a throttling fault: %+v %+v", refused.IsFault, refused.Fault)
 	}
 	if got := refused.Headers["Retry-After"]; got != "43200" {
 		t.Fatalf("Retry-After %q, want 43200 (12 hours)", got)

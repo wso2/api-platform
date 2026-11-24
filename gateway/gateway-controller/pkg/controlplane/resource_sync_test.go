@@ -32,12 +32,13 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 func seedBudget(t *testing.T, client *Client, id, name string, origin models.Origin) {
 	t.Helper()
 	budget := api.BudgetRequest{
-		ApiVersion: api.BudgetRequestApiVersionV1, Kind: api.BudgetRequestKindBudget,
+		ApiVersion: api.BudgetRequestApiVersionGatewayApiPlatformWso2Comv1, Kind: api.BudgetRequestKindBudget,
 		Metadata: api.BudgetMetadata{Name: name},
 	}
 	now := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
@@ -50,15 +51,15 @@ func seedBudget(t *testing.T, client *Client, id, name string, origin models.Ori
 
 // captureResources serves POST /gateways/{id}/resources, recording each request and
 // answering with respond.
-func captureResources(t *testing.T, respond func(req gatewayResourcesRequest) gatewayResourcesResponse) (*Client, *[]gatewayResourcesRequest) {
+func captureResources(t *testing.T, respond func(req utils.GatewayResourcesRequest) utils.GatewayResourcesResponse) (*Client, *[]utils.GatewayResourcesRequest) {
 	t.Helper()
 	var mu sync.Mutex
-	var got []gatewayResourcesRequest
+	var got []utils.GatewayResourcesRequest
 	client := newManifestTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/api/internal/v1/gateways/"+testGatewayID+"/resources", r.URL.Path)
 		assert.Equal(t, "test-token", r.Header.Get("api-key"))
-		var req gatewayResourcesRequest
+		var req utils.GatewayResourcesRequest
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		mu.Lock()
 		got = append(got, req)
@@ -76,7 +77,7 @@ func setGatewayID(client *Client, id string) {
 	client.state.mu.Unlock()
 }
 
-func dpids(items []gatewayResource) []string {
+func dpids(items []utils.GatewayResource) []string {
 	out := []string{}
 	for _, item := range items {
 		out = append(out, item.DPID)
@@ -85,8 +86,8 @@ func dpids(items []gatewayResource) []string {
 }
 
 func TestPushGatewayResources_SendsACompleteListAndRecordsResults(t *testing.T) {
-	client, got := captureResources(t, func(req gatewayResourcesRequest) gatewayResourcesResponse {
-		return gatewayResourcesResponse{Total: 2, Success: 1, Failed: 1, Resources: map[string]gatewayResourceResult{
+	client, got := captureResources(t, func(req utils.GatewayResourcesRequest) utils.GatewayResourcesResponse {
+		return utils.GatewayResourcesResponse{Total: 2, Success: 1, Failed: 1, Resources: map[string]utils.GatewayResourceResult{
 			"budget-a": {ID: "cp-a", Status: "synced"},
 			"budget-b": {Status: "failed", Error: "BUDGET_ALREADY_EXISTS"},
 		}}
@@ -114,8 +115,8 @@ func TestPushGatewayResources_SendsACompleteListAndRecordsResults(t *testing.T) 
 }
 
 func TestPushGatewayResources_SendsAnEmptyCompleteListSoOfflineDeletesReachTheControlPlane(t *testing.T) {
-	client, got := captureResources(t, func(gatewayResourcesRequest) gatewayResourcesResponse {
-		return gatewayResourcesResponse{}
+	client, got := captureResources(t, func(utils.GatewayResourcesRequest) utils.GatewayResourcesResponse {
+		return utils.GatewayResourcesResponse{}
 	})
 
 	client.pushGatewayResources()
@@ -127,10 +128,10 @@ func TestPushGatewayResources_SendsAnEmptyCompleteListSoOfflineDeletesReachTheCo
 }
 
 func TestPushResources_OneBudgetAndADeletion(t *testing.T) {
-	client, got := captureResources(t, func(req gatewayResourcesRequest) gatewayResourcesResponse {
-		resp := gatewayResourcesResponse{Resources: map[string]gatewayResourceResult{}}
+	client, got := captureResources(t, func(req utils.GatewayResourcesRequest) utils.GatewayResourcesResponse {
+		resp := utils.GatewayResourcesResponse{Resources: map[string]utils.GatewayResourceResult{}}
 		for _, item := range append(req.Resources, req.Deleted...) {
-			resp.Resources[item.DPID] = gatewayResourceResult{ID: "cp-" + item.DPID, Status: "synced"}
+			resp.Resources[item.DPID] = utils.GatewayResourceResult{ID: "cp-" + item.DPID, Status: "synced"}
 		}
 		return resp
 	})
@@ -138,9 +139,9 @@ func TestPushResources_OneBudgetAndADeletion(t *testing.T) {
 	a, err := client.db.GetConfig("budget-a")
 	require.NoError(t, err)
 
-	client.pushResources(gatewayResourcesRequest{Resources: []gatewayResource{toGatewayResource(a)}},
+	client.pushResources(utils.GatewayResourcesRequest{Resources: []utils.GatewayResource{toGatewayResource(a)}},
 		map[string]*models.StoredConfig{a.UUID: a})
-	client.pushResources(gatewayResourcesRequest{Deleted: []gatewayResource{toGatewayResource(a)}}, nil)
+	client.pushResources(utils.GatewayResourcesRequest{Deleted: []utils.GatewayResource{toGatewayResource(a)}}, nil)
 
 	require.Len(t, *got, 2)
 	assert.False(t, (*got)[0].Complete, "a single push is not complete")
@@ -175,7 +176,7 @@ func TestPushResources_RetriesPerPushRetryConfig(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(gatewayResourcesResponse{Resources: map[string]gatewayResourceResult{
+		_ = json.NewEncoder(w).Encode(utils.GatewayResourcesResponse{Resources: map[string]utils.GatewayResourceResult{
 			"budget-a": {ID: "cp-a", Status: "synced"},
 		}})
 	})

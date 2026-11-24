@@ -1035,13 +1035,13 @@ max_body_bytes = 16777216
 # every LLM request's cost is counted per month and per project, agent, API key, user,
 # provider and model. This places the budget system policy (and llm-cost) on every LLM
 # route. Off (the default), nothing is counted.
-enabled = '{{ env "APIP_GW_AI_COST_TRACKING_ENABLED" "false" }}'
+enabled = '{{ env "APIP_GW_AI_COST_MANAGEMENT_TRACKING_ENABLED" "false" }}'
 
 [ai_cost_management.budgets]
 # Enable budget enforcement, gateway budget APIs, and synchronization with the control
 # plane: LLM provider routes and single-provider LLM proxy routes carry the budget system
 # policy. Off (the default), none of this runs and LLM routes stay exactly as configured.
-enabled = '{{ env "APIP_GW_AI_COST_BUDGETS_ENABLED" "false" }}'
+enabled = '{{ env "APIP_GW_AI_COST_MANAGEMENT_BUDGETS_ENABLED" "false" }}'
 
 # =============================================================================
 # SHARED COUNTERS CONFIGURATION

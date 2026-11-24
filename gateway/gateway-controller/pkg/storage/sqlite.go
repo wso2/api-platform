@@ -74,11 +74,15 @@ func newSQLiteStorage(dbPath string, window *observe.Window, logger *slog.Logger
 	return storage, nil
 }
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
-// previousSchemaVersion is the only older schema version this binary migrates
-// in place. Any other stored version is refused rather than skipped.
-const previousSchemaVersion = 5
+// previousSchemaVersion and oldestSchemaVersion are the older schema versions
+// this binary migrates in place. Any other stored version is refused rather
+// than skipped.
+const (
+	previousSchemaVersion = 6
+	oldestSchemaVersion   = 5
+)
 
 // initSchema creates the database schema if it doesn't exist, migrates a
 // previous-version schema in place, and creates anything a current-version
@@ -99,10 +103,14 @@ func (s *SQLiteStorage) initSchema() error {
 			return fmt.Errorf("failed to create schema: %w", err)
 		}
 		s.logger.Info("Database schema initialized successfully")
-	case previousSchemaVersion:
+	case oldestSchemaVersion, previousSchemaVersion:
 		s.logger.Info("Migrating database schema",
 			slog.Int("from_version", version), slog.Int("to_version", currentSchemaVersion))
-		if err := s.migrateSchemaV5ToV6(); err != nil {
+		migrate := s.migrateSchemaV6ToV7
+		if version == oldestSchemaVersion {
+			migrate = s.migrateSchemaV5ToV6
+		}
+		if err := migrate(); err != nil {
 			return fmt.Errorf("failed to migrate schema from version %d to %d: %w", version, currentSchemaVersion, err)
 		}
 		s.logger.Info("Database schema migrated successfully")
@@ -121,7 +129,8 @@ func (s *SQLiteStorage) initSchema() error {
 // migrateSchemaV5ToV6 adds the certificates usage, role, match_json,
 // private_key_ciphertext and key_algorithm columns to a version 5 database,
 // then runs the schema to create the tables and indexes version 6 added, such
-// as graphql_apis, and sets user_version to 6. usage and role are defaulted;
+// as graphql_apis, and those of later versions (budgets, version 7), and sets
+// user_version to the current version. usage and role are defaulted;
 // the rest are nullable. No existing column changes. graphql_apis must exist
 // before the controller starts: GetAllConfigs reads every builtin resource
 // table, so loading configurations fails without it.
@@ -156,6 +165,29 @@ func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 		return fmt.Errorf("failed to set schema version: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration: %w", err)
+	}
+	return nil
+}
+
+// migrateSchemaV6ToV7 runs the schema against a version 6 database to create
+// the budgets table version 7 added, and sets user_version to 7. No existing
+// table or column changes.
+func (s *SQLiteStorage) migrateSchemaV6ToV7() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin migration transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if _, err := tx.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", currentSchemaVersion, err)
+	}
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion)); err != nil {
+		return fmt.Errorf("failed to set schema version: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit migration: %w", err)
 	}

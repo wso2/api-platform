@@ -298,11 +298,6 @@ const (
 	// provider route's budget policy removes it, and Envoy drops it there too.
 	BudgetAdmittedHeader = "x-wso2-budget-admitted"
 
-	// AnnotationAgentID names the agent of an agent's hidden LLM proxy, set by the control
-	// plane beside the proxy's project-id annotation. The budget system policy on that
-	// route matches agent budget consumers by it.
-	AnnotationAgentID = "gateway.api-platform.wso2.com/agent-id"
-
 	// LLM_COST_POLICY_NAME prices LLM responses for budgets. Every LLM provider
 	// route gets it unless the route already has it or AZURE_LLM_COST_POLICY_NAME.
 	LLM_COST_POLICY_NAME       = "llm-cost"

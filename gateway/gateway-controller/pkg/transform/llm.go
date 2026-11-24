@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -184,7 +185,7 @@ func budgetPlacement(cfg *models.StoredConfig) (map[string]interface{}, bool) {
 		// The project is the route's project ID (the project-id annotation), which the
 		// policy reads from the request.
 		if annotations := cfg.GetAnnotations(); annotations != nil {
-			if v := (*annotations)[constants.AnnotationAgentID]; v != "" {
+			if v := (*annotations)[commonconstants.AnnotationAgentID]; v != "" {
 				params["agent"] = v
 			}
 		}

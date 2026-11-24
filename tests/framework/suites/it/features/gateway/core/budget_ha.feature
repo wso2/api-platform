@@ -124,7 +124,7 @@ Feature: Budgets on a gateway with two controllers
       """
       {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the JSON response field "code" should be "BUDGET_EXCEEDED"
+    Then the JSON response field "code" should be "900806"
     And the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
 
     When I update Budget "${CTX:budgetName}" from "resources/templates/budget.yaml" with values:

@@ -52,12 +52,14 @@ func (s *APIServer) CreateBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stored, err := s.budgetService.Create(budget.CreateParams{Body: body, CorrelationID: middleware.GetCorrelationID(r), Logger: log})
+	stored, err := s.budgetService.Create(budget.CreateParams{Body: body, ContentType: r.Header.Get("Content-Type"), CorrelationID: middleware.GetCorrelationID(r), Logger: log})
 	if err != nil {
 		var invalid *budget.ValidationError
 		switch {
 		case errors.As(err, &invalid):
 			httputil.WriteJSON(w, http.StatusBadRequest, budgetValidationResponse(invalid))
+		case isBudgetRequestError(err):
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		case storage.IsConflictError(err):
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 		case errors.Is(err, budget.ErrPublish):
@@ -135,7 +137,7 @@ func (s *APIServer) UpdateBudget(w http.ResponseWriter, r *http.Request, id stri
 		return
 	}
 
-	cfg, err := s.budgetService.Update(budget.UpdateParams{Name: id, Body: body, CorrelationID: middleware.GetCorrelationID(r), Logger: log})
+	cfg, err := s.budgetService.Update(budget.UpdateParams{Name: id, Body: body, ContentType: r.Header.Get("Content-Type"), CorrelationID: middleware.GetCorrelationID(r), Logger: log})
 	if err != nil {
 		writeBudgetError(w, log, "update", err)
 		return
@@ -164,6 +166,8 @@ func writeBudgetError(w http.ResponseWriter, log *slog.Logger, action string, er
 	switch {
 	case errors.As(err, &invalid):
 		httputil.WriteJSON(w, http.StatusBadRequest, budgetValidationResponse(invalid))
+	case isBudgetRequestError(err):
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 	case errors.Is(err, budget.ErrNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
 	case errors.Is(err, budget.ErrReadOnly):
@@ -182,8 +186,7 @@ func writeBudgetError(w http.ResponseWriter, log *slog.Logger, action string, er
 func budgetResponse(cfg *models.StoredConfig, usage *budget.PeriodUsage) api.Budget {
 	req, _ := cfg.SourceConfiguration.(api.BudgetRequest)
 	rs := buildResourceStatus(cfg)
-	state := api.BudgetStatusState(*rs.State)
-	status := api.BudgetStatus{Id: rs.Id, State: &state, CreatedAt: rs.CreatedAt, UpdatedAt: rs.UpdatedAt, DeployedAt: rs.DeployedAt}
+	status := api.BudgetStatus{Id: rs.Id, CreatedAt: rs.CreatedAt, UpdatedAt: rs.UpdatedAt}
 	if usage != nil {
 		spent, unpriced := usage.Spent()
 		status.CurrentPeriod = &api.BudgetCurrentPeriod{
@@ -225,7 +228,7 @@ const (
 )
 
 // GetBudgetUsage implements ServerInterface.GetBudgetUsage
-// (GET /budgets/{id}/budget-usage)
+// (GET /budgets/{id}/usage)
 func (s *APIServer) GetBudgetUsage(w http.ResponseWriter, r *http.Request, id string, params api.GetBudgetUsageParams) {
 	if !s.budgetsAvailable(w) {
 		return
@@ -257,6 +260,14 @@ func (s *APIServer) GetBudgetUsage(w http.ResponseWriter, r *http.Request, id st
 		PeriodStart: openapi_types.Date{Time: usage.PeriodStart},
 		Allowances:  rows, Total: len(usage.Allowances), Limit: limit, Offset: offset,
 	})
+}
+
+// isBudgetRequestError reports a body that could not be read, or that names another budget
+// than the path: both are the caller's to fix, like the agent API's parse and handle errors.
+func isBudgetRequestError(err error) bool {
+	var parseErr *budget.ParseError
+	var nameErr *budget.NameMismatchError
+	return errors.As(err, &parseErr) || errors.As(err, &nameErr)
 }
 
 func budgetValidationResponse(invalid *budget.ValidationError) api.ErrorResponse {
@@ -318,4 +329,13 @@ func (s *APIServer) configDumpBudgets() ([]adminapi.ConfigDumpBudgetItem, error)
 		})
 	}
 	return items, nil
+}
+
+// BudgetService is the service that stores budgets, for the immutable loader; nil when
+// budgets are disabled.
+func (s *APIServer) BudgetService() *budget.Service {
+	if !s.budgetsEnabled {
+		return nil
+	}
+	return s.budgetService
 }

@@ -27,7 +27,6 @@ import (
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
@@ -101,7 +100,7 @@ func TestWithBudgetEnforcement(t *testing.T) {
 func TestBudgetPlacementParameters(t *testing.T) {
 	annotations := map[string]string{
 		commonconstants.AnnotationProjectID: "api-platform",
-		constants.AnnotationAgentID:         "support-agent",
+		commonconstants.AnnotationAgentID:   "support-agent",
 	}
 	proxy := &models.StoredConfig{
 		Kind:                models.KindLlmProxy,

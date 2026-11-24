@@ -30,7 +30,7 @@ import (
 	"github.com/wso2/api-platform/sdk/core/counters"
 )
 
-// AI cost stats (Interfaces 1.3, 4.2): what every LLM request cost, with or without a
+// AI cost stats: what every LLM request cost, with or without a
 // budget, per month and per project, agent, API key, user, provider and model. Counted
 // on the route the request enters, like budget spend, when the route asks for it
 // (paramCostStats; [ai_cost_management.tracking] enabled on the gateway).

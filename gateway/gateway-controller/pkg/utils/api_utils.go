@@ -1366,6 +1366,93 @@ func (s *APIUtilsService) PushArtifacts(artifacts []*models.StoredConfig) (*Impo
 	return result, nil
 }
 
+// GatewayResource is one resource in a gateway resources push: the document as the gateway
+// stores it (its kind is configuration.kind), keyed by the gateway's ID for it.
+type GatewayResource struct {
+	DPID          string    `json:"dpid"`
+	Configuration any       `json:"configuration"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+// GatewayResourcesRequest is the body of POST {base}/gateways/{gatewayID}/resources.
+// Complete marks Resources as everything the gateway created.
+type GatewayResourcesRequest struct {
+	Complete  bool              `json:"complete"`
+	Resources []GatewayResource `json:"resources"`
+	Deleted   []GatewayResource `json:"deleted"`
+}
+
+// GatewayResourceResult is the control plane's outcome for one resource. ID is its ID
+// for the resource.
+type GatewayResourceResult struct {
+	ID     string `json:"id"`
+	Status string `json:"status"` // "synced" or "failed"
+	Error  string `json:"error,omitempty"`
+}
+
+// GatewayResourcesResponse holds a result per resource, keyed by dpid, with counts.
+type GatewayResourcesResponse struct {
+	Total     int                              `json:"total"`
+	Success   int                              `json:"success"`
+	Failed    int                              `json:"failed"`
+	Resources map[string]GatewayResourceResult `json:"resources"`
+}
+
+// ErrResourcesNotSupported is a control plane that does not take gateway resources: it
+// answers 404 (AI Workspace). Retrying cannot help.
+var ErrResourcesNotSupported = errors.New("the control plane does not support gateway resources")
+
+// ControlPlaneStatusError is a control-plane answer other than success, so a caller can
+// tell a status it cannot recover from (401, 403) from one worth retrying.
+type ControlPlaneStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *ControlPlaneStatusError) Error() string {
+	return fmt.Sprintf("control plane returned %d: %s", e.StatusCode, e.Body)
+}
+
+// PushGatewayResources sends a push to POST {base}/gateways/{gatewayID}/resources.
+func (s *APIUtilsService) PushGatewayResources(gatewayID string, body GatewayResourcesRequest) (*GatewayResourcesResponse, error) {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal gateway resources: %w", err)
+	}
+	endpoint := s.getBaseURL() + "/gateways/" + url.PathEscape(gatewayID) + "/resources"
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gateway resources request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("api-key", s.config.Token)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send gateway resources: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read gateway resources response: %w", err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrResourcesNotSupported
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gateway resources sync failed: %w",
+			&ControlPlaneStatusError{StatusCode: resp.StatusCode, Body: string(respBody)})
+	}
+	var out GatewayResourcesResponse
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse gateway resources response: %w", err)
+	}
+	return &out, nil
+}
+
 // buildImportArtifactRequest converts a stored config into the import request entry sent to the
 // control plane. It returns an error for a project-scoped artifact that is missing its project
 // annotation (the project is never defaulted), so such an artifact is reported as a failure

@@ -3210,8 +3210,8 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiVersion|string|true|none|none|
-|kind|string|true|none|none|
+|apiVersion|string|true|none|Budget specification version|
+|kind|string|true|none|Budget kind|
 |metadata|[BudgetMetadata](#schemabudgetmetadata)|true|none|none|
 |spec|[BudgetSpec](#schemabudgetspec)|true|none|none|
 
@@ -3255,18 +3255,9 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
     ]
   },
   "status": {
-    "id": "reading-list-api-v1.0",
-    "state": "deployed",
+    "id": "team-daily",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z",
-    "warnings": [
-      {
-        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-      }
-    ],
     "currentPeriod": {
       "periodStart": "2026-11-01",
       "spent": "312.4",
@@ -3301,18 +3292,9 @@ and
 
 ```json
 {
-  "id": "reading-list-api-v1.0",
-  "state": "deployed",
+  "id": "team-daily",
   "createdAt": "2026-04-24T07:21:13Z",
   "updatedAt": "2026-04-24T07:21:13Z",
-  "deployedAt": "2026-04-24T07:21:13Z",
-  "warnings": [
-    {
-      "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-      "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-      "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-    }
-  ],
   "currentPeriod": {
     "periodStart": "2026-11-01",
     "spent": "312.4",
@@ -3322,20 +3304,16 @@ and
 
 ```
 
+Server-managed information for a budget. A budget is not deployed or undeployed: spec.status says whether it is enforced, so there is no state or deployedAt.
+
 #### Properties
 
-allOf
-
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[ResourceStatus](#schemaresourcestatus)|false|none|Server-managed lifecycle information for a resource|
-
-and
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» currentPeriod|[BudgetCurrentPeriod](#schemabudgetcurrentperiod)|false|none|Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.|
+|id|string|false|none|Unique identifier assigned by the server (equal to metadata.name)|
+|createdAt|string(date-time)|false|none|Timestamp when the budget was first created (UTC)|
+|updatedAt|string(date-time)|false|none|Timestamp when the budget was last updated (UTC)|
+|currentPeriod|[BudgetCurrentPeriod](#schemabudgetcurrentperiod)|false|none|Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.|
 
 ## BudgetCurrentPeriod
 
@@ -3442,6 +3420,9 @@ One allowance's spend this period
 ```json
 {
   "name": "research-team-monthly",
+  "labels": [
+    "string"
+  ],
   "annotations": {
     "property1": "string",
     "property2": "string"
@@ -3455,6 +3436,7 @@ One allowance's spend this period
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
+|labels|[string]|false|none|One-word labels to organize and find budgets. Not used to enforce; kept with the budget and pushed to the control plane with it. At most 10, no repeats; each 1-63 characters of letters, digits, '.', '_' or '-', starting and ending with a letter or digit (no spaces).|
 |annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget counts only that project: when its filters have no project filter, {type: project, id} is added as the last filter. It exempts only that project's agents and cannot be split by project.|
 |» **additionalProperties**|string|false|none|none|
 
@@ -3610,7 +3592,7 @@ Gives each value of the type its own limit: each LLM provider, project, agent or
 
 ```
 
-One condition on the LLM usage the budget counts; filters combine with AND. llmProvider is the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-name and agent-name annotations); apiKey is the name of the API key the request authenticated with; attribute is a CEL condition over the request (token claims). A project, agent or apiKey filter without an id matches any one: requests that carry that value at all (an agent filter without an id leaves out requests sent straight to a provider). Each type except attribute is used once.
+One condition on the LLM usage the budget counts; filters combine with AND. llmProvider is the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-id and agent-id annotations); apiKey is the name of the API key the request authenticated with; attribute is a CEL condition over the request (token claims). A project, agent or apiKey filter without an id matches any one: requests that carry that value at all (an agent filter without an id leaves out requests sent straight to a provider). Each type except attribute is used once.
 
 #### Properties
 

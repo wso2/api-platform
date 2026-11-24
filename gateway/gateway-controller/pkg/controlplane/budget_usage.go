@@ -30,7 +30,7 @@ import (
 )
 
 // Budget spend reaches the control plane the way deployment acknowledgements do: a
-// usage message on the control-plane connection (Interfaces 4.2). The budget system
+// usage message on the control-plane connection. The budget system
 // policy labels each allowance's counters with the budget and the allocated values;
 // the counter stream tells BudgetUsageReporter of every applied report, and it sends the
 // changed totals at once. Totals that change while a message is being sent go in the
@@ -79,21 +79,23 @@ type BudgetUsagePayload struct {
 }
 
 // CostUsage is what one combination of values cost in one month, across every gateway
-// sharing the counter store (Interfaces 4.2). The control plane keeps the higher totals.
+// sharing the counter store. The control plane keeps the higher totals.
 type CostUsage struct {
 	// Month is the month's first day, UTC.
 	Month string `json:"month"`
 	// CostKey keys the combination; the other fields are its values, empty when unknown.
-	CostKey                  string `json:"costKey"`
-	Project                  string `json:"project,omitempty"`
-	Agent                    string `json:"agent,omitempty"`
-	APIKey                   string `json:"apiKey,omitempty"`
-	User                     string `json:"user,omitempty"`
-	LLMProvider              string `json:"llmProvider"`
-	Model                    string `json:"model,omitempty"`
-	Cost                     string `json:"cost"`
-	MissingPriceRequests     int64  `json:"missingPriceRequests"`
-	UsageUnavailableRequests int64  `json:"usageUnavailableRequests"`
+	CostKey     string `json:"costKey"`
+	Project     string `json:"project,omitempty"`
+	Agent       string `json:"agent,omitempty"`
+	APIKey      string `json:"apiKey,omitempty"`
+	User        string `json:"user,omitempty"`
+	LLMProvider string `json:"llmProvider"`
+	Model       string `json:"model,omitempty"`
+	Cost        string `json:"cost"`
+	// MissingPriceRequests and UsageUnavailableRequests count requests charged $0 because
+	// the model had no price, or the response reported no token usage.
+	MissingPriceRequests     int64 `json:"missingPriceRequests"`
+	UsageUnavailableRequests int64 `json:"usageUnavailableRequests"`
 }
 
 // AllowanceUsage is one allowance's total in one period, across every gateway sharing
@@ -104,10 +106,13 @@ type AllowanceUsage struct {
 	// PeriodStart is the period's first day, UTC.
 	PeriodStart string `json:"periodStart"`
 	// AllowanceUUID keys the allowance; Allowance holds the values it is separated by.
-	AllowanceUUID    string            `json:"allowanceUuid"`
-	Allowance        map[string]string `json:"allowance"`
-	Spent            string            `json:"spent"`
-	UnpricedRequests int64             `json:"unpricedRequests"`
+	AllowanceUUID string            `json:"allowanceUuid"`
+	Allowance     map[string]string `json:"allowance"`
+	Spent         string            `json:"spent"`
+	// UnpricedRequests counts the allowance's requests charged $0, for any reason; a cost
+	// entry splits the same kind of count by reason (MissingPriceRequests,
+	// UsageUnavailableRequests).
+	UnpricedRequests int64 `json:"unpricedRequests"`
 }
 
 // usageKey names one allowance in one period, or one cost combination in one month.

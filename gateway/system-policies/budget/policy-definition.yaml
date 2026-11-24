@@ -15,7 +15,7 @@ description: |
   agent's hidden LLM proxy route is the route's project ID, its agent this policy's agent
   parameter, and the API key's
   name from the key the request authenticated with. In the request-header phase it refuses
-  with 429 BUDGET_EXCEEDED when a Block budget's allowance has spent its block point
+  with 429, a throttling fault (code 900806), when a Block budget's allowance has spent its block point
   (amount x blockAt %). Allow budgets never refuse. It never reads a body.
 
   When the response ends it charges the cost llm-cost published (x-llm-cost) to every

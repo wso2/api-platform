@@ -110,7 +110,9 @@ func TestCreateBudget_Created(t *testing.T) {
 	assert.Equal(t, 100, *got.Spec.Limit.BlockAt)
 	require.NotNil(t, got.Status)
 	assert.Equal(t, "research-team-monthly", *got.Status.Id)
-	assert.Equal(t, api.BudgetStatusStateDeployed, *got.Status.State)
+	assert.NotNil(t, got.Status.CreatedAt)
+	assert.NotContains(t, rec.Body.String(), `"deployedAt"`, "a budget is not deployed or undeployed")
+	assert.NotContains(t, rec.Body.String(), `"state"`, "spec.status says whether it is enforced")
 }
 
 func TestCreateBudget_ValidationErrorsListFields(t *testing.T) {
@@ -254,7 +256,7 @@ func TestBudgetSpendIsShownAndClearedOnDelete(t *testing.T) {
 
 	limit := 1
 	rec = httptest.NewRecorder()
-	server.GetBudgetUsage(rec, httptest.NewRequest(http.MethodGet, "/budgets/research-team-monthly/budget-usage", nil), "research-team-monthly", api.GetBudgetUsageParams{Limit: &limit})
+	server.GetBudgetUsage(rec, httptest.NewRequest(http.MethodGet, "/budgets/research-team-monthly/usage", nil), "research-team-monthly", api.GetBudgetUsageParams{Limit: &limit})
 	require.Equal(t, http.StatusOK, rec.Code)
 	var page api.BudgetUsageListResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))

@@ -205,6 +205,10 @@ inUse, token (the quoted TOML value config.toml assigns: an env or file token).
 {{- else if eq .which "sqlserver" -}}
 {{- $r := default (dict) (default (dict) $c.sqlserver).passwordSecretRef -}}
 {{- $s = dict "field" "gateway.controller.sqlserver.passwordSecretRef" "nameField" "name" "name" (default "" $r.name) "key" (default "password" $r.key) "source" (default "env" $r.source) "mountPath" (default "/secrets/gateway-controller/sqlserver" $r.mountPath) "envVar" "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" "volume" "sqlserver-password" "inUse" (eq $storageType "sqlserver") -}}
+{{- else if eq .which "redis" -}}
+{{- $r := default (dict) (default (dict) $c.redis).passwordSecretRef -}}
+{{- $redis := default (dict) (default (dict) .root.Values.gateway.config.counters).redis -}}
+{{- $s = dict "field" "gateway.controller.redis.passwordSecretRef" "nameField" "name" "name" (default "" $r.name) "key" (default "password" $r.key) "source" (default "env" $r.source) "mountPath" (default "/secrets/gateway-controller/redis" $r.mountPath) "envVar" "APIP_GW_COUNTERS_REDIS_PASSWORD" "volume" "redis-password" "inUse" (and $redis.enabled (ne (default "" $r.name) "")) -}}
 {{- else -}}
 {{- fail (printf "gateway-operator.controllerSecret: unknown secret %q" .which) -}}
 {{- end -}}
@@ -255,7 +259,7 @@ Args: the root context.
 {{- if and (kindIs "map" $m) $m.mountPath -}}{{- $_ := set $taken (trimSuffix "/" (toString $m.mountPath)) (printf "gateway.controller.deployment.extraVolumeMounts[%d]" $i) -}}{{- end -}}
 {{- end -}}
 {{- $mounts := list -}}
-{{- range $which := list "token" "postgres" "sqlserver" -}}
+{{- range $which := list "token" "postgres" "sqlserver" "redis" -}}
 {{- $s := include "gateway-operator.controllerSecret" (dict "root" $ "which" $which) | fromYaml -}}
 {{- if and $s.inUse (eq $s.source "file") -}}
 {{- with (get $taken $s.mountPath) -}}

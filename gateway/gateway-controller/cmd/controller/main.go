@@ -853,6 +853,7 @@ func main() {
 	go certmetrics.Sweep(certSweepCtx, db, log)
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
+	igw.SetBudgetService(apiServer.BudgetService())
 	if err := igw.LoadArtifacts(log); err != nil {
 		log.Error("Failed to load immutable gateway artifacts", slog.Any("error", err))
 		os.Exit(1)
@@ -1209,12 +1210,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"DELETE /subscription-plans/{planId}": {"admin"},
 
 		// Budget endpoints
-		"POST /budgets":                  {"admin"},
-		"GET /budgets":                   {"admin"},
-		"GET /budgets/{id}":              {"admin"},
-		"PUT /budgets/{id}":              {"admin"},
-		"DELETE /budgets/{id}":           {"admin"},
-		"GET /budgets/{id}/budget-usage": {"admin"},
+		"POST /budgets":           {"admin"},
+		"GET /budgets":            {"admin"},
+		"GET /budgets/{id}":       {"admin"},
+		"PUT /budgets/{id}":       {"admin"},
+		"DELETE /budgets/{id}":    {"admin"},
+		"GET /budgets/{id}/usage": {"admin"},
 
 		"POST /secrets":        {"admin"},
 		"GET /secrets":         {"admin"},

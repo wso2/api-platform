@@ -42,6 +42,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -436,11 +437,16 @@ type refusedBudget struct {
 	ResetsAt string `json:"resetsAt"`
 }
 
-// refusal answers 429 with Retry-After until the last listed budget resets.
+// refusalMessage is the refusal's message, in the body and in its fault details.
+const refusalMessage = "Budget used up. Retry after every listed budget resets."
+
+// refusal answers 429 with Retry-After until the last listed budget resets. It is a
+// throttling fault: a budget is a custom throttling policy's limit (900806), so fault
+// policies and analytics classify it with the other throttling rejections.
 func refusal(exhausted []*budget, now time.Time) policy.ImmediateResponse {
 	body := refusalBody{
-		Code:    "BUDGET_EXCEEDED",
-		Message: "Budget used up. Retry after every listed budget resets.",
+		Code:    policy.FaultCodeThrottledCustomPolicy,
+		Message: refusalMessage,
 	}
 	var latest time.Time
 	for _, b := range exhausted {
@@ -456,7 +462,7 @@ func refusal(exhausted []*budget, now time.Time) policy.ImmediateResponse {
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		slog.Error("Failed to encode the budget refusal", slog.Any("error", err))
-		encoded = []byte(`{"code":"BUDGET_EXCEEDED"}`)
+		encoded = []byte(`{"code":"` + policy.FaultCodeThrottledCustomPolicy + `"}`)
 	}
 	retryAfter := int64(math.Ceil(latest.Sub(now).Seconds()))
 	return policy.ImmediateResponse{
@@ -465,6 +471,24 @@ func refusal(exhausted []*budget, now time.Time) policy.ImmediateResponse {
 			"Content-Type": "application/json",
 			"Retry-After":  strconv.FormatInt(retryAfter, 10),
 		},
-		Body: encoded,
+		Body:    encoded,
+		IsFault: true,
+		Fault: &policy.FaultDetails{
+			Code:        policy.FaultCodeThrottledCustomPolicy,
+			Type:        policy.FaultTypeThrottling,
+			Direction:   policy.DirectionRequest,
+			Message:     refusalMessage,
+			Description: describeExhausted(exhausted),
+		},
 	}
+}
+
+// describeExhausted names the budgets that refused, for FaultDetails.Description: fault
+// policies get it, the response body already lists them.
+func describeExhausted(exhausted []*budget) string {
+	names := make([]string, 0, len(exhausted))
+	for _, b := range exhausted {
+		names = append(names, b.name)
+	}
+	return "budget used up: " + strings.Join(names, ", ")
 }

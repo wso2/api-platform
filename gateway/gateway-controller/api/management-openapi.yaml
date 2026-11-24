@@ -4020,6 +4020,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Budget'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/Budget'
         '404':
           description: Budget not found
           content:
@@ -4144,7 +4147,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /budgets/{id}/budget-usage:
+  /budgets/{id}/usage:
     get:
       summary: List a budget's usage
       description: >-
@@ -6502,15 +6505,15 @@ components:
       properties:
         apiVersion:
           type: string
+          description: Budget specification version
+          example: gateway.api-platform.wso2.com/v1
           enum:
             - gateway.api-platform.wso2.com/v1
-          x-enum-varnames:
-            - V1
         kind:
           type: string
+          description: Budget kind
+          example: Budget
           enum:
-            - Budget
-          x-enum-varnames:
             - Budget
         metadata:
           $ref: '#/components/schemas/BudgetMetadata'
@@ -6545,12 +6548,27 @@ components:
                 - $ref: '#/components/schemas/BudgetStatus'
 
     BudgetStatus:
-      allOf:
-        - $ref: '#/components/schemas/ResourceStatus'
-        - type: object
-          properties:
-            currentPeriod:
-              $ref: '#/components/schemas/BudgetCurrentPeriod'
+      type: object
+      description: >-
+        Server-managed information for a budget. A budget is not deployed or undeployed:
+        spec.status says whether it is enforced, so there is no state or deployedAt.
+      properties:
+        id:
+          type: string
+          description: Unique identifier assigned by the server (equal to metadata.name)
+          example: team-daily
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the budget was first created (UTC)
+          example: 2026-04-24T07:21:13Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the budget was last updated (UTC)
+          example: 2026-04-24T07:21:13Z
+        currentPeriod:
+          $ref: '#/components/schemas/BudgetCurrentPeriod'
 
     BudgetCurrentPeriod:
       type: object
@@ -6661,9 +6679,6 @@ components:
             - active
             - inactive
           default: active
-          x-enum-varnames:
-            - BudgetStatusActive
-            - BudgetStatusInactive
         limit:
           $ref: '#/components/schemas/BudgetLimit'
         filters:
@@ -6697,8 +6712,6 @@ components:
           enum:
             - USD
           default: USD
-          x-enum-varnames:
-            - BudgetCurrencyUSD
         period:
           type: string
           description: UTC calendar day, ISO week starting Monday, or calendar month.
@@ -6706,19 +6719,12 @@ components:
             - day
             - week
             - month
-          x-enum-varnames:
-            - BudgetPeriodDay
-            - BudgetPeriodWeek
-            - BudgetPeriodMonth
         action:
           type: string
           description: block refuses requests at the block point; allow only counts.
           enum:
             - block
             - allow
-          x-enum-varnames:
-            - BudgetActionBlock
-            - BudgetActionAllow
         blockAt:
           type: integer
           description: Percentage of the amount at which a block budget refuses requests.
@@ -6745,12 +6751,6 @@ components:
             - agent
             - apiKey
             - attribute
-          x-enum-varnames:
-            - BudgetSplitTypeLlmProvider
-            - BudgetSplitTypeProject
-            - BudgetSplitTypeAgent
-            - BudgetSplitTypeApiKey
-            - BudgetSplitTypeAttribute
         expression:
           type: string
           description: attribute only. CEL over the request returning a string or a list of strings.
@@ -6762,7 +6762,7 @@ components:
       description: >-
         One condition on the LLM usage the budget counts; filters combine with AND. llmProvider is
         the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy
-        (its gateway.api-platform.wso2.com/project-name and agent-name annotations); apiKey is the
+        (its gateway.api-platform.wso2.com/project-id and agent-id annotations); apiKey is the
         name of the API key the request authenticated with; attribute is a CEL condition over the
         request (token claims). A project, agent or apiKey filter without an id matches any one:
         requests that carry that value at all (an agent filter without an id leaves out requests
@@ -6779,12 +6779,6 @@ components:
             - agent
             - apiKey
             - attribute
-          x-enum-varnames:
-            - BudgetFilterTypeLlmProvider
-            - BudgetFilterTypeProject
-            - BudgetFilterTypeAgent
-            - BudgetFilterTypeApiKey
-            - BudgetFilterTypeAttribute
         id:
           type: string
           description: >-
@@ -6819,10 +6813,6 @@ components:
             - attribute
             - project
             - agent
-          x-enum-varnames:
-            - BudgetExemptionTypeAttribute
-            - BudgetExemptionTypeProject
-            - BudgetExemptionTypeAgent
         expression:
           type: string
           description: attribute only. CEL condition over the request.
@@ -8434,8 +8424,6 @@ components:
           description: Generic note on a check that is up but under strain, such as an exhausted connection pool; present only while it applies, and never makes the check down
 
 tags:
-  - name: AI Cost Management
-    description: Budgets (spend limits on LLM traffic)
   - name: Rest API Management
     description: CRUD operations for Rest APIs
   - name: GraphQL API Management
@@ -8454,5 +8442,7 @@ tags:
     description: CRUD operations for LLM Proxy configurations
   - name: Secrets Management
     description: CRUD operations for Secrets
+  - name: AI Cost Management
+    description: Budgets (spend limits on LLM traffic)
   - name: System
     description: Health and readiness of the gateway controller

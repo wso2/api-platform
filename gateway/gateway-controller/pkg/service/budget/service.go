@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/common/counterproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -283,9 +284,10 @@ func NewService(db storage.Storage, publisher Publisher, eventHub eventhub.Event
 	return &Service{db: db, publisher: publisher, eventHub: eventHub, gatewayID: strings.TrimSpace(gatewayID), logger: logger, pushEnabled: pushEnabled}
 }
 
-// CreateParams holds the request for Create. Body is JSON or YAML.
+// CreateParams holds the request for Create. Body is JSON or YAML, as ContentType says.
 type CreateParams struct {
 	Body          []byte
+	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
 }
@@ -299,7 +301,7 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 		log = s.logger
 	}
 
-	budget, err := decode(params.Body)
+	budget, err := decode(params.Body, params.ContentType)
 	if err != nil {
 		return nil, err
 	}
@@ -371,10 +373,12 @@ func (s *Service) List() ([]*models.StoredConfig, error) {
 	return cfgs, nil
 }
 
-// UpdateParams holds the request for Update. Body is the full budget, JSON or YAML.
+// UpdateParams holds the request for Update. Body is the full budget, JSON or YAML, as
+// ContentType says.
 type UpdateParams struct {
 	Name          string
 	Body          []byte
+	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
 }
@@ -389,12 +393,12 @@ func (s *Service) Update(params UpdateParams) (*models.StoredConfig, error) {
 		log = s.logger
 	}
 
-	budget, err := decode(params.Body)
+	budget, err := decode(params.Body, params.ContentType)
 	if err != nil {
 		return nil, err
 	}
 	if budget.Metadata.Name != params.Name {
-		return nil, &ValidationError{Errors: []FieldError{{Field: "metadata.name", Message: "must match the budget being updated"}}}
+		return nil, &NameMismatchError{PathName: params.Name, BodyName: budget.Metadata.Name}
 	}
 
 	existing, err := s.Get(params.Name)
@@ -506,7 +510,7 @@ func (s *Service) checkIDFree(id string) error {
 func budgetID(metadata api.BudgetMetadata) (string, error) {
 	if given := artifactID(metadata); given != "" {
 		if err := utils.ValidateUUIDFormat(given); err != nil {
-			return "", &ValidationError{Errors: []FieldError{{
+			return "", &ValidationError{Errors: []config.ValidationError{{
 				Field:   "metadata.annotations." + constants.AnnotationArtifactID,
 				Message: err.Error(),
 			}}}
@@ -526,23 +530,23 @@ func artifactID(metadata api.BudgetMetadata) string {
 
 // fixedFieldChanges lists the fields that differ but cannot change after
 // creation: the artifact-id annotation, period, currency, splitBy and filters.
-func fixedFieldChanges(stored, updated api.BudgetRequest) []FieldError {
+func fixedFieldChanges(stored, updated api.BudgetRequest) []config.ValidationError {
 	const message = "cannot be changed after creation; create a new budget instead"
-	var errs []FieldError
+	var errs []config.ValidationError
 	if artifactID(stored.Metadata) != artifactID(updated.Metadata) {
-		errs = append(errs, FieldError{Field: "metadata.annotations." + constants.AnnotationArtifactID, Message: message})
+		errs = append(errs, config.ValidationError{Field: "metadata.annotations." + constants.AnnotationArtifactID, Message: message})
 	}
 	if stored.Spec.Limit.Period != updated.Spec.Limit.Period {
-		errs = append(errs, FieldError{Field: "spec.limit.period", Message: message})
+		errs = append(errs, config.ValidationError{Field: "spec.limit.period", Message: message})
 	}
 	if !reflect.DeepEqual(stored.Spec.Limit.Currency, updated.Spec.Limit.Currency) {
-		errs = append(errs, FieldError{Field: "spec.limit.currency", Message: message})
+		errs = append(errs, config.ValidationError{Field: "spec.limit.currency", Message: message})
 	}
 	if !reflect.DeepEqual(stored.Spec.Limit.SplitBy, updated.Spec.Limit.SplitBy) {
-		errs = append(errs, FieldError{Field: "spec.limit.splitBy", Message: message})
+		errs = append(errs, config.ValidationError{Field: "spec.limit.splitBy", Message: message})
 	}
 	if !reflect.DeepEqual(stored.Spec.Filters, updated.Spec.Filters) {
-		errs = append(errs, FieldError{Field: "spec.filters", Message: message})
+		errs = append(errs, config.ValidationError{Field: "spec.filters", Message: message})
 	}
 	return errs
 }
@@ -561,7 +565,7 @@ func (s *Service) checkProviderExists(spec api.BudgetSpec) error {
 		switch {
 		case err == nil:
 		case storage.IsNotFoundError(err):
-			return &ValidationError{Errors: []FieldError{{
+			return &ValidationError{Errors: []config.ValidationError{{
 				Field:   fmt.Sprintf("spec.filters[%d].id", i),
 				Message: fmt.Sprintf("no LLM provider named %q on this gateway", *f.Id),
 			}}}
@@ -583,7 +587,7 @@ func (s *Service) ApplyControlPlaneBudget(in utils.ControlPlaneBudget, correlati
 	if in.BudgetID == "" {
 		return fmt.Errorf("control-plane budget has no budgetId")
 	}
-	budget, err := decode(in.Budget)
+	budget, err := decode(in.Budget, "application/json")
 	if err != nil {
 		return fmt.Errorf("control-plane budget %s is not valid here: %w", in.BudgetID, err)
 	}

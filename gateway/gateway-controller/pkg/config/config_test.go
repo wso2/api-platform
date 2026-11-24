@@ -3198,7 +3198,7 @@ func TestLoadConfig_BudgetsAndCountersSections(t *testing.T) {
 enabled = true
 
 [ai_cost_management.budgets]
-enabled = '{{ env "APIP_GW_AI_COST_BUDGETS_ENABLED" "false" }}'
+enabled = '{{ env "APIP_GW_AI_COST_MANAGEMENT_BUDGETS_ENABLED" "false" }}'
 
 [counters]
 retention = "48h"
@@ -3209,7 +3209,7 @@ enabled = '{{ env "APIP_GW_COUNTERS_REDIS_ENABLED" "false" }}'
 address = "redis:6379"
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(contents), 0o644))
-	t.Setenv("APIP_GW_AI_COST_BUDGETS_ENABLED", "true")
+	t.Setenv("APIP_GW_AI_COST_MANAGEMENT_BUDGETS_ENABLED", "true")
 	t.Setenv("APIP_GW_COUNTERS_REDIS_ENABLED", "true")
 
 	cfg, err := LoadConfig(configPath)

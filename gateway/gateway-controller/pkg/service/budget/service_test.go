@@ -156,8 +156,8 @@ func TestCreate_StoresBudgetWithDefaults(t *testing.T) {
 	assert.Equal(t, "500.00", budget.Spec.Limit.Amount)
 	assert.Equal(t, 95, *budget.Spec.Limit.BlockAt)
 	// Defaults come from the spec.
-	assert.Equal(t, api.BudgetStatusActive, *budget.Spec.Status)
-	assert.Equal(t, api.BudgetCurrencyUSD, *budget.Spec.Limit.Currency)
+	assert.Equal(t, api.BudgetSpecStatusActive, *budget.Spec.Status)
+	assert.Equal(t, api.USD, *budget.Spec.Limit.Currency)
 	assert.Equal(t, models.OriginGatewayAPI, stored.Origin)
 }
 
@@ -354,8 +354,8 @@ func TestCreate_ReportsEveryError(t *testing.T) {
 func TestCreate_RejectsUnparseableBody(t *testing.T) {
 	svc, _ := newTestService(t, false)
 	_, err := svc.Create(CreateParams{Body: []byte(`{"kind": `)})
-	var invalid *ValidationError
-	require.True(t, errors.As(err, &invalid), "got %v", err)
+	var parseErr *ParseError
+	require.True(t, errors.As(err, &parseErr), "got %v", err)
 }
 
 func TestGetAndList(t *testing.T) {
@@ -396,9 +396,9 @@ func TestUpdate_ChangesEditableFields(t *testing.T) {
 	require.NoError(t, err)
 	b := got.SourceConfiguration.(api.BudgetRequest)
 	assert.Equal(t, "750.00", b.Spec.Limit.Amount)
-	assert.Equal(t, api.BudgetActionAllow, b.Spec.Limit.Action)
+	assert.Equal(t, api.Allow, b.Spec.Limit.Action)
 	assert.Nil(t, b.Spec.Limit.BlockAt, "an Allow budget has no blockAt")
-	assert.Equal(t, api.BudgetStatusInactive, *b.Spec.Status)
+	assert.Equal(t, api.BudgetSpecStatusInactive, *b.Spec.Status)
 	require.NotNil(t, b.Spec.Exemptions)
 	assert.Len(t, *b.Spec.Exemptions, 1)
 }
@@ -433,9 +433,10 @@ func TestUpdate_NameMustMatchAndBudgetMustExist(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.Update(UpdateParams{Name: "other", Body: []byte(validBudget)})
-	var invalid *ValidationError
-	require.True(t, errors.As(err, &invalid), "got %v", err)
-	assert.Equal(t, "metadata.name", invalid.Errors[0].Field)
+	var mismatch *NameMismatchError
+	require.True(t, errors.As(err, &mismatch), "got %v", err)
+	assert.Equal(t, "other", mismatch.PathName)
+	assert.Equal(t, "research-team-monthly", mismatch.BodyName)
 
 	body := strings.Replace(validBudget, "research-team-monthly", "missing", 1)
 	_, err = svc.Update(UpdateParams{Name: "missing", Body: []byte(body)})
@@ -1162,4 +1163,16 @@ func TestDelete_ClearsSpendAndSweepsAgainUnlessMadeAgain(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 	assert.Equal(t, 6, counters.count(), "no sweep for a budget made again under the name")
+}
+
+func TestCreate_ReadsTheBodyAsItsContentTypeSays(t *testing.T) {
+	svc, _ := newTestService(t, false)
+	yamlBody := "apiVersion: gateway.api-platform.wso2.com/v1\nkind: Budget\nmetadata: [\n"
+
+	_, err := svc.Create(CreateParams{Body: []byte(yamlBody), ContentType: "application/json"})
+	var parseErr *ParseError
+	require.True(t, errors.As(err, &parseErr), "a body that is not JSON is a parse error: %v", err)
+
+	_, err = svc.Create(CreateParams{Body: []byte(validBudget), ContentType: "application/json"})
+	require.NoError(t, err, "the JSON body is read as JSON")
 }

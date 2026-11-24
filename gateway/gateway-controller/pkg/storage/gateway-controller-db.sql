@@ -1,5 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies, Agents)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
--- Budgets: the Budget kind as JSON (artifacts row of kind 'Budget').
+-- Budgets: the Budget kind as JSON (artifacts row of kind 'Budget') (added in schema version 7)
 CREATE TABLE IF NOT EXISTS budgets (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
@@ -345,4 +345,4 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;

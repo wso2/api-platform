@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
--- Budgets: the Budget kind as JSON (artifacts row of kind 'Budget').
+-- Budgets: the Budget kind as JSON (artifacts row of kind 'Budget') (added in schema version 7)
 CREATE TABLE IF NOT EXISTS budgets (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,

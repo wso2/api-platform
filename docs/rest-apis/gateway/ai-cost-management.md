@@ -97,18 +97,9 @@ Required roles: `admin`
     ]
   },
   "status": {
-    "id": "reading-list-api-v1.0",
-    "state": "deployed",
+    "id": "team-daily",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z",
-    "warnings": [
-      {
-        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-      }
-    ],
     "currentPeriod": {
       "periodStart": "2026-11-01",
       "spent": "312.4",
@@ -188,18 +179,9 @@ Required roles: `admin`
         ]
       },
       "status": {
-        "id": "reading-list-api-v1.0",
-        "state": "deployed",
+        "id": "team-daily",
         "createdAt": "2026-04-24T07:21:13Z",
         "updatedAt": "2026-04-24T07:21:13Z",
-        "deployedAt": "2026-04-24T07:21:13Z",
-        "warnings": [
-          {
-            "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-            "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-            "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-          }
-        ],
         "currentPeriod": {
           "periodStart": "2026-11-01",
           "spent": "312.4",
@@ -233,10 +215,11 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|[BudgetRequest](schemas.md#schemabudgetrequest)|false|none|none|
-|»»» apiVersion|string|true|none|none|
-|»»» kind|string|true|none|none|
+|»»» apiVersion|string|true|none|Budget specification version|
+|»»» kind|string|true|none|Budget kind|
 |»»» metadata|[BudgetMetadata](schemas.md#schemabudgetmetadata)|true|none|none|
 |»»»» name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
+|»»»» labels|[string]|false|none|One-word labels to organize and find budgets. Not used to enforce; kept with the budget and pushed to the control plane with it. At most 10, no repeats; each 1-63 characters of letters, digits, '.', '_' or '-', starting and ending with a letter or digit (no spaces).|
 |»»»» annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget counts only that project: when its filters have no project filter, {type: project, id} is added as the last filter. It exempts only that project's agents and cannot be split by project.|
 |»»»»» **additionalProperties**|string|false|none|none|
 |»»» spec|[BudgetSpec](schemas.md#schemabudgetspec)|true|none|none|
@@ -266,7 +249,14 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
-|»»» status|any|false|read-only|Server-managed fields. Populated on responses.|
+|»»» status|[BudgetStatus](schemas.md#schemabudgetstatus)|false|read-only|Server-managed fields. Populated on responses.|
+|»»»» id|string|false|none|Unique identifier assigned by the server (equal to metadata.name)|
+|»»»» createdAt|string(date-time)|false|none|Timestamp when the budget was first created (UTC)|
+|»»»» updatedAt|string(date-time)|false|none|Timestamp when the budget was last updated (UTC)|
+|»»»» currentPeriod|[BudgetCurrentPeriod](schemas.md#schemabudgetcurrentperiod)|false|none|Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.|
+|»»»»» periodStart|string(date)|true|none|none|
+|»»»»» spent|string|true|none|USD, total across the budget's allowances|
+|»»»»» unpricedRequests|integer(int64)|true|none|Requests charged $0 this period because they had no price|
 
 #### Enumerated Values
 
@@ -359,18 +349,9 @@ Required roles: `admin`
     ]
   },
   "status": {
-    "id": "reading-list-api-v1.0",
-    "state": "deployed",
+    "id": "team-daily",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z",
-    "warnings": [
-      {
-        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-      }
-    ],
     "currentPeriod": {
       "periodStart": "2026-11-01",
       "spent": "312.4",
@@ -484,18 +465,9 @@ Required roles: `admin`
     ]
   },
   "status": {
-    "id": "reading-list-api-v1.0",
-    "state": "deployed",
+    "id": "team-daily",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z",
-    "warnings": [
-      {
-        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-      }
-    ],
     "currentPeriod": {
       "periodStart": "2026-11-01",
       "spent": "312.4",
@@ -583,13 +555,13 @@ Status Code **200**
 
 <a id="opIdgetBudgetUsage"></a>
 
-`GET /budgets/{id}/budget-usage`
+`GET /budgets/{id}/usage`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v1/budgets/{id}/budget-usage \
+curl -X GET http://localhost:9090/api/management/v1/budgets/{id}/usage \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

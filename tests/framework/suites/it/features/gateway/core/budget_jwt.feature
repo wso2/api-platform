@@ -71,7 +71,7 @@ Feature: Budgets on an LLM provider secured with jwt-auth
       """
       {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the JSON response field "code" should be "BUDGET_EXCEEDED"
+    Then the JSON response field "code" should be "900806"
     And the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
 
     # Another user has an allowance of their own.

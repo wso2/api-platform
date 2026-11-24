@@ -19,7 +19,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
   - id: BUDGET-002
     title: "Read a budget by name; 200 with the stored spec."
@@ -30,7 +30,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
   - id: BUDGET-003
     title: "List budgets; the list includes the budget."
@@ -41,7 +41,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
   - id: BUDGET-004
     title: "Update the editable fields (amount, action, blockAt, status, exemptions); 200 and a read returns the new values."
@@ -52,7 +52,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
   - id: BUDGET-005
     title: "Delete a budget; 200, then a read returns 404."
@@ -63,7 +63,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
   - id: BUDGET-006
     title: "Change a fixed field (period) on update; 400 naming spec.limit.period and the budget is unchanged."
@@ -74,7 +74,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "Changing a budget's period is refused and the budget keeps its period"
   - id: BUDGET-007
     title: "Create an invalid budget; 400 listing every failing field and nothing is stored."
@@ -85,7 +85,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "An invalid budget is rejected with every failing field and nothing is stored"
   - id: BUDGET-008
     title: "Create a budget whose name is taken; 409."
@@ -96,7 +96,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget whose name is taken is refused"
   - id: BUDGET-009
     title: "Create a budget naming an LLM provider the gateway does not have; 400 on spec.filters[0].id."
@@ -107,7 +107,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+        - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget naming a provider the gateway does not have is rejected"
   - id: BUDGET-010
     title: "Create an active budget; it reaches the policy engine as a lazy resource of type Budget with its limit, filters and split mapped to the engine's model."
@@ -154,7 +154,7 @@ scenarios:
         - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
   - id: BUDGET-014
-    title: "A Block budget on an LLM provider is used up; the next call is refused with 429 BUDGET_EXCEEDED listing the budget, its limit and period, and Retry-After."
+    title: "A Block budget on an LLM provider is used up; the next call is refused with 429 (throttling fault 900806) listing the budget, its limit and period, and Retry-After."
     priority: P1
     ui:
       status: exempt

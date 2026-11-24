@@ -8,6 +8,10 @@ const (
 	// AnnotationArtifactID is the annotation key that pins the artifact UUID on an API resource.
 	// When present and no UUID is provided externally, the gateway controller uses this value instead of generating one.
 	AnnotationArtifactID = "gateway.api-platform.wso2.com/artifact-id"
+	// AnnotationAgentID names the agent of an agent's hidden LLM proxy, set by the control
+	// plane beside the proxy's project-id annotation. The budget system policy on that
+	// route matches agent budget consumers by it.
+	AnnotationAgentID = "gateway.api-platform.wso2.com/agent-id"
 )
 
 const (

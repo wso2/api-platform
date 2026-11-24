@@ -19,22 +19,13 @@
 package controlplane
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
-	"net/url"
-	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
-
-// resourceSyncTimeout bounds one push request.
-const resourceSyncTimeout = 30 * time.Second
 
 // Gateway-created resources that are not deployable artifacts (models.SyncedResourceKinds)
 // are pushed to the control plane the way artifacts are (import-gateway-artifacts): one
@@ -45,49 +36,12 @@ const resourceSyncTimeout = 30 * time.Second
 // gateway was disconnected. The control plane matches a resource by kind and name and
 // returns its own ID, stored as cp_artifact_id.
 
-// gatewayResource is one resource in a push: the document as the gateway stores it (its
-// kind is configuration.kind), keyed by the gateway's ID for it.
-type gatewayResource struct {
-	DPID          string    `json:"dpid"`
-	Configuration any       `json:"configuration"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-}
-
-// gatewayResourcesRequest is the body of POST {base}/gateways/{gatewayID}/resources.
-// Complete marks Resources as everything the gateway created.
-type gatewayResourcesRequest struct {
-	Complete  bool              `json:"complete"`
-	Resources []gatewayResource `json:"resources"`
-	Deleted   []gatewayResource `json:"deleted"`
-}
-
-// gatewayResourceResult is the control plane's outcome for one resource. ID is its ID
-// for the resource.
-type gatewayResourceResult struct {
-	ID     string `json:"id"`
-	Status string `json:"status"` // "synced" or "failed"
-	Error  string `json:"error,omitempty"`
-}
-
-// gatewayResourcesResponse holds a result per resource, keyed by dpid, with counts.
-type gatewayResourcesResponse struct {
-	Total     int                              `json:"total"`
-	Success   int                              `json:"success"`
-	Failed    int                              `json:"failed"`
-	Resources map[string]gatewayResourceResult `json:"resources"`
-}
-
 // canPushResources reports whether a DP->CP push should be attempted now.
 // The pushed resources are budgets, so nothing is pushed when budgets are not enabled
 // on this gateway (no budget applier is set).
 func (c *Client) canPushResources() bool {
 	return c.IsConnected() && c.config.DeploymentSyncEnabled && !c.IsOnPrem() && c.getBudgetApplier() != nil
 }
-
-// errResourcesNotSupported is a control plane that does not take gateway resources: it
-// answers 404 (AI Workspace). Retrying cannot help.
-var errResourcesNotSupported = errors.New("the control plane does not support gateway resources")
 
 // PushResource pushes a gateway-created resource after it is created or updated.
 func (c *Client) PushResource(cfg *models.StoredConfig) {
@@ -96,7 +50,7 @@ func (c *Client) PushResource(cfg *models.StoredConfig) {
 	}
 	item := toGatewayResource(cfg)
 	c.SubmitArtifactPush(func() {
-		c.pushResources(gatewayResourcesRequest{Resources: []gatewayResource{item}}, map[string]*models.StoredConfig{cfg.UUID: cfg})
+		c.pushResources(utils.GatewayResourcesRequest{Resources: []utils.GatewayResource{item}}, map[string]*models.StoredConfig{cfg.UUID: cfg})
 	})
 }
 
@@ -107,7 +61,7 @@ func (c *Client) PushResourceDeletion(cfg *models.StoredConfig) {
 	}
 	item := toGatewayResource(cfg)
 	c.SubmitArtifactPush(func() {
-		c.pushResources(gatewayResourcesRequest{Deleted: []gatewayResource{item}}, nil)
+		c.pushResources(utils.GatewayResourcesRequest{Deleted: []utils.GatewayResource{item}}, nil)
 	})
 }
 
@@ -126,7 +80,7 @@ func (c *Client) pushGatewayResources() {
 		c.logger.Warn("Cannot push gateway resources to control plane: database is not available")
 		return
 	}
-	req := gatewayResourcesRequest{Complete: true, Resources: []gatewayResource{}}
+	req := utils.GatewayResourcesRequest{Complete: true, Resources: []utils.GatewayResource{}}
 	sent := map[string]*models.StoredConfig{}
 	for _, kind := range models.SyncedResourceKinds() {
 		configs, err := c.db.GetAllConfigsByKind(kind)
@@ -153,8 +107,8 @@ func isPushedResource(cfg *models.StoredConfig) bool {
 	return cfg != nil && cfg.Origin == models.OriginGatewayAPI && models.IsSyncedResourceKind(cfg.Kind)
 }
 
-func toGatewayResource(cfg *models.StoredConfig) gatewayResource {
-	return gatewayResource{
+func toGatewayResource(cfg *models.StoredConfig) utils.GatewayResource {
+	return utils.GatewayResource{
 		DPID: cfg.UUID, Configuration: cfg.SourceConfiguration,
 		CreatedAt: cfg.CreatedAt.UTC(), UpdatedAt: cfg.UpdatedAt.UTC(),
 	}
@@ -162,18 +116,18 @@ func toGatewayResource(cfg *models.StoredConfig) gatewayResource {
 
 // pushResources sends a push, retrying it like an artifact push (retryPush), and records
 // the outcome of each resource in sent.
-func (c *Client) pushResources(req gatewayResourcesRequest, sent map[string]*models.StoredConfig) {
+func (c *Client) pushResources(req utils.GatewayResourcesRequest, sent map[string]*models.StoredConfig) {
 	gatewayID := c.connectedGatewayID()
 	if gatewayID == "" {
 		c.logger.Warn("Cannot push gateway resources to control plane: gateway ID is not known yet")
 		return
 	}
-	var resp *gatewayResourcesResponse
+	var resp *utils.GatewayResourcesResponse
 	unsupported := false
 	err := c.retryPush("resource push", func() error {
 		var err error
 		resp, err = c.postGatewayResources(gatewayID, req)
-		if errors.Is(err, errResourcesNotSupported) {
+		if errors.Is(err, utils.ErrResourcesNotSupported) {
 			unsupported = true
 			return nil
 		}
@@ -209,7 +163,7 @@ func (c *Client) pushResources(req gatewayResourcesRequest, sent map[string]*mod
 
 // recordResourceSyncStatus stores a push outcome on the resource's row, like
 // recordArtifactSyncStatus: the control plane's ID on success, the error on failure.
-func (c *Client) recordResourceSyncStatus(cfg *models.StoredConfig, result gatewayResourceResult) {
+func (c *Client) recordResourceSyncStatus(cfg *models.StoredConfig, result utils.GatewayResourceResult) {
 	status, cpID, info := models.CPSyncStatusSuccess, result.ID, ""
 	if result.Error != "" || result.Status != "synced" {
 		status, cpID, info = models.CPSyncStatusFailed, cfg.CPArtifactID, result.Error
@@ -227,44 +181,13 @@ func (c *Client) connectedGatewayID() string {
 	return c.state.GatewayID
 }
 
-// postGatewayResources sends the request to POST {base}/gateways/{gatewayID}/resources.
-func (c *Client) postGatewayResources(gatewayID string, body gatewayResourcesRequest) (*gatewayResourcesResponse, error) {
-	endpoint := c.getRestAPIBaseURL() + "/gateways/" + url.PathEscape(gatewayID) + "/resources"
-	data, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal gateway resources: %w", err)
+// postGatewayResources sends a push through the platform API client, and marks a status
+// the controller cannot recover from as a permanent failure, like the artifact push.
+func (c *Client) postGatewayResources(gatewayID string, body utils.GatewayResourcesRequest) (*utils.GatewayResourcesResponse, error) {
+	resp, err := c.apiUtilsService.PushGatewayResources(gatewayID, body)
+	var statusErr *utils.ControlPlaneStatusError
+	if errors.As(err, &statusErr) && isPermanentControlPlaneStatus(statusErr.StatusCode) {
+		return nil, fmt.Errorf("%w: %w", errPermanentControlPlaneFailure, err)
 	}
-	ctx, cancel := context.WithTimeout(c.ctx, resourceSyncTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gateway resources request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("api-key", c.config.Token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send gateway resources: %w", err)
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read gateway resources response: %w", err)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, errResourcesNotSupported
-	}
-	if resp.StatusCode != http.StatusOK {
-		if isPermanentControlPlaneStatus(resp.StatusCode) {
-			return nil, fmt.Errorf("%w: gateway resources sync returned %d: %s",
-				errPermanentControlPlaneFailure, resp.StatusCode, string(respBody))
-		}
-		return nil, fmt.Errorf("gateway resources sync failed with status %d: %s", resp.StatusCode, string(respBody))
-	}
-	var out gatewayResourcesResponse
-	if err := json.Unmarshal(respBody, &out); err != nil {
-		return nil, fmt.Errorf("failed to parse gateway resources response: %w", err)
-	}
-	return &out, nil
+	return resp, err
 }

@@ -18,7 +18,11 @@
 
 package controlplane
 
-import "time"
+import (
+	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+)
 
 // DeploymentAckMessage represents the acknowledgement message sent back to the control plane
 // after a gateway has processed a deployment or undeployment event.
@@ -508,4 +512,22 @@ type ApplicationUpdatedEvent struct {
 	Timestamp     string                         `json:"timestamp"`
 	CorrelationID string                         `json:"correlationId"`
 	UserId        string                         `json:"userId"`
+}
+
+// BudgetEvent is a budget.created or budget.updated event.
+type BudgetEvent struct {
+	Type          string                   `json:"type"`
+	Payload       utils.ControlPlaneBudget `json:"payload"`
+	Timestamp     string                   `json:"timestamp"`
+	CorrelationID string                   `json:"correlationId"`
+}
+
+// BudgetDeletedEvent is a budget.deleted event.
+type BudgetDeletedEvent struct {
+	Type    string `json:"type"`
+	Payload struct {
+		BudgetID string `json:"budgetId"`
+	} `json:"payload"`
+	Timestamp     string `json:"timestamp"`
+	CorrelationID string `json:"correlationId"`
 }

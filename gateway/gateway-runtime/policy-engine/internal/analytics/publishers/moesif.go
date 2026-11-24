@@ -301,9 +301,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 				slog.Warn("AI Metadata property cannot be converted to the required format")
 			}
 		} else {
-			// Missing when the gateway answered the request itself (an auth failure or a
-			// used-up budget), as the OTEL publisher treats it.
-			slog.Debug("AI Metadata property cannot be found in the event properties")
+			logMissingAIData(event, "AI Metadata property cannot be found in the event properties")
 		}
 
 		// Safely extract aiTokenUsage with nil check
@@ -316,7 +314,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 				slog.Warn("Token usage property cannot be converted to the required format")
 			}
 		} else {
-			slog.Debug("AI Token Usage data cannot be found in the event properties")
+			logMissingAIData(event, "AI Token Usage data cannot be found in the event properties")
 		}
 
 		// Budgets the request counted against and how it was priced: metadata.budget.*
@@ -509,4 +507,14 @@ func (m *Moesif) Publish(event *dto.Event) {
 	}
 	m.events = append(m.events, eventModel)
 	slog.Debug("Event added to the queue", "queueSize", len(m.events))
+}
+
+// logMissingAIData reports AI data an LLM event lacks: a warning, except for a request a
+// budget refused, which never reached the provider and so has none.
+func logMissingAIData(event *dto.Event, message string) {
+	if budget, ok := event.Properties[constants.BudgetPropertyKey].(map[string]interface{}); ok && budget["blocked"] != nil {
+		slog.Debug(message)
+		return
+	}
+	slog.Warn(message)
 }

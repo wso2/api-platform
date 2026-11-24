@@ -18,15 +18,6 @@ Base URLs:
 - [Troubleshooting (What you’ll observe)](authentication.md#troubleshooting-what-youll-observe)
 - [Testing](authentication.md#testing)
 
-### [AI Cost Management](ai-cost-management.md)
-
-- [Create a budget](ai-cost-management.md#create-a-budget)
-- [List budgets](ai-cost-management.md#list-budgets)
-- [Get a budget](ai-cost-management.md#get-a-budget)
-- [Update a budget](ai-cost-management.md#update-a-budget)
-- [Delete a budget](ai-cost-management.md#delete-a-budget)
-- [List a budget's usage](ai-cost-management.md#list-a-budgets-usage)
-
 ### [Rest API Management](rest-api-management.md)
 
 - [Create a new RestAPI](rest-api-management.md#create-a-new-restapi)
@@ -133,6 +124,15 @@ Base URLs:
 - [Retrieve a secret](secrets-management.md#retrieve-a-secret)
 - [Update a secret](secrets-management.md#update-a-secret)
 - [Delete a secret](secrets-management.md#delete-a-secret)
+
+### [AI Cost Management](ai-cost-management.md)
+
+- [Create a budget](ai-cost-management.md#create-a-budget)
+- [List budgets](ai-cost-management.md#list-budgets)
+- [Get a budget](ai-cost-management.md#get-a-budget)
+- [Update a budget](ai-cost-management.md#update-a-budget)
+- [Delete a budget](ai-cost-management.md#delete-a-budget)
+- [List a budget's usage](ai-cost-management.md#list-a-budgets-usage)
 
 ### [System](system.md)
 

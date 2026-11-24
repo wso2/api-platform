@@ -20,7 +20,10 @@ package budget
 
 import (
 	"errors"
+	"fmt"
 	"strings"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
 var (
@@ -32,15 +35,9 @@ var (
 	ErrPublish = errors.New("budget saved but failed to update the policy engine")
 )
 
-// FieldError is one validation failure.
-type FieldError struct {
-	Field   string
-	Message string
-}
-
 // ValidationError lists why a budget was rejected.
 type ValidationError struct {
-	Errors []FieldError
+	Errors []config.ValidationError
 }
 
 func (e *ValidationError) Error() string {
@@ -53,4 +50,28 @@ func (e *ValidationError) Error() string {
 		}
 	}
 	return "invalid budget: " + strings.Join(parts, "; ")
+}
+
+// ParseError wraps a body that is not a JSON or YAML document.
+type ParseError struct {
+	Cause error
+}
+
+func (e *ParseError) Error() string {
+	return fmt.Sprintf("failed to parse budget: %v", e.Cause)
+}
+
+func (e *ParseError) Unwrap() error {
+	return e.Cause
+}
+
+// NameMismatchError is returned when an update's path names one budget and the body's
+// metadata.name another.
+type NameMismatchError struct {
+	PathName string
+	BodyName string
+}
+
+func (e *NameMismatchError) Error() string {
+	return fmt.Sprintf("name mismatch: path has '%s' but metadata.name has '%s'", e.PathName, e.BodyName)
 }

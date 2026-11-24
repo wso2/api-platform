@@ -62,7 +62,7 @@ func newTestBudgetPublisher(t *testing.T, rows *fakeBudgetRows) (*BudgetPublishe
 
 func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredConfig {
 	blockAt := 95
-	currency := api.BudgetCurrencyUSD
+	currency := api.USD
 	provider := "openai"
 	filters := []api.BudgetFilter{{Type: api.BudgetFilterTypeLlmProvider, Id: &provider}}
 	split := &api.BudgetSplit{
@@ -70,14 +70,14 @@ func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredC
 		Expression: func() *string { e := `request.Auth.Claims["sub"]`; return &e }(),
 	}
 	budget := api.BudgetRequest{
-		ApiVersion: api.BudgetRequestApiVersionV1,
+		ApiVersion: api.BudgetRequestApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.BudgetRequestKindBudget,
 		Metadata:   api.BudgetMetadata{Name: name},
 		Spec: api.BudgetSpec{
 			Status: &status,
 			Limit: api.BudgetLimit{
-				Amount: amount, Currency: &currency, Period: api.BudgetPeriodMonth,
-				Action: api.BudgetActionBlock, BlockAt: &blockAt, SplitBy: split,
+				Amount: amount, Currency: &currency, Period: api.BudgetLimitPeriodMonth,
+				Action: api.Block, BlockAt: &blockAt, SplitBy: split,
 			},
 			Filters: &filters,
 		},
@@ -90,8 +90,8 @@ func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredC
 
 func TestBudgetPublisher_PublishesActiveBudgets(t *testing.T) {
 	rows := &fakeBudgetRows{rows: []*models.StoredConfig{
-		budgetRow("research-monthly", "500.00", api.BudgetStatusActive),
-		budgetRow("paused", "10", api.BudgetStatusInactive),
+		budgetRow("research-monthly", "500.00", api.BudgetSpecStatusActive),
+		budgetRow("paused", "10", api.BudgetSpecStatusInactive),
 	}}
 	publisher, manager := newTestBudgetPublisher(t, rows)
 
@@ -118,17 +118,17 @@ func TestBudgetPublisher_PublishesActiveBudgets(t *testing.T) {
 
 func TestBudgetPublisher_FollowsChanges(t *testing.T) {
 	rows := &fakeBudgetRows{rows: []*models.StoredConfig{
-		budgetRow("a", "100", api.BudgetStatusActive),
-		budgetRow("b", "200", api.BudgetStatusActive),
+		budgetRow("a", "100", api.BudgetSpecStatusActive),
+		budgetRow("b", "200", api.BudgetSpecStatusActive),
 	}}
 	publisher, manager := newTestBudgetPublisher(t, rows)
 	require.NoError(t, publisher.Publish(""))
 
 	// a is updated, b is deactivated, c is created.
 	rows.rows = []*models.StoredConfig{
-		budgetRow("a", "150", api.BudgetStatusActive),
-		budgetRow("b", "200", api.BudgetStatusInactive),
-		budgetRow("c", "300", api.BudgetStatusActive),
+		budgetRow("a", "150", api.BudgetSpecStatusActive),
+		budgetRow("b", "200", api.BudgetSpecStatusInactive),
+		budgetRow("c", "300", api.BudgetSpecStatusActive),
 	}
 	require.NoError(t, publisher.Publish(""))
 	published := manager.GetResourcesByType(LazyResourceTypeBudget)
@@ -156,7 +156,7 @@ func TestBudgetPublisher_LeavesOtherTypesAlone(t *testing.T) {
 }
 
 func TestBudgetPublisher_ListErrorKeepsPublishedBudgets(t *testing.T) {
-	rows := &fakeBudgetRows{rows: []*models.StoredConfig{budgetRow("a", "100", api.BudgetStatusActive)}}
+	rows := &fakeBudgetRows{rows: []*models.StoredConfig{budgetRow("a", "100", api.BudgetSpecStatusActive)}}
 	publisher, manager := newTestBudgetPublisher(t, rows)
 	require.NoError(t, publisher.Publish(""))
 
@@ -167,7 +167,7 @@ func TestBudgetPublisher_ListErrorKeepsPublishedBudgets(t *testing.T) {
 }
 
 func TestBudgetPublisher_RejectsWrongConfigurationType(t *testing.T) {
-	row := budgetRow("a", "100", api.BudgetStatusActive)
+	row := budgetRow("a", "100", api.BudgetSpecStatusActive)
 	row.SourceConfiguration = map[string]any{"spec": "not a budget"}
 	publisher, _ := newTestBudgetPublisher(t, &fakeBudgetRows{rows: []*models.StoredConfig{row}})
 

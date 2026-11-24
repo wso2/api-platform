@@ -764,6 +764,40 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
+    # LLM cost tracking and budgets ([ai_cost_management.*]). Both keep what they count
+    # in the shared counters (counters below).
+    ai_cost_management:
+      tracking:
+        # Count every LLM request's cost and report it to the control plane.
+        enabled: false
+      budgets:
+        # Enforce budgets, serve the gateway budget APIs and sync them with the control plane.
+        enabled: false
+
+    # Shared counters ([counters]) any policy can use; budgets keep their spend in them.
+    counters:
+      # How long a counter is kept after its last add (gateway-controller).
+      retention: 960h
+      # How long a counter keeps being synced after a policy engine last used it.
+      idle_timeout: 10m
+      # Without Redis the counters live in the gateway-controller's memory: shared only by its
+      # own policy engines and lost on restart. Enable Redis (or Valkey) so every gateway
+      # sharing it sees the same totals. The password comes from
+      # gateway.controller.redis.passwordSecretRef, never from here.
+      redis:
+        enabled: false
+        address: localhost:6379
+        username: ""
+        db: 0
+        key_prefix: "apip:counters:"
+        tls: false
+        dial_timeout: 5s
+        # Reconnect backoff while Redis cannot be reached.
+        retry_config:
+          initial_duration: 1s
+          progression_factor: 2
+          max_duration: 30s
+
     # Gateway signing. The JWKS endpoint (/.well-known/jwks on every virtual
     # host) is on by default; set jwks_endpoint_enabled: false to free that path,
     # e.g. when an existing API already serves it. Left unset, no [signing] table
@@ -1015,6 +1049,20 @@ gateway:
         # Used when source is file. Must be inside a directory the controller's {{ file }} token
         # may read (/secrets/gateway-controller by default; see controlPlane.token.mountPath).
         mountPath: /secrets/gateway-controller/sqlserver
+    # Redis password secret reference for the shared counters (used when
+    # gateway.config.counters.redis.enabled is true and the Redis needs a password), in one of
+    # two ways (source), like the database passwords above:
+    #   env  (default) - injected as the env var APIP_GW_COUNTERS_REDIS_PASSWORD
+    #   file - the Secret key is mounted read-only at <mountPath>/<key> and the controller reads
+    #          it with a {{ file }} token in controller-secrets.toml
+    redis:
+      passwordSecretRef:
+        name: ""
+        key: password
+        source: env
+        # Used when source is file. Must be inside a directory the controller's {{ file }} token
+        # may read (/secrets/gateway-controller by default; see controlPlane.token.mountPath).
+        mountPath: /secrets/gateway-controller/redis
     metrics:
       # Whether the controller's own Prometheus metrics HTTP server actually starts.
       # Defaults to false to match the gateway-controller binary's own code default
