@@ -765,6 +765,64 @@ func TestAnUndecodableResponseDoesNotLeakItsTokens(t *testing.T) {
 	}
 }
 
+// IDENTITY_HEADER keeps anything but the app itself from minting tokens at the identity endpoint,
+// so no failure's reason or error text carries it.
+func TestTheIdentityHeaderNeverReachesTheError(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   any
+	}{
+		{"a 400 from the endpoint", http.StatusBadRequest, containerAppsError(http.StatusBadRequest, "Unable to load the proper Managed Identity.")},
+		{"a 403 without a body", http.StatusForbidden, rawBody("")},
+		{"a 500 from the endpoint", http.StatusInternalServerError, containerAppsError(http.StatusInternalServerError, "An error occurred.")},
+		{"no response", 0, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useFakeAzure(t, answer(tt.status, tt.body))
+			setContainerAppsEnv(t)
+
+			terr := mustFail(t, mustGet(t, Identity{Type: ContainerApps}), uniqueScope(t))
+			if !strings.Contains(terr.Reason, "the Container Apps identity endpoint") {
+				t.Fatalf("reason = %q, want one naming the Container Apps identity endpoint", terr.Reason)
+			}
+			for _, text := range []string{terr.Reason, terr.Error()} {
+				if strings.Contains(text, testIdentityHeader) {
+					t.Fatalf("the identity header appears in %q", text)
+				}
+			}
+		})
+	}
+}
+
+// Neither the federated token the gateway sends nor a token Entra ID returns reaches a failure's
+// reason or error text, while Entra ID's own error code does.
+func TestSecretsNeverReachTheError(t *testing.T) {
+	setWorkloadIdentityEnv(t, "federated-token-secret")
+	useFakeAzure(t, func(_ context.Context, r tokenRequest) (int, any) {
+		if strings.HasPrefix(r.form.Get("scope"), "https://cognitiveservices.azure.com/") {
+			return http.StatusUnauthorized, oauthError("invalid_client", "AADSTS700213: No matching federated identity record found.", 700213)
+		}
+		return http.StatusOK, entraToken("access-token-secret")
+	})
+	cred := mustGet(t, Identity{Type: WorkloadIdentity})
+
+	if tok, err := cred.Token(context.Background(), "https://ai.azure.com/.default", 5*time.Second); err != nil || tok != "access-token-secret" {
+		t.Fatalf("Token = %q, %v; want the access token", tok, err)
+	}
+	terr := mustFail(t, cred, "https://cognitiveservices.azure.com/.default")
+	text := terr.Error()
+	if !strings.Contains(text, "700213") {
+		t.Errorf("Error() = %q, want Entra ID's error code", text)
+	}
+	for _, secret := range []string{"access-token-secret", "federated-token-secret"} {
+		if strings.Contains(text, secret) || strings.Contains(terr.Reason, secret) {
+			t.Errorf("the error has %q:\nreason: %s\nerror: %s", secret, terr.Reason, text)
+		}
+	}
+}
+
 // The managed identity SDK fetches each scope on its own, so a scope with a cached token answers at
 // once while another scope's fetch is slow.
 func TestAManagedIdentityCacheHitDoesNotWaitForAnotherScope(t *testing.T) {
