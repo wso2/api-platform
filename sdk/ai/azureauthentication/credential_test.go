@@ -512,6 +512,11 @@ func TestFaultReasons(t *testing.T) {
 			wantReason: "Microsoft Entra ID returned HTTP 429 (temporarily_unavailable)",
 		},
 		{
+			name: "Entra ID keeps timing out", typ: WorkloadIdentity,
+			status: http.StatusRequestTimeout, body: rawBody(""),
+			wantReason: "Microsoft Entra ID returned HTTP 408",
+		},
+		{
 			name: "Entra ID can't be reached", typ: WorkloadIdentity,
 			status:     0,
 			wantReason: "could not obtain an access token from Microsoft Entra ID",
@@ -563,6 +568,11 @@ func TestFaultReasons(t *testing.T) {
 			name: "Container Apps keeps failing", typ: ContainerApps, clientID: testClientID,
 			status: http.StatusInternalServerError, body: containerAppsError(http.StatusInternalServerError, "An error occurred."),
 			wantReason: "the Container Apps identity endpoint returned HTTP 500",
+		},
+		{
+			name: "Container Apps keeps timing out", typ: ContainerApps, clientID: testClientID,
+			status: http.StatusRequestTimeout, body: rawBody(""),
+			wantReason: "the Container Apps identity endpoint returned HTTP 408",
 		},
 		{
 			name: "Container Apps can't be reached", typ: ContainerApps, clientID: testClientID,

@@ -158,8 +158,8 @@ type TokenError struct {
 	// the application and the resource. It is safe for a fault's description or the log.
 	Reason string
 
-	// Rejected reports that the service refused the request itself: a 4xx other than 429 (and
-	// other than IMDS's 404 and 410, which it answers while it starts or updates).
+	// Rejected reports that the service refused the request itself: a 4xx other than 408 and 429
+	// (and other than IMDS's 404 and 410, which it answers while it starts or updates).
 	Rejected bool
 
 	// Cached reports that the failure was answered from the rejection cache, without a new
@@ -282,10 +282,11 @@ func (c *Credential) describe(fetchCtx context.Context, err error) *TokenError {
 }
 
 // refuses reports whether status means the service refused the request itself, rather than a
-// failure that can clear on its own: throttling, or IMDS starting up or updating (404 and 410).
+// failure that can clear on its own: a timeout, throttling, or IMDS starting up or updating (404
+// and 410).
 func (c *Credential) refuses(status int) bool {
 	switch {
-	case status < 400 || status >= 500 || status == http.StatusTooManyRequests:
+	case status < 400 || status >= 500 || status == http.StatusRequestTimeout || status == http.StatusTooManyRequests:
 		return false
 	case c.kind.imds && (status == http.StatusNotFound || status == http.StatusGone):
 		return false
