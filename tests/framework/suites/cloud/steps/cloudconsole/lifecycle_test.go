@@ -1800,7 +1800,8 @@ func newLeftoverStub() *leftoverStub {
 		"/api-portals/ops-portal/apis/rest-api/syn-api-abcde234-2/publication":   true,
 		"/api-portals/ops-portal/apis/rest-api/ops-api/publication":              true,
 	}, lists: map[string][]map[string]any{
-		"/secrets": {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/secrets":          {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/service-accounts": {{"id": "syn-sa-abcde234-1"}, {"id": "ops-deployer"}},
 		"/managed-api-portals": {
 			{"id": "dap-abcde234", "name": "dap-abcde234", "status": "active"},
 			{"id": "syn-portal-abcde234-3", "name": "Synthetic syn-portal-abcde234-3", "status": "pending"},
@@ -1852,12 +1853,13 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"graphql-apis/syn-gql-abcde234-1",
 		"subscription-plans/syn-plan-abcde234-1",
 		"secrets/syn-secret-abcde234-1",
+		"service-accounts/syn-sa-abcde234-1",
 		"self-hosted-gateways/development-syn-shgw-abcde234-1",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
-	}, stub.deleted[:13])
-	require.Len(t, removed, 13)
+	}, stub.deleted[:14])
+	require.Len(t, removed, 14)
 	for _, collection := range projectScopedCollections {
 		listed := slices.Clone(stub.listedProjects[collection])
 		slices.Sort(listed)
@@ -1869,6 +1871,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		require.NotEqual(t, "managed-gateways/development-syn-gw-zzzzz222-1", id, "another run's gateway stays")
 		require.NotEqual(t, "self-hosted-gateways/development-ops-shgw", id)
 		require.NotEqual(t, "secrets/ops-secret", id)
+		require.NotEqual(t, "service-accounts/ops-deployer", id, "an account the organisation owns stays")
 		require.NotContains(t, id, "ops-api", "an API the organisation owns stays")
 		require.NotContains(t, id, "ops-project-api")
 		require.NotContains(t, id, "ops-gql")
@@ -3573,7 +3576,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				status = "failed"
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-api-portals/"), "status": status})
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/graphql-apis", "/subscription-plans", "/self-hosted-gateways"}, r.URL.Path):
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/service-accounts", "/rest-apis", "/graphql-apis", "/subscription-plans", "/self-hosted-gateways"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -10259,4 +10262,195 @@ func TestValidateGraphQLSchemaWithSendsTheNamedSource(t *testing.T) {
 		_, err := httpx.Published(ctx)
 		require.Error(t, err, name+": no earlier answer is left behind")
 	}
+}
+
+// serviceAccountPlatform answers the service-account create, delete and token exchange routes, and
+// records what it was sent. "{{name}}" in createBody is the display name the step sent.
+type serviceAccountPlatform struct {
+	createStatus int
+	createBody   string
+	created      map[string]any
+	deleted      []string
+	tokenStatus  int
+	tokenBody    string
+	tokenForm    url.Values
+	tokenAuth    string
+}
+
+func (p *serviceAccountPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/service-accounts/token":
+			assert.NoError(t, r.ParseForm())
+			assert.Equal(t, formContentType, r.Header.Get("Content-Type"))
+			p.tokenForm, p.tokenAuth = r.PostForm, r.Header.Get("Authorization")
+			w.WriteHeader(p.tokenStatus)
+			_, _ = w.Write([]byte(p.tokenBody))
+		case r.Method == http.MethodPost && r.URL.Path == "/service-accounts":
+			p.created = nil
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&p.created))
+			name, _ := p.created["displayName"].(string)
+			w.WriteHeader(p.createStatus)
+			_, _ = w.Write([]byte(strings.ReplaceAll(p.createBody, "{{name}}", name)))
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/service-accounts/"):
+			p.deleted = append(p.deleted, strings.TrimPrefix(r.URL.Path, "/service-accounts/"))
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func serviceAccountSteps(t *testing.T) (*Steps, context.Context, *cleanup.Registry, *serviceAccountPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &serviceAccountPlatform{createStatus: http.StatusCreated, tokenStatus: http.StatusOK}
+	steps, ctx, _, registry := cloudSteps(t, platform.handler(t))
+	return steps, ctx, registry, platform
+}
+
+func TestCreateServiceAccountKeepsTheCredentialsAndRegistersTheAccount(t *testing.T) {
+	steps, ctx, registry, platform := serviceAccountSteps(t)
+	platform.createBody = `{"id":"{{name}}","clientId":"sa_client","clientSecret":"apsa_secret"}`
+
+	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
+	name := optionalValue(ctx, keyServiceAccountID)
+	require.Equal(t, name, platform.created["displayName"])
+	require.Equal(t, []any{"ap_service_account"}, platform.created["roles"])
+	require.Equal(t, "sa_client", optionalValue(ctx, keyServiceAccountClientID))
+	require.Equal(t, "apsa_secret", optionalValue(ctx, keyServiceAccountClientSecret))
+	require.Equal(t, []string{name}, pendingOf(registry, kindServiceAccount))
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the answer that carries the secret is never published")
+
+	// The platform may answer with another id than the name: that one is registered instead.
+	platform.createBody = `{"id":"other-id","clientId":"sa_client","clientSecret":"apsa_secret"}`
+	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
+	require.Equal(t, "other-id", optionalValue(ctx, keyServiceAccountID))
+	require.ElementsMatch(t, []string{name, "other-id"}, pendingOf(registry, kindServiceAccount))
+
+	// A refused create stores nothing, so nothing stays registered; the answer has no secret.
+	platform.createStatus, platform.createBody = http.StatusBadRequest, `{"code":"VALIDATION_FAILED"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "VALIDATION_FAILED")
+	require.ElementsMatch(t, []string{name, "other-id"}, pendingOf(registry, kindServiceAccount))
+
+	// A created account whose answer cannot be read stays registered under its name, and the
+	// error never repeats the answer, which may carry the secret.
+	platform.createStatus, platform.createBody = http.StatusCreated, `{"clientSecret":"apsa_leak"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "names no id")
+	require.NotContains(t, err.Error(), "apsa_leak")
+	require.Contains(t, pendingOf(registry, kindServiceAccount), optionalValue(ctx, keyServiceAccountID))
+
+	require.Error(t, steps.createServiceAccount(ctx, " "), "a role is required")
+}
+
+func TestExchangeServiceAccountCredentialsSendsTheFormAndRedactsTheToken(t *testing.T) {
+	steps, ctx, _, platform := serviceAccountSteps(t)
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyServiceAccountClientID, "sa_client")
+	local.Set(keyServiceAccountClientSecret, "apsa_s&cret")
+
+	platform.tokenStatus, platform.tokenBody = http.StatusUnauthorized, `{"code":"UNAUTHORIZED","message":"Invalid or expired credentials."}`
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", valuesTable(t,
+		[]string{"client_id", "${CTX:" + keyServiceAccountClientID + "}"},
+		[]string{"client_secret", "apsa_wrong"},
+		[]string{"scope", ""})))
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "client_id": {"sa_client"}, "client_secret": {"apsa_wrong"}, "scope": {""}},
+		platform.tokenForm, "grant_type defaults, and an empty value is sent")
+	require.Empty(t, platform.tokenAuth, "the exchange is sent without a console token")
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusUnauthorized))
+	require.NoError(t, steps.assertCloudErrorMessage(ctx, "Invalid or expired credentials."))
+	require.ErrorContains(t, steps.assertCloudErrorMessage(ctx, "other"), "expected error message")
+	require.NoError(t, steps.assertNoAccessToken(ctx))
+
+	// HTTP Basic form-encodes the id and the secret before joining them.
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, " using HTTP Basic", "${CTX:"+keyServiceAccountClientID+"}",
+		"${CTX:"+keyServiceAccountClientSecret+"}", valuesTable(t, []string{"scope", "ap:project:read"})))
+	require.Equal(t, "Basic "+base64.StdEncoding.EncodeToString([]byte("sa_client:apsa_s%26cret")), platform.tokenAuth)
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "scope": {"ap:project:read"}}, platform.tokenForm)
+
+	// An issued token is published only redacted.
+	platform.tokenStatus, platform.tokenBody = http.StatusOK, `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900}`
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", valuesTable(t, []string{"scope", "ap:project:read"})))
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, string(published.Body), "eyJ.token.sig")
+	require.ErrorContains(t, steps.assertNoAccessToken(ctx), "carries an access token")
+
+	for name, table := range map[string]*godog.Table{
+		"a key named twice":  valuesTable(t, []string{"scope", "a"}, []string{"scope", "b"}),
+		"an empty key":       valuesTable(t, []string{" ", "a"}),
+		"an unknown context": valuesTable(t, []string{"scope", "${CTX:missing}"}),
+		"a three-cell row":   valuesTable(t, []string{"scope", "a", "b"}),
+		"no table":           nil,
+	} {
+		platform.tokenForm = nil
+		require.Error(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", table), name)
+		require.Nil(t, platform.tokenForm, name+": nothing is sent")
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `not json`)
+	require.ErrorContains(t, steps.assertNoAccessToken(ctx), "not a JSON object")
+}
+
+func TestAssertCredentialsExchangeNeverReportsTheToken(t *testing.T) {
+	steps, ctx, _, platform := serviceAccountSteps(t)
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "ap:project:read"), keyServiceAccountClientID)
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyServiceAccountClientID, "sa_client")
+	local.Set(keyServiceAccountClientSecret, "apsa_secret")
+
+	platform.tokenBody = `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900,"scope":"ap:project:read"}`
+	require.NoError(t, steps.assertCredentialsExchange(ctx, "ap:project:read"))
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "client_id": {"sa_client"},
+		"client_secret": {"apsa_secret"}, "scope": {"ap:project:read"}}, platform.tokenForm)
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the issued token is never published")
+
+	for name, body := range map[string]string{
+		"another scope":   `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900,"scope":"ap:other"}`,
+		"no token":        `{"token_type":"Bearer","expires_in":900,"scope":"ap:project:read"}`,
+		"another type":    `{"access_token":"eyJ.token.sig","token_type":"MAC","expires_in":900,"scope":"ap:project:read"}`,
+		"no lifetime":     `{"access_token":"eyJ.token.sig","token_type":"Bearer","scope":"ap:project:read"}`,
+		"not a JSON body": `access_token=eyJ.token.sig`,
+	} {
+		platform.tokenBody = body
+		err := steps.assertCredentialsExchange(ctx, "ap:project:read")
+		require.Error(t, err, name)
+		require.NotContains(t, err.Error(), "eyJ.token.sig", name)
+	}
+	platform.tokenStatus, platform.tokenBody = http.StatusUnauthorized, `{"code":"UNAUTHORIZED"}`
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "ap:project:read"), "refused the account's own credentials")
+}
+
+func TestRedactAccessToken(t *testing.T) {
+	require.Nil(t, redactAccessToken(nil))
+	plain := &httpx.Response{Body: []byte(`{"code":"UNAUTHORIZED"}`)}
+	require.Same(t, plain, redactAccessToken(plain), "an answer without a token is kept")
+	issued := &httpx.Response{Body: []byte(`{"access_token":"secret-token","expires_in":900}`)}
+	redacted := redactAccessToken(issued)
+	require.JSONEq(t, `{"access_token":"[redacted]","expires_in":900}`, string(redacted.Body))
+	require.Contains(t, string(issued.Body), "secret-token", "the original answer is not changed")
+	require.Equal(t, redactedValue, string(redactAccessToken(&httpx.Response{Body: []byte(`"access_token": secret-token`)}).Body),
+		"an answer that is not JSON but names the field is dropped")
+	require.Equal(t, redactedValue, string(redactAccessToken(&httpx.Response{Body: []byte(`access_token=secret-token&expires_in=900`)}).Body),
+		"a form-encoded answer is dropped too")
+}
+
+func TestServiceAccountCleanupDeletesTheAccount(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &serviceAccountPlatform{}
+	topo := cloudAPIStub(t, platform.handler(t))
+	registry := cleanup.NewRegistry(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, RegisterDeleters(registry, topo))
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, cleanup.Install(ctx, registry))
+	require.NoError(t, registerServiceAccount(ctx, "syn-sa-1"))
+	require.NoError(t, registry.Sweep(ctx))
+	require.Equal(t, []string{"syn-sa-1"}, platform.deleted)
 }

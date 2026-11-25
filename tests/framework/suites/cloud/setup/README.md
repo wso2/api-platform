@@ -180,7 +180,7 @@ with a suffix of **this run**:
 | managed API Portals | only a portal a scenario built for itself (`syn-portal-`) |
 | REST APIs and GraphQL APIs | the run's APIs, in `apip-test-project-1`, `apip-test-project-2` and the projects the run created |
 | subscription plans | the plans the run created (`syn-plan-`) |
-| secrets, self-hosted gateways, managed gateways, projects | the run's entries |
+| secrets, service accounts, self-hosted gateways, managed gateways, projects | the run's entries |
 
 Whatever the finalizer removes is a leak the per-scenario cleanup missed and is logged as one.
 

@@ -190,6 +190,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	s.registerDeploymentSteps(sc)
 	s.registerBuildSteps(sc)
 	s.registerGraphQLSteps(sc)
+	s.registerServiceAccountSteps(sc)
 	s.registerGatewaySteps(sc)
 	s.registerGatewayConfigSteps(sc)
 	s.registerPromotionSteps(sc)
@@ -226,6 +227,7 @@ func (s *Steps) registerIdentitySteps(sc stepRegistrar) {
 	sc.Step(`^the cloud API response body should (contain|not contain) "([^"]*)"$`, s.assertCloudResponseContains)
 	sc.Step(`^the cloud API error code should be "([^"]*)"$`, s.assertCloudErrorCode)
 	sc.Step(`^the cloud API error should name the field "([^"]*)"$`, s.assertCloudErrorField)
+	sc.Step(`^the cloud API error message should be "([^"]*)"$`, s.assertCloudErrorMessage)
 }
 
 // registerDeploymentSteps binds the build and deployment steps.
@@ -328,6 +330,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindServiceAccount, cloudDeleter(topo, client, serviceAccountsCollection)); err != nil {
 		return err
 	}
 	if err := reg.RegisterDeleter(kindDefaultRestore, restoreDefaultDeleter(topo, client)); err != nil {

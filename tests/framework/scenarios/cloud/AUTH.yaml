@@ -90,3 +90,34 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "Every cloud control-plane route requires authentication"
+  - id: ID_APIP_AUTH_009
+    title: "The service-account token exchange refuses a wrong secret, an unknown client, a missing or ungranted scope and another grant type, and issues no token."
+    priority: P0
+    cloud:
+      # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
+      # refuses <case>"; written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The service-account token exchange refuses <case>"
+  - id: ID_APIP_AUTH_010
+    title: "The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret."
+    priority: P1
+    cloud:
+      # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
+      # refuses a client that authenticates twice, and a wrong HTTP Basic secret"; written, not yet
+      # run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret"
+  - id: ID_APIP_AUTH_011
+    title: "The service-account token exchange refuses a request that leaves out the scope, and issues no token."
+    priority: P1
+    cloud:
+      # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
+      # refuses a request that leaves out the scope"; written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The service-account token exchange refuses a request that leaves out the scope"

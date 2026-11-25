@@ -99,3 +99,57 @@ Feature: APIP cloud access and identity
       | POST   | /projects/default/apis/no-such-api/deployments                        |
       | POST   | /projects/default/apis/no-such-api/deployments/no-such-dep/undeploy   |
       | DELETE | /managed-gateways/no-such-gateway                                     |
+
+  # The exchange is served without a console token, since a workload has none yet; each refusal
+  # is paired with a token issued for the same account's own credentials.
+  @ID_APIP_AUTH_009 @type:negative
+  Scenario Outline: The service-account token exchange refuses <case>
+    Given I obtain an APIP cloud console token
+    And I create a synthetic service account with the role "ap_service_account"
+    When I exchange the service account's credentials with:
+      | grant_type    | <grant_type>    |
+      | client_id     | <client_id>     |
+      | client_secret | <client_secret> |
+      | scope         | <scope>         |
+    Then the cloud API response status code should be <status>
+    And the cloud API error code should be "<code>"
+    And the cloud API error message should be "<message>"
+    And the cloud API answer should carry no access token
+    And the service account's own credentials should be exchanged for a token with the scope "ap:project:read"
+
+    Examples:
+      | case                           | grant_type         | client_id                              | client_secret                          | scope                     | status | code                          | message                                                                    |
+      | a wrong secret                 | client_credentials | ${CTX:cloudServiceAccountClientID}     | apsa_wrong                             | ap:project:read           | 401    | UNAUTHORIZED                  | Invalid or expired credentials.                                            |
+      | an unknown client              | client_credentials | sa_nobody_${CTX:cloudServiceAccountID} | ${CTX:cloudServiceAccountClientSecret} | ap:project:read           | 401    | UNAUTHORIZED                  | Invalid or expired credentials.                                            |
+      | a request with no scope        | client_credentials | ${CTX:cloudServiceAccountClientID}     | ${CTX:cloudServiceAccountClientSecret} |                           | 400    | SERVICE_ACCOUNT_INVALID_SCOPE | The requested scope is missing, or is not granted to this service account. |
+      | a scope the roles do not grant | client_credentials | ${CTX:cloudServiceAccountClientID}     | ${CTX:cloudServiceAccountClientSecret} | ap:service_account:manage | 400    | SERVICE_ACCOUNT_INVALID_SCOPE | The requested scope is missing, or is not granted to this service account. |
+      | another grant type             | password           | ${CTX:cloudServiceAccountClientID}     | ${CTX:cloudServiceAccountClientSecret} | ap:project:read           | 400    | VALIDATION_FAILED             | grant_type must be client_credentials                                      |
+
+  @ID_APIP_AUTH_010 @type:negative
+  Scenario: The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret
+    Given I obtain an APIP cloud console token
+    And I create a synthetic service account with the role "ap_service_account"
+    When I exchange the service account's credentials using HTTP Basic as "${CTX:cloudServiceAccountClientID}" with secret "${CTX:cloudServiceAccountClientSecret}" with:
+      | client_id | ${CTX:cloudServiceAccountClientID} |
+      | scope     | ap:project:read                    |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "VALIDATION_FAILED"
+    And the cloud API error message should be "use one client authentication method: HTTP Basic or form fields, not both"
+    When I exchange the service account's credentials using HTTP Basic as "${CTX:cloudServiceAccountClientID}" with secret "apsa_wrong" with:
+      | scope | ap:project:read |
+    Then the cloud API response status code should be 401
+    And the cloud API error code should be "UNAUTHORIZED"
+    And the cloud API error message should be "Invalid or expired credentials."
+    And the service account's own credentials should be exchanged for a token with the scope "ap:project:read"
+
+  @ID_APIP_AUTH_011 @type:negative
+  Scenario: The service-account token exchange refuses a request that leaves out the scope
+    Given I obtain an APIP cloud console token
+    And I create a synthetic service account with the role "ap_service_account"
+    When I exchange the service account's credentials with:
+      | client_id     | ${CTX:cloudServiceAccountClientID}     |
+      | client_secret | ${CTX:cloudServiceAccountClientSecret} |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "SERVICE_ACCOUNT_INVALID_SCOPE"
+    And the cloud API answer should carry no access token
+    And the service account's own credentials should be exchanged for a token with the scope "ap:project:read"
