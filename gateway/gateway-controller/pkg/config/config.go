@@ -846,9 +846,11 @@ type HTTPListenerConfig struct {
 	// case-insensitively, letting such a request fall through to a broader route as before.
 	AllowPathCaseVariants bool `koanf:"allow_path_case_variants"`
 	// XffNumTrustedHops is the number of proxies in front of the gateway that append to
-	// X-Forwarded-For. The client address is taken that many entries from the right; 0 uses
-	// the connection's peer address, so a caller-set X-Forwarded-For is never trusted.
-	XffNumTrustedHops uint32 `koanf:"xff_num_trusted_hops"`
+	// X-Forwarded-For. Any value, including 0, turns client-address resolution on: the client
+	// address is taken that many entries from the right (0 uses the connection's peer address),
+	// X-Forwarded-For holds only that address while policies run, and it is not sent to the
+	// backend. When nil (the key is absent), X-Forwarded-For passes through unchanged.
+	XffNumTrustedHops *uint32 `koanf:"xff_num_trusted_hops"`
 }
 
 // HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
@@ -1526,7 +1528,7 @@ func defaultConfig() *Config {
 					"bytesTx":    "%BYTES_SENT%",
 					"dur":        "%DURATION%",
 					"upSvcT":     "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-					"xff":        "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%",
+					"xff":        "%REQ(X-FORWARDED-FOR)%",
 					"ua":         "%REQ(USER-AGENT)%",
 					"reqId":      "%REQ(X-REQUEST-ID)%",
 					"host":       "%REQ(:AUTHORITY)%",
@@ -1552,7 +1554,7 @@ func defaultConfig() *Config {
 					"%REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% " +
 					"%CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 					"%REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% " +
-					"\"%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
+					"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 					"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 			},
 			ListenerPort: 8080,
@@ -1631,7 +1633,6 @@ func defaultConfig() *Config {
 				ReturnRequestIDInResponse:     true,                           // x-request-id returned by default
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
 				AllowPathCaseVariants:         false,                          // Case variants of a route's path get a 404 by default
-				XffNumTrustedHops:             0,                              // No proxy in front is trusted by default
 			},
 		},
 		Analytics: AnalyticsConfig{

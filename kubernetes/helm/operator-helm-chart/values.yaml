@@ -331,11 +331,12 @@ gateway:
             # Let a request whose path matches a route only case-insensitively fall through to a
             # broader route instead of getting a 404
             allow_path_case_variants: false
-            # Number of proxies in front of the gateway that append to X-Forwarded-For. The client
-            # address is the entry that many from the right; 0 uses the connection's peer address.
-            # A nonzero value needs direct access to the gateway Service blocked, so every caller
-            # comes through those proxies; otherwise a caller can set the entries it trusts
-            xff_num_trusted_hops: 0
+            # Number of proxies in front of the gateway that append to X-Forwarded-For. Any value,
+            # including 0, turns this on: the client address is the entry that many from the right
+            # (0 uses the connection's peer address) and X-Forwarded-For is not sent to the backend.
+            # Leave the key out to pass X-Forwarded-For through unchanged. A nonzero value needs direct access to the gateway Service blocked, so
+            # every caller comes through those proxies; otherwise a caller can set the entries it trusts
+            # xff_num_trusted_hops: 0
 
             # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
             timeouts:

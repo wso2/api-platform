@@ -1,9 +1,10 @@
 # Scenario list: Client Address (CLADR).
 #
-# The gateway resolves the client address from the connection, or from the X-Forwarded-For
-# entries appended by the router.http_listener.xff_num_trusted_hops proxies in front of it, and
-# replaces X-Forwarded-For with that one address before any policy runs. A caller-set value
-# never reaches the backend, the access log or an IP-keyed policy.
+# With router.http_listener.xff_num_trusted_hops set, the gateway resolves the client address from
+# the connection, or from the X-Forwarded-For entries appended by that many proxies in front of it,
+# and replaces X-Forwarded-For with that one address before any policy runs. A caller-set value
+# never reaches the access log or an IP-keyed policy, and X-Forwarded-For is not sent to the
+# backend. Unset, X-Forwarded-For passes through unchanged.
 #
 # One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
 # as a tag. Each layer (ui, it) records how it covers the ID:
@@ -16,7 +17,7 @@ code: CLADR
 title: Client Address
 scenarios:
   - id: CLADR-001
-    title: "Deploy a REST API on the echo backend, call it without X-Forwarded-For, then with X-Forwarded-For set to one and to two made-up addresses; the backend receives one address in X-Forwarded-For, the same for all three calls, and never a made-up one."
+    title: "With xff_num_trusted_hops set to 0, deploy a REST API on the echo backend, call it without X-Forwarded-For, then with X-Forwarded-For set to one and to two made-up addresses; the backend receives no X-Forwarded-For on any of the three calls."
     priority: P0
     ui:
       status: exempt
@@ -25,9 +26,9 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/gateway/security/client_address.feature
-          scenario: "A caller-set X-Forwarded-For does not reach the backend"
+          scenario: "X-Forwarded-For does not reach the backend"
   - id: CLADR-002
-    title: "Deploy a REST API with an advanced-ratelimit quota of 3 requests keyed by ip, then send four requests, three of them with a different made-up X-Forwarded-For; the first three get 200 and the fourth gets 429."
+    title: "With xff_num_trusted_hops set to 0, deploy a REST API with an advanced-ratelimit quota of 3 requests keyed by ip, then send four requests, three of them with a different made-up X-Forwarded-For; the first three get 200 and the fourth gets 429."
     priority: P0
     ui:
       status: exempt
@@ -37,3 +38,14 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/security/client_address.feature
           scenario: "A per-IP rate limit holds when each request sets a different X-Forwarded-For"
+  - id: CLADR-003
+    title: "With xff_num_trusted_hops unset, deploy a REST API on the echo backend and call it with X-Forwarded-For set to two made-up addresses; the backend receives X-Forwarded-For exactly as sent."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Resolving the client address is gateway traffic handling, checked with gateway traffic; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/client_address.feature
+          scenario: "X-Forwarded-For passes through unchanged when no trusted hops are set"

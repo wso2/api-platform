@@ -414,9 +414,9 @@ gateway:
           bytesTx: "%BYTES_SENT%"
           dur: "%DURATION%"
           upSvcT: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
-          # The resolved client address. For a request rejected before X-Forwarded-For is read
-          # (respCdDtl path_normalization_failed or http1.*) it is the connection peer, which may be a proxy.
-          xff: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+          # With xff_num_trusted_hops set, the resolved client address, except for a request rejected
+          # before the filter chain runs (respCdDtl path_normalization_failed or http1.*), which logs it as sent.
+          xff: "%REQ(X-FORWARDED-FOR)%"
           ua: "%REQ(USER-AGENT)%"
           reqId: "%REQ(X-REQUEST-ID)%"
           host: "%REQ(:AUTHORITY)%"
@@ -433,7 +433,7 @@ gateway:
         # Text format template - used when format is "text"
         # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
         text_format: |
-          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
 
       # Listener port for incoming HTTP traffic (Envoy proxy port)
       listener_port: 8080
@@ -504,11 +504,13 @@ gateway:
         # Let a request whose path matches a route only case-insensitively fall through to a
         # broader route instead of getting a 404
         allow_path_case_variants: false
-        # Number of proxies in front of the gateway that append to X-Forwarded-For. The client
-        # address is the entry that many from the right; 0 uses the connection's peer address.
+        # Number of proxies in front of the gateway that append to X-Forwarded-For. Any value,
+        # including 0, turns this on: the client address is the entry that many from the right
+        # (0 uses the connection's peer address) and X-Forwarded-For is not sent to the backend.
+        # Leave the key out to pass X-Forwarded-For through unchanged.
         # A nonzero value needs direct access to the gateway Service blocked, so every caller
         # comes through those proxies; otherwise a caller can set the entries it trusts
-        xff_num_trusted_hops: 0
+        # xff_num_trusted_hops: 0
 
         # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
         timeouts:

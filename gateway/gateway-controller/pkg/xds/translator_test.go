@@ -4188,20 +4188,43 @@ func TestSnapshotReferencesSDSSecret(t *testing.T) {
 		"a secret name referenced by nothing in the snapshot must report false")
 }
 
-// The HCM resolves the client address from the peer or xff_num_trusted_hops, never from a
-// caller-set X-Forwarded-For, and keeps a caller's x-request-id as before.
+// With xff_num_trusted_hops unset, the HCM, the filter chain and the route configuration leave
+// X-Forwarded-For as they did before the setting existed.
+func TestTranslator_CreateListener_ClientAddressUnset(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+	require.NoError(t, err)
+
+	lis, routeConfig, err := translator.createListener(nil, false, false)
+	require.NoError(t, err)
+
+	manager := extractHCM(t, lis)
+	assert.Nil(t, manager.GetUseRemoteAddress())
+	assert.Zero(t, manager.GetXffNumTrustedHops())
+	assert.False(t, manager.GetPreserveExternalRequestId())
+	for _, filter := range manager.GetHttpFilters() {
+		assert.NotEqual(t, constants.ClientAddressFilterName, filter.GetName())
+	}
+	assert.Empty(t, routeConfig.GetRequestHeadersToRemove())
+}
+
+// With xff_num_trusted_hops set, the HCM resolves the client address from the peer or that many
+// X-Forwarded-For entries, never from a caller-set one, and keeps a caller's x-request-id.
 func TestTranslator_CreateListener_ClientAddress(t *testing.T) {
 	for _, hops := range []uint32{0, 2} {
 		t.Run(fmt.Sprintf("xff_num_trusted_hops=%d", hops), func(t *testing.T) {
 			logger := createTestLogger()
 			routerCfg := testRouterConfig()
-			routerCfg.HTTPListener.XffNumTrustedHops = hops
+			routerCfg.HTTPListener.XffNumTrustedHops = &hops
 			cfg := testConfig()
 			cfg.Router = *routerCfg
 			translator, err := NewTranslator(logger, routerCfg, nil, cfg)
 			require.NoError(t, err)
 
-			lis, _, err := translator.createListener(nil, false, false)
+			lis, routeConfig, err := translator.createListener(nil, false, false)
 			require.NoError(t, err)
 
 			manager := extractHCM(t, lis)
@@ -4209,15 +4232,19 @@ func TestTranslator_CreateListener_ClientAddress(t *testing.T) {
 			assert.True(t, manager.GetUseRemoteAddress().GetValue())
 			assert.Equal(t, hops, manager.GetXffNumTrustedHops())
 			assert.True(t, manager.GetPreserveExternalRequestId())
+			assert.Equal(t, []string{"x-forwarded-for"}, routeConfig.GetRequestHeadersToRemove(),
+				"X-Forwarded-For must not reach the backend")
 		})
 	}
 }
 
-// The first HTTP filter overwrites X-Forwarded-For with the resolved client address, so the
-// policy engine, the access log and the backend never see a caller-set entry.
+// With xff_num_trusted_hops set, the first HTTP filter overwrites X-Forwarded-For with the
+// resolved client address, so the policy engine and the access log never see a caller-set entry.
 func TestTranslator_CreateListener_ClientAddressFilterFirst(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
+	hops := uint32(0)
+	routerCfg.HTTPListener.XffNumTrustedHops = &hops
 	cfg := testConfig()
 	cfg.Router = *routerCfg
 	translator, err := NewTranslator(logger, routerCfg, nil, cfg)

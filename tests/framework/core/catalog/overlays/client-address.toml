@@ -1,0 +1,5 @@
+# Any value, including 0, turns client-address resolution on. 0 trusts no proxy in front of the
+# gateway: the client address is the connection's peer, and X-Forwarded-For is not sent to the
+# backend.
+[router.http_listener]
+xff_num_trusted_hops = 0

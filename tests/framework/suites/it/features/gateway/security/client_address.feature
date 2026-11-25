@@ -16,8 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# The block leaves router.http_listener.xff_num_trusted_hops at 0, so the client address is the
-# connection's peer and every X-Forwarded-For entry a caller sends is untrusted.
+# CLADR-001 and CLADR-002 run in the gateway-client-address block, which sets
+# router.http_listener.xff_num_trusted_hops to 0: the client address is the connection's peer and
+# every X-Forwarded-For entry a caller sends is untrusted. CLADR-003 runs in gateway-core, which
+# leaves it unset.
 @client-address @CLADR
 Feature: Client address
   As an API developer
@@ -29,7 +31,7 @@ Feature: Client address
     And I authenticate using basic auth as "admin"
 
   @CLADR-001
-  Scenario: A caller-set X-Forwarded-For does not reach the backend
+  Scenario: X-Forwarded-For does not reach the backend
     Given I generate a unique value from "client-address" and store it as "apiName"
     And I generate a unique API context from "/client-address" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
@@ -45,18 +47,17 @@ Feature: Client address
 
     When I send a "GET" request to "${CTX:apiContext}/v1.0/probe"
     Then the response status code should be 200
-    And the JSON response field "headers.X-Forwarded-For" should match pattern "^[0-9A-Fa-f.:]+$"
-    And I store the JSON response field "headers.X-Forwarded-For" as "clientAddress"
+    And the response should not contain echoed header "X-Forwarded-For"
 
     When I set header "X-Forwarded-For" to "203.0.113.77"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/probe"
     Then the response status code should be 200
-    And the response should contain echoed header "X-Forwarded-For" with value "${CTX:clientAddress}"
+    And the response should not contain echoed header "X-Forwarded-For"
 
     When I set header "X-Forwarded-For" to "203.0.113.77, 198.51.100.9"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/probe"
     Then the response status code should be 200
-    And the response should contain echoed header "X-Forwarded-For" with value "${CTX:clientAddress}"
+    And the response should not contain echoed header "X-Forwarded-For"
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
@@ -90,6 +91,29 @@ Feature: Client address
     When I set header "X-Forwarded-For" to "198.51.100.3"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/probe"
     Then the response status code should be 429
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+
+  @CLADR-003
+  Scenario: X-Forwarded-For passes through unchanged when no trusted hops are set
+    Given I generate a unique value from "client-address-unset" and store it as "apiName"
+    And I generate a unique API context from "/client-address-unset" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}      |
+      | name                   | ${CTX:apiName}                 |
+      | spec.displayName       | Client-Address-Unset-API       |
+      | spec.version           | v1.0                           |
+      | spec.context           | ${CTX:apiContext}/$version     |
+      | spec.upstream.main.url | http://testbench:3002          |
+      | spec.operations        | [{"method":"GET","path":"/*"}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/probe" until status 200
+
+    When I set header "X-Forwarded-For" to "203.0.113.77, 198.51.100.9"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/probe"
+    Then the response status code should be 200
+    And the response should contain echoed header "X-Forwarded-For" with value "203.0.113.77, 198.51.100.9"
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful

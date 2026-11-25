@@ -1545,13 +1545,16 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 	// Build HTTP filters chain
 	httpFilters := make([]*hcm.HttpFilter, 0)
 
-	// The client-address filter runs first, so no later filter, the access log or the
-	// backend sees a caller-set X-Forwarded-For.
-	clientAddressFilter, err := createClientAddressFilter()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create client address filter: %w", err)
+	// With xff_num_trusted_hops set, the client-address filter runs first, so neither later
+	// filters nor the access log see a caller-set X-Forwarded-For.
+	xffNumTrustedHops := t.routerConfig.HTTPListener.XffNumTrustedHops
+	if xffNumTrustedHops != nil {
+		clientAddressFilter, err := createClientAddressFilter()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create client address filter: %w", err)
+		}
+		httpFilters = append(httpFilters, clientAddressFilter)
 	}
-	httpFilters = append(httpFilters, clientAddressFilter)
 
 	// RBAC runs first, with no rules: only routes that enable it per route (the
 	// gateway health routes) are restricted, and a request it refuses never
@@ -1621,12 +1624,6 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
 		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
 		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
-		// The client address is the connection's peer, or the X-Forwarded-For entry written by
-		// the outermost of xff_num_trusted_hops trusted proxies; never one the caller chose.
-		UseRemoteAddress:  wrapperspb.Bool(true),
-		XffNumTrustedHops: t.routerConfig.HTTPListener.XffNumTrustedHops,
-		// Keep a caller's x-request-id, as before use_remote_address marked requests external.
-		PreserveExternalRequestId: true,
 		// SANITIZE_SET, never APPEND_FORWARD: a caller-sent
 		// x-forwarded-client-cert must never survive as this connection's.
 		ForwardClientCertDetails: hcm.HttpConnectionManager_SANITIZE_SET,
@@ -1637,6 +1634,15 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 			Uri:     true,
 			Dns:     true,
 		},
+	}
+
+	if xffNumTrustedHops != nil {
+		// The client address is the connection's peer, or the X-Forwarded-For entry written by
+		// the outermost of xff_num_trusted_hops trusted proxies; never one the caller chose.
+		manager.UseRemoteAddress = wrapperspb.Bool(true)
+		manager.XffNumTrustedHops = *xffNumTrustedHops
+		// Keep a caller's x-request-id, as before use_remote_address marked requests external.
+		manager.PreserveExternalRequestId = true
 	}
 
 	// Add access logs if either consumer needs a sink: the operator-facing stdout
@@ -1753,10 +1759,16 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 // createRouteConfiguration creates a route configuration
 // Uses SharedRouteConfigName so it can be discovered via RDS
 func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost) *route.RouteConfiguration {
-	return &route.RouteConfiguration{
+	routeConfig := &route.RouteConfiguration{
 		Name:         SharedRouteConfigName,
 		VirtualHosts: virtualHosts,
 	}
+	// With xff_num_trusted_hops set, X-Forwarded-For carries the client address for policies
+	// only; it is removed when the request is forwarded, so the backend never sees it.
+	if t.routerConfig.HTTPListener.XffNumTrustedHops != nil {
+		routeConfig.RequestHeadersToRemove = []string{"x-forwarded-for"}
+	}
+	return routeConfig
 }
 
 // getValueFromSourceConfig extracts a value from sourceConfig using a key path.
@@ -3820,8 +3832,7 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 }
 
 // createClientAddressFilter returns a header_mutation filter that replaces X-Forwarded-For with
-// the client address the HCM resolved. Policies such as IP rate limits read the first entry, and
-// backends should not see in-cluster proxy addresses.
+// the client address the HCM resolved. Policies such as IP rate limits read the first entry.
 func createClientAddressFilter() (*hcm.HttpFilter, error) {
 	mutationAny, err := anypb.New(&headermutationv3.HeaderMutation{
 		Mutations: &headermutationv3.Mutations{

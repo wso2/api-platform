@@ -127,8 +127,8 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/routes/path_variants.feature
-      - name: client-address
-        tags: "gateway-version>1.2.0"
+      - name: client-address-unset
+        tags: "gateway-version>1.2.0;@CLADR-003"
         features:
           - features/gateway/security/client_address.feature
       - name: header-routing
@@ -239,6 +239,22 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/template_env_allow_list.feature
+
+  # Setting xff_num_trusted_hops changes how every request's client address is resolved and
+  # removes X-Forwarded-For from every backend request, so it is not set for the other runners.
+  # It does not depend on the database, so it runs on one engine only.
+  - name: gateway-client-address
+    parallel: 2
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/client-address.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: client-address
+        tags: "gateway-version>1.2.0;~@CLADR-003"
+        features:
+          - features/gateway/security/client_address.feature
 
   # Which hostnames the HTTPS listener asks for a client certificate is state of the whole
   # gateway, so runners take turns, and each block below sets its own downstream_tls value. These
