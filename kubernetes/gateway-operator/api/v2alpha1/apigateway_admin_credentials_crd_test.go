@@ -134,6 +134,17 @@ func TestAPIGatewayCRDServesAdminCredentialsInV2alpha1Only(t *testing.T) {
 		}
 	}
 
+	// The admin password is always delivered as a file: there is no source field, and
+	// one sent by a client is pruned.
+	t.Run("v2alpha1/no source field", func(t *testing.T) {
+		obj := apiGatewayWithAdminCredentials("v2alpha1", map[string]interface{}{"source": "env",
+			"passwordSecretRef": map[string]interface{}{"name": "gateway-1-admin", "key": "password"}})
+		pruning.Prune(obj, versions["v2alpha1"].structural, true)
+		if _, kept := obj["spec"].(map[string]interface{})["adminCredentials"].(map[string]interface{})["source"]; kept {
+			t.Error("spec.adminCredentials.source survived pruning")
+		}
+	})
+
 	creds := map[string]interface{}{"username": "gw1-admin", "passwordSecretRef": map[string]interface{}{"name": "gateway-1-admin", "key": "password"}}
 	for version, wantField := range want {
 		t.Run(version+"/pruning", func(t *testing.T) {
@@ -159,13 +170,12 @@ func TestAPIGatewayCRDValidatesAdminCredentials(t *testing.T) {
 		return r
 	}
 	accepted := map[string]map[string]interface{}{
-		"username and file source": {"username": "gw1-admin", "source": "file", "passwordSecretRef": ref("gateway-1-admin", "password")},
-		"username omitted":         {"passwordSecretRef": ref("gateway-1-admin", "password")},
-		"dotted key":               {"username": "ops.admin@example.com", "passwordSecretRef": ref("gateway-1-admin", "admin.password_1")},
-		"dotted name":              {"passwordSecretRef": ref("gateway.admin", "password")},
-		"env key with ..":          {"source": "env", "passwordSecretRef": ref("gateway-1-admin", "admin..password")},
-		"key of 253 characters":    {"passwordSecretRef": ref("gateway-1-admin", strings.Repeat("k", 253))},
-		"optional false":           {"passwordSecretRef": map[string]interface{}{"name": "gateway-1-admin", "key": "password", "optional": false}},
+		"username":              {"username": "gw1-admin", "passwordSecretRef": ref("gateway-1-admin", "password")},
+		"username omitted":      {"passwordSecretRef": ref("gateway-1-admin", "password")},
+		"dotted key":            {"username": "ops.admin@example.com", "passwordSecretRef": ref("gateway-1-admin", "admin.password_1")},
+		"dotted name":           {"passwordSecretRef": ref("gateway.admin", "password")},
+		"key of 253 characters": {"passwordSecretRef": ref("gateway-1-admin", strings.Repeat("k", 253))},
+		"optional false":        {"passwordSecretRef": map[string]interface{}{"name": "gateway-1-admin", "key": "password", "optional": false}},
 	}
 	rejected := map[string]struct {
 		creds   map[string]interface{}
@@ -178,7 +188,7 @@ func TestAPIGatewayCRDValidatesAdminCredentials(t *testing.T) {
 		"key dot-dot":           {creds: map[string]interface{}{"passwordSecretRef": ref("gateway-1-admin", "..")}, wantErr: "passwordSecretRef.key must be a Secret key name"},
 		"key starting with ..":  {creds: map[string]interface{}{"passwordSecretRef": ref("gateway-1-admin", "..password")}, wantErr: "passwordSecretRef.key must be a Secret key name"},
 		"key over 253":          {creds: map[string]interface{}{"passwordSecretRef": ref("gateway-1-admin", strings.Repeat("k", 254))}, wantErr: "passwordSecretRef.key must be a Secret key name"},
-		"file key with ..":      {creds: map[string]interface{}{"source": "file", "passwordSecretRef": ref("gateway-1-admin", "admin..password")}, wantErr: "passwordSecretRef.key must not contain '..' when source is file"},
+		"key with ..":           {creds: map[string]interface{}{"passwordSecretRef": ref("gateway-1-admin", "admin..password")}, wantErr: "passwordSecretRef.key must be a Secret key name"},
 		"name with underscore":  {creds: map[string]interface{}{"passwordSecretRef": ref("Gateway_Admin", "password")}, wantErr: "passwordSecretRef.name must be a Secret name"},
 		"name over 253":         {creds: map[string]interface{}{"passwordSecretRef": ref(strings.Repeat("a", 254), "password")}, wantErr: "passwordSecretRef.name must be a Secret name"},
 		"optional true":         {creds: map[string]interface{}{"passwordSecretRef": map[string]interface{}{"name": "gateway-1-admin", "key": "password", "optional": true}}, wantErr: "passwordSecretRef.optional must not be true"},
@@ -187,7 +197,6 @@ func TestAPIGatewayCRDValidatesAdminCredentials(t *testing.T) {
 		"username with NUL":     {creds: map[string]interface{}{"username": "gw1\x00admin", "passwordSecretRef": ref("gateway-1-admin", "password")}, wantErr: "spec.adminCredentials.username"},
 		"username with DEL":     {creds: map[string]interface{}{"username": "gw1\x7fadmin", "passwordSecretRef": ref("gateway-1-admin", "password")}, wantErr: "spec.adminCredentials.username"},
 		"username empty":        {creds: map[string]interface{}{"username": "", "passwordSecretRef": ref("gateway-1-admin", "password")}, wantErr: "spec.adminCredentials.username"},
-		"unknown source":        {creds: map[string]interface{}{"source": "vault", "passwordSecretRef": ref("gateway-1-admin", "password")}, wantErr: "spec.adminCredentials.source"},
 	}
 
 	// The operator re-validates spec.adminCredentials it reads from the conversion-data

@@ -40,6 +40,9 @@ type secretManager struct {
 	dnsNames  []string
 	validity  validity
 	now       func() time.Time
+	// currentCA returns the CA bundle the CRD trusts today. When the Secret is gone
+	// and a new CA is created, it supplies the old CA for the overlap. May be nil.
+	currentCA func(ctx context.Context) []byte
 }
 
 func (m *secretManager) key() types.NamespacedName {
@@ -55,7 +58,7 @@ func (m *secretManager) read(ctx context.Context) (certBundle, *corev1.Secret, b
 		}
 		return certBundle{}, nil, false, fmt.Errorf("get conversion webhook secret %s: %w", m.key(), err)
 	}
-	return bundleFromData(secret.Data), secret, true, nil
+	return bundleFromSecret(secret.Data, secret.Annotations), secret, true, nil
 }
 
 // ensure creates the Secret, or renews the certificates in it, and returns the bundle
@@ -88,6 +91,20 @@ func (m *secretManager) ensureOnce(ctx context.Context) (certBundle, error) {
 	if err != nil {
 		return certBundle{}, err
 	}
+	if plan == renewAll {
+		// A new CA: keep trusting the old one for a while, so replicas still serving a
+		// certificate it signed are not rejected while they load the new one. The old
+		// CA comes from the Secret, or from the CRD when the Secret was deleted.
+		old := bundle.caCert
+		if !found && m.currentCA != nil {
+			old = m.currentCA(ctx)
+		}
+		renewed.previousCA = previousCAs(old, renewed.caCert, now)
+		renewed.previousUntil = time.Time{}
+		if len(renewed.previousCA) > 0 {
+			renewed.previousUntil = now.Add(m.validity.caOverlap)
+		}
+	}
 	if !found {
 		secret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -101,6 +118,7 @@ func (m *secretManager) ensureOnce(ctx context.Context) (certBundle, error) {
 			Type: corev1.SecretTypeOpaque,
 			Data: renewed.data(),
 		}
+		secret.Annotations = renewed.annotations()
 		if err := m.writer.Create(ctx, secret); err != nil {
 			// %w keeps IsAlreadyExists working for ensure's retry.
 			return certBundle{}, fmt.Errorf("create conversion webhook secret %s: %w", m.key(), err)
@@ -109,6 +127,13 @@ func (m *secretManager) ensureOnce(ctx context.Context) (certBundle, error) {
 	}
 	secret = secret.DeepCopy()
 	secret.Data = renewed.data()
+	if secret.Annotations == nil {
+		secret.Annotations = map[string]string{}
+	}
+	delete(secret.Annotations, PreviousCAUntilAnnotation)
+	for k, v := range renewed.annotations() {
+		secret.Annotations[k] = v
+	}
 	if err := m.writer.Update(ctx, secret); err != nil {
 		return certBundle{}, fmt.Errorf("update conversion webhook secret %s: %w", m.key(), err)
 	}
@@ -124,14 +149,36 @@ func jittered(d time.Duration) time.Duration {
 	return d
 }
 
+// server-side state every serving loop shares: the Secret, the CRD and the in-memory
+// certificate.
+type servingState struct {
+	secrets    *secretManager
+	conversion *crdConversion
+	store      *certStore
+}
+
+// serve makes the CRD trust b, then serves b's certificate. The order matters: a
+// certificate from a new CA is only served once the API server trusts that CA. If the
+// CRD cannot be updated, the certificate already in memory keeps being served.
+func (s *servingState) serve(ctx context.Context, b certBundle) error {
+	if s.conversion != nil {
+		if err := s.conversion.trust(ctx, b); err != nil {
+			return err
+		}
+	}
+	if s.store.serving(b) {
+		return nil
+	}
+	return s.store.set(b)
+}
+
 // rotator keeps the certificate Secret valid. It runs on every replica, not only the
 // leader: during a rolling upgrade the old operator version keeps the leader lease,
 // and a new pod that waited for leadership would never get a certificate, never turn
 // ready, and so never let the rollout replace the old pods. The writes are safe to
 // race (see secretManager.ensure).
 type rotator struct {
-	secrets  *secretManager
-	store    *certStore
+	servingState
 	interval time.Duration
 	retry    time.Duration
 	logger   *slog.Logger
@@ -146,8 +193,8 @@ func (r *rotator) Start(ctx context.Context) error {
 		if err != nil {
 			r.logger.Warn("Cannot ensure the conversion webhook certificate; retrying", slog.Any("error", err))
 			wait = jittered(r.retry)
-		} else if err := r.store.set(bundle); err != nil {
-			r.logger.Warn("Cannot load the conversion webhook certificate; retrying", slog.Any("error", err))
+		} else if err := r.serve(ctx, bundle); err != nil {
+			r.logger.Warn("Cannot serve the conversion webhook certificate; retrying", slog.Any("error", err))
 			wait = jittered(r.retry)
 		}
 		select {
@@ -158,11 +205,11 @@ func (r *rotator) Start(ctx context.Context) error {
 	}
 }
 
-// loader polls the certificate Secret on every replica and serves what it holds, so
-// each replica picks up a certificate another replica created or renewed.
+// loader checks the certificate Secret on every replica about once a minute. It serves
+// a certificate another replica created or renewed, and recreates a Secret that was
+// deleted (the replicas keep serving the certificate they hold meanwhile).
 type loader struct {
-	secrets  *secretManager
-	store    *certStore
+	servingState
 	interval time.Duration
 	logger   *slog.Logger
 }
@@ -170,7 +217,6 @@ type loader struct {
 func (l *loader) NeedLeaderElection() bool { return false }
 
 func (l *loader) Start(ctx context.Context) error {
-	var loadedVersion string
 	// Every replica runs this loop, so even the first read waits a random moment:
 	// replicas restarted together do not all read at once.
 	first := l.interval / 30
@@ -183,20 +229,7 @@ func (l *loader) Start(ctx context.Context) error {
 	case <-time.After(rand.N(first)):
 	}
 	for {
-		bundle, secret, found, err := l.secrets.read(ctx)
-		switch {
-		case err != nil:
-			l.logger.Warn("Cannot read the conversion webhook certificate", slog.Any("error", err))
-		case !found:
-			l.logger.Debug("Waiting for the conversion webhook certificate Secret")
-		case secret.ResourceVersion != loadedVersion:
-			if err := l.store.set(bundle); err != nil {
-				l.logger.Warn("Cannot load the conversion webhook certificate", slog.Any("error", err))
-			} else {
-				loadedVersion = secret.ResourceVersion
-				l.logger.Info("Loaded the conversion webhook certificate")
-			}
-		}
+		l.tick(ctx)
 		wait := l.interval
 		if !l.store.ready() {
 			wait = l.interval / 6
@@ -207,4 +240,27 @@ func (l *loader) Start(ctx context.Context) error {
 		case <-time.After(jittered(wait)):
 		}
 	}
+}
+
+func (l *loader) tick(ctx context.Context) {
+	bundle, _, found, err := l.secrets.read(ctx)
+	if err != nil {
+		l.logger.Warn("Cannot read the conversion webhook certificate", slog.Any("error", err))
+		return
+	}
+	if !found {
+		l.logger.Info("The conversion webhook certificate Secret is missing; recreating it")
+		if bundle, err = l.secrets.ensure(ctx); err != nil {
+			l.logger.Warn("Cannot recreate the conversion webhook certificate", slog.Any("error", err))
+			return
+		}
+	}
+	if l.store.serving(bundle) {
+		return
+	}
+	if err := l.serve(ctx, bundle); err != nil {
+		l.logger.Warn("Cannot serve the conversion webhook certificate", slog.Any("error", err))
+		return
+	}
+	l.logger.Info("Loaded the conversion webhook certificate")
 }

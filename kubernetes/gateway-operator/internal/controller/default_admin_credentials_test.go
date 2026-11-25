@@ -162,7 +162,7 @@ func TestPlanDefaultAdmin_NotNeeded(t *testing.T) {
 		gw           *apiv1.APIGateway
 		base, values string
 	}{
-		"spec.adminCredentials":       {gw: adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)},
+		"spec.adminCredentials":       {gw: adminCredsGateway()},
 		"users in configRef values":   {gw: plainGateway(), values: usersValues},
 		"users in operator base file": {gw: plainGateway(), base: usersValues},
 		"basic auth disabled":         {gw: plainGateway(), values: basicDisabled},
@@ -279,7 +279,7 @@ func TestDefaultAdminOverlay(t *testing.T) {
 // an unlabelled Secret with the same name does not.
 func TestEnqueueGatewaysForGeneratedSecret(t *testing.T) {
 	gw := plainGateway()
-	withSpec := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)
+	withSpec := adminCredsGateway()
 	withSpec.Name = "with-spec"
 	r := &GatewayReconciler{Client: adminCredsClient(t, gw, withSpec)}
 

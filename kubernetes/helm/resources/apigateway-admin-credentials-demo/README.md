@@ -2,10 +2,12 @@
 
 This demo installs the gateway operator, creates two `APIGateway`s with different admin users, and deploys one `RestApi` to each:
 
-| Gateway | Namespace | Admin user | Password Secret | Delivery (`source`) | API |
+| Gateway | Namespace | Admin user | Password Secret | API |
 |---|---|---|---|---|---|
-| `gateway-1` | `gw1` | `gw1-admin` | `gateway-1-admin` | `file`: Secret key mounted read-only into the gateway-controller | `api-1` at `/api1` |
-| `gateway-2` | `gw2` | `gw2-admin` | `gateway-2-admin` | `env`: environment variable from the Secret | `api-2` at `/api2` |
+| `gateway-1` | `gw1` | `gw1-admin` | `gateway-1-admin` | `api-1` at `/api1` |
+| `gateway-2` | `gw2` | `gw2-admin` | `gateway-2-admin` | `api-2` at `/api2` |
+
+Each password reaches its gateway-controller as the Secret key mounted read-only as a file.
 
 Each password stays in its Secret. The operator passes only the Secret reference to the gateway Helm chart, and reads the Secret itself to call each gateway's management API. The password never appears in Helm values, the gateway ConfigMap, or the Helm release. Changing a Secret rolls that gateway's controller pod.
 
@@ -96,18 +98,13 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "gw2-admin:$PW2" localhost:19092/api
 curl -s -o /dev/null -w '%{http_code}\n' -u "gw1-admin:$PW1" localhost:19092/api/management/v1/rest-apis   # 401
 ```
 
-**How each password is delivered.**
+**How the password is delivered.**
 
 ```bash
-# gateway-1 (file): a read-only Secret volume, no password env var, and the token in controller-secrets.toml
+# A read-only Secret volume, no password env var, and the token in controller-secrets.toml
 kubectl get deploy gateway-1-gw-controller -n gw1 -o jsonpath='{.spec.template.spec.volumes[?(@.name=="basic-auth-user-0")]}'
 kubectl get cm gateway-1-gw-config -n gw1 -o jsonpath='{.data.controller-secrets\.toml}'
 #   password = '{{ file "/secrets/gateway-controller/basic-auth/user-0/password" }}'
-
-# gateway-2 (env): an env var from the Secret, and the token in config.toml
-kubectl get deploy gateway-2-gw-controller -n gw2 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="APIP_GW_CONTROLLER_AUTH_BASIC_USER_0_PASSWORD")]}'
-kubectl get cm gateway-2-gw-config -n gw2 -o jsonpath='{.data.config\.toml}' | grep -A4 'controller.auth.basic\]'
-#   password = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_USER_0_PASSWORD" "" }}'
 
 # Neither password is in a ConfigMap or the Helm release
 kubectl get cm -n gw1 -o yaml | grep -cF -- "$PW1"                # 0

@@ -107,12 +107,15 @@ spec:
               port: 8081
             initialDelaySeconds: 15
             periodSeconds: 20
+          # Probed often: the conversion webhook Service only routes to ready pods, so
+          # APIGateway requests through v1alpha1/v2alpha1 wait on this after a CRD change
+          # or a rollout.
           readinessProbe:
             httpGet:
               path: /readyz
               port: 8081
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: 1
+            periodSeconds: 2
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

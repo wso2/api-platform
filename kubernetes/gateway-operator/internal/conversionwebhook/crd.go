@@ -62,19 +62,69 @@ func desiredConversion(namespace, service string, caBundle []byte) *apiextension
 	}
 }
 
-// crdReconciler keeps the converted CRD's spec.conversion pointed at this operator's
-// webhook Service with the current CA. The CRD ships with a placeholder Service (the
-// chart's crds/ directory cannot be templated), and kubectl, Helm or Flux put the
-// placeholder back whenever they re-apply it, so this runs on every CRD change and
-// periodically. Like the rotator it runs on every replica (see crdControllerOptions).
-type crdReconciler struct {
-	client    client.Client
-	secrets   *secretManager
+// crdConversion keeps the converted CRD's spec.conversion pointed at this operator's
+// webhook Service, trusting a given certificate bundle. The CRD ships with a
+// placeholder Service (the chart's crds/ directory cannot be templated), and kubectl,
+// Helm or Flux put the placeholder back whenever they re-apply it.
+type crdConversion struct {
+	reader    client.Reader // uncached, so a check right before serving sees the live CRD
+	writer    client.Client
 	crdName   string
 	namespace string
 	service   string
-	resync    time.Duration
+	now       func() time.Time
 	logger    *slog.Logger
+}
+
+// caBundle returns the CRD's current conversion caBundle, or nil.
+func (c *crdConversion) caBundle(ctx context.Context) []byte {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := c.reader.Get(ctx, types.NamespacedName{Name: c.crdName}, crd); err != nil {
+		return nil
+	}
+	if conv := crd.Spec.Conversion; conv != nil && conv.Webhook != nil && conv.Webhook.ClientConfig != nil {
+		return conv.Webhook.ClientConfig.CABundle
+	}
+	return nil
+}
+
+// trust points the CRD at the webhook and makes it trust b (its CA, plus the previous
+// CA while the overlap lasts). Callers run it before serving a certificate from b, so
+// the API server never meets a certificate it does not trust yet. A CRD that is not
+// installed has nothing to trust and is not an error.
+func (c *crdConversion) trust(ctx context.Context, b certBundle) error {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := c.reader.Get(ctx, types.NamespacedName{Name: c.crdName}, crd); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.logger.Warn("The CRD to convert is not installed", slog.String("crd", c.crdName))
+			return nil
+		}
+		return fmt.Errorf("get CRD %s: %w", c.crdName, err)
+	}
+	want := desiredConversion(c.namespace, c.service, trustedCABundle(b, c.now()))
+	if equality.Semantic.DeepEqual(crd.Spec.Conversion, want) {
+		return nil
+	}
+	patch := client.MergeFrom(crd.DeepCopy())
+	crd.Spec.Conversion = want
+	if err := c.writer.Patch(ctx, crd, patch); err != nil {
+		return fmt.Errorf("patch CRD %s conversion: %w", c.crdName, err)
+	}
+	c.logger.Info("Pointed the CRD's conversion webhook at the operator",
+		slog.String("crd", c.crdName),
+		slog.String("service", c.namespace+"/"+c.service))
+	return nil
+}
+
+// crdReconciler re-applies crdConversion.trust for the Secret's bundle on every CRD
+// change and periodically, and once more when a previous CA's overlap ends, so the
+// CRD stops trusting it. Like the rotator it runs on every replica (see
+// crdControllerOptions).
+type crdReconciler struct {
+	conversion *crdConversion
+	secrets    *secretManager
+	crdName    string
+	resync     time.Duration
 }
 
 func (r *crdReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
@@ -83,32 +133,19 @@ func (r *crdReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Res
 		return ctrl.Result{}, err
 	}
 	if !found || len(bundle.caCert) == 0 {
-		// The rotator has not created the certificate yet.
+		// No certificate yet; the rotator or loader is creating it.
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
-
-	crd := &apiextensionsv1.CustomResourceDefinition{}
-	if err := r.client.Get(ctx, types.NamespacedName{Name: r.crdName}, crd); err != nil {
-		if apierrors.IsNotFound(err) {
-			r.logger.Warn("The CRD to convert is not installed", slog.String("crd", r.crdName))
-			return ctrl.Result{RequeueAfter: r.resync}, nil
+	if err := r.conversion.trust(ctx, bundle); err != nil {
+		return ctrl.Result{}, err
+	}
+	next := r.resync
+	if now := r.conversion.now(); len(bundle.previousCA) > 0 && now.Before(bundle.previousUntil) {
+		if untilEnd := bundle.previousUntil.Sub(now) + time.Second; untilEnd < next {
+			next = untilEnd
 		}
-		return ctrl.Result{}, fmt.Errorf("get CRD %s: %w", r.crdName, err)
 	}
-
-	want := desiredConversion(r.namespace, r.service, bundle.caCert)
-	if equality.Semantic.DeepEqual(crd.Spec.Conversion, want) {
-		return ctrl.Result{RequeueAfter: r.resync}, nil
-	}
-	patch := client.MergeFrom(crd.DeepCopy())
-	crd.Spec.Conversion = want
-	if err := r.client.Patch(ctx, crd, patch); err != nil {
-		return ctrl.Result{}, fmt.Errorf("patch CRD %s conversion: %w", r.crdName, err)
-	}
-	r.logger.Info("Pointed the CRD's conversion webhook at the operator",
-		slog.String("crd", r.crdName),
-		slog.String("service", r.namespace+"/"+r.service))
-	return ctrl.Result{RequeueAfter: r.resync}, nil
+	return ctrl.Result{RequeueAfter: next}, nil
 }
 
 // crdControllerOptions runs the CRD reconciler without leader election. During a

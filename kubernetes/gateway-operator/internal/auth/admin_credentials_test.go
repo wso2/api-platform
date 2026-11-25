@@ -54,7 +54,6 @@ func gatewayWithAdminCredentials(username, secretName, key string, mutate ...fun
 			LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 			Key:                  key,
 		},
-		Source: apiv2alpha1.AdminCredentialsSourceFile,
 	}
 	for _, m := range mutate {
 		m(creds)
@@ -95,27 +94,24 @@ func TestResolveBasicCredentials_DefaultUsername(t *testing.T) {
 	assert.Equal(t, DefaultAdminUsername, user)
 }
 
-// The operator must send the password the gateway-controller holds: in file mode the
-// gateway's {{ file }} interpolation trims trailing whitespace (a Secret made with
-// --from-file ends in a newline), while in env mode the value is used unchanged.
+// The operator must send the password the gateway-controller holds. The admin password
+// is always a mounted file, and the gateway's {{ file }} interpolation trims trailing
+// whitespace (a Secret made with --from-file ends in a newline), so the operator trims
+// the same way.
 func TestResolveBasicCredentials_MatchesGatewayTrimming(t *testing.T) {
 	cases := map[string]struct {
-		source   string
 		value    string
 		wantPass string
 		wantErr  bool
 	}{
-		"file trims newline":         {source: apiv2alpha1.AdminCredentialsSourceFile, value: "s3cret-1\n", wantPass: "s3cret-1"},
-		"file trims crlf and blanks": {source: apiv2alpha1.AdminCredentialsSourceFile, value: "s3cret-1 \t\r\n", wantPass: "s3cret-1"},
-		"file keeps leading blanks":  {source: apiv2alpha1.AdminCredentialsSourceFile, value: "  s3cret-1\n", wantPass: "  s3cret-1"},
-		"file only newline is empty": {source: apiv2alpha1.AdminCredentialsSourceFile, value: "\n", wantErr: true},
-		"env keeps newline":          {source: apiv2alpha1.AdminCredentialsSourceEnv, value: "s3cret-1\n", wantPass: "s3cret-1\n"},
-		"unset source is file":       {source: "", value: "s3cret-1\n", wantPass: "s3cret-1"},
+		"trims newline":         {value: "s3cret-1\n", wantPass: "s3cret-1"},
+		"trims crlf and blanks": {value: "s3cret-1 \t\r\n", wantPass: "s3cret-1"},
+		"keeps leading blanks":  {value: "  s3cret-1\n", wantPass: "  s3cret-1"},
+		"only newline is empty": {value: "\n", wantErr: true},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password",
-				func(c *apiv2alpha1.GatewayAdminCredentials) { c.Source = tc.source })
+			gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password")
 			c := newFakeClient(t, gw, passwordSecret("gateway-1-admin", map[string]string{"password": tc.value}))
 
 			_, pass, err := ResolveBasicCredentials(context.Background(), c, info())

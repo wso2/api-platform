@@ -35,7 +35,6 @@ func sampleCredentials() *GatewayAdminCredentials {
 			LocalObjectReference: corev1.LocalObjectReference{Name: "gateway-1-admin"},
 			Key:                  "password",
 		},
-		Source: AdminCredentialsSourceFile,
 	}
 }
 
@@ -206,7 +205,7 @@ func TestAdminCredentialsOfAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AdminCredentialsOf: %v", err)
 	}
-	if got.Username != DefaultAdminUsername || got.Source != AdminCredentialsSourceFile {
+	if got.Username != DefaultAdminUsername {
 		t.Fatalf("defaults not applied: %+v", got)
 	}
 
