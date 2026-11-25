@@ -83,7 +83,7 @@ var authenticationKinds = []*authenticationKind{
 	},
 	{
 		// A managed identity token comes from IMDS on a VM or AKS node, or from the host's own
-		// endpoint on App Service, Container Apps or Arc.
+		// endpoint on App Service or Container Apps.
 		name:          ManagedIdentity,
 		service:       "the managed identity endpoint",
 		unavailable:   "managed identity is not available",
