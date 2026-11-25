@@ -37,6 +37,7 @@ import (
 	rbacconfigv3 "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
+	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	headermutationv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_mutation/v3"
 	rbacv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
@@ -1914,6 +1915,55 @@ func TestTranslator_CreateFileAccessLog_SuppressesHealthProbes(t *testing.T) {
 	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
 		":path": "/orders",
 	}), "non-health path is still logged")
+}
+
+// With xff_num_trusted_hops set, X-Forwarded-For is removed before the access log is written, so
+// the stdout log's X-Forwarded-For operator becomes the resolved client address; unset, the
+// configured format is left as it is.
+func TestTranslator_CreateFileAccessLog_ClientAddress(t *testing.T) {
+	const resolved = "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+	two := uint32(2)
+	for _, tc := range []struct {
+		name     string
+		hops     *uint32
+		wantXFF  string
+		wantText string
+	}{
+		{"unset", nil, "%REQ(X-FORWARDED-FOR)%", `"%REQ(X-FORWARDED-FOR)%" "%REQ(x-forwarded-for):20%" %REQ(X-REAL-IP)%`},
+		{"set", &two, resolved, `"` + resolved + `" "` + resolved + `" %REQ(X-REAL-IP)%`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			formatOf := func(accessLogs config.AccessLogsConfig) *core.SubstitutionFormatString {
+				routerCfg := testRouterConfig()
+				routerCfg.HTTPListener.XffNumTrustedHops = tc.hops
+				routerCfg.AccessLogs = accessLogs
+				cfg := testConfig()
+				cfg.Router = *routerCfg
+				translator, err := NewTranslator(createTestLogger(), routerCfg, nil, cfg)
+				require.NoError(t, err)
+				accessLog, err := translator.createFileAccessLog()
+				require.NoError(t, err)
+				fileLog := &fileaccesslog.FileAccessLog{}
+				require.NoError(t, accessLog.GetTypedConfig().UnmarshalTo(fileLog))
+				return fileLog.GetLogFormat()
+			}
+
+			jsonFormat := formatOf(config.AccessLogsConfig{
+				Enabled:    true,
+				Format:     "json",
+				JSONFields: map[string]string{"xff": "%REQ(X-FORWARDED-FOR)%", "ua": "%REQ(USER-AGENT)%"},
+			}).GetJsonFormat().GetFields()
+			assert.Equal(t, tc.wantXFF, jsonFormat["xff"].GetStringValue())
+			assert.Equal(t, "%REQ(USER-AGENT)%", jsonFormat["ua"].GetStringValue())
+
+			textFormat := formatOf(config.AccessLogsConfig{
+				Enabled:    true,
+				Format:     "text",
+				TextFormat: `"%REQ(X-FORWARDED-FOR)%" "%REQ(x-forwarded-for):20%" %REQ(X-REAL-IP)%`,
+			}).GetTextFormatSource().GetInlineString()
+			assert.Equal(t, tc.wantText, textFormat)
+		})
+	}
 }
 
 func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {

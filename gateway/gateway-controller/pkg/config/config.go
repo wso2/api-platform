@@ -848,8 +848,10 @@ type HTTPListenerConfig struct {
 	// XffNumTrustedHops is the number of proxies in front of the gateway that append to
 	// X-Forwarded-For. Any value, including 0, turns client-address resolution on: the client
 	// address is taken that many entries from the right (0 uses the connection's peer address),
-	// X-Forwarded-For holds only that address while policies run, and it is not sent to the
-	// backend. When nil (the key is absent), X-Forwarded-For passes through unchanged.
+	// X-Forwarded-For holds only that address while policies run, it is not sent to the
+	// backend, and access-log %REQ(X-FORWARDED-FOR)% operators log that address. When nil (the key is absent), X-Forwarded-For passes through unchanged, and
+	// IP-keyed policies such as advanced-ratelimit use its first entry, which a caller can set;
+	// configure this for IP-based quotas.
 	XffNumTrustedHops *uint32 `koanf:"xff_num_trusted_hops"`
 }
 

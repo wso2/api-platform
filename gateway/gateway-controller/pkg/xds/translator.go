@@ -3291,6 +3291,20 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	return accessLogs, nil
 }
 
+// xffLogOperator matches an access-log %REQ(X-FORWARDED-FOR)% operator, with or without a
+// length limit.
+var xffLogOperator = regexp.MustCompile(`(?i)%REQ\(X-FORWARDED-FOR\)(:\d+)?%`)
+
+// clientAddressLogFormat returns format unchanged when xff_num_trusted_hops is unset. When it is
+// set, X-Forwarded-For is removed before the access log is written, so its operator is replaced
+// with the client address the HCM resolved.
+func (t *Translator) clientAddressLogFormat(format string) string {
+	if t.routerConfig.HTTPListener.XffNumTrustedHops == nil {
+		return format
+	}
+	return xffLogOperator.ReplaceAllString(format, "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%")
+}
+
 // createFileAccessLog creates the stdout access log sink based on the configured
 // format (JSON or text). The sink suppresses the reserved `/_gateway-health`
 // prefix so kubernetes readiness/liveness probes never reach the operator's log.
@@ -3304,8 +3318,13 @@ func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 			return nil, fmt.Errorf("json_fields not configured in access log config")
 		}
 
+		jsonFields := make(map[string]string, len(jsonFormat))
+		for key, value := range jsonFormat {
+			jsonFields[key] = t.clientAddressLogFormat(value)
+		}
+
 		// Convert to structpb.Struct
-		jsonStruct, err := structpb.NewStruct(convertToInterface(jsonFormat))
+		jsonStruct, err := structpb.NewStruct(convertToInterface(jsonFields))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create json struct: %w", err)
 		}
@@ -3334,7 +3353,7 @@ func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 					Format: &core.SubstitutionFormatString_TextFormatSource{
 						TextFormatSource: &core.DataSource{
 							Specifier: &core.DataSource_InlineString{
-								InlineString: textFormat,
+								InlineString: t.clientAddressLogFormat(textFormat),
 							},
 						},
 					},

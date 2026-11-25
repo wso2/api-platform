@@ -471,8 +471,9 @@ bytesRx = "%BYTES_RECEIVED%"
 bytesTx = "%BYTES_SENT%"
 dur = "%DURATION%"
 upSvcT = "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
-# With xff_num_trusted_hops set, the resolved client address, except for a request rejected before
-# the filter chain runs (respCdDtl path_normalization_failed or http1.*), which logs it as sent.
+# With xff_num_trusted_hops set, the gateway logs the resolved client address here instead; a
+# request rejected before X-Forwarded-For is read (respCdDtl path_normalization_failed or http1.*)
+# logs the connection peer, which may be a proxy.
 xff = "%REQ(X-FORWARDED-FOR)%"
 ua = "%REQ(USER-AGENT)%"
 reqId = "%REQ(X-REQUEST-ID)%"
@@ -573,8 +574,10 @@ allow_path_case_variants = false
 # Number of proxies in front of the gateway (load balancer, ingress) that append to
 # X-Forwarded-For. Any value, including 0, turns this on: the client address used for rate
 # limits, logs and analytics is the entry that many from the right (0: the connection's peer
-# address), a caller-set X-Forwarded-For is never trusted, and X-Forwarded-For is not sent to
-# the backend. Leave the key out to pass X-Forwarded-For through unchanged.
+# address), a caller-set X-Forwarded-For is never trusted, X-Forwarded-For is not sent to the
+# backend, and access-log %REQ(X-FORWARDED-FOR)% operators log that address. Leave the key out to pass X-Forwarded-For through unchanged.
+# Unset, IP-keyed policies such as advanced-ratelimit use the first X-Forwarded-For entry,
+# which a caller can set; configure this for IP-based quotas.
 # A nonzero value is only safe when callers cannot reach the gateway except through those
 # proxies: block direct access to the gateway, or a caller can set the entries it trusts.
 # xff_num_trusted_hops = 0
