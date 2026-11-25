@@ -191,6 +191,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	s.registerBuildSteps(sc)
 	s.registerGraphQLSteps(sc)
 	s.registerServiceAccountSteps(sc)
+	s.registerPlanSteps(sc)
 	s.registerGatewaySteps(sc)
 	s.registerGatewayConfigSteps(sc)
 	s.registerPromotionSteps(sc)

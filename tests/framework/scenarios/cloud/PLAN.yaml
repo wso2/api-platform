@@ -1,0 +1,49 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# --------------------------------------------------------------------
+
+# Scenario list: APIP Cloud Subscription Plans (PLAN).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. The single layer (cloud) records how the suite covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but the product does not meet it yet, `issue` says why
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: PLAN
+title: APIP Cloud Subscription Plans
+scenarios:
+  - id: ID_APIP_PLAN_001
+    title: "A subscription plan keeps its limits through list, update and duplicate attempts."
+    priority: P1
+    cloud:
+      # The cloud counterpart of the on-premises subscription_management.feature scenario of the
+      # same name; its creator is the console user instead of "admin". Written, not yet run
+      # against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_subscription_plan.feature
+          scenario: "A subscription plan keeps its limits through list, update and duplicate attempts"
+  - id: ID_APIP_PLAN_002
+    title: "A free plan has no price to read, and a price can't be added later."
+    priority: P1
+    cloud:
+      # The cloud counterpart of the on-premises monetization/priced_plans.feature scenario of the
+      # same name. Written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_subscription_plan.feature
+          scenario: "A free plan has no price to read, and a price can't be added later"

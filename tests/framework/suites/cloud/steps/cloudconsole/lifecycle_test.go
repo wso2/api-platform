@@ -10454,3 +10454,163 @@ func TestServiceAccountCleanupDeletesTheAccount(t *testing.T) {
 	require.NoError(t, registry.Sweep(ctx))
 	require.Equal(t, []string{"syn-sa-1"}, platform.deleted)
 }
+
+// planPlatform answers the subscription-plan routes and records what it was sent.
+type planPlatform struct {
+	createStatus int
+	updateStatus int
+	sent         []string
+	bodies       []map[string]any
+	query        url.Values
+	plan         string
+	page         string
+	pricing      string
+}
+
+func (p *planPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p.sent = append(p.sent, r.Method+" "+r.URL.Path)
+		var body map[string]any
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			p.bodies = append(p.bodies, body)
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/subscription-plans":
+			w.Header().Set("Location", "/api/v0.9/subscription-plans/"+body["id"].(string))
+			writeJSON(w, p.createStatus, map[string]any{"id": body["id"], "createdBy": "Randil", "limits": body["limits"]})
+		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/subscription-plans/"):
+			writeJSON(w, p.updateStatus, map[string]any{"id": body["id"]})
+		case r.Method == http.MethodGet && r.URL.Path == "/subscription-plans":
+			p.query = r.URL.Query()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(p.page))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pricing"):
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(p.pricing))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/subscription-plans/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(p.plan))
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func planSteps(t *testing.T, claims map[string]any) (*Steps, context.Context, *cleanup.Registry, *planPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, jwtFor(t, map[string]any{"alg": "RS256"}, claims))
+	platform := &planPlatform{createStatus: http.StatusCreated, updateStatus: http.StatusOK}
+	steps, ctx, _, registry := cloudSteps(t, platform.handler(t))
+	return steps, ctx, registry, platform
+}
+
+func TestSubmitPlanCarriesTheScenarioWordAndRegistersThePlan(t *testing.T) {
+	steps, ctx, registry, platform := planSteps(t, map[string]any{"name": "Randil", "sub": "user-1"})
+
+	require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t,
+		[]string{"status", "ACTIVE"}, []string{"limits", `[{"limitType":"REQUEST_COUNT","timeUnit":"MINUTE","limitCount":10}]`})))
+	a, err := planID(ctx, "A")
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(a, syntheticPlanPrefix), "the finalizer and the portal sweep find plans by the prefix")
+	word := optionalValue(ctx, keyPlanWord)
+	require.Equal(t, map[string]any{"id": a, "displayName": word + " Plan A", "status": "ACTIVE",
+		"limits": []any{map[string]any{"limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "limitCount": float64(10)}}}, platform.bodies[0])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusCreated))
+	require.NoError(t, steps.assertPlanLocation(ctx, "A"))
+	require.NoError(t, steps.assertPlanCreator(ctx))
+	require.NoError(t, steps.assertPlanLimitCount(ctx, 1))
+	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "expected 0 limits")
+	require.Error(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})), "a label names one plan")
+
+	// The second plan shares the word; a refused create drops its registration.
+	platform.createStatus = http.StatusBadRequest
+	require.NoError(t, steps.submitPlan(ctx, "B", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.Equal(t, word+" Plan B", platform.bodies[1]["displayName"])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+
+	// A duplicate reuses the id and registers nothing new.
+	platform.createStatus = http.StatusConflict
+	require.NoError(t, steps.submitDuplicatePlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.Equal(t, a, platform.bodies[2]["id"])
+	require.Equal(t, word+" Duplicate", platform.bodies[2]["displayName"])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+
+	for name, table := range map[string]*godog.Table{
+		"an unknown field":         valuesTable(t, []string{"description", "x"}),
+		"limits that are not JSON": valuesTable(t, []string{"limits", "[{"}),
+	} {
+		require.Error(t, steps.submitPlan(ctx, "bad-"+name, table), name)
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+	require.ErrorContains(t, steps.updatePlan(ctx, "missing", valuesTable(t, []string{"status", "ACTIVE"})), `no synthetic subscription plan "missing"`)
+	require.Error(t, steps.submitPlan(ctx, " ", valuesTable(t, []string{"status", "ACTIVE"})), "a label is required")
+}
+
+func TestPlanCreatorIsTheConsoleUsersNameOrItsID(t *testing.T) {
+	for name, tc := range map[string]struct {
+		claims map[string]any
+		ok     bool
+	}{
+		"the name claim":          {map[string]any{"name": "Randil", "sub": "user-1"}, true},
+		"another name":            {map[string]any{"name": "Someone", "sub": "user-1"}, false},
+		"the sub without a name":  {map[string]any{"sub": "Randil"}, true},
+		"no name and another sub": {map[string]any{"sub": "user-1"}, false},
+		"neither claim":           {map[string]any{}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			steps, ctx, _, _ := planSteps(t, tc.claims)
+			require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+			if tc.ok {
+				require.NoError(t, steps.assertPlanCreator(ctx))
+			} else {
+				require.Error(t, steps.assertPlanCreator(ctx))
+			}
+		})
+	}
+}
+
+func TestPlanReadsListsAndUpdates(t *testing.T) {
+	steps, ctx, _, platform := planSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.NoError(t, steps.submitPlan(ctx, "B", valuesTable(t, []string{"status", "ACTIVE"})))
+	a, _ := planID(ctx, "A")
+	b, _ := planID(ctx, "B")
+	require.ErrorContains(t, steps.assertPlanLocation(ctx, "A"), "expected the Location", "the last answer locates B")
+
+	platform.page = `{"list":[{"id":"` + a + `","limits":[{"timeUnit":"MINUTE","limitCount":10}]},{"id":"` + b + `","limits":[{"timeUnit":"HOUR","limitCount":100}]}],"pagination":{"total":3}}`
+	require.NoError(t, steps.listPlans(ctx, 2))
+	require.Equal(t, url.Values{"query": {optionalValue(ctx, keyPlanWord)}, "limit": {"2"}}, platform.query)
+	require.NoError(t, steps.assertPlanPage(ctx, 2, 3))
+	require.Error(t, steps.assertPlanPage(ctx, 3, 3))
+	require.Error(t, steps.assertPlanPage(ctx, 2, 2))
+	require.NoError(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"))
+	require.NoError(t, steps.assertListedPlanLimit(ctx, "B", 100, "HOUR"))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "A", 10, "HOUR"))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "B", 10, "HOUR"))
+	platform.page = `{"list":[],"pagination":{}}`
+	require.NoError(t, steps.listPlans(ctx, 100))
+	require.ErrorContains(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"), "does not list")
+	require.Error(t, steps.assertPlanPage(ctx, 0, 0), "a page without a total")
+
+	require.NoError(t, steps.updatePlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"}, []string{"pricing", `{"pricingType":"FLAT_RATE"}`})))
+	require.Equal(t, "PUT /subscription-plans/"+a, platform.sent[len(platform.sent)-1])
+	require.Equal(t, map[string]any{"pricingType": "FLAT_RATE"}, platform.bodies[len(platform.bodies)-1]["pricing"])
+
+	platform.plan = `{"id":"` + a + `","limits":[]}`
+	require.NoError(t, steps.readPlan(ctx, "synthetic subscription plan", "A"))
+	require.Equal(t, "GET /subscription-plans/"+a, platform.sent[len(platform.sent)-1])
+	require.NoError(t, steps.assertPlanLimitCount(ctx, 0))
+	require.NoError(t, steps.assertPlanHasNoPricing(ctx))
+	platform.plan = `{"id":"` + a + `","pricing":{"pricingType":"FLAT_RATE"}}`
+	require.NoError(t, steps.readPlan(ctx, "synthetic subscription plan", "A"))
+	require.ErrorContains(t, steps.assertPlanHasNoPricing(ctx), "expected no pricing")
+
+	platform.pricing = `{"code":"SUBSCRIPTION_PLAN_PRICING_NOT_FOUND","message":"This subscription plan has no pricing."}`
+	require.NoError(t, steps.readPlan(ctx, "pricing of the synthetic subscription plan", "A"))
+	require.Equal(t, "GET /subscription-plans/"+a+"/pricing", platform.sent[len(platform.sent)-1])
+	require.NoError(t, steps.assertCloudErrorCode(ctx, "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"))
+	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "not a subscription plan")
+}
