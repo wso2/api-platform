@@ -956,8 +956,7 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 			return fmt.Errorf("failed to merge admin credentials overlay: %w", err)
 		}
 		log.Info("Configured gateway admin user from Secret",
-			slog.String("secret", creds.PasswordSecretRef.Name),
-			slog.String("source", creds.Source))
+			slog.String("secret", creds.PasswordSecretRef.Name))
 	}
 
 	// Without spec.adminCredentials or users in the values, the operator provides the

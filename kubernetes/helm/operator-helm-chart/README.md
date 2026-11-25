@@ -167,7 +167,8 @@ Because the versions differ, the API server converts `APIGateway` objects throug
 - **What a `v1` read shows.** A gateway is always stored as `v1`. On the stored object, `spec.adminCredentials` lives in the annotation `gateway.api-platform.wso2.com/conversion-data`. A `v2alpha1` read turns it back into `spec.adminCredentials` and hides the annotation. `kubectl get apigateway` reads `v1`, so it shows the annotation. Use `kubectl get apigateways.v2alpha1.gateway.api-platform.wso2.com` to see the field. Set or change `adminCredentials` through `v2alpha1`, not by editing the annotation.
 - **Older versions keep the field.** Reading and updating a gateway through `v1` or `v1alpha1` keeps its `adminCredentials`: those clients carry the annotation along. The operator re-validates the annotation and refuses to deploy a gateway whose value is invalid.
 - **The webhook needs a ready operator.** Requests through `v1` never call the webhook. Requests through `v1alpha1` or `v2alpha1` fail while no operator pod is ready, so run 2 or more replicas (`replicaCount`) where clients use those versions.
-- **The operator manages the webhook.** It creates and renews the webhook's TLS certificate itself (Secret `<fullname>-webhook-cert` in the release namespace: a 10-year self-signed CA and a 1-year serving certificate, renewed 90 days before expiry). No cert-manager is needed. It points the `APIGateway` CRD's `spec.conversion` at the `<fullname>-webhook` Service with that CA.
+- **The operator manages the webhook.** It creates and renews the webhook's TLS certificate itself (Secret `<fullname>-webhook-cert` in the release namespace: a 10-year self-signed CA and a 1-year serving certificate, renewed 90 days before expiry). No cert-manager is needed.
+- **A deleted certificate Secret is recreated.** The operator notices within about a minute and recreates it, with a new CA. The pods keep serving the old certificate in the meantime. When the CA changes, the CRD trusts the old and the new CA together for 15 minutes. A pod serves a certificate from the new CA only once the CRD trusts it, so no request is rejected. It points the `APIGateway` CRD's `spec.conversion` at the `<fullname>-webhook` Service with that CA.
 - **Rolling upgrades.** Every operator pod does this itself, without waiting for the leader lease. A rolling upgrade from a release without the webhook therefore completes even while an old pod still holds the lease. The Service selects only pods labelled `gateway.api-platform.wso2.com/conversion-webhook-server: "true"`, so conversion requests never reach an old pod that doesn't serve the webhook.
 - **The shipped CRD carries a placeholder.** The CRD in `crds/` has a placeholder Service, because Helm does not template `crds/`. The operator replaces it within seconds of starting, and again whenever `kubectl apply`, Helm or a GitOps tool puts the placeholder back. For this it has `get`/`list`/`watch`/`patch` on that one CRD only.
 - **TLS.** The webhook prefers the hybrid `X25519MLKEM768` key exchange, with classical groups as fallback (`conversionWebhook.pqcKeyExchange`). The certificates are ECDSA P-256, because the API server cannot verify post-quantum certificate signatures.
@@ -195,7 +196,6 @@ spec:
   # configRef: { name: my-gateway-values }   # ConfigMap with gateway Helm values
   # adminCredentials:                         # apiVersion v2alpha1 only; admin password from a Secret, see "Admin Credentials from a Secret"
   #   username: gw-admin
-  #   source: file                            # file (default) | env
   #   passwordSecretRef: { name: gw-admin, key: password }
 ```
 
@@ -318,7 +318,6 @@ spec:
       gateway.api-platform.wso2.com/target: gateway-1
   adminCredentials:
     username: gw1-admin          # default "admin"
-    source: file                 # file (default) | env
     passwordSecretRef:
       name: gateway-1-admin      # Secret in the APIGateway's namespace
       key: password
@@ -329,16 +328,16 @@ EOF
 |---|---|
 | `username` | Admin username. Defaults to `admin`. |
 | `passwordSecretRef` | `name` and `key` of the plain-text password in a Secret in the APIGateway's namespace. |
-| `source` | How the gateway-controller receives the password. `file` (default) mounts the Secret key read-only and the controller reads it from the file, so the password never enters the pod environment; `env` injects it as an environment variable from the Secret. |
 
 - The operator passes only the Secret reference to the gateway chart (`gateway.config.controller.auth.basic.users[].passwordSecretRef`). The password never appears in Helm values, the gateway ConfigMap, or the Helm release.
+- The gateway-controller reads the password from the Secret key mounted read-only as a file, so it never enters the pod environment. There is no option to deliver it as an environment variable.
 - **Several users:** the `adminCredentials` user is listed first. Any other basic-auth users in the `configRef` values are kept after it, each with its own `password` or `passwordSecretRef`. A `configRef` user with the same username is replaced, and the operator's default `admin`/`admin` user is not kept. IDP settings in the `configRef` still apply.
 - **Without `adminCredentials`:** the operator signs in as the first `configRef` user, so list a user with the `admin` role first. Admin-only resources such as LLM providers and LLM provider templates fail with 403 for a `developer` user.
 - The operator fails closed: if the Secret or key is missing or empty, the gateway is not deployed and no request is sent to it with `admin`/`admin`. Creating or fixing the Secret triggers a redeploy.
 - Changing the Secret rolls the gateway-controller pod, which reads the password only at startup. The same applies to a Secret referenced by a `passwordSecretRef` in the `configRef` values, with or without `adminCredentials`. (A Kubernetes Gateway API `Gateway` is not rolled: restart its controller after rotating such a Secret.)
-- The API server rejects an empty `passwordSecretRef.name` or `key`, and a `username` containing `:` or control characters.
-- With `source: file`, trailing spaces, tabs and newlines are trimmed from the Secret value, as the gateway trims the mounted file, so a Secret created with `--from-file` works. With `source: env`, the value is used exactly as stored.
-- `adminCredentials` is declared by `v2alpha1` only; `v1` and `v1alpha1` keep their released schemas, so `kubectl` rejects a `v1` or `v1alpha1` manifest that sets it (`unknown field "spec.adminCredentials"`). Reading or updating the gateway through `v1` or `v1alpha1` keeps it (see [APIGateway versions and the conversion webhook](#apigateway-versions-and-the-conversion-webhook)). Changing only `adminCredentials` does not change the gateway's `metadata.generation`, but the operator still redeploys the gateway with the new admin user.
+- The API server rejects an empty `passwordSecretRef.name` or `key`, a `key` containing `..`, and a `username` containing `:` or control characters.
+- Trailing spaces, tabs and newlines are trimmed from the Secret value, as the gateway trims the mounted file, so a Secret created with `--from-file` works.
+- `adminCredentials` is declared by `v2alpha1` only; `v1` and `v1alpha1` keep their released schemas, so `kubectl` rejects a `v1` or `v1alpha1` manifest that sets it (`unknown field "spec.adminCredentials"`). Reading or updating the gateway through `v1` or `v1alpha1` keeps it (see [APIGateway versions and the conversion webhook](#apigateway-versions-and-the-conversion-webhook)). Changing `adminCredentials` through `v2alpha1` redeploys the gateway like any other spec change. Editing the `conversion-data` annotation directly through `v1` or `v1alpha1` does not change `metadata.generation`, but the operator still redeploys the gateway, because the annotation is part of its configuration hash.
 - **Needs a gateway chart that renders `passwordSecretRef`.** The operator passes the admin password only as a Secret reference, which gateway charts from wso2/api-platform#4423 on render; they list `basicAuthPasswordSecretRef` in the `Chart.yaml` annotation `gateway.api-platform.wso2.com/features`. Before installing or upgrading, the operator checks the configured chart for it whenever a basic-auth user reads its password from a Secret: the `adminCredentials` user, the generated admin user (below), or a `configRef` user with `passwordSecretRef`. With an older chart (published charts up to and including `2026.11.19-r1`) it leaves the Helm release unchanged and reports `Programmed=False` with an error naming the chart version. A gateway an earlier operator deployed with `admin`/`admin` keeps it and does not need the newer chart.
 
 #### Generated admin credential

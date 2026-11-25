@@ -2789,8 +2789,9 @@ spec:
                   enters the Helm values or the gateway ConfigMap. The admin user is listed first,
                   followed by the other basic-auth users in the ConfigRef values (a ConfigRef user
                   with the same username is replaced). The operator's default admin/admin user is
-                  not kept. When unset, the admin credentials come from the ConfigRef values, as
-                  before.
+                  not kept. The gateway-controller reads the password from the Secret key mounted
+                  read-only as a file, so it never enters the pod environment. When unset, the
+                  admin credentials come from the ConfigRef values, as before.
                 properties:
                   passwordSecretRef:
                     description: |-
@@ -2819,17 +2820,6 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
-                  source:
-                    default: file
-                    description: |-
-                      Source is how the gateway-controller receives the password: "file" (the
-                      default) mounts the Secret key read-only and the controller reads it from the
-                      file, so the value never enters the pod environment; "env" injects it as an
-                      environment variable from the Secret.
-                    enum:
-                    - env
-                    - file
-                    type: string
                   username:
                     default: admin
                     description: |-
@@ -2855,14 +2845,10 @@ spec:
                     == 0 || (size(self.passwordSecretRef.name) <= 253 && self.passwordSecretRef.name.matches(''^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$''))'
                 - fieldPath: .passwordSecretRef.key
                   message: passwordSecretRef.key must be a Secret key name (letters,
-                    digits, '-', '_', '.'), at most 253 characters, not starting with
-                    '..'
+                    digits, '-', '_', '.'), at most 253 characters, without '..' (the
+                    gateway-controller reads it as a file path)
                   rule: size(self.passwordSecretRef.key) <= 253 && self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$')
-                    && self.passwordSecretRef.key != '.' && !self.passwordSecretRef.key.startsWith('..')
-                - fieldPath: .passwordSecretRef.key
-                  message: 'passwordSecretRef.key must not contain ''..'' when source
-                    is file: the gateway-controller rejects such a file path'
-                  rule: '!has(self.source) || self.source != ''file'' || !self.passwordSecretRef.key.contains(''..'')'
+                    && self.passwordSecretRef.key != '.' && !self.passwordSecretRef.key.contains('..')
                 - fieldPath: .passwordSecretRef.optional
                   message: 'passwordSecretRef.optional must not be true: the admin
                     password Secret is required'

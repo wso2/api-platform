@@ -108,13 +108,10 @@ func SetAdminCredentials(gw *v1.APIGateway, creds *GatewayAdminCredentials) {
 	gw.Annotations[ConversionDataAnnotation] = string(raw)
 }
 
-// Default applies the CRD defaults: username "admin" and source "file".
+// Default applies the CRD default: username "admin".
 func (c *GatewayAdminCredentials) Default() {
 	if c.Username == "" {
 		c.Username = DefaultAdminUsername
-	}
-	if c.Source == "" {
-		c.Source = AdminCredentialsSourceFile
 	}
 }
 
@@ -124,9 +121,6 @@ func (c *GatewayAdminCredentials) Validate() error {
 	if len(c.Username) == 0 || len(c.Username) > 253 || !usernamePattern.MatchString(c.Username) {
 		return fmt.Errorf("username must be 1-253 characters without ':' or control characters")
 	}
-	if c.Source != AdminCredentialsSourceEnv && c.Source != AdminCredentialsSourceFile {
-		return fmt.Errorf("source must be %q or %q", AdminCredentialsSourceEnv, AdminCredentialsSourceFile)
-	}
 	ref := c.PasswordSecretRef
 	if ref.Name == "" {
 		return fmt.Errorf("passwordSecretRef.name must name the Secret that holds the admin password")
@@ -134,11 +128,8 @@ func (c *GatewayAdminCredentials) Validate() error {
 	if len(ref.Name) > 253 || !secretNamePattern.MatchString(ref.Name) {
 		return fmt.Errorf("passwordSecretRef.name must be a Secret name: lowercase letters, digits, '-' and '.', at most 253 characters")
 	}
-	if len(ref.Key) > 253 || !secretKeyPattern.MatchString(ref.Key) || ref.Key == "." || strings.HasPrefix(ref.Key, "..") {
-		return fmt.Errorf("passwordSecretRef.key must be a Secret key name (letters, digits, '-', '_', '.'), at most 253 characters, not starting with '..'")
-	}
-	if c.Source == AdminCredentialsSourceFile && strings.Contains(ref.Key, "..") {
-		return fmt.Errorf("passwordSecretRef.key must not contain '..' when source is file")
+	if len(ref.Key) > 253 || !secretKeyPattern.MatchString(ref.Key) || ref.Key == "." || strings.Contains(ref.Key, "..") {
+		return fmt.Errorf("passwordSecretRef.key must be a Secret key name (letters, digits, '-', '_', '.'), at most 253 characters, without '..'")
 	}
 	if ref.Optional != nil && *ref.Optional {
 		return fmt.Errorf("passwordSecretRef.optional must not be true: the admin password Secret is required")

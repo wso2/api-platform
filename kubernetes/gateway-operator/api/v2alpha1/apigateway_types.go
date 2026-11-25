@@ -140,8 +140,9 @@ type GatewaySpec struct {
 	// enters the Helm values or the gateway ConfigMap. The admin user is listed first,
 	// followed by the other basic-auth users in the ConfigRef values (a ConfigRef user
 	// with the same username is replaced). The operator's default admin/admin user is
-	// not kept. When unset, the admin credentials come from the ConfigRef values, as
-	// before.
+	// not kept. The gateway-controller reads the password from the Secret key mounted
+	// read-only as a file, so it never enters the pod environment. When unset, the
+	// admin credentials come from the ConfigRef values, as before.
 	// +optional
 	AdminCredentials *GatewayAdminCredentials `json:"adminCredentials,omitempty"`
 }
@@ -150,8 +151,7 @@ type GatewaySpec struct {
 // in a Kubernetes Secret.
 // +kubebuilder:validation:XValidation:rule="has(self.passwordSecretRef.name) && size(self.passwordSecretRef.name) > 0",message="passwordSecretRef.name must name the Secret that holds the admin password",fieldPath=".passwordSecretRef.name"
 // +kubebuilder:validation:XValidation:rule="!has(self.passwordSecretRef.name) || size(self.passwordSecretRef.name) == 0 || (size(self.passwordSecretRef.name) <= 253 && self.passwordSecretRef.name.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'))",message="passwordSecretRef.name must be a Secret name: lowercase letters, digits, '-' and '.', at most 253 characters",fieldPath=".passwordSecretRef.name"
-// +kubebuilder:validation:XValidation:rule="size(self.passwordSecretRef.key) <= 253 && self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$') && self.passwordSecretRef.key != '.' && !self.passwordSecretRef.key.startsWith('..')",message="passwordSecretRef.key must be a Secret key name (letters, digits, '-', '_', '.'), at most 253 characters, not starting with '..'",fieldPath=".passwordSecretRef.key"
-// +kubebuilder:validation:XValidation:rule="!has(self.source) || self.source != 'file' || !self.passwordSecretRef.key.contains('..')",message="passwordSecretRef.key must not contain '..' when source is file: the gateway-controller rejects such a file path",fieldPath=".passwordSecretRef.key"
+// +kubebuilder:validation:XValidation:rule="size(self.passwordSecretRef.key) <= 253 && self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$') && self.passwordSecretRef.key != '.' && !self.passwordSecretRef.key.contains('..')",message="passwordSecretRef.key must be a Secret key name (letters, digits, '-', '_', '.'), at most 253 characters, without '..' (the gateway-controller reads it as a file path)",fieldPath=".passwordSecretRef.key"
 // +kubebuilder:validation:XValidation:rule="!has(self.passwordSecretRef.optional) || !self.passwordSecretRef.optional",message="passwordSecretRef.optional must not be true: the admin password Secret is required",fieldPath=".passwordSecretRef.optional"
 type GatewayAdminCredentials struct {
 	// Username of the admin user. It cannot contain ':' (HTTP Basic authentication
@@ -168,22 +168,7 @@ type GatewayAdminCredentials struct {
 	// optional cannot be true.
 	// +kubebuilder:validation:Required
 	PasswordSecretRef corev1.SecretKeySelector `json:"passwordSecretRef"`
-
-	// Source is how the gateway-controller receives the password: "file" (the
-	// default) mounts the Secret key read-only and the controller reads it from the
-	// file, so the value never enters the pod environment; "env" injects it as an
-	// environment variable from the Secret.
-	// +kubebuilder:validation:Enum=env;file
-	// +kubebuilder:default=file
-	// +optional
-	Source string `json:"source,omitempty"`
 }
-
-// Admin password delivery modes for GatewayAdminCredentials.Source.
-const (
-	AdminCredentialsSourceEnv  = "env"
-	AdminCredentialsSourceFile = "file"
-)
 
 // GatewayControlPlane defines control plane connection settings
 type GatewayControlPlane struct {

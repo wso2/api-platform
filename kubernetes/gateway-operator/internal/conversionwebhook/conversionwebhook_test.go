@@ -58,7 +58,7 @@ const (
 
 var (
 	testNow      = time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	testValidity = validity{ca: 10 * 365 * 24 * time.Hour, serving: 365 * 24 * time.Hour, renewBefore: 90 * 24 * time.Hour}
+	testValidity = validity{ca: 10 * 365 * 24 * time.Hour, serving: 365 * 24 * time.Hour, renewBefore: 90 * 24 * time.Hour, caOverlap: 15 * time.Minute}
 	testLogger   = slog.New(slog.NewTextHandler(io.Discard, nil))
 )
 
@@ -185,8 +185,7 @@ func TestCRDReconcilerPointsCRDAtWebhook(t *testing.T) {
 	ctx := context.Background()
 	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
 	secrets := newSecretManager(c, testNow)
-	r := &crdReconciler{client: c, secrets: secrets, crdName: APIGatewayCRDName,
-		namespace: testNS, service: testService, resync: time.Minute, logger: testLogger}
+	r := &crdReconciler{conversion: newConversion(c, testNow), secrets: secrets, crdName: APIGatewayCRDName, resync: time.Minute}
 
 	// No certificate yet: wait for the rotator.
 	res, err := r.Reconcile(ctx, ctrl.Request{})
@@ -273,7 +272,6 @@ func TestConversionReviewRoundTrip(t *testing.T) {
 				PasswordSecretRef: corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "gateway-1-admin"}, Key: "password",
 				},
-				Source: apiv2alpha1.AdminCredentialsSourceFile,
 			},
 		},
 	}
@@ -430,4 +428,116 @@ func TestWebhookDoesNotNeedLeaderElection(t *testing.T) {
 	opts := crdControllerOptions()
 	require.NotNil(t, opts.NeedLeaderElection, "CRD reconciler")
 	assert.False(t, *opts.NeedLeaderElection, "CRD reconciler")
+}
+
+func newConversion(c client.Client, now time.Time) *crdConversion {
+	return &crdConversion{reader: c, writer: c, crdName: APIGatewayCRDName, namespace: testNS,
+		service: testService, now: func() time.Time { return now }, logger: testLogger}
+}
+
+func crdCABundle(t *testing.T, c client.Client) []byte {
+	t.Helper()
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: APIGatewayCRDName}, crd))
+	return crd.Spec.Conversion.Webhook.ClientConfig.CABundle
+}
+
+func pemCount(b []byte) int { return strings.Count(string(b), "BEGIN CERTIFICATE") }
+
+// When the CA nears expiry, the new CA is created with the old one kept as previous
+// for the overlap, and the CRD trusts both until the overlap ends.
+func TestCARenewalKeepsPreviousCAForOverlap(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	first, err := newSecretManager(c, testNow).ensure(ctx)
+	require.NoError(t, err)
+
+	nearCAExpiry := testNow.Add(10*365*24*time.Hour - 30*24*time.Hour)
+	renewed, err := newSecretManager(c, nearCAExpiry).ensure(ctx)
+	require.NoError(t, err)
+	assert.NotEqual(t, first.caCert, renewed.caCert, "a new CA")
+	assert.Equal(t, first.caCert, renewed.previousCA, "the old CA kept as previous")
+	assert.Equal(t, nearCAExpiry.Add(15*time.Minute), renewed.previousUntil)
+
+	secret := &corev1.Secret{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: testNS, Name: testSecret}, secret))
+	assert.Equal(t, first.caCert, secret.Data[SecretKeyPreviousCA])
+	assert.Equal(t, nearCAExpiry.Add(15*time.Minute).UTC().Format(time.RFC3339), secret.Annotations[PreviousCAUntilAnnotation])
+
+	// During the overlap the CRD trusts both; the reconciler comes back when it ends.
+	r := &crdReconciler{conversion: newConversion(c, nearCAExpiry), secrets: newSecretManager(c, nearCAExpiry),
+		crdName: APIGatewayCRDName, resync: 30 * time.Minute}
+	res, err := r.Reconcile(ctx, ctrl.Request{})
+	require.NoError(t, err)
+	assert.Equal(t, 2, pemCount(crdCABundle(t, c)))
+	assert.Equal(t, 15*time.Minute+time.Second, res.RequeueAfter)
+
+	// After the overlap only the new CA is trusted.
+	r.conversion = newConversion(c, nearCAExpiry.Add(16*time.Minute))
+	_, err = r.Reconcile(ctx, ctrl.Request{})
+	require.NoError(t, err)
+	assert.Equal(t, renewed.caCert, crdCABundle(t, c))
+}
+
+// When the Secret was deleted, the new CA takes the CA the CRD trusts today as previous,
+// so replicas still serving the old certificate are not rejected.
+func TestDeletedSecretTakesPreviousCAFromCRD(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	old, err := newSecretManager(c, testNow).ensure(ctx)
+	require.NoError(t, err)
+	require.NoError(t, newConversion(c, testNow).trust(ctx, old))
+	require.NoError(t, c.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: testSecret}}))
+
+	m := newSecretManager(c, testNow)
+	m.currentCA = newConversion(c, testNow).caBundle
+	fresh, err := m.ensure(ctx)
+	require.NoError(t, err)
+	assert.NotEqual(t, old.caCert, fresh.caCert)
+	assert.Equal(t, old.caCert, fresh.previousCA)
+	assert.Equal(t, 2, pemCount(trustedCABundle(fresh, testNow)))
+	assert.Equal(t, fresh.caCert, trustedCABundle(fresh, testNow.Add(15*time.Minute)), "overlap over")
+}
+
+func TestPreviousCAsFilters(t *testing.T) {
+	a, b := freshBundle(t), freshBundle(t)
+	both := append(append([]byte{}, a.caCert...), b.caCert...)
+	assert.Equal(t, a.caCert, previousCAs(both, b.caCert, testNow), "the current CA is dropped")
+	assert.Empty(t, previousCAs(both, b.caCert, testNow.Add(11*365*24*time.Hour)), "expired CAs are dropped")
+	assert.Empty(t, previousCAs(a.tlsCert, b.caCert, testNow), "non-CA certificates are dropped")
+	assert.Empty(t, previousCAs([]byte("garbage"), b.caCert, testNow))
+}
+
+// A certificate is served only after the CRD trusts it: if the CRD cannot be patched,
+// the replica keeps serving what it had.
+func TestServeTrustsBeforeServing(t *testing.T) {
+	ctx := context.Background()
+	backing := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	b := freshBundle(t)
+	failing := interceptor.NewClient(backing.(client.WithWatch), interceptor.Funcs{
+		Patch: func(context.Context, client.WithWatch, client.Object, client.Patch, ...client.PatchOption) error {
+			return apierrors.NewServiceUnavailable("patch refused")
+		},
+	})
+	st := servingState{store: &certStore{}, conversion: newConversion(failing, testNow)}
+	require.Error(t, st.serve(ctx, b))
+	assert.False(t, st.store.ready(), "nothing served while the CRD does not trust the certificate")
+
+	st.conversion = newConversion(backing, testNow)
+	require.NoError(t, st.serve(ctx, b))
+	assert.True(t, st.store.serving(b))
+	assert.Equal(t, b.caCert, crdCABundle(t, backing))
+}
+
+// The loader recreates a deleted Secret instead of waiting for the hourly rotator.
+func TestLoaderRecreatesMissingSecret(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	l := &loader{servingState: servingState{secrets: newSecretManager(c, testNow), conversion: newConversion(c, testNow),
+		store: &certStore{}}, interval: time.Minute, logger: testLogger}
+	l.tick(ctx)
+	secret := &corev1.Secret{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: testNS, Name: testSecret}, secret))
+	assert.True(t, l.store.ready())
+	assert.Equal(t, secret.Data[SecretKeyCACert], crdCABundle(t, c))
 }

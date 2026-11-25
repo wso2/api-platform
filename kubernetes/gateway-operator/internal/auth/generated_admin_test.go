@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
-	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
 
@@ -141,9 +140,4 @@ func TestResolveBasicCredentials_LegacyKeepsDefault(t *testing.T) {
 			assert.Equal(t, "admin", pass)
 		})
 	}
-}
-
-func TestAdminCredentialsSourceDefaultsToFile(t *testing.T) {
-	assert.Equal(t, apiv2alpha1.AdminCredentialsSourceFile, AdminCredentialsSource(""))
-	assert.Equal(t, apiv2alpha1.AdminCredentialsSourceEnv, AdminCredentialsSource(apiv2alpha1.AdminCredentialsSourceEnv))
 }

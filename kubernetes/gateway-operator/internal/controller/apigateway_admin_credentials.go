@@ -137,9 +137,10 @@ func gatewayConfigHash(configMapValues, secretsVersion, conversionData string) s
 
 // conversionDataFingerprint returns the gateway's v2alpha1-only fields as stored on the
 // v1 object (spec.adminCredentials today). The conversion webhook keeps them in an
-// annotation, and an annotation change does not bump metadata.generation, so the
-// config hash must cover them: otherwise changing only adminCredentials.username or
-// .source through v2alpha1 would never redeploy the gateway.
+// annotation. A change made through v2alpha1 bumps metadata.generation like any spec
+// change, but an edit of the annotation itself through v1 or v1alpha1 is a metadata
+// change and does not, so the config hash covers it too: otherwise such an edit would
+// never redeploy the gateway.
 func conversionDataFingerprint(gw *apiv1.APIGateway) string {
 	return gw.Annotations[apiv2alpha1.ConversionDataAnnotation]
 }
@@ -189,7 +190,6 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) 
 		return "", nil
 	}
 	username := creds.Username
-	source := creds.Source
 
 	admin := map[string]interface{}{
 		"username": username,
@@ -198,9 +198,10 @@ func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) 
 		"password_hashed": false,
 		"roles":           []interface{}{"admin"},
 		"passwordSecretRef": map[string]interface{}{
-			"name":   creds.PasswordSecretRef.Name,
-			"key":    creds.PasswordSecretRef.Key,
-			"source": source,
+			"name": creds.PasswordSecretRef.Name,
+			"key":  creds.PasswordSecretRef.Key,
+			// Always a read-only file mount: the password never enters the pod environment.
+			"source": auth.PasswordSourceFile,
 		},
 	}
 	users := []interface{}{admin}

@@ -218,20 +218,19 @@ func GetDefaultBasicAuthCredentials() (username, password string) {
 // in a newline), so the operator trims the same characters. In env mode the value
 // reaches the controller unchanged, so it is returned unchanged.
 func PasswordAsGatewayReadsIt(value, source string) string {
-	if source == apiv2alpha1.AdminCredentialsSourceFile {
+	if source == PasswordSourceFile {
 		return strings.TrimRight(value, " \t\r\n")
 	}
 	return value
 }
 
-// AdminCredentialsSource returns spec.adminCredentials.source with its default applied:
-// an empty value means "file" (the CRD defaults it to the same value).
-func AdminCredentialsSource(source string) string {
-	if source == "" {
-		return apiv2alpha1.AdminCredentialsSourceFile
-	}
-	return source
-}
+// How the gateway chart delivers a passwordSecretRef password to the gateway-controller
+// (gateway.config.controller.auth.basic.users[].passwordSecretRef.source). The admin
+// user from spec.adminCredentials and the operator-generated user always use file.
+const (
+	PasswordSourceFile = "file"
+	PasswordSourceEnv  = "env"
+)
 
 // DefaultAdminUsername is the admin username used when spec.adminCredentials.username
 // is empty (the CRD defaults it to the same value).
@@ -266,7 +265,8 @@ func AdminCredentialsFromSecret(ctx context.Context, k8sClient client.Client, ga
 	if err != nil {
 		return "", "", err
 	}
-	password = PasswordAsGatewayReadsIt(password, AdminCredentialsSource(creds.Source))
+	// The admin user's password is always delivered as a file.
+	password = PasswordAsGatewayReadsIt(password, PasswordSourceFile)
 	if password == "" {
 		return "", "", fmt.Errorf("spec.adminCredentials.passwordSecretRef: key %q in secret %s/%s is empty",
 			ref.Key, gateway.Namespace, ref.Name)

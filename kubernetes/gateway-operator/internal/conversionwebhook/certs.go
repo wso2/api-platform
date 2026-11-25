@@ -18,6 +18,7 @@
 package conversionwebhook
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -39,34 +40,102 @@ const (
 	SecretKeyCAKey   = "ca.key"
 	SecretKeyTLSCert = "tls.crt"
 	SecretKeyTLSKey  = "tls.key"
+	// SecretKeyPreviousCA holds the CA(s) the webhook served under before the CA was
+	// last replaced. The CRD keeps trusting them until PreviousCAUntilAnnotation, so
+	// replicas still serving a certificate from the old CA are not rejected while they
+	// pick up the new one.
+	SecretKeyPreviousCA = "ca-previous.crt"
 )
+
+// PreviousCAUntilAnnotation on the webhook Secret is the RFC 3339 time until which the
+// CRD trusts SecretKeyPreviousCA as well as the current CA.
+const PreviousCAUntilAnnotation = "gateway.api-platform.wso2.com/previous-ca-until"
 
 // The certificates use ECDSA P-256 signatures. The peer verifying them is the
 // kube-apiserver, which cannot verify ML-DSA certificate signatures, so there is no
 // post-quantum signature to offer it. The TLS key exchange is hybrid
 // (X25519MLKEM768) by default; see tlsConfig.
 
-// certBundle is the PEM content of the webhook Secret.
+// certBundle is the content of the webhook Secret: PEM data, plus the previous CA and
+// how long it stays trusted after a CA replacement.
 type certBundle struct {
 	caCert, caKey, tlsCert, tlsKey []byte
+	previousCA                     []byte
+	previousUntil                  time.Time
 }
 
 func (b certBundle) data() map[string][]byte {
-	return map[string][]byte{
+	data := map[string][]byte{
 		SecretKeyCACert:  b.caCert,
 		SecretKeyCAKey:   b.caKey,
 		SecretKeyTLSCert: b.tlsCert,
 		SecretKeyTLSKey:  b.tlsKey,
 	}
+	if len(b.previousCA) > 0 {
+		data[SecretKeyPreviousCA] = b.previousCA
+	}
+	return data
 }
 
-func bundleFromData(data map[string][]byte) certBundle {
-	return certBundle{
-		caCert:  data[SecretKeyCACert],
-		caKey:   data[SecretKeyCAKey],
-		tlsCert: data[SecretKeyTLSCert],
-		tlsKey:  data[SecretKeyTLSKey],
+// annotations returns the Secret annotations the bundle needs.
+func (b certBundle) annotations() map[string]string {
+	if len(b.previousCA) == 0 || b.previousUntil.IsZero() {
+		return nil
 	}
+	return map[string]string{PreviousCAUntilAnnotation: b.previousUntil.UTC().Format(time.RFC3339)}
+}
+
+func bundleFromSecret(data map[string][]byte, annotations map[string]string) certBundle {
+	b := certBundle{
+		caCert:     data[SecretKeyCACert],
+		caKey:      data[SecretKeyCAKey],
+		tlsCert:    data[SecretKeyTLSCert],
+		tlsKey:     data[SecretKeyTLSKey],
+		previousCA: data[SecretKeyPreviousCA],
+	}
+	if until, err := time.Parse(time.RFC3339, annotations[PreviousCAUntilAnnotation]); err == nil {
+		b.previousUntil = until
+	}
+	return b
+}
+
+// trustedCABundle is the caBundle the CRD must carry for b at now: the current CA,
+// plus the previous CA while its overlap lasts.
+func trustedCABundle(b certBundle, now time.Time) []byte {
+	if len(b.previousCA) == 0 || !now.Before(b.previousUntil) {
+		return b.caCert
+	}
+	out := append([]byte{}, b.caCert...)
+	if len(out) > 0 && out[len(out)-1] != '\n' {
+		out = append(out, '\n')
+	}
+	return append(out, b.previousCA...)
+}
+
+// previousCAs returns the CA certificates in pemBytes that are still valid at now,
+// other than current, as PEM. It is what a replaced CA hands over to the overlap.
+func previousCAs(pemBytes, current []byte, now time.Time) []byte {
+	var currentDER []byte
+	if block, _ := pem.Decode(current); block != nil {
+		currentDER = block.Bytes
+	}
+	var out []byte
+	for rest := pemBytes; len(rest) > 0; {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" || bytes.Equal(block.Bytes, currentDER) {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil || !cert.IsCA || now.After(cert.NotAfter) {
+			continue
+		}
+		out = append(out, pem.EncodeToMemory(block)...)
+	}
+	return out
 }
 
 // serviceDNSNames returns the names the kube-apiserver may use to reach the webhook
@@ -256,14 +325,16 @@ func renew(b certBundle, plan renewalPlan, dnsNames []string, now time.Time, v v
 	return out, nil
 }
 
-// validity holds the certificate lifetimes and the renewal margin.
+// validity holds the certificate lifetimes, the renewal margin, and how long the CRD
+// keeps trusting a replaced CA.
 type validity struct {
-	ca, serving, renewBefore time.Duration
+	ca, serving, renewBefore, caOverlap time.Duration
 }
 
 // certStore holds the serving certificate in memory for the TLS listener.
 type certStore struct {
-	cert atomic.Pointer[tls.Certificate]
+	cert    atomic.Pointer[tls.Certificate]
+	certPEM atomic.Pointer[[]byte]
 }
 
 // set loads the serving keypair from a bundle.
@@ -272,8 +343,16 @@ func (s *certStore) set(b certBundle) error {
 	if err != nil {
 		return fmt.Errorf("load serving keypair: %w", err)
 	}
+	pemCopy := append([]byte{}, b.tlsCert...)
 	s.cert.Store(&pair)
+	s.certPEM.Store(&pemCopy)
 	return nil
+}
+
+// serving reports whether the store already serves the bundle's certificate.
+func (s *certStore) serving(b certBundle) bool {
+	p := s.certPEM.Load()
+	return p != nil && bytes.Equal(*p, b.tlsCert)
 }
 
 func (s *certStore) ready() bool {

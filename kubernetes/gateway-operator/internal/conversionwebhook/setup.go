@@ -90,12 +90,15 @@ func (o Options) validate() error {
 	return errors.Join(errs...)
 }
 
-// certificate lifetimes: a 10-year CA (rotating it changes the CRD's caBundle) and a
-// 1-year serving certificate re-issued 90 days before it expires.
+// certificate lifetimes: a 10-year CA and a 1-year serving certificate re-issued 90
+// days before it expires. When the CA is replaced (it nears expiry, or the Secret was
+// deleted), the CRD trusts the old one too for 15 minutes, far longer than the loader
+// takes to move every replica to the new certificate.
 var defaultValidity = validity{
 	ca:          10 * 365 * 24 * time.Hour,
 	serving:     365 * 24 * time.Hour,
 	renewBefore: 90 * 24 * time.Hour,
+	caOverlap:   15 * time.Minute,
 }
 
 // CacheByObject returns the manager cache settings the webhook needs: the CRD
@@ -133,6 +136,17 @@ func Setup(mgr ctrl.Manager, opts Options) error {
 		validity:  defaultValidity,
 		now:       time.Now,
 	}
+	conv := &crdConversion{
+		reader:    mgr.GetAPIReader(),
+		writer:    mgr.GetClient(),
+		crdName:   APIGatewayCRDName,
+		namespace: opts.Namespace,
+		service:   opts.ServiceName,
+		now:       time.Now,
+		logger:    logger,
+	}
+	secrets.currentCA = conv.caBundle
+	state := servingState{secrets: secrets, conversion: conv, store: store}
 	srv := &server{
 		port:            opts.Port,
 		handler:         conversion.NewWebhookHandler(mgr.GetScheme(), mgr.GetConverterRegistry()),
@@ -145,21 +159,18 @@ func Setup(mgr ctrl.Manager, opts Options) error {
 	// lease during a rolling upgrade.
 	for _, r := range []manager.Runnable{
 		srv,
-		&loader{secrets: secrets, store: store, interval: time.Minute, logger: logger},
-		&rotator{secrets: secrets, store: store, interval: time.Hour, retry: 10 * time.Second, logger: logger},
+		&loader{servingState: state, interval: time.Minute, logger: logger},
+		&rotator{servingState: state, interval: time.Hour, retry: 10 * time.Second, logger: logger},
 	} {
 		if err := mgr.Add(r); err != nil {
 			return fmt.Errorf("conversion webhook: add runnable: %w", err)
 		}
 	}
 	if err := (&crdReconciler{
-		client:    mgr.GetClient(),
-		secrets:   secrets,
-		crdName:   APIGatewayCRDName,
-		namespace: opts.Namespace,
-		service:   opts.ServiceName,
-		resync:    10 * time.Minute,
-		logger:    logger,
+		conversion: conv,
+		secrets:    secrets,
+		crdName:    APIGatewayCRDName,
+		resync:     10 * time.Minute,
 	}).setupWithManager(mgr); err != nil {
 		return fmt.Errorf("conversion webhook: CRD reconciler: %w", err)
 	}
