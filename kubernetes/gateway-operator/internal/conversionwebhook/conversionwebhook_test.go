@@ -519,7 +519,7 @@ func TestServeTrustsBeforeServing(t *testing.T) {
 			return apierrors.NewServiceUnavailable("patch refused")
 		},
 	})
-	st := servingState{store: &certStore{}, conversion: newConversion(failing, testNow)}
+	st := &servingState{store: &certStore{}, conversion: newConversion(failing, testNow)}
 	require.Error(t, st.serve(ctx, b))
 	assert.False(t, st.store.ready(), "nothing served while the CRD does not trust the certificate")
 
@@ -533,11 +533,46 @@ func TestServeTrustsBeforeServing(t *testing.T) {
 func TestLoaderRecreatesMissingSecret(t *testing.T) {
 	ctx := context.Background()
 	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
-	l := &loader{servingState: servingState{secrets: newSecretManager(c, testNow), conversion: newConversion(c, testNow),
+	l := &loader{servingState: &servingState{secrets: newSecretManager(c, testNow), conversion: newConversion(c, testNow),
 		store: &certStore{}}, interval: time.Minute, logger: testLogger}
 	l.tick(ctx)
 	secret := &corev1.Secret{}
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: testNS, Name: testSecret}, secret))
 	assert.True(t, l.store.ready())
 	assert.Equal(t, secret.Data[SecretKeyCACert], crdCABundle(t, c))
+}
+
+// sync always serves what the Secret holds when it runs: a certificate served earlier
+// from an older read is replaced, and one already served is not reloaded.
+func TestSyncServesTheSecretsCurrentCertificate(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	m := newSecretManager(c, testNow)
+	current, err := m.ensure(ctx)
+	require.NoError(t, err)
+	st := &servingState{secrets: m, conversion: newConversion(c, testNow), store: &certStore{}}
+
+	older := freshBundle(t) // stands in for a certificate read before a renewal
+	require.NoError(t, st.store.set(older))
+	loaded, err := st.sync(ctx)
+	require.NoError(t, err)
+	assert.True(t, loaded)
+	assert.True(t, st.store.serving(current))
+
+	loaded, err = st.sync(ctx)
+	require.NoError(t, err)
+	assert.False(t, loaded, "nothing to reload")
+}
+
+// A CA key that does not belong to the CA certificate makes the bundle unusable for
+// signing, so the whole bundle is replaced rather than retrying serving renewals.
+func TestMismatchedCAKeyRenewsEverything(t *testing.T) {
+	a, b := freshBundle(t), freshBundle(t)
+	mixed := a
+	mixed.caKey = b.caKey
+	_, _, err := parseCA(mixed.caCert, mixed.caKey)
+	require.ErrorContains(t, err, "does not match")
+	assert.Equal(t, renewAll, planRenewal(mixed, serviceDNSNames(testService, testNS), testNow, testValidity.renewBefore))
+	_, _, err = parseCA(a.caCert, a.caKey)
+	require.NoError(t, err)
 }

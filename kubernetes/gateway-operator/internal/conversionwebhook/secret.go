@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -149,12 +150,43 @@ func jittered(d time.Duration) time.Duration {
 	return d
 }
 
-// server-side state every serving loop shares: the Secret, the CRD and the in-memory
-// certificate.
+// servingState is what every serving loop shares: the Secret, the CRD and the
+// in-memory certificate.
 type servingState struct {
 	secrets    *secretManager
 	conversion *crdConversion
 	store      *certStore
+	logger     *slog.Logger
+	mu         sync.Mutex // serializes sync
+}
+
+// sync serves the certificate the Secret holds right now, recreating a missing Secret
+// first. The rotator and the loader both go through it, one at a time, and it reads
+// the Secret immediately before serving, so a caller that read the Secret earlier can
+// never put back an older certificate than one already served. It reports whether a
+// different certificate was loaded.
+func (s *servingState) sync(ctx context.Context) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bundle, _, found, err := s.secrets.read(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		if s.logger != nil {
+			s.logger.Info("The conversion webhook certificate Secret is missing; recreating it")
+		}
+		if bundle, err = s.secrets.ensure(ctx); err != nil {
+			return false, fmt.Errorf("recreate the missing certificate Secret: %w", err)
+		}
+	}
+	if s.store.serving(bundle) {
+		return false, nil
+	}
+	if err := s.serve(ctx, bundle); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // serve makes the CRD trust b, then serves b's certificate. The order matters: a
@@ -178,7 +210,7 @@ func (s *servingState) serve(ctx context.Context, b certBundle) error {
 // ready, and so never let the rollout replace the old pods. The writes are safe to
 // race (see secretManager.ensure).
 type rotator struct {
-	servingState
+	*servingState
 	interval time.Duration
 	retry    time.Duration
 	logger   *slog.Logger
@@ -189,11 +221,10 @@ func (r *rotator) NeedLeaderElection() bool { return false }
 func (r *rotator) Start(ctx context.Context) error {
 	for {
 		wait := jittered(r.interval)
-		bundle, err := r.secrets.ensure(ctx)
-		if err != nil {
+		if _, err := r.secrets.ensure(ctx); err != nil {
 			r.logger.Warn("Cannot ensure the conversion webhook certificate; retrying", slog.Any("error", err))
 			wait = jittered(r.retry)
-		} else if err := r.serve(ctx, bundle); err != nil {
+		} else if _, err := r.sync(ctx); err != nil {
 			r.logger.Warn("Cannot serve the conversion webhook certificate; retrying", slog.Any("error", err))
 			wait = jittered(r.retry)
 		}
@@ -209,7 +240,7 @@ func (r *rotator) Start(ctx context.Context) error {
 // a certificate another replica created or renewed, and recreates a Secret that was
 // deleted (the replicas keep serving the certificate they hold meanwhile).
 type loader struct {
-	servingState
+	*servingState
 	interval time.Duration
 	logger   *slog.Logger
 }
@@ -243,24 +274,12 @@ func (l *loader) Start(ctx context.Context) error {
 }
 
 func (l *loader) tick(ctx context.Context) {
-	bundle, _, found, err := l.secrets.read(ctx)
+	loaded, err := l.sync(ctx)
 	if err != nil {
-		l.logger.Warn("Cannot read the conversion webhook certificate", slog.Any("error", err))
+		l.logger.Warn("Cannot load the conversion webhook certificate", slog.Any("error", err))
 		return
 	}
-	if !found {
-		l.logger.Info("The conversion webhook certificate Secret is missing; recreating it")
-		if bundle, err = l.secrets.ensure(ctx); err != nil {
-			l.logger.Warn("Cannot recreate the conversion webhook certificate", slog.Any("error", err))
-			return
-		}
+	if loaded {
+		l.logger.Info("Loaded the conversion webhook certificate")
 	}
-	if l.store.serving(bundle) {
-		return
-	}
-	if err := l.serve(ctx, bundle); err != nil {
-		l.logger.Warn("Cannot serve the conversion webhook certificate", slog.Any("error", err))
-		return
-	}
-	l.logger.Info("Loaded the conversion webhook certificate")
 }

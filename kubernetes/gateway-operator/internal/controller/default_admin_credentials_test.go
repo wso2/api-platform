@@ -42,6 +42,18 @@ import (
 
 const generatedName = "gateway-1-admin-credentials"
 
+// A release whose basic auth was explicitly disabled had no admin/admin credential to
+// keep: enabling basic auth now generates a credential instead.
+func TestPlanDefaultAdmin_PreviouslyDisabledGenerates(t *testing.T) {
+	gw := plainGateway()
+	c := adminCredsClient(t, gw)
+	rel := "gateway:\n  config:\n    controller:\n      auth:\n        basic:\n          enabled: false\n          users: []\n"
+	plan, err := planDefaultAdminCredentials(context.Background(), planInput(t, c, gw, "", "", releaseWith(rel)))
+	require.NoError(t, err)
+	assert.Equal(t, defaultAdminGenerated, plan.Mode)
+	assert.True(t, plan.Created)
+}
+
 func plainGateway() *apiv1.APIGateway {
 	return &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: "gw1", UID: "uid-1"}}
 }

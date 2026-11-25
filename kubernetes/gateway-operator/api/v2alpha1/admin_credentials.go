@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	v1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 )
@@ -118,7 +119,8 @@ func (c *GatewayAdminCredentials) Default() {
 // Validate applies the CRD's validation rules for spec.adminCredentials. Call it
 // after Default. The messages name fields, never the Secret's contents.
 func (c *GatewayAdminCredentials) Validate() error {
-	if len(c.Username) == 0 || len(c.Username) > 253 || !usernamePattern.MatchString(c.Username) {
+	// Like the CRD's maxLength, the limit counts characters (code points), not bytes.
+	if n := utf8.RuneCountInString(c.Username); n == 0 || n > 253 || !usernamePattern.MatchString(c.Username) {
 		return fmt.Errorf("username must be 1-253 characters without ':' or control characters")
 	}
 	ref := c.PasswordSecretRef

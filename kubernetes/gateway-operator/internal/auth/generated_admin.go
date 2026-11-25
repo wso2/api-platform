@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -70,7 +71,9 @@ func GeneratedAdminSecretName(gatewayName string) string {
 	sum := sha256.Sum256([]byte(gatewayName))
 	hash := hex.EncodeToString(sum[:])[:8]
 	keep := maxSecretNameLength - len(generatedAdminSecretSuffix) - len(hash) - 1
-	return gatewayName[:keep] + "-" + hash + generatedAdminSecretSuffix
+	// The cut may end on '.' or '-'; "x.-hash" is not a valid DNS subdomain.
+	prefix := strings.TrimRight(gatewayName[:keep], ".-")
+	return prefix + "-" + hash + generatedAdminSecretSuffix
 }
 
 // GeneratePassword returns a random password of 32 letters and digits drawn from

@@ -245,8 +245,9 @@ func configRefSecretRefNames(valuesYAML string) ([]string, error) {
 }
 
 // enqueueGatewaysForSecret enqueues every APIGateway that reads a basic-auth password
-// from the changed Secret, through spec.adminCredentials, a configRef user's
-// passwordSecretRef, or the operator-generated admin credential.
+// from the changed Secret, through spec.adminCredentials, the passwordSecretRef of a
+// basic-auth user in its configRef values or the operator's base values file, or the
+// operator-generated admin credential.
 func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
@@ -258,6 +259,16 @@ func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj cl
 		logger.Error(err, "failed to list APIGateways for Secret event",
 			"secret", secret.Name, "namespace", secret.Namespace)
 		return nil
+	}
+	baseFile := ""
+	if r.Config != nil {
+		baseFile = r.Config.Gateway.HelmValuesFilePath
+	}
+	base, err := readBaseValuesFile(baseFile)
+	if err != nil {
+		// Without the base file, Secrets referenced only there cannot be matched; every
+		// other reference still is.
+		logger.V(1).Info("cannot read the operator base values file for Secret event", "error", err.Error())
 	}
 	var requests []reconcile.Request
 	for i := range gatewayList.Items {
@@ -278,7 +289,11 @@ func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj cl
 		if !apiv2alpha1.HasAdminCredentials(gw) && auth.IsGeneratedAdminSecret(secret) {
 			generated = append(generated, auth.GeneratedAdminSecretName(gw.Name))
 		}
-		names, err := basicAuthSecretNames(gw, configRefValues, generated...)
+		usersValues, err := renderedUsersValues(base, configRefValues, apiv2alpha1.HasAdminCredentials(gw))
+		if err != nil {
+			usersValues = configRefValues
+		}
+		names, err := basicAuthSecretNames(gw, usersValues, generated...)
 		if err != nil {
 			names, _ = basicAuthSecretNames(gw, "", generated...)
 		}
@@ -290,6 +305,27 @@ func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj cl
 		})
 	}
 	return requests
+}
+
+// renderedUsersValues returns the Helm values holding the basic-auth users the gateway
+// chart renders, so their passwordSecretRef Secrets can be tracked and the chart
+// feature required:
+//   - valuesYAML when overlayOwnsUsers (spec.adminCredentials: its overlay lists the
+//     users itself, the admin first, then valuesYAML's) or when valuesYAML lists users
+//     (a Helm list replaces the base file's list);
+//   - otherwise the operator's base values file, whose users then apply.
+func renderedUsersValues(baseValues, valuesYAML string, overlayOwnsUsers bool) (string, error) {
+	if overlayOwnsUsers {
+		return valuesYAML, nil
+	}
+	basic, err := basicAuthBlock(valuesYAML)
+	if err != nil {
+		return "", err
+	}
+	if _, ok := basic["users"]; ok {
+		return valuesYAML, nil
+	}
+	return baseValues, nil
 }
 
 // configRefBasicAuthUsers returns gateway.config.controller.auth.basic.users from Helm

@@ -372,12 +372,23 @@ gateway.api-platform.wso2.com/conversion-webhook-server: "true"
 {{- end -}}
 
 {{/*
+Conversion webhook settings with their defaults applied. An upgrade with
+--reuse-values keeps the previous release's values, which predate
+conversionWebhook, so every key falls back to the same default as values.yaml.
+*/}}
+{{- define "gateway-operator.conversionWebhookPort" -}}
+{{- $cw := .Values.conversionWebhook | default dict -}}
+{{- $cw.port | default 9443 -}}
+{{- end -}}
+
+{{/*
 Operator flags for the APIGateway conversion webhook.
 */}}
 {{- define "gateway-operator.conversionWebhookArgs" -}}
-- --conversion-webhook-port={{ .Values.conversionWebhook.port }}
+{{- $cw := .Values.conversionWebhook | default dict -}}
+- --conversion-webhook-port={{ include "gateway-operator.conversionWebhookPort" . }}
 - --conversion-webhook-service-name={{ include "gateway-operator.conversionWebhookServiceName" . }}
 - --conversion-webhook-cert-secret={{ include "gateway-operator.conversionWebhookSecretName" . }}
-- --conversion-webhook-max-request-bytes={{ int64 .Values.conversionWebhook.maxRequestBytes }}
-- --conversion-webhook-pqc-key-exchange={{ .Values.conversionWebhook.pqcKeyExchange }}
+- --conversion-webhook-max-request-bytes={{ int64 ($cw.maxRequestBytes | default 67108864) }}
+- --conversion-webhook-pqc-key-exchange={{ ternary $cw.pqcKeyExchange true (hasKey $cw "pqcKeyExchange") }}
 {{- end -}}

@@ -293,7 +293,17 @@ func (r *GatewayReconciler) decideAndProcess(
 			log.Warn("Cannot annotate the gateway with its admin credentials Secret", slog.Any("error", err))
 		}
 	}
-	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, gatewayConfig, configMapValues, generatedSecret)
+	// The users the chart renders come from the configRef values, or from the operator's
+	// base values file when the configRef lists none.
+	baseValues, err := readBaseValuesFile(r.Config.Gateway.HelmValuesFilePath)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	usersValues, err := renderedUsersValues(baseValues, configMapValues, apiv2alpha1.HasAdminCredentials(gatewayConfig))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, gatewayConfig, usersValues, generatedSecret)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -992,7 +1002,15 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 	// Roll the gateway-controller pod when a Secret holding a basic-auth password
 	// changes: it reads passwords only at startup, while the operator signs in with the
 	// current Secret value right away.
-	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, owner, configRefValues, generatedSecret)
+	baseValues, err := readBaseValuesFile(valuesFilePath)
+	if err != nil {
+		return err
+	}
+	usersValues, err := renderedUsersValues(baseValues, configRefValues, apiv2alpha1.HasAdminCredentials(owner))
+	if err != nil {
+		return err
+	}
+	secretsVersion, err := basicAuthSecretsVersion(ctx, r.Client, owner, usersValues, generatedSecret)
 	if err != nil {
 		return err
 	}
@@ -1018,7 +1036,9 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 	// the gateway-controller would not start. The check runs before Helm touches the
 	// release, so the running gateway is left as it is.
 	var requiredChartFeatures []string
-	refs, err := configRefSecretRefNames(configRefValues)
+	// usersValues covers the base values file too: a base-file user with passwordSecretRef
+	// needs the feature as much as a configRef one.
+	refs, err := configRefSecretRefNames(usersValues)
 	if err != nil {
 		return err
 	}
