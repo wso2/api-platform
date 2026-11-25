@@ -337,11 +337,6 @@ func (s *Starter) require(ctx context.Context, need precondition) error {
 	if base == "" {
 		return errStartNotCalled
 	}
-	// Scenarios ask for preconditions for the whole run, so the token is read again rather than
-	// kept from the start; the one from the start is used only when it cannot be.
-	if fresh, err := consoleToken(); err == nil {
-		token = fresh
-	}
 	platform := organisationAPI{client: s.client, base: base, token: token, pollInterval: s.pollInterval}
 	return s.starter.Ensure(ctx, base+"#"+string(need), []starter.Prerequisite{{
 		Name: string(need),
@@ -513,10 +508,6 @@ func (s *Starter) SweepPortal(ctx context.Context, ownedByRun func(id string) bo
 	if state.browser == nil {
 		return nil, nil
 	}
-	// The sweep runs at the end of the run, long after the starter read its token.
-	if fresh, err := consoleToken(); err == nil {
-		state.platform.token = fresh
-	}
 	scope := sweepScope{ownedByRun: ownedByRun, now: time.Now()}
 	sweep, err := sweepPortal(ctx, state.browser, platformHoldsAPI(state.platform), scope)
 	if errors.Is(err, errPortalSessionEnded) {
@@ -569,7 +560,7 @@ func (p organisationAPI) do(ctx context.Context, method, path string, body []byt
 		Method: method,
 		URL:    cloudAPIURL(p.base, path),
 		Headers: map[string]string{
-			"Authorization": "Bearer " + p.token,
+			"Authorization": "Bearer " + liveConsoleToken(p.token),
 			"Content-Type":  "application/json",
 		},
 		Body: body,

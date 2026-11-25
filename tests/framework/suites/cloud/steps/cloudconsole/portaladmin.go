@@ -107,7 +107,7 @@ func identityPlatformFromEnv(client *httpx.Client) (identityPlatform, error) {
 }
 
 func (p identityPlatform) do(ctx context.Context, method, path string, body any) (*httpx.Response, error) {
-	headers := map[string]string{"Authorization": "Bearer " + p.token, "Accept": "application/json"}
+	headers := map[string]string{"Authorization": "Bearer " + liveToken(p.token, cloudIAMAccessTokenFileEnv), "Accept": "application/json"}
 	var raw []byte
 	if body != nil {
 		var err error
