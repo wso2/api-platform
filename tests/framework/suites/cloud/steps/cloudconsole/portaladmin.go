@@ -37,7 +37,9 @@ const (
 	// cloudIAMAccessTokenEnv holds a token of the organisation's administrator for the Identity
 	// Platform API, and cloudIAMAPIURLEnv that API's base URL.
 	cloudIAMAccessTokenEnv = "CLOUD_IAM_ACCESS_TOKEN"
-	cloudIAMAPIURLEnv      = "CLOUD_IAM_API_URL"
+	// cloudIAMAccessTokenFileEnv names a file holding that token, replaced before the token expires.
+	cloudIAMAccessTokenFileEnv = "CLOUD_IAM_ACCESS_TOKEN_FILE"
+	cloudIAMAPIURLEnv          = "CLOUD_IAM_API_URL"
 
 	// portalAdminUsername is the suite's administrator of the organisation's managed API Portals.
 	portalAdminUsername = testResourcePrefix + "portal-admin"
@@ -86,9 +88,9 @@ type identityPlatform struct {
 
 // identityPlatformFromEnv returns the Identity Platform API the run may call, or why it may not.
 func identityPlatformFromEnv(client *httpx.Client) (identityPlatform, error) {
-	token := strings.TrimSpace(os.Getenv(cloudIAMAccessTokenEnv))
-	if token == "" {
-		return identityPlatform{}, fmt.Errorf("%s is not set", cloudIAMAccessTokenEnv)
+	token, err := currentToken(cloudIAMAccessTokenEnv, cloudIAMAccessTokenFileEnv)
+	if err != nil {
+		return identityPlatform{}, err
 	}
 	raw := strings.TrimRight(strings.TrimSpace(os.Getenv(cloudIAMAPIURLEnv)), "/")
 	if raw == "" {

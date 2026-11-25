@@ -24,7 +24,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -146,9 +145,9 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 	if !f.finals.Tracked() || len(bases) == 0 {
 		return nil, nil
 	}
-	token := strings.TrimSpace(os.Getenv(cloudConsoleAccessTokenEnv))
-	if token == "" {
-		return nil, fmt.Errorf("cloud run finalizer: environment variable %s is required to look for leftovers", cloudConsoleAccessTokenEnv)
+	token, err := consoleToken()
+	if err != nil {
+		return nil, fmt.Errorf("cloud run finalizer: looking for leftovers: %w", err)
 	}
 
 	var removed []string
