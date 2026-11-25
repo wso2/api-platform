@@ -16,7 +16,7 @@ Each `APIGateway` selects APIs by its own label (`gateway.api-platform.wso2.com/
 ## Prerequisites
 
 - A cluster with cert-manager installed: the gateway chart issues the controller's TLS certificate through it.
-- An operator build that supports `APIGateway.spec.adminCredentials` (served by `apiVersion: gateway.api-platform.wso2.com/v2alpha1`; the operator converts it to and from the stored `v1` object with its conversion webhook), with the matching CRDs applied (`kubectl apply --server-side -f kubernetes/helm/operator-helm-chart/crds/`), and a gateway chart that supports `gateway.config.controller.auth.basic.users[].passwordSecretRef` (wso2/api-platform#4423). The chart declares it in its `Chart.yaml` annotation `gateway.api-platform.wso2.com/features`; the operator refuses to deploy a Secret-backed password with a chart that does not.
+- An operator build that supports `APIGateway.spec.adminCredentials` (served by `apiVersion: gateway.api-platform.wso2.com/v2alpha1`; the operator converts it to and from the stored `v1` object with its conversion webhook), with the matching CRDs applied (`kubectl apply --server-side --force-conflicts -f kubernetes/helm/operator-helm-chart/crds/`; `--force-conflicts` because the operator owns the APIGateway CRD's `spec.conversion`, which it restores within seconds), and a gateway chart that supports `gateway.config.controller.auth.basic.users[].passwordSecretRef` (wso2/api-platform#4423). The chart declares it in its `Chart.yaml` annotation `gateway.api-platform.wso2.com/features`; the operator refuses to deploy a Secret-backed password with a chart that does not.
 - A default StorageClass, so the gateway-controller database survives pod restarts. With `gateway.controller.persistence.enabled=false` the database is an `emptyDir`, so the APIs are lost when a password rotation rolls the controller pod.
 
 ## Steps
@@ -68,14 +68,15 @@ kubectl apply -f 02-backend.yaml
 
 ```bash
 kubectl apply -f 01-apigateways.yaml
-kubectl wait apigateway --all -A --for=condition=Programmed --timeout=10m
+# Waits for the two demo gateways only, not other gateways in the cluster.
+kubectl wait -f 01-apigateways.yaml --for=condition=Programmed --timeout=10m
 ```
 
 ### 4. Deploy API 1 to gateway-1 and API 2 to gateway-2
 
 ```bash
 kubectl apply -f 03-restapis.yaml
-kubectl wait restapi --all -A --for=condition=Programmed --timeout=3m
+kubectl wait -f 03-restapis.yaml --for=condition=Programmed --timeout=3m
 kubectl get restapi -A -o jsonpath='{range .items[*]}{.metadata.name}: {.status.conditions[?(@.type=="Programmed")].message}{"\n"}{end}'
 # api-1: Successfully deployed to gateway gw1/gateway-1
 # api-2: Successfully deployed to gateway gw2/gateway-2
@@ -137,4 +138,8 @@ The operator redeploys gateway-1 and its controller pod rolls. The old password 
 kubectl delete -f 03-restapis.yaml
 kubectl delete -f 01-apigateways.yaml
 kubectl delete -f 02-backend.yaml -f 00-namespaces.yaml
+
+# Only if you installed the operator for this demo in step 1; skip it when you used an
+# existing installation. Helm leaves the CRDs in place (see the operator chart README).
+helm uninstall gateway-operator -n gateway-operator
 ```

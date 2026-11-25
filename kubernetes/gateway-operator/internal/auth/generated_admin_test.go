@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
@@ -45,6 +46,20 @@ func generatedSecret(gatewayName, password string, ours bool) *corev1.Secret {
 		s.Labels = map[string]string{GeneratedAdminCredentialsLabel: GeneratedAdminCredentialsLabelValue}
 	}
 	return s
+}
+
+// A shortened name never keeps a trailing '.' or '-' before the hash: "x.-hash" is not
+// a valid DNS subdomain.
+func TestGeneratedAdminSecretNameTrimsCutBoundary(t *testing.T) {
+	for _, gwName := range []string{
+		strings.Repeat("a.", 113) + strings.Repeat("b", 10),
+		strings.Repeat("a-", 113) + strings.Repeat("b", 10),
+	} {
+		name := GeneratedAdminSecretName(gwName)
+		assert.LessOrEqual(t, len(name), 253)
+		assert.Empty(t, validation.IsDNS1123Subdomain(name), name)
+		assert.NotEqual(t, GeneratedAdminSecretName(gwName+"c"), name, "still unique per full name")
+	}
 }
 
 func TestGeneratedAdminSecretName(t *testing.T) {

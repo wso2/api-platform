@@ -126,7 +126,13 @@ func planDefaultAdminCredentials(ctx context.Context, in defaultAdminInput) (def
 				"which no longer exists; restore it or set spec.adminCredentials (the operator does not generate a different credential for a deployed gateway)",
 				in.Namespace, secretName)
 		}
-		if len(prevUsers) == 0 || usersHaveDefaultAdmin(prevUsers) {
+		// A release whose basic auth was explicitly disabled had no credential to keep,
+		// so turning basic auth on now gets a generated one, not admin/admin.
+		prevDisabled := false
+		if v, ok := basicAuthMap(previous)["enabled"].(bool); ok && !v {
+			prevDisabled = true
+		}
+		if !prevDisabled && (len(prevUsers) == 0 || usersHaveDefaultAdmin(prevUsers)) {
 			return defaultAdminPlan{Mode: defaultAdminLegacy}, nil
 		}
 	}

@@ -73,7 +73,7 @@ spec:
           {{ end }}
           ports:
             - name: webhook-server
-              containerPort: {{ .Values.conversionWebhook.port }}
+              containerPort: {{ include "gateway-operator.conversionWebhookPort" . }}
               protocol: TCP
           env:
             # The conversion webhook keeps its certificate Secret and points the

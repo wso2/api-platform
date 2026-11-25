@@ -19,6 +19,7 @@ package v2alpha1
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -215,5 +216,19 @@ func TestAdminCredentialsOfAppliesDefaults(t *testing.T) {
 	}
 	if HasAdminCredentials(&v1.APIGateway{}) {
 		t.Fatal("HasAdminCredentials = true for a gateway without adminCredentials")
+	}
+}
+
+// The username limit counts characters, like the CRD's maxLength: 128 "é" (256 bytes)
+// passes admission, so the operator must accept it too.
+func TestValidateCountsUsernameCharacters(t *testing.T) {
+	c := sampleCredentials()
+	c.Username = strings.Repeat("é", 128)
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate rejected a 128-character username: %v", err)
+	}
+	c.Username = strings.Repeat("é", 254)
+	if err := c.Validate(); err == nil {
+		t.Fatal("Validate accepted a 254-character username")
 	}
 }

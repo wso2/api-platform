@@ -471,7 +471,13 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	// A password read from a Secret (the generated admin credential, or a
 	// passwordSecretRef written in the values) needs a chart that renders passwordSecretRef.
 	var requiredChartFeatures []string
-	refs, err := configRefSecretRefNames(valuesYAML)
+	// The rendered users are those in valuesYAML, or the base values file's when
+	// valuesYAML lists none: a base-file passwordSecretRef user needs the feature too.
+	usersValues, err := renderedUsersValues(base, valuesYAML, false)
+	if err != nil {
+		return err
+	}
+	refs, err := configRefSecretRefNames(usersValues)
 	if err != nil {
 		return err
 	}

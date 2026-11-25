@@ -146,7 +146,7 @@ func Setup(mgr ctrl.Manager, opts Options) error {
 		logger:    logger,
 	}
 	secrets.currentCA = conv.caBundle
-	state := servingState{secrets: secrets, conversion: conv, store: store}
+	state := &servingState{secrets: secrets, conversion: conv, store: store, logger: logger}
 	srv := &server{
 		port:            opts.Port,
 		handler:         conversion.NewWebhookHandler(mgr.GetScheme(), mgr.GetConverterRegistry()),

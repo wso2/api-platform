@@ -19,6 +19,8 @@ package controller
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,6 +36,7 @@ import (
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 )
 
@@ -424,4 +427,65 @@ func TestEnqueueGatewaysForSecret(t *testing.T) {
 	assert.Equal(t, []string{"gateway-1"}, enqueued("gateway-1-admin"), "adminCredentials Secret")
 	assert.Equal(t, []string{"configref-users"}, enqueued("multi-users"), "configRef user's passwordSecretRef")
 	assert.Empty(t, enqueued("something-else"), "unrelated Secret")
+}
+
+const baseFileWithSecretUser = `gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: base-admin
+              roles: [admin]
+              passwordSecretRef: {name: base-admin-secret, key: password}
+`
+
+// The users the chart renders come from the configRef values when they list any (a
+// Helm list replaces the base file's), or when spec.adminCredentials owns the list;
+// otherwise from the operator's base values file.
+func TestRenderedUsersValues(t *testing.T) {
+	withUsers := "gateway:\n  config:\n    controller:\n      auth:\n        basic:\n          users: []\n"
+	got, err := renderedUsersValues(baseFileWithSecretUser, "", false)
+	require.NoError(t, err)
+	assert.Equal(t, baseFileWithSecretUser, got, "no configRef users: the base file's users apply")
+	got, err = renderedUsersValues(baseFileWithSecretUser, withUsers, false)
+	require.NoError(t, err)
+	assert.Equal(t, withUsers, got, "configRef users replace the base file's")
+	got, err = renderedUsersValues(baseFileWithSecretUser, "", true)
+	require.NoError(t, err)
+	assert.Empty(t, got, "spec.adminCredentials owns the users list")
+
+	names, err := configRefSecretRefNames(baseFileWithSecretUser)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"base-admin-secret"}, names, "a base-file passwordSecretRef user needs the chart feature")
+}
+
+// Rotating a Secret referenced only by a base values file user enqueues the gateways
+// that render that user, and not one whose configRef lists its own users.
+func TestEnqueueGatewaysForBaseFileSecret(t *testing.T) {
+	dir := t.TempDir()
+	baseFile := filepath.Join(dir, "gateway_values.yaml")
+	require.NoError(t, os.WriteFile(baseFile, []byte(baseFileWithSecretUser), 0o600))
+
+	plain := &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "plain", Namespace: "gw1"}}
+	ownUsers := &apiv1.APIGateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "own-users", Namespace: "gw1"},
+		Spec:       apiv1.GatewaySpec{ConfigRef: &corev1.LocalObjectReference{Name: "own-users-values"}},
+	}
+	ownUsersValues := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "own-users-values", Namespace: "gw1"},
+		Data: map[string]string{"values.yaml": "gateway:\n  config:\n    controller:\n      auth:\n        basic:\n" +
+			"          users:\n            - {username: ops, password: ops-pass, roles: [admin]}\n"},
+	}
+	r := &GatewayReconciler{
+		Client: adminCredsClient(t, plain, ownUsers, ownUsersValues),
+		Config: &config.OperatorConfig{Gateway: config.GatewayConfig{HelmValuesFilePath: baseFile}},
+	}
+	var names []string
+	for _, req := range r.enqueueGatewaysForSecret(context.Background(),
+		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "base-admin-secret", Namespace: "gw1"}}) {
+		names = append(names, req.Name)
+	}
+	assert.Equal(t, []string{"plain"}, names)
 }

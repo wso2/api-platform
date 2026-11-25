@@ -254,6 +254,11 @@ func parseCA(certPEM, keyPEM []byte) (*x509.Certificate, *ecdsa.PrivateKey, erro
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse CA key: %w", err)
 	}
+	// A key from another CA cannot sign for this certificate; reporting it here makes
+	// planRenewal replace both instead of failing every serving renewal.
+	if !key.PublicKey.Equal(cert.PublicKey) {
+		return nil, nil, errors.New("CA key does not match the CA certificate")
+	}
 	return cert, key, nil
 }
 
@@ -337,7 +342,8 @@ type certStore struct {
 	certPEM atomic.Pointer[[]byte]
 }
 
-// set loads the serving keypair from a bundle.
+// set loads the serving keypair from a bundle. Callers serialize it through
+// servingState.sync, which reads the Secret right before serving.
 func (s *certStore) set(b certBundle) error {
 	pair, err := tls.X509KeyPair(b.tlsCert, b.tlsKey)
 	if err != nil {
