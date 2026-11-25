@@ -47,6 +47,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
@@ -151,7 +152,7 @@ func (r *GatewayReconciler) planDefaultAdmin(ctx context.Context, gw *apiv1.APIG
 		Owner:              gw,
 		GatewayName:        gw.Name,
 		Namespace:          gw.Namespace,
-		HasSpecCredentials: gw.Spec.AdminCredentials != nil,
+		HasSpecCredentials: apiv2alpha1.HasAdminCredentials(gw),
 		BaseValuesYAML:     base,
 		ValuesYAML:         configRefValues,
 		ReleaseValues:      func() (map[string]interface{}, bool, error) { return releaseValues(gw.Name, gw.Namespace) },
@@ -296,7 +297,7 @@ func (r *GatewayReconciler) decideAndProcess(
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	currentConfigHash := gatewayConfigHash(configMapValues, secretsVersion)
+	currentConfigHash := gatewayConfigHash(configMapValues, secretsVersion, conversionDataFingerprint(gatewayConfig))
 
 	// Check if config has changed
 	configChanged := currentConfigHash != gatewayConfig.Status.ConfigHash
@@ -929,10 +930,18 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 	// spec.adminCredentials is merged last so a ConfigMap cannot override the admin
 	// user; the configRef's other basic-auth users are kept after it. Only the Secret
 	// reference reaches Helm; the password stays in the Secret.
-	if owner.Spec.AdminCredentials != nil {
-		// Fail before installing when the Secret is unusable: the operator could not
-		// authenticate to the gateway it is about to deploy.
+	// It is served by v2alpha1 and stored on the v1 object by the conversion webhook
+	// (apiv2alpha1.AdminCredentialsOf); an invalid value fails the deployment and never
+	// falls back to another credential.
+	if apiv2alpha1.HasAdminCredentials(owner) {
+		// Fail before installing when spec.adminCredentials is invalid or its Secret is
+		// unusable: the operator could not authenticate to the gateway it is about to deploy.
 		if _, _, err := auth.AdminCredentialsFromSecret(ctx, r.Client, owner); err != nil {
+			r.recordEvent(owner, corev1.EventTypeWarning, "AdminCredentialsUnavailable", err.Error())
+			return fmt.Errorf("admin credentials unavailable: %w", err)
+		}
+		creds, err := apiv2alpha1.AdminCredentialsOf(owner)
+		if err != nil {
 			return fmt.Errorf("admin credentials unavailable: %w", err)
 		}
 		// valuesYAML holds only the CR overlay and the configRef ConfigMap at this point
@@ -947,8 +956,8 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 			return fmt.Errorf("failed to merge admin credentials overlay: %w", err)
 		}
 		log.Info("Configured gateway admin user from Secret",
-			slog.String("secret", owner.Spec.AdminCredentials.PasswordSecretRef.Name),
-			slog.String("source", owner.Spec.AdminCredentials.Source))
+			slog.String("secret", creds.PasswordSecretRef.Name),
+			slog.String("source", creds.Source))
 	}
 
 	// Without spec.adminCredentials or users in the values, the operator provides the
@@ -1014,7 +1023,7 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 	if err != nil {
 		return err
 	}
-	if owner.Spec.AdminCredentials != nil || plan.Mode == defaultAdminGenerated || len(refs) > 0 {
+	if apiv2alpha1.HasAdminCredentials(owner) || plan.Mode == defaultAdminGenerated || len(refs) > 0 {
 		requiredChartFeatures = []string{helm.FeatureBasicAuthPasswordSecretRef}
 	}
 

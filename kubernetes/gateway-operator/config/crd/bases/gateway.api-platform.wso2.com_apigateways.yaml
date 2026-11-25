@@ -39,92 +39,6 @@ spec:
           spec:
             description: GatewaySpec defines the desired state of APIGateway
             properties:
-              adminCredentials:
-                description: |-
-                  AdminCredentials sets the gateway-controller's basic-auth admin user from a
-                  Kubernetes Secret. The operator configures the gateway with this user and uses
-                  the same credentials to call the gateway's management API; the password never
-                  enters the Helm values or the gateway ConfigMap. The admin user is listed first,
-                  followed by the other basic-auth users in the ConfigRef values (a ConfigRef user
-                  with the same username is replaced). The operator's default admin/admin user is
-                  not kept. When unset, the admin credentials come from the ConfigRef values, as
-                  before.
-                properties:
-                  passwordSecretRef:
-                    description: |-
-                      PasswordSecretRef selects the key holding the plaintext admin password in a
-                      Secret in the APIGateway's namespace. The Secret and key are required, so
-                      optional cannot be true.
-                    properties:
-                      key:
-                        description: The key of the secret to select from.  Must be
-                          a valid secret key.
-                        type: string
-                      name:
-                        default: ""
-                        description: |-
-                          Name of the referent.
-                          This field is effectively required, but due to backwards compatibility is
-                          allowed to be empty. Instances of this type with an empty value here are
-                          almost certainly wrong.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                        type: string
-                      optional:
-                        description: Specify whether the Secret or its key must be
-                          defined
-                        type: boolean
-                    required:
-                    - key
-                    type: object
-                    x-kubernetes-map-type: atomic
-                  source:
-                    default: file
-                    description: |-
-                      Source is how the gateway-controller receives the password: "file" (the
-                      default) mounts the Secret key read-only and the controller reads it from the
-                      file, so the value never enters the pod environment; "env" injects it as an
-                      environment variable from the Secret.
-                    enum:
-                    - env
-                    - file
-                    type: string
-                  username:
-                    default: admin
-                    description: |-
-                      Username of the admin user. It cannot contain ':' (HTTP Basic authentication
-                      splits on the first ':') or control characters.
-                    maxLength: 253
-                    minLength: 1
-                    pattern: ^[^:\x00-\x1f\x7f]+$
-                    type: string
-                required:
-                - passwordSecretRef
-                type: object
-                x-kubernetes-validations:
-                - fieldPath: .passwordSecretRef.name
-                  message: passwordSecretRef.name must name the Secret that holds
-                    the admin password
-                  rule: has(self.passwordSecretRef.name) && size(self.passwordSecretRef.name)
-                    > 0
-                - fieldPath: .passwordSecretRef.name
-                  message: 'passwordSecretRef.name must be a Secret name: lowercase
-                    letters, digits, ''-'' and ''.'', at most 253 characters'
-                  rule: '!has(self.passwordSecretRef.name) || size(self.passwordSecretRef.name)
-                    == 0 || (size(self.passwordSecretRef.name) <= 253 && self.passwordSecretRef.name.matches(''^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$''))'
-                - fieldPath: .passwordSecretRef.key
-                  message: passwordSecretRef.key must be a Secret key name (letters,
-                    digits, '-', '_', '.'), at most 253 characters, not starting with
-                    '..'
-                  rule: size(self.passwordSecretRef.key) <= 253 && self.passwordSecretRef.key.matches('^[-._a-zA-Z0-9]+$')
-                    && self.passwordSecretRef.key != '.' && !self.passwordSecretRef.key.startsWith('..')
-                - fieldPath: .passwordSecretRef.key
-                  message: 'passwordSecretRef.key must not contain ''..'' when source
-                    is file: the gateway-controller rejects such a file path'
-                  rule: '!has(self.source) || self.source != ''file'' || !self.passwordSecretRef.key.contains(''..'')'
-                - fieldPath: .passwordSecretRef.optional
-                  message: 'passwordSecretRef.optional must not be true: the admin
-                    password Secret is required'
-                  rule: '!has(self.passwordSecretRef.optional) || !self.passwordSecretRef.optional'
               apiSelector:
                 description: APISelector defines how this gateway selects which APIs
                   to route
@@ -2842,7 +2756,7 @@ spec:
     storage: false
     subresources:
       status: {}
-  - name: v1alpha2
+  - name: v2alpha1
     schema:
       openAPIV3Schema:
         description: APIGateway is the Schema for the apigateways API

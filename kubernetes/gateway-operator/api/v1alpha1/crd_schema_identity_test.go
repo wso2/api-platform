@@ -32,43 +32,34 @@ import (
 
 // TestCRDVersionSchemasIdentical enforces the invariant that every served
 // version of each CRD shares an identical OpenAPI schema, apart from the fields
-// listed in fieldsAbsentFromVersion.
+// listed in fieldsAddedInVersion.
 //
 // The operator ships its CRDs (kubernetes/helm/operator-helm-chart/crds/) serving
-// v1 (storage) and v1alpha1 (served) with conversion strategy None. Kinds
-// introduced after the v1 promotion (Agent) are served as v1 only and are
-// skipped below, since a single-version CRD has nothing to compare — a multi-version
-// CRD with no explicit spec.conversion block defaults to None at the API server.
-// "None" performs NO field transformation between versions — the API server only
-// relabels apiVersion on read/write. That is safe ONLY while the v1 (storage)
-// and v1alpha1 (served) schemas are equivalent; any divergence would silently
-// drop or corrupt fields at the storage boundary, with no conversion webhook to
-// catch it (see conversion.go — the Hub()/ConvertTo/ConvertFrom scaffolding is
-// deliberately not wired to a live webhook while the schemas match).
+// v1 (storage) and v1alpha1 (served). Kinds introduced after the v1 promotion (Agent)
+// are served as v1 only and are skipped below, since a single-version CRD has nothing
+// to compare.
 //
-// This guard fails the moment the two versions drift, so an accidental edit to
-// one version's Go types (without mirroring it in the other) cannot ship.
+// Most CRDs use conversion strategy None: the API server only relabels apiVersion
+// on read/write. That is safe ONLY while the served schemas are identical; any
+// divergence would silently drop or corrupt fields at the storage boundary.
 //
-// The one deliberate exception is the APIGateway CRD, which also serves
-// v1alpha2. v1alpha1 keeps the APIGateway schema it had before
-// spec.adminCredentials was added, and v1alpha2 (identical to v1) serves the new
-// field. Under conversion strategy None the API server prunes the field from a
-// v1alpha1 request, so writing an APIGateway through v1alpha1 drops any
-// spec.adminCredentials set through v1 or v1alpha2. That is the accepted cost of
-// leaving v1alpha1 unchanged; fieldsAbsentFromVersion records it, and nothing
-// else may differ.
+// The one exception is the APIGateway CRD, which also serves v2alpha1. v2alpha1 is
+// v1 plus spec.adminCredentials, and v1 and v1alpha1 keep their released schemas.
+// That CRD uses strategy Webhook: the operator's conversion webhook
+// (internal/conversionwebhook, api/v2alpha1/conversion.go) keeps the v2alpha1-only
+// fields in an annotation on the stored v1 object. fieldsAddedInVersion records the
+// fields v2alpha1 adds, nothing else may differ, and TestChartCRDs checks that every
+// CRD whose versions differ ships with the webhook strategy.
 //
-// When the versions are INTENTIONALLY diverged in the future, this test is the
-// signal to switch models: delete it, flip strategy: None -> Webhook, wire
-// SetupWebhookWithManager in cmd/main.go, replace the JSON round-trip in
-// conversion.go with explicit per-field mapping, and rely on round-trip
-// conversion tests instead.
-// fieldsAbsentFromVersion lists, per CRD and served version, the storage-version
-// fields that version deliberately does not declare. Each entry is a path of
-// property names from the schema root.
-var fieldsAbsentFromVersion = map[string]map[string][][]string{
+// This guard fails the moment versions drift unintentionally, so an edit to one
+// version's Go types (without mirroring it in the others) cannot ship.
+
+// fieldsAddedInVersion lists, per CRD and served version, the fields that version
+// declares beyond the storage version. Each entry is a path of property names from
+// the schema root. A CRD listed here must convert with a webhook that preserves them.
+var fieldsAddedInVersion = map[string]map[string][][]string{
 	"apigateways.gateway.api-platform.wso2.com": {
-		"v1alpha1": {{"spec", "adminCredentials"}},
+		"v2alpha1": {{"spec", "adminCredentials"}},
 	},
 }
 
@@ -85,15 +76,7 @@ func TestCRDVersionSchemasIdentical(t *testing.T) {
 	for _, path := range paths {
 		path := path
 		t.Run(filepath.Base(path), func(t *testing.T) {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("read %s: %v", path, err)
-			}
-			var crd apiextensionsv1.CustomResourceDefinition
-			if err := yaml.Unmarshal(data, &crd); err != nil {
-				t.Fatalf("unmarshal %s: %v", path, err)
-			}
-
+			crd := readCRD(t, path)
 			versions := crd.Spec.Versions
 			if len(versions) < 2 {
 				t.Skipf("%s serves a single version; nothing to compare", crd.Name)
@@ -111,28 +94,82 @@ func TestCRDVersionSchemasIdentical(t *testing.T) {
 				if v.Schema == nil || v.Schema.OpenAPIV3Schema == nil {
 					t.Fatalf("version %q of %s has no schema", v.Name, crd.Name)
 				}
-				want := ref.Schema.OpenAPIV3Schema
-				if absent := fieldsAbsentFromVersion[crd.Name][v.Name]; len(absent) > 0 {
-					want = want.DeepCopy()
-					for _, path := range absent {
-						if !removeSchemaProperty(want, path) {
-							t.Fatalf("storage version %q of %s has no %s; remove the stale fieldsAbsentFromVersion entry",
-								ref.Name, crd.Name, strings.Join(path, "."))
+				got := v.Schema.OpenAPIV3Schema
+				if added := fieldsAddedInVersion[crd.Name][v.Name]; len(added) > 0 {
+					got = got.DeepCopy()
+					for _, path := range added {
+						if !removeSchemaProperty(got, path) {
+							t.Fatalf("version %q of %s has no %s; remove the stale fieldsAddedInVersion entry",
+								v.Name, crd.Name, strings.Join(path, "."))
 						}
 					}
 				}
-				if !reflect.DeepEqual(want, v.Schema.OpenAPIV3Schema) {
+				if !reflect.DeepEqual(ref.Schema.OpenAPIV3Schema, got) {
 					t.Errorf("schema for version %q differs from storage version %q of %s.\n"+
-						"conversion strategy None requires identical schemas — mirror the change "+
-						"in api/v1 and every other served version (api/v1alpha1, and api/v1alpha2 for APIGateway) "+
-						"(and re-run `make manifests`), or move to a "+
-						"real conversion webhook (see this test's doc comment).\n%s",
+						"mirror the change in api/v1 and every other served version (api/v1alpha1, "+
+						"and api/v2alpha1 for APIGateway) and re-run `make manifests`; a field only a "+
+						"newer version declares must be listed in fieldsAddedInVersion and preserved "+
+						"by its conversion webhook.\n%s",
 						v.Name, ref.Name, crd.Name,
-						schemaDiff(want, v.Schema.OpenAPIV3Schema))
+						schemaDiff(ref.Schema.OpenAPIV3Schema, got))
 				}
 			}
 		})
 	}
+}
+
+// TestChartCRDs checks that the operator chart ships exactly the generated CRDs
+// (`make helm-crds`), and that a CRD whose versions differ converts through the
+// operator's webhook while every other CRD keeps strategy None.
+func TestChartCRDs(t *testing.T) {
+	bases := crdBasesDir(t)
+	chart := filepath.Join(bases, "..", "..", "..", "..", "helm", "operator-helm-chart", "crds")
+	paths, err := filepath.Glob(filepath.Join(bases, "*.yaml"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("no CRDs in %s: %v", bases, err)
+	}
+	for _, path := range paths {
+		name := filepath.Base(path)
+		t.Run(name, func(t *testing.T) {
+			generated := readCRD(t, path)
+			shipped := readCRD(t, filepath.Join(chart, name))
+
+			if generated.Spec.Conversion != nil {
+				t.Fatalf("config/crd/bases/%s has spec.conversion; controller-gen output must not", name)
+			}
+			_, differs := fieldsAddedInVersion[generated.Name]
+			conv := shipped.Spec.Conversion
+			if differs {
+				if conv == nil || conv.Strategy != apiextensionsv1.WebhookConverter || conv.Webhook == nil ||
+					conv.Webhook.ClientConfig == nil || conv.Webhook.ClientConfig.Service == nil ||
+					conv.Webhook.ClientConfig.Service.Path == nil || *conv.Webhook.ClientConfig.Service.Path != "/convert" ||
+					!reflect.DeepEqual(conv.Webhook.ConversionReviewVersions, []string{"v1"}) {
+					t.Fatalf("chart CRD %s serves versions that differ but does not convert through the "+
+						"operator's /convert webhook: %+v (run `make helm-crds`)", generated.Name, conv)
+				}
+			} else if conv != nil && conv.Strategy != apiextensionsv1.NoneConverter {
+				t.Fatalf("chart CRD %s has identical versions but conversion %q", generated.Name, conv.Strategy)
+			}
+
+			shipped.Spec.Conversion = nil
+			if !reflect.DeepEqual(generated, shipped) {
+				t.Fatalf("chart CRD %s differs from config/crd/bases (run `make helm-crds`)", name)
+			}
+		})
+	}
+}
+
+func readCRD(t *testing.T, path string) *apiextensionsv1.CustomResourceDefinition {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := yaml.Unmarshal(data, crd); err != nil {
+		t.Fatalf("unmarshal %s: %v", path, err)
+	}
+	return crd
 }
 
 // removeSchemaProperty deletes the property at path (property names from the

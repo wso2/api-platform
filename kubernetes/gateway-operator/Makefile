@@ -50,6 +50,21 @@ help: ## Display this help.
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
+# The operator Helm chart ships the CRDs from config/crd/bases. The APIGateway CRD also
+# gets the spec.conversion stanza from config/crd/patches/webhook_in_apigateways.yaml
+# (the chart's crds/ directory is not templated, so it carries a placeholder Service the
+# operator replaces at runtime).
+HELM_CHART_CRDS ?= ../helm/operator-helm-chart/crds
+APIGATEWAY_CRD := gateway.api-platform.wso2.com_apigateways.yaml
+
+.PHONY: helm-crds
+helm-crds: manifests ## Copy the generated CRDs into the operator Helm chart, with the APIGateway conversion webhook stanza.
+	cp config/crd/bases/*.yaml $(HELM_CHART_CRDS)/
+	awk 'NR == FNR { if (inspec) patch = patch $$0 "\n"; if ($$0 == "spec:") inspec = 1; next } \
+		{ print } $$0 == "spec:" { printf "%s", patch }' \
+		config/crd/patches/webhook_in_apigateways.yaml config/crd/bases/$(APIGATEWAY_CRD) \
+		> $(HELM_CHART_CRDS)/$(APIGATEWAY_CRD)
+
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."

@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 )
 
 // The admin credential the operator generates for a gateway that has neither
@@ -123,7 +123,7 @@ func GetGeneratedAdminSecret(ctx context.Context, c client.Client, namespace, ga
 // admin credential Secret, as the gateway-controller reads them from the mounted file. An
 // empty value is an error, never a default.
 func GeneratedAdminCredentials(secret *corev1.Secret) (username, password string, err error) {
-	password = PasswordAsGatewayReadsIt(string(secret.Data[GeneratedAdminPasswordKey]), apiv1.AdminCredentialsSourceFile)
+	password = PasswordAsGatewayReadsIt(string(secret.Data[GeneratedAdminPasswordKey]), apiv2alpha1.AdminCredentialsSourceFile)
 	if password == "" {
 		return "", "", fmt.Errorf("key %q in generated admin credentials secret %s/%s is empty",
 			GeneratedAdminPasswordKey, secret.Namespace, secret.Name)

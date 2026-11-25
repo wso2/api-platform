@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 )
 
@@ -202,7 +202,7 @@ func defaultAdminOverlay(plan defaultAdminPlan) (string, error) {
 			"passwordSecretRef": map[string]interface{}{
 				"name":   plan.SecretName,
 				"key":    auth.GeneratedAdminPasswordKey,
-				"source": apiv1.AdminCredentialsSourceFile,
+				"source": apiv2alpha1.AdminCredentialsSourceFile,
 			},
 		}
 	case defaultAdminLegacy:

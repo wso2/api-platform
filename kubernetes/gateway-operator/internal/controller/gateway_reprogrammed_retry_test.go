@@ -38,6 +38,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
@@ -58,23 +59,24 @@ func retryTestClient(t *testing.T, objs ...client.Object) client.Client {
 // programmedAt. With adminCredentials pointing at a Secret that is never created, any
 // call to it fails in the auth step, so no network request is attempted.
 func programmedGateway(name string, programmedAt time.Time) *apiv1.APIGateway {
-	return &apiv1.APIGateway{
+	gw := &apiv1.APIGateway{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: retryTestNS},
 		Spec: apiv1.GatewaySpec{
 			APISelector: apiv1.APISelector{Scope: apiv1.LabelSelectorScope, MatchLabels: map[string]string{"target": name}},
-			AdminCredentials: &apiv1.GatewayAdminCredentials{
-				Username: "admin",
-				PasswordSecretRef: corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: name + "-admin-missing"},
-					Key:                  "password",
-				},
-			},
 		},
 		Status: apiv1.GatewayStatus{Conditions: []metav1.Condition{{
 			Type: apiv1.GatewayConditionProgrammed, Status: metav1.ConditionTrue, Reason: "Programmed",
 			LastTransitionTime: metav1.NewTime(programmedAt),
 		}}},
 	}
+	apiv2alpha1.SetAdminCredentials(gw, &apiv2alpha1.GatewayAdminCredentials{
+		Username: "admin",
+		PasswordSecretRef: corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: name + "-admin-missing"},
+			Key:                  "password",
+		},
+	})
+	return gw
 }
 
 func registerRetryGateway(t *testing.T, gw *apiv1.APIGateway) *registry.GatewayInfo {

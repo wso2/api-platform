@@ -25,6 +25,10 @@ spec:
         app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
         control-plane: controller-manager
+        # Selected by the conversion webhook Service. Operator pods from releases
+        # without the webhook lack it, so during a rolling upgrade the Service never
+        # sends conversion requests to an old pod that does not listen on the port.
+        {{ include "gateway-operator.conversionWebhookPodLabel" . }}
     spec:
       {{- if .Values.debug.enabled }}
       securityContext:
@@ -57,6 +61,7 @@ spec:
             - --leader-elect
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=0
+            {{- include "gateway-operator.conversionWebhookArgs" . | nindent 12 }}
           {{ else }}
           command:
             - /manager
@@ -64,8 +69,19 @@ spec:
             - --leader-elect
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=0
+            {{- include "gateway-operator.conversionWebhookArgs" . | nindent 12 }}
           {{ end }}
+          ports:
+            - name: webhook-server
+              containerPort: {{ .Values.conversionWebhook.port }}
+              protocol: TCP
           env:
+            # The conversion webhook keeps its certificate Secret and points the
+            # APIGateway CRD at its Service in this namespace.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: WATCH_NAMESPACES
               value: {{ join "," (default (list) .Values.watchNamespaces) | quote }}
             - name: HELM_CACHE_HOME

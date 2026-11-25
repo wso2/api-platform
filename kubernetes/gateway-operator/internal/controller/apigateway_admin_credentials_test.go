@@ -32,24 +32,24 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 )
 
+// adminCredsGateway returns a stored (v1) APIGateway with spec.adminCredentials, kept
+// in the conversion-data annotation the way the conversion webhook stores it.
 func adminCredsGateway(source string) *apiv1.APIGateway {
-	return &apiv1.APIGateway{
-		ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: "gw1"},
-		Spec: apiv1.GatewaySpec{
-			AdminCredentials: &apiv1.GatewayAdminCredentials{
-				Username: "gw1-admin",
-				PasswordSecretRef: corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "gateway-1-admin"},
-					Key:                  "password",
-				},
-				Source: source,
-			},
+	gw := &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: "gw1"}}
+	apiv2alpha1.SetAdminCredentials(gw, &apiv2alpha1.GatewayAdminCredentials{
+		Username: "gw1-admin",
+		PasswordSecretRef: corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "gateway-1-admin"},
+			Key:                  "password",
 		},
-	}
+		Source: source,
+	})
+	return gw
 }
 
 func adminCredsClient(t *testing.T, objs ...client.Object) client.Client {
@@ -72,8 +72,8 @@ func basicUsers(t *testing.T, valuesYAML string) []interface{} {
 
 func TestBuildAdminCredentialsOverlay_Sources(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
-		{apiv1.AdminCredentialsSourceFile, "file"},
-		{apiv1.AdminCredentialsSourceEnv, "env"},
+		{apiv2alpha1.AdminCredentialsSourceFile, "file"},
+		{apiv2alpha1.AdminCredentialsSourceEnv, "env"},
 		{"", "file"}, // unset defaults to file, like the CRD default
 	} {
 		t.Run("source="+tc.source, func(t *testing.T) {
@@ -136,7 +136,7 @@ gateway:
       podAnnotations:
         team: platform
 `
-	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), configMapValues)
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile), configMapValues)
 	require.NoError(t, err)
 	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ gateway:
               password: dev-plain
               roles: ["developer"]
 `
-	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceEnv), configMapValues)
+	overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv2alpha1.AdminCredentialsSourceEnv), configMapValues)
 	require.NoError(t, err)
 	merged, err := helm.MergeValuesYAML(configMapValues, overlay)
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func TestAdminCredentialsOverlayWithoutConfigRefUsers(t *testing.T) {
 		"unrelated values": "commonLabels:\n  team: platform\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), values)
+			overlay, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile), values)
 			require.NoError(t, err)
 			baseFile := "gateway:\n  config:\n    controller:\n      auth:\n        basic:\n          enabled: true\n          users:\n            - {username: admin, password: admin, roles: [admin]}\n"
 			merged, err := helm.MergeValuesYAML(baseFile, overlay)
@@ -211,7 +211,7 @@ func TestAdminCredentialsOverlayWithoutConfigRefUsers(t *testing.T) {
 }
 
 func TestAdminCredentialsOverlayRejectsInvalidConfigRefValues(t *testing.T) {
-	_, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv1.AdminCredentialsSourceFile), "gateway: [unclosed")
+	_, err := buildAdminCredentialsOverlay(adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile), "gateway: [unclosed")
 	require.Error(t, err)
 }
 
@@ -234,7 +234,7 @@ gateway:
 `
 
 func TestBasicAuthSecretNames(t *testing.T) {
-	names, err := basicAuthSecretNames(adminCredsGateway(apiv1.AdminCredentialsSourceFile), configRefSecretUsers)
+	names, err := basicAuthSecretNames(adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile), configRefSecretUsers)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"another-secret", "gateway-1-admin", "multi-users"}, names, "sorted, without duplicates")
 
@@ -270,7 +270,7 @@ func TestBasicAuthSecretsVersion(t *testing.T) {
 		values     string
 		secretName string
 	}{
-		"adminCredentials": {gw: adminCredsGateway(apiv1.AdminCredentialsSourceFile), secretName: "gateway-1-admin"},
+		"adminCredentials": {gw: adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile), secretName: "gateway-1-admin"},
 		"configRef user":   {gw: &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: "gw1"}}, values: configRefSecretUsers, secretName: "multi-users"},
 	}
 	for name, tc := range cases {
@@ -324,21 +324,78 @@ func TestBasicAuthChecksumOverlay(t *testing.T) {
 func TestGatewayConfigHash(t *testing.T) {
 	// Without adminCredentials the hash is unchanged from earlier releases, so an
 	// operator upgrade does not redeploy existing gateways.
-	assert.Equal(t, auth.CalculateConfigHash("values"), gatewayConfigHash("values", ""))
-	assert.Equal(t, "", gatewayConfigHash("", ""))
+	assert.Equal(t, auth.CalculateConfigHash("values"), gatewayConfigHash("values", "", ""))
+	assert.Equal(t, "", gatewayConfigHash("", "", ""))
 
 	// With adminCredentials, a Secret revision change changes the hash, even with no ConfigMap.
-	a := gatewayConfigHash("", "rev-a")
-	b := gatewayConfigHash("", "rev-b")
+	a := gatewayConfigHash("", "rev-a", "")
+	b := gatewayConfigHash("", "rev-b", "")
 	assert.NotEmpty(t, a)
 	assert.NotEqual(t, a, b)
-	assert.NotEqual(t, gatewayConfigHash("values", ""), gatewayConfigHash("values", "rev-a"))
+	assert.NotEqual(t, gatewayConfigHash("values", "", ""), gatewayConfigHash("values", "rev-a", ""))
+}
+
+// spec.adminCredentials lives in the conversion-data annotation on the stored v1
+// object, and an annotation change does not bump metadata.generation. The config hash
+// must still change when only the username or source changes (same Secret, same
+// revision), or the gateway would never be redeployed with the new admin user.
+func TestGatewayConfigHash_CoversAdminCredentials(t *testing.T) {
+	fileMode := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)
+	envMode := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceEnv)
+	renamed := gatewayWithCreds(func(c *apiv2alpha1.GatewayAdminCredentials) { c.Username = "other-admin" })
+
+	hash := func(gw *apiv1.APIGateway) string {
+		return gatewayConfigHash("values", "rev-a", conversionDataFingerprint(gw))
+	}
+	assert.NotEqual(t, hash(fileMode), hash(envMode))
+	assert.NotEqual(t, hash(fileMode), hash(renamed))
+	assert.Equal(t, hash(fileMode), hash(adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)))
+
+	// Clearing adminCredentials goes back to the plain hash.
+	cleared := fileMode.DeepCopy()
+	apiv2alpha1.SetAdminCredentials(cleared, nil)
+	assert.Equal(t, gatewayConfigHash("values", "rev-a", ""), hash(cleared))
+}
+
+// gatewayWithCreds is adminCredsGateway with an edit to the credentials.
+func gatewayWithCreds(mutate func(*apiv2alpha1.GatewayAdminCredentials)) *apiv1.APIGateway {
+	gw := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)
+	creds, err := apiv2alpha1.AdminCredentialsOf(gw)
+	if err != nil {
+		panic(err)
+	}
+	mutate(creds)
+	apiv2alpha1.SetAdminCredentials(gw, creds)
+	return gw
+}
+
+// A spec.adminCredentials that fails validation (for example written straight into
+// the annotation through v1, bypassing the v2alpha1 CRD rules) fails the overlay: the
+// gateway is not deployed with some other admin user.
+func TestBuildAdminCredentialsOverlay_InvalidFailsClosed(t *testing.T) {
+	cases := map[string]*apiv1.APIGateway{
+		"unparseable annotation": func() *apiv1.APIGateway {
+			gw := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)
+			gw.Annotations[apiv2alpha1.ConversionDataAnnotation] = "{not json"
+			return gw
+		}(),
+		"bad secret name": gatewayWithCreds(func(c *apiv2alpha1.GatewayAdminCredentials) { c.PasswordSecretRef.Name = "Not_A_Name" }),
+		"bad source":      gatewayWithCreds(func(c *apiv2alpha1.GatewayAdminCredentials) { c.Source = "stdin" }),
+		"colon username":  gatewayWithCreds(func(c *apiv2alpha1.GatewayAdminCredentials) { c.Username = "a:b" }),
+	}
+	for name, gw := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.True(t, apiv2alpha1.HasAdminCredentials(gw), "an invalid value still counts as set")
+			_, err := buildAdminCredentialsOverlay(gw, "")
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestEnqueueGatewaysForSecret(t *testing.T) {
-	gw1 := adminCredsGateway(apiv1.AdminCredentialsSourceFile)
+	gw1 := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)
 	other := &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "no-creds", Namespace: "gw1"}}
-	elsewhere := adminCredsGateway(apiv1.AdminCredentialsSourceEnv)
+	elsewhere := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceEnv)
 	elsewhere.Name, elsewhere.Namespace = "gateway-x", "gw2"
 	withConfigRef := &apiv1.APIGateway{
 		ObjectMeta: metav1.ObjectMeta{Name: "configref-users", Namespace: "gw1"},

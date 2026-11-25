@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 )
 
@@ -66,7 +67,7 @@ func planInput(t *testing.T, c client.Client, gw *apiv1.APIGateway, base, values
 	require.NoError(t, apiv1.AddToScheme(scheme))
 	return defaultAdminInput{
 		Client: c, Scheme: scheme, Owner: gw, GatewayName: gw.Name, Namespace: gw.Namespace,
-		HasSpecCredentials: gw.Spec.AdminCredentials != nil,
+		HasSpecCredentials: apiv2alpha1.HasAdminCredentials(gw),
 		BaseValuesYAML:     base, ValuesYAML: values, ReleaseValues: rel,
 	}
 }
@@ -161,7 +162,7 @@ func TestPlanDefaultAdmin_NotNeeded(t *testing.T) {
 		gw           *apiv1.APIGateway
 		base, values string
 	}{
-		"spec.adminCredentials":       {gw: adminCredsGateway(apiv1.AdminCredentialsSourceFile)},
+		"spec.adminCredentials":       {gw: adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)},
 		"users in configRef values":   {gw: plainGateway(), values: usersValues},
 		"users in operator base file": {gw: plainGateway(), base: usersValues},
 		"basic auth disabled":         {gw: plainGateway(), values: basicDisabled},
@@ -278,7 +279,7 @@ func TestDefaultAdminOverlay(t *testing.T) {
 // an unlabelled Secret with the same name does not.
 func TestEnqueueGatewaysForGeneratedSecret(t *testing.T) {
 	gw := plainGateway()
-	withSpec := adminCredsGateway(apiv1.AdminCredentialsSourceFile)
+	withSpec := adminCredsGateway(apiv2alpha1.AdminCredentialsSourceFile)
 	withSpec.Name = "with-spec"
 	r := &GatewayReconciler{Client: adminCredsClient(t, gw, withSpec)}
 
