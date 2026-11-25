@@ -1166,6 +1166,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.resolveServiceURLAndStore)
 	sc.Step(`^I register the "([^"]*)" "([^"]*)" for cleanup$`, g.registerAdminResourceForCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
+	sc.Step(`^the "([^"]*)" service logs should contain:$`, g.serviceLogsContainDocString)
 	sc.Step(`^the "([^"]*)" service logs should not contain "([^"]*)"$`, g.serviceLogsNotContain)
 	sc.Step(`^the "([^"]*)" service log event containing "([^"]*)" should not contain "([^"]*)"$`,
 		g.serviceLogEventExcludes)
@@ -2039,6 +2040,15 @@ func (g *Gateway) serviceRequestUntilBodyNotContains(
 // serviceLogsContain waits until a service log contains the supplied marker.
 func (g *Gateway) serviceLogsContain(ctx context.Context, service, marker string) error {
 	return g.assertServiceLogs(ctx, service, marker, true)
+}
+
+// serviceLogsContainDocString is serviceLogsContain with the marker in a doc string, so a marker
+// can hold quotes. The marker is searched as written.
+func (g *Gateway) serviceLogsContainDocString(ctx context.Context, service string, marker *godog.DocString) error {
+	if marker == nil {
+		return fmt.Errorf("the %q service logs step needs a doc string with the text the logs must contain", service)
+	}
+	return g.assertServiceLogs(ctx, service, strings.TrimSpace(marker.Content), true)
 }
 
 // serviceLogsNotContain waits until a service log no longer contains the supplied marker.

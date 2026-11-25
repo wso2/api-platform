@@ -66,7 +66,7 @@ func TestLog_Publish_StructExclusionsMatchJSONProjection(t *testing.T) {
 			cfg := bothFlowsConfig()
 			cfg.MaskedHeaders = []string{"authorization"}
 			cfg.ExcludeFields = exclude
-			l, err := NewLog(cfg)
+			l, err := NewLog(cfg, nil)
 			require.NoError(t, err)
 			var buf bytes.Buffer
 			useWriterSink(l, &buf)
@@ -105,7 +105,7 @@ func BenchmarkLog_Publish_CustomerExcludeFields(b *testing.B) {
 		ExcludeFields: []string{"api", "target", "client", "requestHeaders.:authority", "requestHeaders.:method",
 			"requestHeaders.:path", "requestHeaders.:scheme", "responseHeaders.:status"},
 	}
-	l, err := NewLog(cfg)
+	l, err := NewLog(cfg, nil)
 	require.NoError(b, err)
 	l.sinks = []Sink{newWriterSink(discard{}, "bench", nil)}
 	event := createBaseEvent()
