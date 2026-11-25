@@ -295,7 +295,7 @@ func awaitPortalDeleted(ctx context.Context, client *httpx.Client, base, bearer,
 			resp, err := client.Do(ctx, httpx.Request{
 				Method:  http.MethodGet,
 				URL:     cloudAPIURL(base, portalPath(id)),
-				Headers: map[string]string{"Authorization": "Bearer " + bearer},
+				Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(bearer)},
 			}, 0, 0)
 			if err != nil {
 				return nil, retry.Transient(err)

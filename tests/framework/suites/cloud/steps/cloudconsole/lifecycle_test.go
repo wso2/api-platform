@@ -156,6 +156,72 @@ func (r *authorizationRecorder) headers() []string {
 	return slices.Clone(r.sent)
 }
 
+func TestLiveTokenUsesTheFileOnlyWhenItCanBeRead(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenFileEnv, "")
+	require.Equal(t, "held-token", liveConsoleToken("held-token"), "no file: the token given is sent")
+
+	t.Setenv(cloudConsoleAccessTokenFileEnv, writeTokenFile(t, "", "file-token"))
+	require.Equal(t, "file-token", liveConsoleToken("held-token"))
+
+	t.Setenv(cloudConsoleAccessTokenFileEnv, filepath.Join(t.TempDir(), "missing"))
+	require.Equal(t, "held-token", liveConsoleToken("held-token"), "an unreadable file keeps the token given")
+}
+
+// recordingServer starts a server that answers like authorizationRecorder and returns its URL.
+func recordingServer(t *testing.T, recorder *authorizationRecorder) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(recorder.handler))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+func TestIdentityPlatformSendsAReplacedTokenFileOnItsNextRequest(t *testing.T) {
+	path := writeTokenFile(t, "", "first-token")
+	t.Setenv(cloudIAMAccessTokenFileEnv, path)
+	recorder := &authorizationRecorder{}
+	identity := identityPlatform{client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		base: recordingServer(t, recorder), token: "token-at-start"}
+
+	_, err := identity.do(context.Background(), http.MethodGet, "/organization-units", nil)
+	require.NoError(t, err)
+	writeTokenFile(t, path, "second-token")
+	_, err = identity.do(context.Background(), http.MethodGet, "/organization-units", nil)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"Bearer first-token", "Bearer second-token"}, recorder.headers())
+}
+
+func TestStarterPollSendsAReplacedTokenFileOnItsNextRequest(t *testing.T) {
+	path := writeTokenFile(t, "", "first-token")
+	t.Setenv(cloudConsoleAccessTokenFileEnv, path)
+	recorder := &authorizationRecorder{}
+	platform := organisationAPI{client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		base: recordingServer(t, recorder), token: "token-at-start"}
+
+	_, err := platform.get(context.Background(), "/managed-gateways/gw-1")
+	require.NoError(t, err)
+	writeTokenFile(t, path, "second-token")
+	_, err = platform.get(context.Background(), "/managed-gateways/gw-1")
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"Bearer first-token", "Bearer second-token"}, recorder.headers())
+}
+
+func TestCleanupSendsAReplacedTokenFileOnItsNextRequest(t *testing.T) {
+	path := writeTokenFile(t, "", "first-token")
+	t.Setenv(cloudConsoleAccessTokenFileEnv, path)
+	recorder := &authorizationRecorder{}
+	client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
+	base := recordingServer(t, recorder)
+
+	_, err := listCollection(context.Background(), client, base, "token-at-start", "/subscription-plans")
+	require.NoError(t, err)
+	writeTokenFile(t, path, "second-token")
+	require.NoError(t, deleteLeftover(context.Background(), client, base, "token-at-start", "/subscription-plans", "syn-plan-1"))
+
+	require.Equal(t, []string{"Bearer first-token", "Bearer second-token"}, recorder.headers())
+}
+
 func TestStarterSendsTheTokenTheFileHoldsWhenAScenarioAsks(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "")
 	t.Setenv(cloudGatewayPinEnv, "")

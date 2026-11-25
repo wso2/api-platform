@@ -418,7 +418,7 @@ func deleteCloudResource(ctx context.Context, client *httpx.Client, base, bearer
 		Method: http.MethodDelete,
 		URL:    cloudResourceURL(base, collection, id),
 		Headers: map[string]string{
-			"Authorization": "Bearer " + bearer,
+			"Authorization": "Bearer " + liveConsoleToken(bearer),
 		},
 	}, 0, 0)
 	if err != nil {
@@ -475,6 +475,26 @@ func currentToken(tokenEnv, fileEnv string) (string, error) {
 		return "", fmt.Errorf("environment variable %s is required", tokenEnv)
 	}
 	return token, nil
+}
+
+// liveConsoleToken returns the console token a request sends now; see liveToken. The request
+// helpers that take a token only ever carry the console token, so they pass it through here.
+func liveConsoleToken(held string) string {
+	return liveToken(held, cloudConsoleAccessTokenFileEnv)
+}
+
+// liveToken returns the token a request sends now: the one the file fileEnv names holds, or held
+// when no file is set or it cannot be read. It is called as each request is built, so a poll or a
+// sweep that outlives one token sends the token the file holds at that moment.
+func liveToken(held, fileEnv string) string {
+	if strings.TrimSpace(os.Getenv(fileEnv)) == "" {
+		return held
+	}
+	token, err := currentToken("", fileEnv)
+	if err != nil {
+		return held
+	}
+	return token
 }
 
 func responseError(resp *httpx.Response) error {
