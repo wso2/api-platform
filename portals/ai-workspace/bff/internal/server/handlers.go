@@ -100,7 +100,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// The cookie carries the JWT itself. File-based sessions have no refresh
 	// token, so nothing is stored server-side at all.
-	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
+	if err := s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry); err != nil {
+		slog.Error("session token does not fit in the session cookies", "err", err)
+		writeServerErrorJSON(w, http.StatusInternalServerError, "SESSION_TOO_LARGE", "session token too large", w.Header().Get("X-Request-Id"))
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": sess.User, "accessToken": sess.AccessToken})
 }
 
@@ -321,7 +325,11 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
+	if err := s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry); err != nil {
+		slog.Error("session token does not fit in the session cookies", "err", err)
+		writeServerErrorJSON(w, http.StatusInternalServerError, "SESSION_TOO_LARGE", "session token too large", w.Header().Get("X-Request-Id"))
+		return
+	}
 	http.Redirect(w, r, s.sanitizeReturn(ret), http.StatusFound)
 }
 
@@ -391,7 +399,11 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 					slog.Warn("could not persist the rotated session on this response", "err", putErr)
 				}
 				jwt = refreshed.AccessToken
-				s.setSessionCookie(w, jwt, refreshed.AbsoluteExpiry)
+				if err := s.setSessionCookie(w, jwt, refreshed.AbsoluteExpiry); err != nil {
+					slog.Error("rotated session token does not fit in the session cookies", "err", err)
+					writeServerErrorJSON(w, http.StatusInternalServerError, "SESSION_TOO_LARGE", "session token too large", w.Header().Get("X-Request-Id"))
+					return
+				}
 			case stillValid(exp):
 				// The ordinary outcome of several replicas: the refresh single-flight
 				// is per-process, so two can both present the refresh token and an IDP
@@ -452,15 +464,20 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 // partial/best-effort token — even though a mangled JWT would also just fail signature
 // verification downstream, rejecting here keeps the failure explicit and in one place.
 func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
-	c1, err := r.Cookie(s.cfg.Cookie.Name1)
-	if err != nil || c1.Value == "" {
+	// Chunks are written contiguously from index 1 (see setSessionCookie), so the first
+	// missing or empty index ends the token.
+	var b strings.Builder
+	for i := 1; i <= sessionMaxChunks; i++ {
+		c, err := r.Cookie(sessionChunkName(s.cfg.Cookie.SessionPrefix, i))
+		if err != nil || c.Value == "" {
+			break
+		}
+		b.WriteString(c.Value)
+	}
+	if b.Len() == 0 {
 		return "", false
 	}
-	c2, err := r.Cookie(s.cfg.Cookie.Name2)
-	if err != nil || c2.Value == "" {
-		return "", false
-	}
-	return joinSessionToken(c1.Value, c2.Value), true
+	return b.String(), true
 }
 
 // userFromToken builds the display User for /api/session. File-based claims are

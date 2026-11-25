@@ -25,6 +25,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -100,11 +101,15 @@ func (j jar) get(name string) string {
 
 // sessionToken reassembles the access JWT from the jar the way the BFF does.
 func (j jar) sessionToken(cfg config.CookieConfig) string {
-	p1, p2 := j.get(cfg.Name1), j.get(cfg.Name2)
-	if p1 == "" || p2 == "" {
-		return ""
+	var token string
+	for i := 1; i <= sessionMaxChunks; i++ {
+		v := j.get(sessionChunkName(cfg.SessionPrefix, i))
+		if v == "" {
+			break
+		}
+		token += v
 	}
-	return joinSessionToken(p1, p2)
+	return token
 }
 
 // ---------------------------------------------------------------------------
@@ -122,9 +127,9 @@ type rotatingIDP struct {
 }
 
 // scopeHeavyJWT mints a decodable access token the size this product actually issues:
-// the default scope set is 122 entries, which is why the session cookie is split in
-// two to begin with. Sized realistically so the state record is exercised at its real
-// footprint, not a toy one.
+// the default scope set is 122 entries, and a user with many group memberships carries a long list of group
+// paths on top. Together they exceed one session cookie chunk, so the token is split
+// across several cookies, as it is in production.
 func scopeHeavyJWT(t *testing.T, sub string, expiresIn time.Duration) string {
 	t.Helper()
 	scopes := make([]string, 0, 122)
@@ -136,10 +141,14 @@ func scopeHeavyJWT(t *testing.T, sub string, expiresIn time.Duration) string {
 			scopes = append(scopes, "ap:"+r+":"+v)
 		}
 	}
+	groups := make([]string, 0, 150)
+	for i := 0; i < 150; i++ {
+		groups = append(groups, fmt.Sprintf("/example/groups/group-%03d", i))
+	}
 	return unsignedJWT(t, map[string]any{
 		"sub": sub, "exp": time.Now().Add(expiresIn).Unix(), "iat": time.Now().Unix(),
 		"scope": strings.Join(scopes, " "), "username": "alice@acme.example.com",
-		"org_handle": "acme-corp",
+		"org_handle": "acme-corp", "groups": groups,
 	})
 }
 
@@ -223,8 +232,8 @@ func newRotatingHarness(t *testing.T, accessTTL time.Duration) (*rotatingIDP, *S
 	}
 	cfg := &config.Config{
 		Cookie: config.CookieConfig{
-			Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2",
-			StatePrefix: "_ai_workspace_state_", Secure: true, SameSite: "lax",
+			SessionPrefix: "_ai_workspace_session_",
+			StatePrefix:   "_ai_workspace_state_", Secure: true, SameSite: "lax",
 		},
 		Auth:    config.AuthConfig{Mode: config.AuthModeOIDC, OIDC: config.OIDCConfig{TokenExchange: teCfg}},
 		Session: config.SessionConfig{Store: config.SessionStoreCookie, AbsoluteTTL: 8 * time.Hour},
@@ -311,11 +320,11 @@ func TestSplitCookieAndExchangeAcrossReplicas(t *testing.T) {
 	if loginToken == "" {
 		t.Fatal("login left no usable session cookie pair")
 	}
-	if len(loginToken) < 2000 {
+	if len(loginToken) <= sessionChunkSize {
 		t.Fatalf("the test's access token is %d B — too small to exercise the split", len(loginToken))
 	}
-	if j.get(replicaA.cfg.Cookie.Name1) == loginToken || j.get(replicaA.cfg.Cookie.Name2) == loginToken {
-		t.Fatal("the access JWT was not actually split across the two cookies")
+	if j.get(sessionChunkName(replicaA.cfg.Cookie.SessionPrefix, 1)) == loginToken || j.get(sessionChunkName(replicaA.cfg.Cookie.SessionPrefix, 2)) == "" {
+		t.Fatal("the access JWT was not actually split across several cookies")
 	}
 	if j.get("_ai_workspace_state_0") == "" {
 		t.Fatal("login sealed no session state into the browser")
@@ -445,9 +454,9 @@ func TestPreRotationStateIsNotAcceptedAfterwards(t *testing.T) {
 	// mismatches the binding has to catch.
 	const atPath = paths.Base + "/"
 	mixed := jar{
-		jarKey(replicaA.cfg.Cookie.Name1, atPath): stale.get(replicaA.cfg.Cookie.Name1),
-		jarKey(replicaA.cfg.Cookie.Name2, atPath): stale.get(replicaA.cfg.Cookie.Name2),
-		jarKey("_ai_workspace_state_0", atPath):   j.get("_ai_workspace_state_0"),
+		jarKey(sessionChunkName(replicaA.cfg.Cookie.SessionPrefix, 1), atPath): stale.get(sessionChunkName(replicaA.cfg.Cookie.SessionPrefix, 1)),
+		jarKey(sessionChunkName(replicaA.cfg.Cookie.SessionPrefix, 2), atPath): stale.get(sessionChunkName(replicaA.cfg.Cookie.SessionPrefix, 2)),
+		jarKey("_ai_workspace_state_0", atPath):                                j.get("_ai_workspace_state_0"),
 	}
 	req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
 	mixed.onto(req)
