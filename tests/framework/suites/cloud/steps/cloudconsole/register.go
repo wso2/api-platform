@@ -89,6 +89,9 @@ const (
 	keyDeployedTargets      = "cloudDeployedTargets"
 
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
+	// cloudConsoleAccessTokenFileEnv names a file holding the console token. Whoever runs the suite
+	// replaces the file before the token in it expires, so a run can outlive any one token.
+	cloudConsoleAccessTokenFileEnv = "CLOUD_CONSOLE_ACCESS_TOKEN_FILE"
 
 	cloudConsoleExpiredTokenEnv = "CLOUD_CONSOLE_EXPIRED_ACCESS_TOKEN"
 
@@ -427,7 +430,13 @@ func deleteCloudResource(ctx context.Context, client *httpx.Client, base, bearer
 	return responseError(resp)
 }
 
+// bearerToken returns the console token a request sends. A token file is read on every call,
+// because the file is replaced as its token nears expiry; a token from the environment is read
+// once and kept in the context.
 func bearerToken(ctx context.Context) (string, error) {
+	if strings.TrimSpace(os.Getenv(cloudConsoleAccessTokenFileEnv)) != "" {
+		return consoleToken()
+	}
 	if token, err := tcontext.ResolveString(ctx, keyToken); err == nil && strings.TrimSpace(token) != "" {
 		return token, nil
 	}
@@ -437,6 +446,33 @@ func bearerToken(ctx context.Context) (string, error) {
 	}
 	if err := tcontext.Set(ctx, keyToken, token); err != nil {
 		return "", err
+	}
+	return token, nil
+}
+
+// consoleToken returns the console token to send now, for a caller that holds no scenario context.
+func consoleToken() (string, error) {
+	return currentToken(cloudConsoleAccessTokenEnv, cloudConsoleAccessTokenFileEnv)
+}
+
+// currentToken returns the token to send now. When fileEnv names a file, the file is read on every
+// call and its token wins; otherwise tokenEnv's value is returned. Errors name the variables and
+// never include a token.
+func currentToken(tokenEnv, fileEnv string) (string, error) {
+	if path := strings.TrimSpace(os.Getenv(fileEnv)); path != "" {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("reading the token file %s names: %w", fileEnv, err)
+		}
+		token := strings.TrimSpace(string(raw))
+		if token == "" {
+			return "", fmt.Errorf("the token file %s names is empty", fileEnv)
+		}
+		return token, nil
+	}
+	token := strings.TrimSpace(os.Getenv(tokenEnv))
+	if token == "" {
+		return "", fmt.Errorf("environment variable %s is required", tokenEnv)
 	}
 	return token, nil
 }

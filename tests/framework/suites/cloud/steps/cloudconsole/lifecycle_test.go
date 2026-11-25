@@ -84,6 +84,124 @@ func TestBearerTokenRequiresEnvironmentToken(t *testing.T) {
 	require.ErrorContains(t, err, cloudConsoleAccessTokenEnv)
 }
 
+// writeTokenFile writes token to a file in a test directory and returns its path.
+func writeTokenFile(t *testing.T, path, token string) string {
+	t.Helper()
+	if path == "" {
+		path = filepath.Join(t.TempDir(), "token")
+	}
+	require.NoError(t, os.WriteFile(path, []byte(token+"\n"), 0o600))
+	return path
+}
+
+func TestBearerTokenReadsTheTokenFileOnEveryCall(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "env-token")
+	path := writeTokenFile(t, "", "first-token")
+	t.Setenv(cloudConsoleAccessTokenFileEnv, path)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keyToken, "token-kept-from-an-earlier-step")
+
+	token, err := bearerToken(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "first-token", token, "the file wins over the environment and the context")
+
+	writeTokenFile(t, path, "second-token")
+	token, err = bearerToken(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "second-token", token, "a replaced file is read again")
+}
+
+func TestBearerTokenReportsAnUnreadableOrEmptyTokenFile(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "env-token")
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+	t.Setenv(cloudConsoleAccessTokenFileEnv, filepath.Join(t.TempDir(), "missing"))
+	_, err := bearerToken(ctx)
+	require.ErrorContains(t, err, cloudConsoleAccessTokenFileEnv)
+
+	t.Setenv(cloudConsoleAccessTokenFileEnv, writeTokenFile(t, "", "  "))
+	_, err = bearerToken(ctx)
+	require.ErrorContains(t, err, "is empty")
+	require.NotContains(t, err.Error(), "env-token")
+}
+
+func TestIdentityPlatformReadsItsTokenFile(t *testing.T) {
+	t.Setenv(cloudIAMAccessTokenEnv, "")
+	t.Setenv(cloudIAMAPIURLEnv, "https://iam.example.com/iam/v1")
+	t.Setenv(cloudIAMAccessTokenFileEnv, writeTokenFile(t, "", "iam-token"))
+
+	identity, err := identityPlatformFromEnv(httpx.NewClient(httpx.Options{Timeout: time.Second}))
+	require.NoError(t, err)
+	require.Equal(t, "iam-token", identity.token)
+}
+
+// authorizationRecorder answers every request with an empty list and keeps the Authorization
+// header of each.
+type authorizationRecorder struct {
+	mu   sync.Mutex
+	sent []string
+}
+
+func (r *authorizationRecorder) handler(w http.ResponseWriter, req *http.Request) {
+	r.mu.Lock()
+	r.sent = append(r.sent, req.Header.Get("Authorization"))
+	r.mu.Unlock()
+	_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
+}
+
+func (r *authorizationRecorder) headers() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.sent)
+}
+
+func TestStarterSendsTheTokenTheFileHoldsWhenAScenarioAsks(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "")
+	t.Setenv(cloudGatewayPinEnv, "")
+	path := writeTokenFile(t, "", "token-at-start")
+	t.Setenv(cloudConsoleAccessTokenFileEnv, path)
+	recorder := &authorizationRecorder{}
+	server := httptest.NewServer(http.HandlerFunc(recorder.handler))
+	t.Cleanup(server.Close)
+	starter, err := NewStarter()
+	require.NoError(t, err)
+	starter.pollInterval = retry.BaseInterval
+	require.NoError(t, starter.StartAt(context.Background(), server.URL))
+
+	writeTokenFile(t, path, "token-later-in-the-run")
+	// Whether the project is found does not matter here, only the token the starter sends.
+	_ = starter.checkScenario(context.Background(), "a scenario that needs its project", []precondition{projectOneNeed})
+
+	sent := recorder.headers()
+	require.NotEmpty(t, sent)
+	for _, header := range sent {
+		require.Equal(t, "Bearer token-later-in-the-run", header)
+	}
+}
+
+func TestFinalizerSendsTheTokenTheFileHoldsAtTheEnd(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "")
+	path := writeTokenFile(t, "", "token-at-start")
+	t.Setenv(cloudConsoleAccessTokenFileEnv, path)
+	recorder := &authorizationRecorder{}
+	topo := cloudAPIStub(t, recorder.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	finalizer := NewFinalizer()
+	finalizer.Watch(base, "abcde234")
+
+	writeTokenFile(t, path, "token-at-the-end")
+	_, err = finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+
+	sent := recorder.headers()
+	require.NotEmpty(t, sent)
+	for _, header := range sent {
+		require.Equal(t, "Bearer token-at-the-end", header)
+	}
+}
+
 func TestCloudAPIURLUsesResolvedEndpointAsBase(t *testing.T) {
 	require.Equal(t,
 		"https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9/projects",

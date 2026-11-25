@@ -130,9 +130,11 @@ Read those lines before trusting a green run: a skip is not a pass.
 
 | Setting | Meaning |
 |---|---|
-| `CLOUD_CONSOLE_ACCESS_TOKEN` | the console token that decides the organisation (required, never printed) |
+| `CLOUD_CONSOLE_ACCESS_TOKEN` | the console token that decides the organisation (required unless the file below is set, never printed) |
+| `CLOUD_CONSOLE_ACCESS_TOKEN_FILE` | a file holding the console token, read on every request and so free to be replaced during a run; wins over `CLOUD_CONSOLE_ACCESS_TOKEN` |
 | `CLOUD_GATEWAY_ID` | pins the gateway the scenarios deploy to, which must be in a first stage of the project's pipeline; the starter never builds a pinned one |
 | `CLOUD_IAM_ACCESS_TOKEN` | a token of the organisation's administrator for the Identity Platform API, for the portal administrator (optional, never printed) |
+| `CLOUD_IAM_ACCESS_TOKEN_FILE` | a file holding that token, replaced during a run like the console token's; wins over `CLOUD_IAM_ACCESS_TOKEN` |
 | `CLOUD_IAM_API_URL` | the Identity Platform API's base URL, `https://api-<env>.gateway.<domain>/iam/v1` |
 
 ### The portal administrator and the portal sweep

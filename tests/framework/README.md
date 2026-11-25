@@ -113,7 +113,9 @@ mapping is maintained in the local, ignored `core/catalog/cloudconsole/environme
 copy `core/catalog/cloudconsole/environments.example.toml` there and add or update an
 environment without changing Go code. The CI workflow is responsible for obtaining the cloud
 access token; the suite consumes it from `CLOUD_CONSOLE_ACCESS_TOKEN` and never calls the token
-provider itself. Its suite defaults match the integration suite: a 5-minute boot deadline
+provider itself. A run longer than one token's lifetime sets `CLOUD_CONSOLE_ACCESS_TOKEN_FILE`
+instead, and the workflow replaces that file before its token expires: the suite reads it on every
+request. Its suite defaults match the integration suite: a 5-minute boot deadline
 and a 60-second propagation deadline. Cloud data-plane availability and eventual reads use the
 propagation deadline; the longer deployment waits remain explicit in their step contracts.
 The suite creates no environments or deployment pipelines and never changes a project's pipeline

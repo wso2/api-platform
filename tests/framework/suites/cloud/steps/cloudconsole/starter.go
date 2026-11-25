@@ -248,9 +248,9 @@ func (s *Starter) CheckProjects(ctx context.Context) {
 
 // StartAt is Start for the platform API endpoint given as a URL, for a caller that has no topology.
 func (s *Starter) StartAt(_ context.Context, base string) error {
-	token := strings.TrimSpace(os.Getenv(cloudConsoleAccessTokenEnv))
-	if token == "" {
-		return fmt.Errorf("cloud run starter: environment variable %s is required to prepare the organisation", cloudConsoleAccessTokenEnv)
+	token, err := consoleToken()
+	if err != nil {
+		return fmt.Errorf("cloud run starter: preparing the organisation: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -336,6 +336,11 @@ func (s *Starter) require(ctx context.Context, need precondition) error {
 	s.mu.Unlock()
 	if base == "" {
 		return errStartNotCalled
+	}
+	// Scenarios ask for preconditions for the whole run, so the token is read again rather than
+	// kept from the start; the one from the start is used only when it cannot be.
+	if fresh, err := consoleToken(); err == nil {
+		token = fresh
 	}
 	platform := organisationAPI{client: s.client, base: base, token: token, pollInterval: s.pollInterval}
 	return s.starter.Ensure(ctx, base+"#"+string(need), []starter.Prerequisite{{
@@ -507,6 +512,10 @@ func (s *Starter) SweepPortal(ctx context.Context, ownedByRun func(id string) bo
 	s.mu.Unlock()
 	if state.browser == nil {
 		return nil, nil
+	}
+	// The sweep runs at the end of the run, long after the starter read its token.
+	if fresh, err := consoleToken(); err == nil {
+		state.platform.token = fresh
 	}
 	scope := sweepScope{ownedByRun: ownedByRun, now: time.Now()}
 	sweep, err := sweepPortal(ctx, state.browser, platformHoldsAPI(state.platform), scope)
