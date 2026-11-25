@@ -401,6 +401,9 @@ func TestStoreResponseRejectsInvalidDocuments(t *testing.T) {
 		"body with 204":      `{"status":204,"body":"x"}`,
 		"body with 304":      `{"status":304,"body":"x"}`,
 		"newline in type":    `{"contentType":"text/plain\r\nX-Injected: 1"}`,
+		"NUL in type":        `{"contentType":"text/plain\u0000"}`,
+		"DEL in type":        `{"contentType":"text/plain\u007f"}`,
+		"control in type":    `{"contentType":"text/\u0001plain"}`,
 		"non-string body":    `{"body":{"a":1}}`,
 		"null document":      `null`,
 		"array document":     `[]`,
@@ -410,6 +413,16 @@ func TestStoreResponseRejectsInvalidDocuments(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, response.Code, name)
 	}
 	require.Empty(t, service.partitions)
+}
+
+func TestStoreResponseAcceptsATabInTheContentType(t *testing.T) {
+	service := New()
+	scripted := map[string]any{"contentType": "text/plain;\tcharset=utf-8", "body": "x"}
+	require.Equal(t, http.StatusOK, scriptResponse(t, service, "block", "/tab", scripted).Code)
+
+	response := serveCapture(service, http.MethodGet, "/block/tab", "", nil)
+
+	require.Equal(t, "text/plain;\tcharset=utf-8", response.Header().Get("Content-Type"))
 }
 
 func TestStoreResponseAcceptsA204WithoutABody(t *testing.T) {
@@ -490,7 +503,9 @@ func TestScriptedResponseWithoutContentTypeIsNotSniffedByTheServer(t *testing.T)
 	server := httptest.NewServer(service.Handler())
 	defer server.Close()
 
-	response, err := http.Get(server.URL + "/block/raw")
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/block/raw", nil)
+	require.NoError(t, err)
+	response, err := server.Client().Do(request)
 	require.NoError(t, err)
 	defer func() { _ = response.Body.Close() }()
 

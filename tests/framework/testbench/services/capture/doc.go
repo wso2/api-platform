@@ -46,6 +46,6 @@
 // so a scenario scripts a path unique to it, such as one that includes its API's unique name.
 //
 // The script document is refused with 400 when it has unknown fields, a status outside 200-599,
-// a body with status 204 or 304, or a path that is empty, does not start with "/", or is under
-// /test/.
+// a body with status 204 or 304, a control character other than a tab in contentType, or a path
+// that is empty, does not start with "/", or is under /test/.
 package capture

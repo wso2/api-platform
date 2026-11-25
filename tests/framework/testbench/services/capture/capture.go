@@ -281,10 +281,21 @@ func validScript(script scriptedResponse) error {
 	if script.Body != "" && (script.Status == http.StatusNoContent || script.Status == http.StatusNotModified) {
 		return fmt.Errorf("status %d cannot carry a body", script.Status)
 	}
-	if strings.ContainsAny(script.ContentType, "\r\n") {
-		return fmt.Errorf("contentType must be a single header value")
+	if !validHeaderValue(script.ContentType) {
+		return fmt.Errorf("contentType must be a header value without control characters")
 	}
 	return nil
+}
+
+// validHeaderValue reports whether value holds no control character other than a tab, as
+// RFC 9110 requires of a field value. Clients refuse a header that carries one.
+func validHeaderValue(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if b := value[i]; (b < ' ' && b != '\t') || b == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // decodeScript reads exactly one JSON object, refusing unknown fields.
