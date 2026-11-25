@@ -10164,3 +10164,99 @@ func TestStarterRunsWithoutAPortalAdministratorAndSaysWhy(t *testing.T) {
 		})
 	}
 }
+
+func TestTryUpdateAPILeavesTheRefusalAndKeepsTheStoredDefinition(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(backendEnv, "https://backend.example.test/")
+	var sent map[string]any
+	putStatus := http.StatusBadRequest
+	held := map[string]any{"id": "api-1", "upstream": map[string]any{"main": map[string]any{"url": "https://backend.example.test"}}}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/rest-apis/api-1":
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+			if putStatus != http.StatusOK {
+				writeJSON(w, putStatus, map[string]any{"code": "DESTINATION_NOT_ALLOWED", "errors": []map[string]string{{"field": "upstream.main.url"}}})
+				return
+			}
+			writeJSON(w, http.StatusOK, sent)
+		case r.Method == http.MethodGet && r.URL.Path == "/rest-apis/api-1":
+			writeJSON(w, http.StatusOK, held)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	})
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyAPIDefinition, `{"id":"api-1","upstream":{"main":{"url":"https://backend.example.test"}}}`)
+	refused := valuesTable(t, []string{"upstreamUrl", "http://169.254.169.254/latest"})
+
+	require.NoError(t, steps.tryUpdateAPI(ctx, refused), "a refusal is the answer under test, not a step failure")
+	require.Equal(t, map[string]any{"main": map[string]any{"url": "http://169.254.169.254/latest"}}, sent["upstream"])
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
+	require.NoError(t, steps.assertCloudErrorField(ctx, "upstream.main.url"))
+	stored, err := steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, "https://backend.example.test", stored["upstream"].(map[string]any)["main"].(map[string]any)["url"], "a refused update changes nothing")
+	require.NoError(t, steps.assertUpstreamIsTheBackend(ctx))
+	require.Error(t, steps.updateAPI(ctx, refused), "the plain update step still fails on a refusal")
+
+	held["upstream"] = map[string]any{"main": map[string]any{"url": "http://169.254.169.254/latest"}}
+	require.ErrorContains(t, steps.assertUpstreamIsTheBackend(ctx), "expected the main upstream")
+	held["upstream"] = nil
+	require.Error(t, steps.assertUpstreamIsTheBackend(ctx), "an API with no upstream")
+
+	require.Error(t, steps.tryUpdateAPI(ctx, valuesTable(t, []string{"upstream", "https://elsewhere.example.test"})))
+	_, err = httpx.Published(ctx)
+	require.Error(t, err, "a request that is never sent leaves no earlier answer behind")
+
+	putStatus = http.StatusOK
+	require.NoError(t, steps.updateAPI(ctx, valuesTable(t, []string{"upstreamUrl", "https://echo.example.test"})))
+	stored, err = steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, "https://echo.example.test", stored["upstream"].(map[string]any)["main"].(map[string]any)["url"])
+}
+
+func TestAssertCloudErrorField(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	require.Error(t, steps.assertCloudErrorField(ctx, "sdlUrl"), "no answer")
+
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"code":"DESTINATION_NOT_ALLOWED","errors":[{"field":"sdlUrl"},{"field":"upstream.main.url"}]}`)
+	require.NoError(t, steps.assertCloudErrorField(ctx, "sdlUrl"))
+	require.ErrorContains(t, steps.assertCloudErrorField(ctx, "upstream.main.url"), "names \"sdlUrl\"", "only the first field error counts")
+
+	for name, body := range map[string]string{
+		"no field errors":    `{"code":"DESTINATION_NOT_ALLOWED"}`,
+		"empty field errors": `{"code":"DESTINATION_NOT_ALLOWED","errors":[]}`,
+		"not json":           `not json`,
+	} {
+		publishedResponse(t, steps, ctx, http.StatusBadRequest, body)
+		require.ErrorContains(t, steps.assertCloudErrorField(ctx, "sdlUrl"), "names no field error", name)
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"errors":[{"message":"no field"}]}`)
+	require.ErrorContains(t, steps.assertCloudErrorField(ctx, "sdlUrl"), `names ""`)
+}
+
+func TestValidateGraphQLSchemaWithSendsTheNamedSource(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set("echo", "https://echo.example.test")
+
+	stub.validation = `{"resolved":false,"sdl":"","sdlErrors":[{"message":"Syntax Error"}]}`
+	require.NoError(t, steps.validateGraphQLSchemaWith(ctx, valuesTable(t, []string{"schemaSource", "url"}, []string{"sdlUrl", "${CTX:echo}"})))
+	require.Equal(t, map[string]any{"schemaSource": "url", "sdlUrl": "https://echo.example.test"}, stub.validated)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved"))
+
+	require.NoError(t, steps.validateGraphQLSchemaWith(ctx, valuesTable(t, []string{"schemaSource", "introspection"}, []string{"upstreamUrl", "http://169.254.169.254/graphql"})))
+	require.Equal(t, map[string]any{"schemaSource": "introspection", "upstream": map[string]any{"main": map[string]any{"url": "http://169.254.169.254/graphql"}}}, stub.validated)
+
+	for name, table := range map[string]*godog.Table{
+		"an unsupported value": valuesTable(t, []string{"schemaSource", "inline"}, []string{"sdl", "type Query { a: String }"}),
+		"no schema source":     valuesTable(t, []string{"sdlUrl", "https://echo.example.test"}),
+		"an unknown context":   valuesTable(t, []string{"schemaSource", "url"}, []string{"sdlUrl", "${CTX:missing}"}),
+	} {
+		stub.validated = nil
+		require.Error(t, steps.validateGraphQLSchemaWith(ctx, table), name)
+		require.Nil(t, stub.validated, name+": nothing is sent")
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+}

@@ -171,3 +171,12 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_deploy.feature
           scenario: "A build or deployment request that is not JSON, or a deployment that names no environment, is refused and creates nothing"
+  - id: ID_APIP_DEPLOY_019
+    title: "Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises NETAC-PA-014; written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys"

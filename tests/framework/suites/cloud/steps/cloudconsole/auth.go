@@ -239,6 +239,27 @@ func (s *Steps) assertCloudResponseContains(ctx context.Context, presence, want 
 	return nil
 }
 
+// assertCloudErrorField checks that the published error answer names want as its first field
+// error, the field the caller must correct.
+func (s *Steps) assertCloudErrorField(ctx context.Context, want string) error {
+	response, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var answer struct {
+		Errors []struct {
+			Field string `json:"field"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(response.Body, &answer); err != nil || len(answer.Errors) == 0 {
+		return fmt.Errorf("the answer names no field error: %s", response.Describe())
+	}
+	if got := answer.Errors[0].Field; got != want {
+		return fmt.Errorf("expected the error to name the field %q, it names %q (%s)", want, got, response.Describe())
+	}
+	return nil
+}
+
 func (s *Steps) assertCloudErrorCode(ctx context.Context, want string) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {

@@ -100,10 +100,10 @@ func withKind(path, kind string) string {
 	return path + separator + "kind=" + url.QueryEscape(kind)
 }
 
-// apiOverrideKeys lists the definition fields a values table may replace; the first three are
-// plain strings and the rest carry JSON.
+// apiOverrideKeys lists the definition fields a values table may replace: the first three are
+// plain strings, upstreamUrl is the main upstream's URL, and the rest carry JSON.
 var apiOverrideKeys = map[string]bool{
-	"displayName": true, "context": true, "version": true,
+	"displayName": true, "context": true, "version": true, "upstreamUrl": true,
 	"operations": true, "policies": true, "security": true,
 }
 
@@ -151,6 +151,8 @@ func applyAPIOverrides(ctx context.Context, definition map[string]any, overrides
 				return fmt.Errorf("REST API value %q is not valid JSON: %w", key, err)
 			}
 			definition[key] = parsed
+		case "upstreamUrl":
+			definition["upstream"] = map[string]any{"main": map[string]string{"url": value}}
 		default:
 			definition[key] = value
 		}
@@ -340,22 +342,7 @@ func (s *Steps) storedDefinition(ctx context.Context, ref apiRef) (map[string]an
 
 // updateAPI replaces the synthetic REST API's definition with the stored one plus the overrides.
 func (s *Steps) updateAPI(ctx context.Context, table *godog.Table) error {
-	overrides, err := tableValues(table)
-	if err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, primaryAPI.id)
-	if err != nil {
-		return err
-	}
-	definition, err := s.storedDefinition(ctx, primaryAPI)
-	if err != nil {
-		return err
-	}
-	if err := applyAPIOverrides(ctx, definition, overrides); err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPut, "/rest-apis/"+url.PathEscape(id), definition)
+	resp, definition, err := s.sendAPIUpdate(ctx, table)
 	if err != nil {
 		return err
 	}
@@ -363,6 +350,59 @@ func (s *Steps) updateAPI(ctx context.Context, table *godog.Table) error {
 		return responseError(resp)
 	}
 	return storeDefinition(ctx, primaryAPI, definition)
+}
+
+// tryUpdateAPI sends an update the platform may refuse and leaves its answer for the assertion
+// steps. The stored definition stays as it was, since a refused update changes nothing.
+func (s *Steps) tryUpdateAPI(ctx context.Context, table *godog.Table) error {
+	_, _, err := s.sendAPIUpdate(ctx, table)
+	return err
+}
+
+// sendAPIUpdate sends the stored definition of the synthetic REST API with the overrides applied,
+// and returns the answer and the definition it sent.
+func (s *Steps) sendAPIUpdate(ctx context.Context, table *godog.Table) (*httpx.Response, map[string]any, error) {
+	// A request that fails before it is sent must not leave an earlier answer to be asserted.
+	httpx.ClearPublished(ctx)
+	overrides, err := tableValues(table)
+	if err != nil {
+		return nil, nil, err
+	}
+	id, err := requiredValue(ctx, primaryAPI.id)
+	if err != nil {
+		return nil, nil, err
+	}
+	definition, err := s.storedDefinition(ctx, primaryAPI)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := applyAPIOverrides(ctx, definition, overrides); err != nil {
+		return nil, nil, err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPut, "/rest-apis/"+url.PathEscape(id), definition)
+	if err != nil {
+		return nil, nil, err
+	}
+	return resp, definition, nil
+}
+
+// assertUpstreamIsTheBackend checks that the platform holds the testbench backend as the synthetic
+// REST API's main upstream.
+func (s *Steps) assertUpstreamIsTheBackend(ctx context.Context) error {
+	backend, err := testbenchURL(backendEnv, defaultBackend)
+	if err != nil {
+		return err
+	}
+	definition, err := s.readDefinitionOf(ctx, primaryAPI)
+	if err != nil {
+		return err
+	}
+	upstream, _ := definition["upstream"].(map[string]any)
+	main, _ := upstream["main"].(map[string]any)
+	if got, _ := main["url"].(string); strings.TrimRight(got, "/") != backend {
+		return fmt.Errorf("expected the main upstream %q, the platform holds %v", backend, definition["upstream"])
+	}
+	return nil
 }
 
 func (s *Steps) deployAPI(ctx context.Context, label string) error {

@@ -314,3 +314,26 @@ Feature: APIP cloud builds and deployments
       | gatewayId   | ${CTX:cloudGatewayID}          |
     Then the cloud API response status code should be 201
     And the synthetic REST API deployment should become DEPLOYED
+
+  # The cloud's deployment route answers a refusal with the platform's code and message only, so
+  # the refused parameter is not named in the answer.
+  @ID_APIP_DEPLOY_019 @type:negative
+  Scenario: Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys
+    Given I obtain an APIP cloud console token
+    And I find the APIP test project
+    And I find an active APIP gateway
+    And an echo backend is available for deployment overrides
+    When I create a synthetic REST API in the APIP test project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                         |
+      | gatewayId   | ${CTX:cloudGatewayID}                                  |
+      | parameters  | {"productionEndpoint":"http://169.254.169.254/latest"} |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
+    And the cloud API response body should not contain "169.254"
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                      |
+      | gatewayId   | ${CTX:cloudGatewayID}                               |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}"} |
+    Then the cloud API response status code should be 201
+    And the synthetic REST API deployment should become DEPLOYED

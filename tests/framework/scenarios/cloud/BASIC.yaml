@@ -186,3 +186,12 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_basic.feature
           scenario: "A changed context and version are kept, and a redeploy serves the API at the new context and no longer at the old one"
+  - id: ID_APIP_BASIC_021
+    title: "A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is kept."
+    priority: P0
+    cloud:
+      # The cloud counterpart of on-premises NETAC-PA-011; written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_basic.feature
+          scenario: "A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is kept"
