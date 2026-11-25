@@ -48,9 +48,14 @@ func ProviderName(templateName string) string {
 	}
 }
 
-// OperationName derives gen_ai.operation.name from a provider route's resource path:
-// "" when the path is not a recognised inference endpoint (a model listing, say), for
-// which no inference span is recorded.
+// OperationName derives gen_ai.operation.name from a request's method and a provider
+// route's resource path: "" when it is not a recognised inference call (a model listing,
+// say), for which no inference span is recorded.
+//
+// Every inference endpoint is a POST, so any other method is a read of stored data
+// (OpenAI's GET /chat/completions lists stored completions and
+// GET /chat/completions/{id}/messages reads one's messages) and is not classified. An
+// empty method means the caller does not know it, and only the route is consulted.
 //
 // Gemini's native API names the method after a colon on the model
 // (/models/{model}:generateContent). Bedrock's Converse API (/model/{id}/converse,
@@ -59,7 +64,10 @@ func ProviderName(templateName string) string {
 // is matched on the route's suffix, so the API context, sub-resources
 // (/messages/count_tokens), reads of a stored result (/responses/{id}) and lookalike
 // routes are not classified. Trailing slashes are ignored.
-func OperationName(route string) string {
+func OperationName(method, route string) string {
+	if method != "" && !strings.EqualFold(method, "POST") {
+		return ""
+	}
 	r := strings.TrimRight(strings.ToLower(route), "/")
 	hasSuffix := func(suffixes ...string) bool {
 		for _, s := range suffixes {

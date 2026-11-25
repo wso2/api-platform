@@ -84,7 +84,7 @@ func aiContextBlock(event *dto.Event, route string) *models.AiContextModel {
 	return &models.AiContextModel{
 		Provider:  nonEmpty(moesifAIProvider(aiMetadata.VendorName)),
 		Model:     nonEmpty(aiMetadata.Model),
-		ModelType: nonEmpty(moesifAIModelTypes[genai.OperationName(route)]),
+		ModelType: nonEmpty(moesifAIModelTypes[genai.OperationName(eventMethod(event), route)]),
 		Usage:     usage,
 	}
 }
@@ -123,4 +123,12 @@ func nonEmpty(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+// eventMethod returns the event's HTTP method, or "" when the event carries no operation.
+func eventMethod(event *dto.Event) string {
+	if event.Operation == nil {
+		return ""
+	}
+	return event.Operation.APIMethod
 }

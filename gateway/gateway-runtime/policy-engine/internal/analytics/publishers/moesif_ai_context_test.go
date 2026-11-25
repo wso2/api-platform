@@ -72,7 +72,7 @@ func TestAIContextBlock_ModelType(t *testing.T) {
 		"":                                                                            "",
 	}
 	for route, want := range tests {
-		event := createBaseEvent()
+		event := createAIEvent()
 		event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
 
 		block := aiContextBlock(event, route)
@@ -87,8 +87,26 @@ func TestAIContextBlock_ModelType(t *testing.T) {
 	}
 }
 
-func TestAIContextBlock_Full(t *testing.T) {
+// createAIEvent is the base event as an inference call, which is always a POST.
+func createAIEvent() *dto.Event {
 	event := createBaseEvent()
+	event.Operation.APIMethod = "POST"
+	return event
+}
+
+// A GET on an inference route reads stored data, so it carries no model type.
+func TestAIContextBlock_GetHasNoModelType(t *testing.T) {
+	event := createBaseEvent()
+	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
+
+	block := aiContextBlock(event, "/openai/v1/chat/completions/{id}/messages")
+
+	require.NotNil(t, block)
+	assert.Nil(t, block.ModelType)
+}
+
+func TestAIContextBlock_Full(t *testing.T) {
+	event := createAIEvent()
 	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "azure-openai", Model: "gpt-4o-2024-08-06", LLMCost: 0.0123}
 	event.Properties[dto.PropKeyAIUsage] = dto.AIUsage{PromptTokens: ptr(100), CompletionTokens: ptr(50), TotalTokens: ptr(150)}
 
@@ -109,7 +127,7 @@ func TestAIContextBlock_Full(t *testing.T) {
 }
 
 func TestAIContextBlock_NoAIData(t *testing.T) {
-	event := createBaseEvent()
+	event := createAIEvent()
 	assert.Nil(t, aiContextBlock(event, "/chat/completions"))
 
 	event.Properties["aiMetadata"] = dto.AIMetadata{}
@@ -118,7 +136,7 @@ func TestAIContextBlock_NoAIData(t *testing.T) {
 }
 
 func TestAIContextBlock_UnreportedUsage(t *testing.T) {
-	event := createBaseEvent()
+	event := createAIEvent()
 	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
 	event.Properties[dto.PropKeyAIUsage] = dto.AIUsage{}
 
@@ -129,7 +147,7 @@ func TestAIContextBlock_UnreportedUsage(t *testing.T) {
 }
 
 func TestAIContextBlock_PartialUsage(t *testing.T) {
-	event := createBaseEvent()
+	event := createAIEvent()
 	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "text-embedding-3-small"}
 	event.Properties[dto.PropKeyAIUsage] = dto.AIUsage{PromptTokens: ptr(8), TotalTokens: ptr(8)}
 
@@ -145,7 +163,7 @@ func TestAIContextBlock_PartialUsage(t *testing.T) {
 // A negative count is not a usage Moesif can price: it is dropped like an unreported
 // one, and a usage left with no count is omitted.
 func TestAIContextBlock_NegativeUsageDropped(t *testing.T) {
-	event := createBaseEvent()
+	event := createAIEvent()
 	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
 	event.Properties[dto.PropKeyAIUsage] = dto.AIUsage{PromptTokens: ptr(-5), CompletionTokens: ptr(50), TotalTokens: ptr(0)}
 
@@ -170,7 +188,7 @@ func TestPublish_LlmEventsCarryAIContextAlongsideMetadata(t *testing.T) {
 	for _, apiType := range []string{"LlmProvider", "LlmProxy"} {
 		t.Run(apiType, func(t *testing.T) {
 			moesif := createTestMoesifWithoutAPI()
-			event := createBaseEvent()
+			event := createAIEvent()
 			event.API.APIType = apiType
 			event.Operation.APIResourceTemplate = "/openai/v1/chat/completions"
 			event.Properties["aiMetadata"] = dto.AIMetadata{Model: "gpt-4o", VendorName: "openai", VendorVersion: "v1.0", LLMCost: 0.5}
@@ -213,7 +231,7 @@ func TestPublish_NonLlmEventsCarryNoAIContext(t *testing.T) {
 	for _, apiType := range []string{"Rest", "Mcp", "Agent", "GraphQLApi"} {
 		t.Run(apiType, func(t *testing.T) {
 			moesif := createTestMoesifWithoutAPI()
-			event := createBaseEvent()
+			event := createAIEvent()
 			event.API.APIType = apiType
 			event.Properties["aiMetadata"] = dto.AIMetadata{Model: "gpt-4o", VendorName: "openai"}
 			event.Properties[dto.PropKeyAIUsage] = dto.AIUsage{PromptTokens: ptr(1)}

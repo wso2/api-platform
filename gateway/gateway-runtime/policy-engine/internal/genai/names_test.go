@@ -44,8 +44,13 @@ func TestOperationName(t *testing.T) {
 		"/models":                          "",
 		"/v1/responses/resp_1/input_items": "",
 	} {
-		assert.Equal(t, want, OperationName(path), "path %s", path)
+		assert.Equal(t, want, OperationName("POST", path), "path %s", path)
+		assert.Equal(t, want, OperationName("", path), "path %s with no method", path)
 	}
+	// Reads of stored completions share an inference route's suffix but are not inference.
+	assert.Empty(t, OperationName("GET", "/v1/chat/completions/chatcmpl-1/messages"))
+	assert.Empty(t, OperationName("GET", "/v1/chat/completions"))
+	assert.Equal(t, OperationChat, OperationName("post", "/v1/chat/completions"))
 }
 
 func TestProviderName(t *testing.T) {

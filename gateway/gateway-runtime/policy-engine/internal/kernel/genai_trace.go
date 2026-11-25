@@ -196,7 +196,7 @@ func (ec *PolicyExecutionContext) templateName() string {
 // endpoint (a model listing, say) gets no span.
 func (ec *PolicyExecutionContext) startInferenceSpan() {
 	path := ec.resourcePath()
-	operation := genai.OperationName(path)
+	operation := genai.OperationName(ec.requestHeaderCtx.Method, path)
 	if operation == "" {
 		return
 	}
@@ -249,7 +249,7 @@ func (ec *PolicyExecutionContext) requestContentAttributes(body []byte) []attrib
 // recordOutputContent records the output messages, when content capture is on.
 func (ec *PolicyExecutionContext) recordOutputContent(span trace.Span, body []byte) {
 	shape := genai.Shape(ec.templateName())
-	if !ec.server.genai.CaptureContent || shape == "" || genai.OperationName(ec.resourcePath()) != genai.OperationChat {
+	if !ec.server.genai.CaptureContent || shape == "" || genai.OperationName(ec.requestHeaderCtx.Method, ec.resourcePath()) != genai.OperationChat {
 		return
 	}
 	output, ok := genai.ResponseContent(shape, body)

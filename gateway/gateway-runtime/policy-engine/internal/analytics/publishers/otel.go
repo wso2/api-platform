@@ -919,7 +919,7 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 			attrs.str(ns("gen_ai.cost.total"), cost)
 		}
 
-		if op := genai.OperationName(route); op != "" {
+		if op := genai.OperationName(eventMethod(event), route); op != "" {
 			attrs.str("gen_ai.operation.name", op)
 		}
 	}
