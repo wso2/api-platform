@@ -64,7 +64,7 @@ func TestA2A_TraceContextAndResolutionAttributesEndToEnd(t *testing.T) {
 	server, k, sr := newSpanStatusServer(t)
 
 	// The shared helper constructs the server with an empty TracingConfig, and the
-	// per-request header extraction is gated on tracing being enabled — so without
+	// trace-context extraction is gated on tracing being enabled — so without
 	// this the traceparent below is never read and every span starts a new root.
 	// Set directly rather than through the constructor, the same way the helper
 	// installs its own tracer: a package-internal field, no global otel state.
@@ -73,10 +73,9 @@ func TestA2A_TraceContextAndResolutionAttributesEndToEnd(t *testing.T) {
 	const routeKey = "POST|/weather/1.0.0|example.com"
 	registerA2AJSONRPCRoute(t, k, routeKey, "SendMessage")
 
-	// A caller-supplied traceparent, arriving the way Envoy forwards it: as a request
-	// header inside the RequestHeaders message. Not on the ext_proc gRPC stream's
-	// metadata — that is set once when the long-lived stream is established, so it
-	// never carries a per-request trace context.
+	// A caller-supplied traceparent as a request header inside the RequestHeaders
+	// message. The mock stream carries no gRPC metadata (where Envoy normally puts its
+	// ext_proc span's traceparent), so the root span falls back to this header.
 	stream := newMockStream([]*extprocv3.ProcessingRequest{
 		withTraceparent(
 			requestHeadersWithBodyToFollow(routeKey, "POST", "/weather/1.0.0"),
