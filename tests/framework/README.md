@@ -58,7 +58,10 @@ Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planne
 `make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
 missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
-product coverage-image target.
+product coverage-image target. To build one of these images under another tag
+(`TESTBENCH_IMAGE`, `A2A_TRIP_PLANNER_IMAGE`, `OTEL_COLLECTOR_IMAGE`), point the suite at the same
+tag with `APIP_IT_IMAGE_TESTBENCH`, `APIP_IT_IMAGE_A2A_TRIP_PLANNER` or
+`APIP_IT_IMAGE_OTEL_COLLECTOR`; otherwise it runs the default `:test` image.
 
 The UI suite builds the `ai-workspace` and `platform-api` images through the framework when
 coverage is selected and pulls `mcr.microsoft.com/playwright` for the in-network browser;
