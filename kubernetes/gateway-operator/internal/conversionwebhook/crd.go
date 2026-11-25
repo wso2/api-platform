@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -36,6 +37,32 @@ import (
 
 // ConvertPath is where the webhook serves ConversionReview requests.
 const ConvertPath = "/convert"
+
+// webhookVersions are the APIGateway versions whose schema differs from the storage
+// version, so the API server can only convert them through this webhook. A CRD that
+// serves none of them (an older chart's CRD, with identical v1 and v1alpha1 schemas)
+// needs no webhook and keeps strategy None.
+var webhookVersions = []string{"v2alpha1"}
+
+// needsWebhook reports whether the CRD serves a version only the webhook can convert.
+func needsWebhook(crd *apiextensionsv1.CustomResourceDefinition) bool {
+	for _, v := range crd.Spec.Versions {
+		if v.Served && slices.Contains(webhookVersions, v.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// pointsAt reports whether conv is a webhook conversion aimed at namespace/service.
+func pointsAt(conv *apiextensionsv1.CustomResourceConversion, namespace, service string) bool {
+	if conv == nil || conv.Strategy != apiextensionsv1.WebhookConverter || conv.Webhook == nil ||
+		conv.Webhook.ClientConfig == nil || conv.Webhook.ClientConfig.Service == nil {
+		return false
+	}
+	svc := conv.Webhook.ClientConfig.Service
+	return svc.Namespace == namespace && svc.Name == service
+}
 
 // servicePort is the port of the webhook Service the CRD points at.
 const servicePort int32 = 443
@@ -101,6 +128,9 @@ func (c *crdConversion) trust(ctx context.Context, b certBundle) error {
 		}
 		return fmt.Errorf("get CRD %s: %w", c.crdName, err)
 	}
+	if !needsWebhook(crd) {
+		return c.releaseWebhook(ctx, crd)
+	}
 	want := desiredConversion(c.namespace, c.service, trustedCABundle(b, c.now()))
 	if equality.Semantic.DeepEqual(crd.Spec.Conversion, want) {
 		return nil
@@ -113,6 +143,26 @@ func (c *crdConversion) trust(ctx context.Context, b certBundle) error {
 	c.logger.Info("Pointed the CRD's conversion webhook at the operator",
 		slog.String("crd", c.crdName),
 		slog.String("service", c.namespace+"/"+c.service))
+	return nil
+}
+
+// releaseWebhook handles a CRD that serves no version needing the webhook, such as an
+// older chart's CRD after the operator chart was rolled back, or before the new CRD is
+// applied during an upgrade. The operator then leaves the conversion alone, so a
+// rolled-back install never ends up pointing at a webhook that is about to disappear.
+// If the CRD still points at this operator's webhook, it is set back to strategy None,
+// which is exact while the served versions share one schema.
+func (c *crdConversion) releaseWebhook(ctx context.Context, crd *apiextensionsv1.CustomResourceDefinition) error {
+	if !pointsAt(crd.Spec.Conversion, c.namespace, c.service) {
+		return nil
+	}
+	patch := client.MergeFrom(crd.DeepCopy())
+	crd.Spec.Conversion = &apiextensionsv1.CustomResourceConversion{Strategy: apiextensionsv1.NoneConverter}
+	if err := c.writer.Patch(ctx, crd, patch); err != nil {
+		return fmt.Errorf("reset CRD %s conversion to None: %w", c.crdName, err)
+	}
+	c.logger.Info("The CRD serves no version that needs the conversion webhook; set its conversion back to None",
+		slog.String("crd", c.crdName))
 	return nil
 }
 
