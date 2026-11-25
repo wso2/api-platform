@@ -33,6 +33,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 // =============================================================================
@@ -847,4 +848,37 @@ func TestInitTracer_SecureConnectionWithoutCerts(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, shutdown)
 	defer shutdown()
+}
+
+func TestExtractTraceContextFromMetadata(t *testing.T) {
+	setupPropagator()
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+	t.Run("no metadata", func(t *testing.T) {
+		ctx := ExtractTraceContextFromMetadata(context.Background())
+		assert.False(t, trace.SpanContextFromContext(ctx).IsValid())
+	})
+	t.Run("valid traceparent", func(t *testing.T) {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("traceparent", tp))
+		sc := trace.SpanContextFromContext(ExtractTraceContextFromMetadata(ctx))
+		assert.True(t, sc.IsValid())
+		assert.True(t, sc.IsRemote())
+		assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", sc.TraceID().String())
+		assert.Equal(t, "00f067aa0ba902b7", sc.SpanID().String())
+	})
+	t.Run("tracestate carried", func(t *testing.T) {
+		ctx := metadata.NewIncomingContext(context.Background(),
+			metadata.Pairs("traceparent", tp, "tracestate", "a=1", "tracestate", "b=2"))
+		sc := trace.SpanContextFromContext(ExtractTraceContextFromMetadata(ctx))
+		require.True(t, sc.IsValid())
+		assert.Equal(t, "a=1,b=2", sc.TraceState().String())
+	})
+	t.Run("invalid traceparent", func(t *testing.T) {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("traceparent", "garbage"))
+		assert.False(t, trace.SpanContextFromContext(ExtractTraceContextFromMetadata(ctx)).IsValid())
+	})
+	t.Run("unrelated keys only", func(t *testing.T) {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-foo", "bar"))
+		assert.False(t, trace.SpanContextFromContext(ExtractTraceContextFromMetadata(ctx)).IsValid())
+	})
 }

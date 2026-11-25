@@ -28,12 +28,15 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace/noop"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
@@ -804,4 +807,92 @@ func TestProcessSpanStatus_TracingDisabled(t *testing.T) {
 	imm := stream.responses[0].GetImmediateResponse()
 	require.NotNil(t, imm)
 	assert.EqualValues(t, 401, imm.GetStatus().GetCode())
+}
+
+// =============================================================================
+// Root span parenting: stream metadata preferred, HTTP headers as fallback
+// =============================================================================
+
+const (
+	metaTraceparent   = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	headerTraceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+)
+
+// runTraceParentingTest drives one stream and returns the recorded root span.
+func runTraceParentingTest(t *testing.T, metaTP, headerTP string) sdktrace.ReadOnlySpan {
+	t.Helper()
+	prev := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(prev) })
+
+	server, k, sr := newSpanStatusServer(t)
+	server.tracingEnabled = true
+	registerTestRoute(k, "test-route", emptyChain())
+
+	req := requestHeadersReq("test-route", "GET", "/pets")
+	if headerTP != "" {
+		hm := req.GetRequestHeaders().Headers
+		hm.Headers = append(hm.Headers, &corev3.HeaderValue{Key: "traceparent", RawValue: []byte(headerTP)})
+	}
+	stream := newMockStream([]*extprocv3.ProcessingRequest{req, responseHeadersReq("200")})
+	if metaTP != "" {
+		stream.ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("traceparent", metaTP))
+	}
+
+	require.NoError(t, server.Process(stream))
+	root := spanByName(sr.Ended(), constants.SpanExternalProcessingProcess)
+	require.NotNil(t, root)
+	return root
+}
+
+func TestRootSpanParent_MetadataOnly(t *testing.T) {
+	root := runTraceParentingTest(t, metaTraceparent, "")
+	assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", root.SpanContext().TraceID().String())
+	assert.Equal(t, "00f067aa0ba902b7", root.Parent().SpanID().String())
+}
+
+func TestRootSpanParent_MetadataWinsOverHeader(t *testing.T) {
+	root := runTraceParentingTest(t, metaTraceparent, headerTraceparent)
+	assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", root.SpanContext().TraceID().String())
+	assert.Equal(t, "00f067aa0ba902b7", root.Parent().SpanID().String())
+}
+
+func TestRootSpanParent_HeaderFallback(t *testing.T) {
+	root := runTraceParentingTest(t, "", headerTraceparent)
+	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", root.SpanContext().TraceID().String())
+	assert.Equal(t, "b7ad6b7169203331", root.Parent().SpanID().String())
+}
+
+func TestRootSpanParent_NewRoot(t *testing.T) {
+	root := runTraceParentingTest(t, "", "")
+	assert.False(t, root.Parent().IsValid())
+}
+
+// An invalid traceparent in the stream metadata must not block the fallback to
+// a valid traceparent in the request headers.
+func TestRootSpanParent_InvalidMetadataFallsBackToHeader(t *testing.T) {
+	root := runTraceParentingTest(t, "00-not-a-valid-traceparent-01", headerTraceparent)
+	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", root.SpanContext().TraceID().String())
+	assert.Equal(t, "b7ad6b7169203331", root.Parent().SpanID().String())
+}
+
+// A stream that fails before its first message has no request headers, but its
+// root span must still be parented on the stream metadata (nil-req path).
+func TestRootSpanParent_RecvErrorBeforeFirstMessageUsesMetadata(t *testing.T) {
+	prev := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(prev) })
+
+	server, _, sr := newSpanStatusServer(t)
+	server.tracingEnabled = true
+
+	stream := newMockStream([]*extprocv3.ProcessingRequest{})
+	stream.recvErr = errors.New("boom")
+	stream.ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("traceparent", metaTraceparent))
+
+	require.Error(t, server.Process(stream))
+	root := spanByName(sr.Ended(), constants.SpanExternalProcessingProcess)
+	require.NotNil(t, root)
+	assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", root.SpanContext().TraceID().String())
+	assert.Equal(t, "00f067aa0ba902b7", root.Parent().SpanID().String())
 }

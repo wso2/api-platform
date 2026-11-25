@@ -21,6 +21,7 @@ package tracing
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/propagation"
@@ -34,6 +35,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"google.golang.org/grpc/metadata"
 )
 
 // InitTracer initializes the OpenTelemetry tracer and returns a shutdown function
@@ -170,13 +172,11 @@ func InitTracer(cfg *config.Config) (func(), error) {
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
 // from the given carrier and returns a context parented on the remote span.
 //
-// The carrier must be built from the downstream HTTP request headers that Envoy
-// delivers inside the RequestHeaders ProcessingRequest body — NOT from the
-// ext_proc gRPC stream metadata. The request's traceparent travels in the
-// message body, and the long-lived bidirectional ext_proc stream sets its gRPC
-// metadata only once at stream establishment, so it never carries a per-request
-// traceparent. Reading it from stream metadata always yielded an empty span
-// context, producing a new (unparented) root trace for every request.
+// This is the HTTP-header fallback: the carrier is built from the downstream
+// request headers that Envoy delivers inside the RequestHeaders
+// ProcessingRequest body. It is used only when the ext_proc stream metadata
+// carries no valid span context (see ExtractTraceContextFromMetadata), e.g. when
+// Envoy tracing is off but the client still sends a traceparent.
 //
 // When the carrier holds no valid traceparent, the input context is returned
 // unchanged and the caller will start a fresh root trace — an ordinary,
@@ -192,5 +192,33 @@ func ExtractTraceContext(ctx context.Context, carrier propagation.TextMapCarrier
 		slog.DebugContext(ctx, "No trace context in request headers; starting a new root trace")
 	}
 
+	return newCtx
+}
+
+// ExtractTraceContextFromMetadata extracts the W3C Trace Context from the
+// incoming ext_proc gRPC stream metadata. Envoy's async gRPC client injects its
+// ext_proc client span's traceparent (and tracestate) there, and one stream
+// serves exactly one HTTP request, so this is the correct per-request parent.
+// If the context has no metadata or no valid traceparent, ctx is returned with
+// no remote span context added.
+func ExtractTraceContextFromMetadata(ctx context.Context) context.Context {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ctx
+	}
+	carrier := propagation.MapCarrier{}
+	if v := md.Get("traceparent"); len(v) > 0 {
+		carrier["traceparent"] = v[0]
+	}
+	if v := md.Get("tracestate"); len(v) > 0 {
+		carrier["tracestate"] = strings.Join(v, ",")
+	}
+	if len(carrier) == 0 {
+		return ctx
+	}
+	newCtx := otel.GetTextMapPropagator().Extract(ctx, carrier)
+	if sc := trace.SpanContextFromContext(newCtx); sc.IsValid() {
+		slog.DebugContext(ctx, "Extracted trace context from ext_proc stream metadata", "trace_id", sc.TraceID().String())
+	}
 	return newCtx
 }
