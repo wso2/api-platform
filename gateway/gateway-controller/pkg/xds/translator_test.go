@@ -1927,10 +1927,13 @@ func TestTranslator_CreateFileAccessLog_ClientAddress(t *testing.T) {
 		name     string
 		hops     *uint32
 		wantXFF  string
+		wantAlt  string
 		wantText string
 	}{
-		{"unset", nil, "%REQ(X-FORWARDED-FOR)%", `"%REQ(X-FORWARDED-FOR)%" "%REQ(x-forwarded-for):20%" %REQ(X-REAL-IP)%`},
-		{"set", &two, resolved, `"` + resolved + `" "` + resolved + `" %REQ(X-REAL-IP)%`},
+		{"unset", nil, "%REQ(X-FORWARDED-FOR)%", "%REQ(X-FORWARDED-FOR?X-REAL-IP)%",
+			`"%REQ(X-FORWARDED-FOR)%" "%REQ(x-forwarded-for):20%" "%REQ(X-Forwarded-For?X-Real-IP):15%" %REQ(X-REAL-IP)%`},
+		{"set", &two, resolved, resolved,
+			`"` + resolved + `" "` + resolved + `" "` + resolved + `" %REQ(X-REAL-IP)%`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			formatOf := func(accessLogs config.AccessLogsConfig) *core.SubstitutionFormatString {
@@ -1949,17 +1952,22 @@ func TestTranslator_CreateFileAccessLog_ClientAddress(t *testing.T) {
 			}
 
 			jsonFormat := formatOf(config.AccessLogsConfig{
-				Enabled:    true,
-				Format:     "json",
-				JSONFields: map[string]string{"xff": "%REQ(X-FORWARDED-FOR)%", "ua": "%REQ(USER-AGENT)%"},
+				Enabled: true,
+				Format:  "json",
+				JSONFields: map[string]string{
+					"xff": "%REQ(X-FORWARDED-FOR)%",
+					"alt": "%REQ(X-FORWARDED-FOR?X-REAL-IP)%",
+					"ua":  "%REQ(USER-AGENT)%",
+				},
 			}).GetJsonFormat().GetFields()
 			assert.Equal(t, tc.wantXFF, jsonFormat["xff"].GetStringValue())
+			assert.Equal(t, tc.wantAlt, jsonFormat["alt"].GetStringValue())
 			assert.Equal(t, "%REQ(USER-AGENT)%", jsonFormat["ua"].GetStringValue())
 
 			textFormat := formatOf(config.AccessLogsConfig{
 				Enabled:    true,
 				Format:     "text",
-				TextFormat: `"%REQ(X-FORWARDED-FOR)%" "%REQ(x-forwarded-for):20%" %REQ(X-REAL-IP)%`,
+				TextFormat: `"%REQ(X-FORWARDED-FOR)%" "%REQ(x-forwarded-for):20%" "%REQ(X-Forwarded-For?X-Real-IP):15%" %REQ(X-REAL-IP)%`,
 			}).GetTextFormatSource().GetInlineString()
 			assert.Equal(t, tc.wantText, textFormat)
 		})

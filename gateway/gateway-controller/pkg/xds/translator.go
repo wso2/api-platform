@@ -3292,8 +3292,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 }
 
 // xffLogOperator matches an access-log %REQ(X-FORWARDED-FOR)% operator, with or without a
-// length limit.
-var xffLogOperator = regexp.MustCompile(`(?i)%REQ\(X-FORWARDED-FOR\)(:\d+)?%`)
+// fallback header (%REQ(X-FORWARDED-FOR?X-REAL-IP)%) or a length limit.
+var xffLogOperator = regexp.MustCompile(`(?i)%REQ\(X-FORWARDED-FOR(\?[^)]*)?\)(:\d+)?%`)
 
 // clientAddressLogFormat returns format unchanged when xff_num_trusted_hops is unset. When it is
 // set, X-Forwarded-For is removed before the access log is written, so its operator is replaced
