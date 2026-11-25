@@ -1,0 +1,400 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package selfhosted
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"slices"
+	"strings"
+
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/suites/cloud/steps/cloudbase"
+)
+
+// KindSelfHostedGateway is a kind of its own, not cleanup.KindGateway, because the registry keeps
+// one deleter per kind name and the two are deleted through different collections
+// (/self-hosted-gateways and /managed-gateways): sharing the kind would send one of them to the
+// wrong collection, which answers 404 and is swept as already gone. It is deleted with the managed
+// gateways.
+var KindSelfHostedGateway = cleanup.Kind{Name: "self-hosted-gateway", Order: cleanup.KindGateway.Order}
+
+const (
+	// pendingEndpoint is the placeholder a self-hosted gateway is registered with until its
+	// own controller dials in and reports a real endpoint. It matches PENDING_ENDPOINT in
+	// the console's selfHostedGatewaysApi.ts, which is what the console sends.
+	pendingEndpoint = "pending://awaiting-connection"
+	// selfHostedFunctionalityType is the plain API gateway kind ("regular", not "ai" or
+	// "event").
+	selfHostedFunctionalityType = "regular"
+	// activeTokenStatus is the only token status the console counts as active; a token with
+	// no status is active too, as the console treats it.
+	activeTokenStatus = "active"
+)
+
+// RegisterSelfHostedGatewaySteps binds the steps that register a self-hosted gateway, manage its
+// registration tokens and delete it.
+func (s *Steps) RegisterSelfHostedGatewaySteps(sc cloudbase.StepRegistrar) {
+	sc.Step(`^I create a synthetic self-hosted APIP gateway$`, s.createSelfHostedGateway)
+	sc.Step(`^the self-hosted APIP gateway should be retrievable and awaiting connection$`, s.getSelfHostedGatewayAwaitingConnection)
+	sc.Step(`^I generate a registration token for the self-hosted APIP gateway$`, s.generateRegistrationToken)
+	sc.Step(`^I reconfigure the registration token of the self-hosted APIP gateway$`, s.reconfigureRegistrationToken)
+	sc.Step(`^the self-hosted APIP gateway should have exactly (\d+) active registration tokens?$`, s.assertActiveRegistrationTokens)
+	sc.Step(`^the revoked registration tokens should no longer be active$`, s.assertRevokedTokensInactive)
+	sc.Step(`^I delete the synthetic self-hosted APIP gateway$`, s.deleteSelfHostedGateway)
+	sc.Step(`^the self-hosted APIP gateway should eventually be absent$`, s.verifySelfHostedGatewayDeleted)
+	s.registerLocalGatewaySteps(sc)
+}
+
+func selfHostedGatewayPath(id string) string {
+	return cloudbase.SelfHostedGatewaysPath + "/" + url.PathEscape(id)
+}
+
+func selfHostedGatewayTokensPath(id string) string {
+	return selfHostedGatewayPath(id) + "/tokens"
+}
+
+// createSelfHostedGateway registers a gateway in the selected environment the way the
+// console does: no endpoint yet, only the pending placeholder.
+func (s *Steps) createSelfHostedGateway(ctx context.Context) error {
+	environment, err := cloudbase.RequiredValue(ctx, cloudbase.KeyEnvironmentName)
+	if err != nil {
+		return err
+	}
+	// "shgw" keeps the handle short: Unique() adds 11 characters, and the gateway handle is
+	// capped at 40 (platform-api's CreateGatewayRequest.id). If the handle is derived from the
+	// environment and the display name, as the managed-gateway one is, a long base would not fit.
+	if err := cloudbase.GenerateResourceAndStore(ctx, "shgw", keySelfHostedGatewayID); err != nil {
+		return err
+	}
+	name, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	// Register a best-guess id before the call, as the managed-gateway step does, so a create
+	// that succeeds with an undecodable body still has something to sweep. A wrong guess is
+	// harmless: its delete answers 404, which the sweep treats as already gone.
+	cleanupID := environment + "-" + name
+	if err := cleanup.Register(ctx, cleanup.Resource{
+		Kind: KindSelfHostedGateway, ID: cleanupID, Actor: cloudbase.ResourceActor,
+		Description: "self-hosted gateway " + cleanupID,
+	}); err != nil {
+		return fmt.Errorf("registering self-hosted gateway %q for cleanup: %w", cleanupID, err)
+	}
+	resp, err := s.DoAuthenticated(ctx, http.MethodPost, cloudbase.SelfHostedGatewaysPath, map[string]any{
+		"displayName":       name,
+		"description":       "Created and deleted by the APIP cloud integration test. Safe to delete.",
+		"environment":       environment,
+		"functionalityType": selfHostedFunctionalityType,
+		"endpoints":         []string{pendingEndpoint},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return cloudbase.ResponseError(resp)
+	}
+	id, err := cloudbase.StringField(resp, "id")
+	if err != nil {
+		return fmt.Errorf("creating APIP self-hosted gateway: %w", err)
+	}
+	if id != cleanupID {
+		// Register the id the platform answered with before dropping the guess, so the gateway
+		// is never left without a registration. If that fails, nothing would clean it up, so
+		// delete it now and fail the step.
+		if err := cleanup.Register(ctx, cleanup.Resource{
+			Kind: KindSelfHostedGateway, ID: id, Actor: cloudbase.ResourceActor,
+			Description: "self-hosted gateway " + id,
+		}); err != nil {
+			err = fmt.Errorf("registering self-hosted gateway %q for cleanup: %w", id, err)
+			return errors.Join(err, s.removeUnregisteredSelfHostedGateway(ctx, id))
+		}
+		cloudbase.Deregister(ctx, KindSelfHostedGateway, cleanupID)
+	}
+	return tcontext.Set(ctx, keySelfHostedGatewayID, id)
+}
+
+// removeUnregisteredSelfHostedGateway is the best-effort delete of a gateway that could not be
+// registered for cleanup. It returns nil when the gateway is gone, and an error naming the
+// gateway when it may still exist.
+func (s *Steps) removeUnregisteredSelfHostedGateway(ctx context.Context, id string) error {
+	resp, err := s.DoAuthenticatedRaw(ctx, http.MethodDelete, selfHostedGatewayPath(id), nil)
+	if err != nil {
+		return fmt.Errorf("deleting unregistered self-hosted gateway %q: %w", id, err)
+	}
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("deleting unregistered self-hosted gateway %q: %w", id, cloudbase.ResponseError(resp))
+	}
+	return nil
+}
+
+// getSelfHostedGatewayAwaitingConnection reads the gateway back by id. It also proves the
+// by-id route exists, which is what makes the later "eventually absent" 404 meaningful
+// rather than the answer of a route that was never there.
+func (s *Steps) getSelfHostedGatewayAwaitingConnection(ctx context.Context) error {
+	id, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	environment, err := cloudbase.RequiredValue(ctx, cloudbase.KeyEnvironmentName)
+	if err != nil {
+		return err
+	}
+	resp, err := s.DoAuthenticated(ctx, http.MethodGet, selfHostedGatewayPath(id), nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return cloudbase.ResponseError(resp)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(resp.Body, &document); err != nil {
+		return fmt.Errorf("decoding APIP self-hosted gateway: %w (%s)", err, resp.Describe())
+	}
+	return checkAwaitingConnection(document, id, environment)
+}
+
+// checkAwaitingConnection asserts the state of a self-hosted gateway no controller has
+// connected to yet: inactive, in its environment, with only the pending endpoint.
+func checkAwaitingConnection(document map[string]any, id, environment string) error {
+	if got, _ := document["id"].(string); got != id {
+		return fmt.Errorf("self-hosted gateway id = %q, want %q", got, id)
+	}
+	if got, _ := document["environment"].(string); got != environment {
+		return fmt.Errorf("self-hosted gateway %q environment = %q, want %q", id, got, environment)
+	}
+	active, ok := document["isActive"].(bool)
+	if !ok {
+		return fmt.Errorf("self-hosted gateway %q has no boolean isActive field", id)
+	}
+	if active {
+		return fmt.Errorf("self-hosted gateway %q is active, but no controller has connected to it", id)
+	}
+	endpoints, ok := document["endpoints"].([]any)
+	if !ok || len(endpoints) != 1 || endpoints[0] != pendingEndpoint {
+		return fmt.Errorf("self-hosted gateway %q endpoints = %v, want [%s]", id, document["endpoints"], pendingEndpoint)
+	}
+	return nil
+}
+
+func (s *Steps) generateRegistrationToken(ctx context.Context) error {
+	id, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	return s.mintRegistrationToken(ctx, id)
+}
+
+// mintRegistrationToken mints a token and checks it came back, without the token's value
+// ever leaving this function.
+func (s *Steps) mintRegistrationToken(ctx context.Context, gatewayID string) error {
+	_, err := s.mintRegistrationTokenValue(ctx, gatewayID)
+	return err
+}
+
+// mintRegistrationTokenValue mints a token and returns its plain-text value, which the caller
+// must hand only to the gateway it is for. The response is deliberately neither published to
+// the funnel nor described in an error: the plain-text token appears only in this response.
+func (s *Steps) mintRegistrationTokenValue(ctx context.Context, gatewayID string) (string, error) {
+	resp, err := s.DoAuthenticatedRaw(ctx, http.MethodPost, selfHostedGatewayTokensPath(gatewayID), map[string]any{})
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusCreated {
+		if resp.StatusCode >= http.StatusBadRequest {
+			return "", cloudbase.ResponseError(resp) // an error body holds no minted token
+		}
+		return "", fmt.Errorf("minting a registration token: %s %s -> %d, want %d (body withheld: it may hold a token)",
+			resp.Method, resp.URL, resp.StatusCode, http.StatusCreated)
+	}
+	_, token, err := parseMintedToken(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("minting a registration token for self-hosted gateway %q: %w", gatewayID, err)
+	}
+	return token, nil
+}
+
+// mintedTokenID checks a mint response carries both a token and its id, and returns the id.
+// Its errors never quote the body.
+func mintedTokenID(body []byte) (string, error) {
+	id, _, err := parseMintedToken(body)
+	return id, err
+}
+
+// parseMintedToken returns the id and the plain-text value of a minted token. Its errors never
+// quote the body.
+func parseMintedToken(body []byte) (id, token string, err error) {
+	var document struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &document); err != nil {
+		return "", "", fmt.Errorf("the token response is not a JSON object")
+	}
+	if strings.TrimSpace(document.Token) == "" {
+		return "", "", fmt.Errorf("the token response has no token")
+	}
+	if strings.TrimSpace(document.ID) == "" {
+		return "", "", fmt.Errorf("the token response has no token id")
+	}
+	return document.ID, strings.TrimSpace(document.Token), nil
+}
+
+// reconfigureRegistrationToken does what the console's "reconfigure" does: revoke every
+// active token, then mint a new one. It records the revoked ids for the next assertion.
+func (s *Steps) reconfigureRegistrationToken(ctx context.Context) error {
+	id, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	active, err := s.activeRegistrationTokenIDs(ctx, id)
+	if err != nil {
+		return err
+	}
+	// With nothing to revoke, "the revoked tokens are no longer active" would pass vacuously.
+	if len(active) == 0 {
+		return fmt.Errorf("self-hosted gateway %q has no active registration token to reconfigure", id)
+	}
+	for _, tokenID := range active {
+		resp, err := s.DoAuthenticated(ctx, http.MethodDelete,
+			selfHostedGatewayTokensPath(id)+"/"+url.PathEscape(tokenID), nil)
+		if err != nil {
+			return err
+		}
+		// 204, as apip-platform-api's /self-hosted-gateways contract documents it — not the
+		// 200 with a message body that platform-api's own /gateways/{id}/tokens/{id} returns.
+		if resp.StatusCode != http.StatusNoContent {
+			return cloudbase.ResponseError(resp)
+		}
+	}
+	if err := tcontext.Set(ctx, keyRevokedTokenIDs, strings.Join(active, ",")); err != nil {
+		return err
+	}
+	return s.mintRegistrationToken(ctx, id)
+}
+
+func (s *Steps) assertActiveRegistrationTokens(ctx context.Context, want int) error {
+	id, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	active, err := s.activeRegistrationTokenIDs(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(active) != want {
+		return fmt.Errorf("self-hosted gateway %q has %d active registration tokens %v, want %d", id, len(active), active, want)
+	}
+	return nil
+}
+
+func (s *Steps) assertRevokedTokensInactive(ctx context.Context) error {
+	id, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	joined, err := cloudbase.RequiredValue(ctx, keyRevokedTokenIDs)
+	if err != nil {
+		return err
+	}
+	active, err := s.activeRegistrationTokenIDs(ctx, id)
+	if err != nil {
+		return err
+	}
+	if still := stillActive(strings.Split(joined, ","), active); len(still) > 0 {
+		return fmt.Errorf("revoked registration tokens %v of self-hosted gateway %q are still active", still, id)
+	}
+	return nil
+}
+
+// stillActive returns the revoked ids that appear among the active ones.
+func stillActive(revoked, active []string) []string {
+	var still []string
+	for _, tokenID := range revoked {
+		if slices.Contains(active, tokenID) {
+			still = append(still, tokenID)
+		}
+	}
+	return still
+}
+
+func (s *Steps) activeRegistrationTokenIDs(ctx context.Context, gatewayID string) ([]string, error) {
+	resp, err := s.DoAuthenticated(ctx, http.MethodGet, selfHostedGatewayTokensPath(gatewayID), nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, cloudbase.ResponseError(resp)
+	}
+	items, err := cloudbase.ListItems(resp)
+	if err != nil {
+		return nil, fmt.Errorf("decoding registration tokens of self-hosted gateway %q: %w", gatewayID, err)
+	}
+	return activeTokenIDs(items), nil
+}
+
+// activeTokenIDs applies the console's rule: a token is active when its status is "active"
+// or absent.
+func activeTokenIDs(items []map[string]any) []string {
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		id, _ := item["id"].(string)
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		if status, present := item["status"]; present && status != activeTokenStatus {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (s *Steps) deleteSelfHostedGateway(ctx context.Context) error {
+	id, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	resp, err := s.DoAuthenticated(ctx, http.MethodDelete, selfHostedGatewayPath(id), nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
+		return cloudbase.ResponseError(resp)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		cloudbase.Deregister(ctx, KindSelfHostedGateway, id)
+	}
+	return nil
+}
+
+func (s *Steps) verifySelfHostedGatewayDeleted(ctx context.Context) error {
+	id, err := cloudbase.RequiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	if err := s.AwaitNotFound(ctx, selfHostedGatewayPath(id), "self-hosted gateway "+id); err != nil {
+		return err
+	}
+	cloudbase.Deregister(ctx, KindSelfHostedGateway, id)
+	return nil
+}

@@ -36,62 +36,50 @@ scenarios:
     title: "An API promoted along a pipeline is served by the gateway of the target environment."
     priority: P0
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_promotion.feature
           scenario: "An API promoted along a pipeline is served by the gateway of the target environment"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROMOTION_003
     title: "Deploying directly to an environment a promotion path leads to is refused."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_promotion.feature
           scenario: "Deploying directly to an environment a promotion path leads to is refused"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROMOTION_004
     title: "A promotion that names no build carries the build the source environment is running."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_promotion.feature
           scenario: "A promotion that names no build carries the build the source environment is running"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROMOTION_005
     title: "Promoting a build that is not deployed in the source environment is refused."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_promotion.feature
           scenario: "Promoting a build that is not deployed in the source environment is refused"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROMOTION_006
     title: "Promotion follows the environment chain of the pipeline in order."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_promotion.feature
           scenario: "Promotion follows the environment chain of the pipeline in order"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROMOTION_007
     title: "A promoted deployment can be undeployed in the target environment alone."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_promotion.feature
           scenario: "A promoted deployment can be undeployed in the target environment alone"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROMOTION_008
     title: "Which environments can be deployed to directly follows the pipeline as it is now."
     priority: P1

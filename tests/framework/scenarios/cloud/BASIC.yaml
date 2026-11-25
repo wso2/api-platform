@@ -32,7 +32,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A REST API can be deployed and invoked through the gateway"
   - id: ID_APIP_BASIC_002
     title: "Creating an API whose name and version are already in use is rejected."
@@ -40,7 +40,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Creating an API whose name and version are already in use is rejected"
   - id: ID_APIP_BASIC_003
     title: "Creating an API with an invalid context or version is rejected."
@@ -48,7 +48,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Creating an API with an invalid context or version is rejected"
   - id: ID_APIP_BASIC_004
     title: "An API deployed with security enabled refuses an unauthenticated call."
@@ -56,7 +56,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "An API deployed with security enabled refuses an unauthenticated call"
   - id: ID_APIP_BASIC_005
     title: "An API deployed with security enabled accepts a valid API key."
@@ -64,7 +64,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "An API deployed with security enabled accepts a valid API key"
   - id: ID_APIP_BASIC_006
     title: "A request to a path the API does not expose is answered with not found by the gateway."
@@ -72,7 +72,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A request to a path the API does not expose is answered with not found by the gateway"
   - id: ID_APIP_BASIC_007
     title: "A new version of an API routes independently of the previous version."
@@ -80,7 +80,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A new version of an API routes independently of the previous version"
   - id: ID_APIP_BASIC_008
     title: "Undeploying an API stops the gateway serving it."
@@ -88,7 +88,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Undeploying an API stops the gateway serving it"
   - id: ID_APIP_BASIC_009
     title: "Redeploying an API serves the updated definition without interrupting traffic."
@@ -96,7 +96,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Redeploying an API serves the updated definition without interrupting traffic"
   - id: ID_APIP_BASIC_010
     title: "An API imported from an OpenAPI file has the definition's operations and stored definition, and the gateway serves them."
@@ -104,7 +104,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "An API imported from an OpenAPI file has the definition's operations and stored definition, and the gateway serves them"
   - id: ID_APIP_BASIC_011
     title: "A second version imported under the same name keeps its own operations and definition."
@@ -112,7 +112,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A second version imported under the same name keeps its own operations and definition"
   - id: ID_APIP_BASIC_012
     title: "Deleting an imported API removes its definition, and the same API can be imported again with another definition."
@@ -120,7 +120,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Deleting an imported API removes its definition, and the same API can be imported again with another definition"
   - id: ID_APIP_BASIC_013
     title: "Importing with both a file and a URL, or with neither, is refused and creates nothing."
@@ -128,7 +128,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Importing with both a file and a URL, or with neither, is refused and creates nothing"
   - id: ID_APIP_BASIC_014
     title: "Importing a file that is not a usable OpenAPI 3.x definition is refused with its reason and creates nothing."
@@ -136,7 +136,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Importing a file that is not a usable OpenAPI 3.x definition is refused with its reason and creates nothing"
   - id: ID_APIP_BASIC_015
     title: "A definition over the size limit is refused as too large and creates nothing."
@@ -144,7 +144,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A definition over the size limit is refused as too large and creates nothing"
   - id: ID_APIP_BASIC_016
     title: "Importing from the cloud metadata address or a file URL is refused and creates nothing."
@@ -152,7 +152,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Importing from the cloud metadata address or a file URL is refused and creates nothing"
   - id: ID_APIP_BASIC_017
     title: "A new definition adds and removes operations, an operation it keeps keeps its policy, and a redeploy serves the result."
@@ -160,7 +160,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A new definition adds and removes operations, an operation it keeps keeps its policy, and a redeploy serves the result"
   - id: ID_APIP_BASIC_018
     title: "A definition that renames an operation's path gives the renamed operation no policy, and it is served without it."
@@ -168,7 +168,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A definition that renames an operation's path gives the renamed operation no policy, and it is served without it"
   - id: ID_APIP_BASIC_019
     title: "Validating an invalid OpenAPI file lists its errors and returns its content, and a valid file has none."
@@ -176,7 +176,7 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "Validating an invalid OpenAPI file lists its errors and returns its content, and a valid file has none"
   - id: ID_APIP_BASIC_020
     title: "A changed context and version are kept, and a redeploy serves the API at the new context and no longer at the old one."
@@ -184,5 +184,5 @@ scenarios:
     cloud:
       status: automated
       refs:
-        - feature: suites/cloud/features/apip_basic.feature
+        - feature: suites/cloud/features/apip_restapi.feature
           scenario: "A changed context and version are kept, and a redeploy serves the API at the new context and no longer at the old one"
