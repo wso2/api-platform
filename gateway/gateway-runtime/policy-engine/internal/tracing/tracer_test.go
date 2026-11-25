@@ -874,6 +874,13 @@ func TestExtractTraceContextFromMetadata(t *testing.T) {
 		require.True(t, sc.IsValid())
 		assert.Equal(t, "a=1,b=2", sc.TraceState().String())
 	})
+	t.Run("empty tracestate values skipped", func(t *testing.T) {
+		ctx := metadata.NewIncomingContext(context.Background(),
+			metadata.Pairs("traceparent", tp, "tracestate", "a=1", "tracestate", "", "tracestate", "b=2"))
+		sc := trace.SpanContextFromContext(ExtractTraceContextFromMetadata(ctx))
+		require.True(t, sc.IsValid())
+		assert.Equal(t, "a=1,b=2", sc.TraceState().String())
+	})
 	t.Run("invalid traceparent", func(t *testing.T) {
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("traceparent", "garbage"))
 		assert.False(t, trace.SpanContextFromContext(ExtractTraceContextFromMetadata(ctx)).IsValid())
@@ -884,7 +891,7 @@ func TestExtractTraceContextFromMetadata(t *testing.T) {
 	})
 }
 
-// newSampler must follow the parent's sampled flag so policy-engine spans are
+// NewSampler must follow the parent's sampled flag so policy-engine spans are
 // kept or dropped together with the router's (Envoy's) spans, at any rate.
 func TestNewSampler_ParentBased(t *testing.T) {
 	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6ffffffffffffffff") // high low-64 bits: ratio sampler rejects it
@@ -903,12 +910,51 @@ func TestNewSampler_ParentBased(t *testing.T) {
 	}
 
 	for _, rate := range []float64{1.0, 0.5, 0.0001} {
-		s := newSampler(rate)
+		s := NewSampler(rate)
 		assert.Equal(t, sdktrace.RecordAndSample, decide(s, parent(true)), "rate %v: sampled parent must be sampled", rate)
 		assert.Equal(t, sdktrace.Drop, decide(s, parent(false)), "rate %v: unsampled parent must be dropped", rate)
 	}
 
 	// With no parent the rate applies.
-	assert.Equal(t, sdktrace.RecordAndSample, decide(newSampler(1.0), context.Background()))
-	assert.Equal(t, sdktrace.Drop, decide(newSampler(0.0001), context.Background()))
+	assert.Equal(t, sdktrace.RecordAndSample, decide(NewSampler(1.0), context.Background()))
+	assert.Equal(t, sdktrace.Drop, decide(NewSampler(0.0001), context.Background()))
+}
+
+// InitTracer must install the parent-based sampler on the global tracer
+// provider: an unsampled remote parent is dropped even at sampling_rate 1.0.
+func TestInitTracer_UsesParentBasedSampler(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+	prevTP := otel.GetTracerProvider()
+	prevProp := otel.GetTextMapPropagator()
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTP)
+		otel.SetTextMapPropagator(prevProp)
+	})
+
+	shutdown, err := InitTracer(&config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	})
+	require.NoError(t, err)
+	defer shutdown()
+
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	start := func(flags trace.TraceFlags) trace.Span {
+		ctx := trace.ContextWithRemoteSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID: traceID, SpanID: spanID, TraceFlags: flags, Remote: true,
+		}))
+		_, span := otel.Tracer("test").Start(ctx, "root")
+		defer span.End()
+		return span
+	}
+	assert.True(t, start(trace.FlagsSampled).SpanContext().IsSampled(), "sampled parent must be sampled")
+	assert.False(t, start(0).SpanContext().IsSampled(), "unsampled parent must be dropped at sampling_rate 1.0")
 }

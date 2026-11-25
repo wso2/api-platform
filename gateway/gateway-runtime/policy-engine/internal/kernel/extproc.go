@@ -194,8 +194,9 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 
 // traceContextCarrier builds a W3C trace-context carrier from the downstream
 // HTTP request headers Envoy delivers in a RequestHeaders ProcessingRequest.
-// It is the fallback used only when the ext_proc stream metadata carries no
-// valid trace context.
+// It is a defensive fallback, used only when the ext_proc stream metadata
+// carries no valid trace context (in practice, when the router's tracing
+// configuration diverges from the policy engine's).
 // Only traceparent/tracestate are copied. Any non-header message (or one with
 // no headers) yields an empty carrier, so a new root trace is started. Header
 // keys arrive lowercased over HTTP/2, but ToLower keeps this robust regardless.

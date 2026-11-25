@@ -44,6 +44,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -120,7 +121,7 @@ func newSpanStatusServerWithCEL(t *testing.T, cel executor.CELEvaluator) (*Exter
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, cel, tp.Tracer("test"))
 	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
-	server.tracer = tp.Tracer("test") // package-internal field; avoids mutating global otel state
+	server.tracer = tp.Tracer("test") // package-internal field; avoids replacing the global tracer provider
 	return server, k, sr
 }
 
@@ -895,4 +896,47 @@ func TestRootSpanParent_RecvErrorBeforeFirstMessageUsesMetadata(t *testing.T) {
 	require.NotNil(t, root)
 	assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", root.SpanContext().TraceID().String())
 	assert.Equal(t, "00f067aa0ba902b7", root.Parent().SpanID().String())
+}
+
+// With the production sampler, the root span follows the sampled flag of
+// Envoy's ext_proc span in the stream metadata: an unsampled Envoy span drops
+// the policy-engine root and its children even when the client's own header
+// says sampled, and a sampled one keeps them.
+func TestRootSpanSampling_FollowsMetadataParent(t *testing.T) {
+	const unsampledMeta = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"
+	run := func(t *testing.T, metaTP string) []sdktrace.ReadOnlySpan {
+		prev := otel.GetTextMapPropagator()
+		otel.SetTextMapPropagator(propagation.TraceContext{})
+		t.Cleanup(func() { otel.SetTextMapPropagator(prev) })
+
+		sr := tracetest.NewSpanRecorder()
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr), sdktrace.WithSampler(tracing.NewSampler(1.0)))
+		t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+		k := NewKernel()
+		server := NewExternalProcessorServer(k, executor.NewChainExecutor(nil, nil, tp.Tracer("test")),
+			config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
+		server.tracer = tp.Tracer("test")
+		server.tracingEnabled = true
+		registerTestRoute(k, "test-route", emptyChain())
+
+		req := requestHeadersReq("test-route", "GET", "/pets")
+		hm := req.GetRequestHeaders().Headers
+		hm.Headers = append(hm.Headers, &corev3.HeaderValue{Key: "traceparent", RawValue: []byte(headerTraceparent)})
+		stream := newMockStream([]*extprocv3.ProcessingRequest{req, responseHeadersReq("200")})
+		stream.ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("traceparent", metaTP))
+
+		require.NoError(t, server.Process(stream))
+		return sr.Ended()
+	}
+
+	t.Run("unsampled metadata parent drops all spans", func(t *testing.T) {
+		assert.Empty(t, run(t, unsampledMeta))
+	})
+	t.Run("sampled metadata parent keeps spans", func(t *testing.T) {
+		spans := run(t, metaTraceparent)
+		root := spanByName(spans, constants.SpanExternalProcessingProcess)
+		require.NotNil(t, root)
+		assert.Equal(t, "00f067aa0ba902b7", root.Parent().SpanID().String())
+	})
 }

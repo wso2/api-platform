@@ -126,7 +126,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		samplingRate = 1.0 // Default to sampling all requests
 	}
 
-	sampler := newSampler(samplingRate)
+	sampler := NewSampler(samplingRate)
 
 	slog.InfoContext(ctx, "Using trace sampler", "sampling_rate", samplingRate)
 
@@ -164,17 +164,20 @@ func InitTracer(cfg *config.Config) (func(), error) {
 	}, nil
 }
 
-// newSampler returns the policy-engine sampler for the given rate (> 0).
+// NewSampler returns the policy-engine sampler for the given rate (> 0).
 //
 // It is parent-based: when the root span has a parent (Envoy's ext_proc span
 // from the stream metadata, or a client's traceparent), the parent's sampled
 // flag decides, so the policy engine keeps or drops its spans together with the
-// router. Envoy samples requests randomly at the same rate and always
-// propagates its traceparent, even for requests it does not sample, so an
-// independent decision here would export policy-engine spans whose router
-// parent was dropped (orphans), and drop policy-engine spans from traces the
-// router kept (gaps). The rate applies only to spans with no parent.
-func newSampler(samplingRate float64) sdktrace.Sampler {
+// router. Envoy makes the decision per request: for a request with no incoming
+// traceparent it samples randomly at the same rate, and for one with a
+// traceparent it follows that header's sampled flag. Either way it always
+// propagates its traceparent to the policy engine, including for requests it
+// does not sample, so an independent decision here would export policy-engine
+// spans whose router parent was dropped (orphans), and drop policy-engine spans
+// from traces the router kept (gaps). The rate applies only to spans with no
+// parent.
+func NewSampler(samplingRate float64) sdktrace.Sampler {
 	if samplingRate >= 1.0 {
 		return sdktrace.ParentBased(sdktrace.AlwaysSample())
 	}
@@ -184,15 +187,18 @@ func newSampler(samplingRate float64) sdktrace.Sampler {
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
 // from the given carrier and returns a context parented on the remote span.
 //
-// This is the HTTP-header fallback: the carrier is built from the downstream
-// request headers that Envoy delivers inside the RequestHeaders
+// This is a defensive HTTP-header fallback: the carrier is built from the
+// downstream request headers that Envoy delivers inside the RequestHeaders
 // ProcessingRequest body. It is used only when the ext_proc stream metadata
-// carries no valid span context (see ExtractTraceContextFromMetadata), e.g. when
-// Envoy tracing is off but the client still sends a traceparent.
+// carries no valid span context (see ExtractTraceContextFromMetadata). The router
+// and the policy engine normally read the same [tracing] configuration, so with
+// tracing enabled the metadata is always present; the fallback matters only when
+// the router's tracing configuration diverges from the policy engine's (e.g.
+// router tracing off) and the client sends a traceparent.
 //
 // When the carrier holds no valid traceparent, the input context is returned
 // unchanged and the caller will start a fresh root trace — an ordinary,
-// non-error condition (e.g. Envoy tracing disabled), so it is logged at debug.
+// non-error condition, so it is logged at debug.
 func ExtractTraceContext(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	propagator := otel.GetTextMapPropagator()
 	newCtx := propagator.Extract(ctx, carrier)
@@ -222,8 +228,16 @@ func ExtractTraceContextFromMetadata(ctx context.Context) context.Context {
 	if v := md.Get("traceparent"); len(v) > 0 {
 		carrier["traceparent"] = v[0]
 	}
-	if v := md.Get("tracestate"); len(v) > 0 {
-		carrier["tracestate"] = strings.Join(v, ",")
+	// tracestate may be split across several values; combine them in order,
+	// skipping empty ones, the same way traceContextCarrier does for headers.
+	var tracestate []string
+	for _, v := range md.Get("tracestate") {
+		if v != "" {
+			tracestate = append(tracestate, v)
+		}
+	}
+	if len(tracestate) > 0 {
+		carrier["tracestate"] = strings.Join(tracestate, ",")
 	}
 	if len(carrier) == 0 {
 		return ctx
