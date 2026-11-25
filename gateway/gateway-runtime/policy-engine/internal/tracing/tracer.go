@@ -169,9 +169,9 @@ func InitTracer(cfg *config.Config) (func(), error) {
 // It is parent-based: when the root span has a parent (Envoy's ext_proc span
 // from the stream metadata, or a client's traceparent), the parent's sampled
 // flag decides, so the policy engine keeps or drops its spans together with the
-// router. Envoy makes the decision per request: for a request with no incoming
-// traceparent it samples randomly at the same rate, and for one with a
-// traceparent it follows that header's sampled flag. Either way it always
+// router. Envoy makes the decision per request: it samples randomly at the same
+// rate, also when the client sends a sampled ("-01") traceparent, and never
+// traces a request whose traceparent is not sampled ("-00"). Either way it always
 // propagates its traceparent to the policy engine, including for requests it
 // does not sample, so an independent decision here would export policy-engine
 // spans whose router parent was dropped (orphans), and drop policy-engine spans

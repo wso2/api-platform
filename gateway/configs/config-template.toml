@@ -1533,10 +1533,10 @@ insecure = true
 service_version = "1.0.0"
 batch_timeout = "1s"
 max_export_batch_size = 512
-# Fraction of requests to trace (0.0 < rate <= 1.0; 0 or unset means 1.0). Applies
-# to both the router and the policy engine, but only to requests that arrive without
-# a W3C traceparent header. When a client sends a traceparent, its sampled flag
-# decides for the whole request instead: "-01" is traced and "-00" is not, at any
-# rate. The policy engine always follows the router's decision for a request, so
-# its spans are kept or dropped together with the router's.
+# Fraction of requests to trace (0.0 < rate <= 1.0; 0 or unset means 1.0). The router
+# samples each request randomly at this rate, including requests that arrive with a
+# W3C traceparent header marked sampled ("-01"). A request whose traceparent is marked
+# not sampled ("-00") is never traced, at any rate. The policy engine always follows
+# the router's decision for a request, so its spans are kept or dropped together with
+# the router's.
 sampling_rate = 1.0
