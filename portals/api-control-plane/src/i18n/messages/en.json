@@ -3778,8 +3778,11 @@
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designCustomize": {
     "defaultMessage": "Design and Customize API Proxies"
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designSelfHostedGateway": {
-    "defaultMessage": "Getting Started with a Self-Hosted Gateway"
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designDeployTest": {
+    "defaultMessage": "Deploy and Test an API Proxy"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designPublish": {
+    "defaultMessage": "Publish an API"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designTitle": {
     "defaultMessage": "Design and Deploy",
@@ -3789,28 +3792,31 @@
     "defaultMessage": "Explore More",
     "description": "Heading above a card of links into the product documentation."
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateProxy": {
-    "defaultMessage": "Create an API Proxy"
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysManage": {
+    "defaultMessage": "Manage Gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysPortals": {
+    "defaultMessage": "Manage API Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysSelfHosted": {
+    "defaultMessage": "Self-Hosted Gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysTitle": {
+    "defaultMessage": "Gateways and Portals",
+    "description": "Section heading. Refers to running gateways, including self-hosted ones, and managing API portals."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateGraphql": {
+    "defaultMessage": "Create GraphQL APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateRest": {
+    "defaultMessage": "Create REST APIs"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide": {
     "defaultMessage": "Get Started with the Choreo API Management"
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedRestFromScratch": {
-    "defaultMessage": "Create a REST API Proxy from Scratch"
-  },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedTitle": {
     "defaultMessage": "Get Started",
     "description": "Section heading for introductory documentation."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governGovernance": {
-    "defaultMessage": "API Governance Overview"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governInsights": {
-    "defaultMessage": "Insights and Analytics"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governTitle": {
-    "defaultMessage": "Govern and Monitor",
-    "description": "Section heading. \"Govern\" means applying organization-wide rules to APIs."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.apiAction": {
     "defaultMessage": "Create an API"
