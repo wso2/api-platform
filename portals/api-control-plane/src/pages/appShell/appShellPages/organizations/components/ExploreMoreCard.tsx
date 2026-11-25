@@ -52,7 +52,7 @@ const messages = defineMessages({
   },
   designCustomize: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designCustomize',
-    defaultMessage: 'Design and Customize API Proxies',
+    defaultMessage: 'Design and Customize APIs',
   },
   designAttachPolicies: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies',
@@ -60,7 +60,7 @@ const messages = defineMessages({
   },
   designDeployTest: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designDeployTest',
-    defaultMessage: 'Deploy and Test an API Proxy',
+    defaultMessage: 'Deploy and Test an API',
   },
   designPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designPublish',
