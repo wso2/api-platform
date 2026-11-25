@@ -167,6 +167,9 @@ const (
 	// rules, so it enforces nothing on its own; the gateway health routes enable it per
 	// route to admit only router.health.allowed_clients.
 	RBACFilterName = "envoy.filters.http.rbac"
+	// ClientAddressFilterName is the header_mutation HTTP filter that sets X-Forwarded-For to
+	// the client address resolved from the connection and xff_num_trusted_hops.
+	ClientAddressFilterName = "envoy.filters.http.header_mutation"
 	// GatewayHealthClientsPolicyName names the RBAC policy on the gateway health routes.
 	GatewayHealthClientsPolicyName = "health-clients"
 

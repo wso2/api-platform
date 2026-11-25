@@ -457,7 +457,7 @@ enabled = true
 format = "text"
 # Text format template
 text_format = """
-[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
 """
 
 [router.access_logs.json_fields]
@@ -471,7 +471,9 @@ bytesRx = "%BYTES_RECEIVED%"
 bytesTx = "%BYTES_SENT%"
 dur = "%DURATION%"
 upSvcT = "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
-xff = "%REQ(X-FORWARDED-FOR)%"
+# The resolved client address. For a request rejected before X-Forwarded-For is read
+# (respCdDtl path_normalization_failed or http1.*) it is the connection peer, which may be a proxy.
+xff = "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
 ua = "%REQ(USER-AGENT)%"
 reqId = "%REQ(X-REQUEST-ID)%"
 host = "%REQ(:AUTHORITY)%"
@@ -568,6 +570,13 @@ path_with_escaped_slashes_action = "KEEP_UNCHANGED"
 # ignored (e.g. "/Secure/data" for "/secure/data") gets a 404, so it cannot reach a broader route
 # without that route's policies. Set to true to let such requests fall through as before.
 allow_path_case_variants = false
+# Number of proxies in front of the gateway (load balancer, ingress) that append to
+# X-Forwarded-For. The client address used for rate limits, logs and analytics, and sent to the
+# backend as X-Forwarded-For, is the entry that many from the right. Defaults to 0: the
+# connection's peer address, so a caller-set X-Forwarded-For is never trusted.
+# A nonzero value is only safe when callers cannot reach the gateway except through those
+# proxies: block direct access to the gateway, or a caller can set the entries it trusts.
+xff_num_trusted_hops = 0
 
 # HTTP Connection Manager (downstream) timeouts
 # A value of zero disables any of these timeout settings.

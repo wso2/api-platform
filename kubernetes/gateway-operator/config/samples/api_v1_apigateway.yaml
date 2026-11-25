@@ -168,7 +168,7 @@ data:
               bytesTx: "%BYTES_SENT%"
               dur: "%DURATION%"
               uSvcT: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
-              xff: "%REQ(X-FORWARDED-FOR)%"
+              xff: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
               ua: "%REQ(USER-AGENT)%"
               reqId: "%REQ(X-REQUEST-ID)%"
               host: "%REQ(:AUTHORITY)%"
@@ -181,7 +181,7 @@ data:
             # Text format template - used when format is "text"
             # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
             text_format: |
-              [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+              [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
 
           # Listener port for incoming HTTP traffic (Envoy proxy port)
           listener_port: 8080
