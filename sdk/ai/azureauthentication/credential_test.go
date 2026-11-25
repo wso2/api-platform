@@ -286,6 +286,26 @@ func mustFail(t *testing.T, cred *Credential, scope string) *TokenError {
 	return asTokenError(t, err)
 }
 
+// startFetch fetches scope in the background and returns once the fake endpoint has the request.
+// It fails the test if the fetch ends first or never arrives, and waits for it before cleanup.
+func startFetch(t *testing.T, cred *Credential, scope string, started <-chan struct{}) {
+	t.Helper()
+	finished, result := make(chan struct{}), make(chan error, 1)
+	go func() {
+		defer close(finished)
+		_, err := cred.Token(context.Background(), scope, 5*time.Second)
+		result <- err
+	}()
+	t.Cleanup(func() { <-finished })
+	select {
+	case <-started:
+	case err := <-result:
+		t.Fatalf("the background fetch ended before reaching the token endpoint: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the background fetch never reached the token endpoint")
+	}
+}
+
 func TestWorkloadIdentityTokenRequest(t *testing.T) {
 	setWorkloadIdentityEnv(t, "federated-token")
 	f := useFakeAzure(t, answer(http.StatusOK, entraToken("tok-1")))
@@ -682,8 +702,7 @@ func TestWaitingForAnotherFetchStopsAtTheTimeout(t *testing.T) {
 	defer close(release)
 
 	cred := mustGet(t, Identity{Type: WorkloadIdentity})
-	go cred.Token(context.Background(), "https://ai.azure.com/.default", 5*time.Second)
-	<-started
+	startFetch(t, cred, "https://ai.azure.com/.default", started)
 
 	start := time.Now()
 	_, err := cred.Token(context.Background(), "https://cognitiveservices.azure.com/.default", 100*time.Millisecond)
@@ -855,8 +874,7 @@ func TestAManagedIdentityCacheHitDoesNotWaitForAnotherScope(t *testing.T) {
 	if _, err := cred.Token(context.Background(), cached, time.Second); err != nil {
 		t.Fatalf("Token: %v", err)
 	}
-	go cred.Token(context.Background(), slow, 5*time.Second)
-	<-started
+	startFetch(t, cred, slow, started)
 
 	if tok, err := cred.Token(context.Background(), cached, 100*time.Millisecond); err != nil || tok != "tok-1" {
 		t.Fatalf("token = %q, error = %v; want the cached token", tok, err)
