@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
@@ -881,4 +882,33 @@ func TestExtractTraceContextFromMetadata(t *testing.T) {
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-foo", "bar"))
 		assert.False(t, trace.SpanContextFromContext(ExtractTraceContextFromMetadata(ctx)).IsValid())
 	})
+}
+
+// newSampler must follow the parent's sampled flag so policy-engine spans are
+// kept or dropped together with the router's (Envoy's) spans, at any rate.
+func TestNewSampler_ParentBased(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6ffffffffffffffff") // high low-64 bits: ratio sampler rejects it
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	parent := func(sampled bool) context.Context {
+		flags := trace.TraceFlags(0)
+		if sampled {
+			flags = trace.FlagsSampled
+		}
+		return trace.ContextWithRemoteSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID: traceID, SpanID: spanID, TraceFlags: flags, Remote: true,
+		}))
+	}
+	decide := func(s sdktrace.Sampler, ctx context.Context) sdktrace.SamplingDecision {
+		return s.ShouldSample(sdktrace.SamplingParameters{ParentContext: ctx, TraceID: traceID, Name: "test"}).Decision
+	}
+
+	for _, rate := range []float64{1.0, 0.5, 0.0001} {
+		s := newSampler(rate)
+		assert.Equal(t, sdktrace.RecordAndSample, decide(s, parent(true)), "rate %v: sampled parent must be sampled", rate)
+		assert.Equal(t, sdktrace.Drop, decide(s, parent(false)), "rate %v: unsampled parent must be dropped", rate)
+	}
+
+	// With no parent the rate applies.
+	assert.Equal(t, sdktrace.RecordAndSample, decide(newSampler(1.0), context.Background()))
+	assert.Equal(t, sdktrace.Drop, decide(newSampler(0.0001), context.Background()))
 }

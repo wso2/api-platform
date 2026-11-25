@@ -126,12 +126,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		samplingRate = 1.0 // Default to sampling all requests
 	}
 
-	var sampler sdktrace.Sampler
-	if samplingRate >= 1.0 {
-		sampler = sdktrace.AlwaysSample()
-	} else {
-		sampler = sdktrace.TraceIDRatioBased(samplingRate)
-	}
+	sampler := newSampler(samplingRate)
 
 	slog.InfoContext(ctx, "Using trace sampler", "sampling_rate", samplingRate)
 
@@ -167,6 +162,23 @@ func InitTracer(cfg *config.Config) (func(), error) {
 			slog.ErrorContext(ctx, "Error shutting down tracer provider", "error", err)
 		}
 	}, nil
+}
+
+// newSampler returns the policy-engine sampler for the given rate (> 0).
+//
+// It is parent-based: when the root span has a parent (Envoy's ext_proc span
+// from the stream metadata, or a client's traceparent), the parent's sampled
+// flag decides, so the policy engine keeps or drops its spans together with the
+// router. Envoy samples requests randomly at the same rate and always
+// propagates its traceparent, even for requests it does not sample, so an
+// independent decision here would export policy-engine spans whose router
+// parent was dropped (orphans), and drop policy-engine spans from traces the
+// router kept (gaps). The rate applies only to spans with no parent.
+func newSampler(samplingRate float64) sdktrace.Sampler {
+	if samplingRate >= 1.0 {
+		return sdktrace.ParentBased(sdktrace.AlwaysSample())
+	}
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRate))
 }
 
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
