@@ -546,3 +546,27 @@ Feature: Budget management
       {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
       """
     Then the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
+
+  @BUDGET-029
+  Scenario: A Budget copied from the control plane keeps its control-plane-only fields out of the gateway
+    Given I generate a unique resource name from "bgt-cp-fields" and store it as "budgetName"
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion       | ${CTX:gatewaySpecVersion} |
+      | name             | ${CTX:budgetName}         |
+      | amount           | "100.00"                  |
+      | period           | month                     |
+      | action           | allow                     |
+      | spec.displayName | Research monthly          |
+      | spec.description | Research team's LLM spend |
+      | spec.warnings    | {"thresholds":[80,100],"channels":["finance-webhook"]} |
+    Then the response status code should be 201
+    And the JSON response field "spec.displayName" should not exist
+    And the JSON response field "spec.description" should not exist
+    And the JSON response field "spec.warnings" should not exist
+    When I send a "GET" request to the "gateway-controller" service at "/budgets/${CTX:budgetName}"
+    Then the response status code should be 200
+    And the JSON response field "spec.displayName" should not exist
+    And the JSON response field "spec.description" should not exist
+    And the JSON response field "spec.warnings" should not exist
+    When I delete the Budget "${CTX:budgetName}"
+    Then the response status code should be 200

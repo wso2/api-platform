@@ -243,6 +243,11 @@ Status Code **200**
 |»»»»» expression|string|false|none|attribute only. CEL condition over the request.|
 |»»»»» id|string|false|none|The project or agent name.|
 |»»»»» project|string|false|none|agent only. The agent's project.|
+|»»»» displayName|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
+|»»»» description|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
+|»»»» warnings|object|false|none|Accepted for compatibility with the control plane's Budget, which sends its warnings to notification channels; ignored by the gateway (not validated, stored or returned).|
+|»»»»» thresholds|[integer]|false|none|none|
+|»»»»» channels|[string]|false|none|none|
 
 *and*
 

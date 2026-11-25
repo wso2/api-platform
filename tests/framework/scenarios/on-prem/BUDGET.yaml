@@ -318,3 +318,14 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/budget_ha.feature
           scenario: "A budget used up through one controller's runtime is lifted by an edit through the other"
+  - id: BUDGET-029
+    title: "A Budget copied from the control plane, with spec.displayName, spec.description and spec.warnings, is created on the gateway, and those fields are neither stored nor returned."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A Budget copied from the control plane keeps its control-plane-only fields out of the gateway"

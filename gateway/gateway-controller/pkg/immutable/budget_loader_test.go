@@ -19,6 +19,7 @@
 package immutable
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"testing"
@@ -68,4 +69,31 @@ func TestLoadArtifacts_BudgetWithBudgetsDisabledFails(t *testing.T) {
 	err := gw.LoadArtifacts(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "budgets are not enabled")
+}
+
+// A Budget file copied from the control plane keeps its displayName, description and
+// warnings; the loader applies it and leaves them out.
+func TestLoadArtifacts_BudgetIgnoresControlPlaneOnlyFields(t *testing.T) {
+	dir := t.TempDir()
+	writeArtifact(t, dir, "org-daily.yaml", budgetArtifact+`  displayName: Org daily
+  description: All LLM spend in the organization
+  warnings:
+    thresholds: [80, 100]
+    channels: [finance-webhook]
+`)
+	gw, db := newAgentOnlyGW(t, dir)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewLazyResourceStore(logger)
+	resources := lazyresourcexds.NewLazyResourceStateManager(store, lazyresourcexds.NewLazyResourceSnapshotManager(store, logger), logger)
+	gw.SetBudgetService(budget.NewService(db, utils.NewBudgetPublisher(db, resources), discardEventHub{}, "test-gateway", logger, false))
+
+	require.NoError(t, gw.LoadArtifacts(logger))
+
+	cfg, err := db.GetConfigByKindAndHandle(models.KindBudget, "org-daily")
+	require.NoError(t, err)
+	stored, err := json.Marshal(cfg.SourceConfiguration)
+	require.NoError(t, err)
+	assert.NotContains(t, string(stored), `"displayName"`)
+	assert.NotContains(t, string(stored), `"description"`)
+	assert.NotContains(t, string(stored), `"warnings"`)
 }

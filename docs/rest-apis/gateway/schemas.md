@@ -3476,7 +3476,17 @@ One allowance's spend this period
       "id": "string",
       "project": "string"
     }
-  ]
+  ],
+  "displayName": "string",
+  "description": "string",
+  "warnings": {
+    "thresholds": [
+      0
+    ],
+    "channels": [
+      "string"
+    ]
+  }
 }
 
 ```
@@ -3489,6 +3499,11 @@ One allowance's spend this period
 |limit|[BudgetLimit](#schemabudgetlimit)|true|none|none|
 |filters|[[BudgetFilter](#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Every filter must match (AND). Empty means all LLM usage.|
 |exemptions|[[BudgetExemption](#schemabudgetexemption)]|false|none|Matching traffic is left out of this budget.|
+|displayName|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
+|description|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
+|warnings|object|false|none|Accepted for compatibility with the control plane's Budget, which sends its warnings to notification channels; ignored by the gateway (not validated, stored or returned).|
+|» thresholds|[integer]|false|none|none|
+|» channels|[string]|false|none|none|
 
 ##### Enumerated Values
 

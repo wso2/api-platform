@@ -79,6 +79,8 @@ func decode(body []byte, contentType string) (*api.BudgetRequest, error) {
 		return nil, fmt.Errorf("failed to decode budget: %w", err)
 	}
 
+	dropControlPlaneFields(value)
+
 	// Read before the schema's defaults fill blockAt in: only a Block budget takes one.
 	blockAtGiven := hasLimitField(value, "blockAt")
 	s, err := requestSchema()
@@ -119,6 +121,20 @@ func decode(body []byte, contentType string) (*api.BudgetRequest, error) {
 		return nil, &ValidationError{Errors: errs}
 	}
 	return &budget, nil
+}
+
+// controlPlaneOnlyFields are the control plane's Budget fields the gateway has no use
+// for: they are accepted, so the same Budget deploys on either side, and dropped before
+// validation, so they are not checked, stored or returned.
+var controlPlaneOnlyFields = []string{"displayName", "description", "warnings"}
+
+// dropControlPlaneFields removes the control-plane-only fields from the body's spec.
+func dropControlPlaneFields(value any) {
+	doc, _ := value.(map[string]any)
+	spec, _ := doc["spec"].(map[string]any)
+	for _, field := range controlPlaneOnlyFields {
+		delete(spec, field)
+	}
 }
 
 // hasLimitField reports whether the body sets spec.limit.<name>.

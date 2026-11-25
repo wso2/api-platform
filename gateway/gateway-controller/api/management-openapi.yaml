@@ -6693,6 +6693,31 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/BudgetExemption'
+        displayName:
+          type: string
+          description: >-
+            Accepted for compatibility with the control plane's Budget; ignored by the
+            gateway (not validated, stored or returned).
+        description:
+          type: string
+          description: >-
+            Accepted for compatibility with the control plane's Budget; ignored by the
+            gateway (not validated, stored or returned).
+        warnings:
+          type: object
+          description: >-
+            Accepted for compatibility with the control plane's Budget, which sends its
+            warnings to notification channels; ignored by the gateway (not validated,
+            stored or returned).
+          properties:
+            thresholds:
+              type: array
+              items:
+                type: integer
+            channels:
+              type: array
+              items:
+                type: string
 
     BudgetLimit:
       type: object

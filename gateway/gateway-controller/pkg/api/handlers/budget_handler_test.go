@@ -284,3 +284,56 @@ func TestBudgetSpendIsShownAndClearedOnDelete(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	assert.Equal(t, "0", got.Status.CurrentPeriod.Spent, "made again: starts at $0")
 }
+
+// The control plane's Budget carries displayName, description and warnings; the gateway
+// takes the same Budget, JSON or YAML, and drops them without checking them.
+func TestCreateBudget_IgnoresControlPlaneOnlyFields(t *testing.T) {
+	server := newBudgetTestServer(t)
+	jsonBody := `{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Budget",
+  "metadata": {"name": "cp-fields-json"},
+  "spec": {
+    "displayName": "Research monthly",
+    "description": "Research team's OpenAI spend",
+    "limit": {"amount": "500.00", "period": "month", "action": "block"},
+    "warnings": {"thresholds": [80, 250], "channels": ["finance-webhook", ""]}
+  }
+}`
+	yamlBody := `apiVersion: gateway.api-platform.wso2.com/v1
+kind: Budget
+metadata:
+  name: cp-fields-yaml
+spec:
+  displayName: Research monthly
+  description: Research team's OpenAI spend
+  limit:
+    amount: "500.00"
+    period: month
+    action: block
+  warnings:
+    thresholds: [80, 100]
+    channels: [finance-webhook]
+`
+	for name, tc := range map[string]struct{ body, contentType string }{
+		"cp-fields-json": {jsonBody, "application/json"},
+		"cp-fields-yaml": {yamlBody, "application/yaml"},
+	} {
+		t.Run(tc.contentType, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", tc.contentType)
+			rec := httptest.NewRecorder()
+			server.CreateBudget(rec, req)
+			require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+			get := httptest.NewRecorder()
+			server.GetBudget(get, httptest.NewRequest(http.MethodGet, "/budgets/"+name, nil), name)
+			require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+			for _, body := range []string{rec.Body.String(), get.Body.String()} {
+				assert.NotContains(t, body, `"displayName"`)
+				assert.NotContains(t, body, `"description"`)
+				assert.NotContains(t, body, `"warnings"`)
+			}
+		})
+	}
+}
