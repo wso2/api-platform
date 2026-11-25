@@ -171,6 +171,7 @@ Because the versions differ, the API server converts `APIGateway` objects throug
 - **A deleted certificate Secret is recreated.** The operator notices within about a minute and recreates it, with a new CA. The pods keep serving the old certificate in the meantime. When the CA changes, the CRD trusts the old and the new CA together for 15 minutes. A pod serves a certificate from the new CA only once the CRD trusts it, so no request is rejected. It points the `APIGateway` CRD's `spec.conversion` at the `<fullname>-webhook` Service with that CA.
 - **Rolling upgrades.** Every operator pod does this itself, without waiting for the leader lease. A rolling upgrade from a release without the webhook therefore completes even while an old pod still holds the lease. The Service selects only pods labelled `gateway.api-platform.wso2.com/conversion-webhook-server: "true"`, so conversion requests never reach an old pod that doesn't serve the webhook.
 - **The shipped CRD carries a placeholder.** The CRD in `crds/` has a placeholder Service, because Helm does not template `crds/`. The operator replaces it within seconds of starting, and again whenever `kubectl apply`, Helm or a GitOps tool puts the placeholder back. For this it has `get`/`list`/`watch`/`patch` on that one CRD only.
+- **Only while the CRD serves `v2alpha1`.** The operator points the CRD at its webhook only when the CRD serves `v2alpha1`, the version that needs conversion. An older chart's CRD, which serves only `v1` and `v1alpha1` with identical schemas, stays on `strategy: None`. If such a CRD still points at this operator's webhook, the operator sets it back to `None`. A rolled-back install is therefore never left converting through a webhook that is gone.
 - **TLS.** The webhook prefers the hybrid `X25519MLKEM768` key exchange, with classical groups as fallback (`conversionWebhook.pqcKeyExchange`). The certificates are ECDSA P-256, because the API server cannot verify post-quantum certificate signatures.
 
 The two most commonly used kinds:
@@ -508,6 +509,16 @@ helm upgrade apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system \
   --set image.tag=<image-tag>
 ```
+
+### Roll Back to an Operator Without `APIGateway` `v2alpha1`
+
+Roll the chart back first. Then, once the new-version operator pods have terminated, replace the CRDs with the older chart's: `kubectl replace -f <older chart>/crds/`. Use `replace` rather than a server-side apply, which keeps the `spec.conversion` fields the operator owns. Replacing the CRDs sets the APIGateway CRD back to `strategy: None` and removes `v2alpha1`. Objects are stored as `v1`, so nothing is lost. Flux with `crds: CreateReplace` replaces the CRDs as part of the rollback; a new-version pod that is still running sees the older CRD and leaves it on `None` instead of pointing it at the webhook.
+
+What changes on a rollback:
+
+- Requests through `v1` keep working throughout. Requests through `v1alpha1` fail from when the webhook stops until the older CRD is in place. `v2alpha1` manifests stop working once it is.
+- Gateways using `spec.adminCredentials` or a generated credential are redeployed by the older operator with the `admin`/`admin` user from its base values; it cannot read the `conversion-data` annotation or Secret references. Other gateways are not redeployed.
+- The annotation, the generated `<gateway>-admin-credentials` Secrets and the webhook certificate Secret are left in place. Upgrading again restores each gateway's credential.
 
 ## Uninstallation
 

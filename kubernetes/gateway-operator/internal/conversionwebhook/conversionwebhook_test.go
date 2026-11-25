@@ -167,7 +167,8 @@ func placeholderCRD() *apiextensionsv1.CustomResourceDefinition {
 	return &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: APIGatewayCRDName},
 		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Group: "gateway.api-platform.wso2.com",
+			Group:    "gateway.api-platform.wso2.com",
+			Versions: crdVersions("v1", "v1alpha1", "v2alpha1"),
 			Conversion: &apiextensionsv1.CustomResourceConversion{
 				Strategy: apiextensionsv1.WebhookConverter,
 				Webhook: &apiextensionsv1.WebhookConversion{
@@ -575,4 +576,73 @@ func TestMismatchedCAKeyRenewsEverything(t *testing.T) {
 	assert.Equal(t, renewAll, planRenewal(mixed, serviceDNSNames(testService, testNS), testNow, testValidity.renewBefore))
 	_, _, err = parseCA(a.caCert, a.caKey)
 	require.NoError(t, err)
+}
+
+func crdVersions(names ...string) []apiextensionsv1.CustomResourceDefinitionVersion {
+	var out []apiextensionsv1.CustomResourceDefinitionVersion
+	for i, n := range names {
+		out = append(out, apiextensionsv1.CustomResourceDefinitionVersion{Name: n, Served: true, Storage: i == 0})
+	}
+	return out
+}
+
+// oldCRD is an older chart's APIGateway CRD: v1 and v1alpha1 only, identical schemas.
+func oldCRD(conv *apiextensionsv1.CustomResourceConversion) *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: APIGatewayCRDName},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "gateway.api-platform.wso2.com", Versions: crdVersions("v1", "v1alpha1"), Conversion: conv,
+		},
+	}
+}
+
+func liveConversion(t *testing.T, c client.Client) *apiextensionsv1.CustomResourceConversion {
+	t.Helper()
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: APIGatewayCRDName}, crd))
+	return crd.Spec.Conversion
+}
+
+// An older chart's CRD (after a rollback, or before the new CRD is applied) serves no
+// version that needs the webhook: the operator does not point it at the webhook, so a
+// rolled-back install is never left converting through a webhook that is gone.
+func TestTrustLeavesCRDWithoutV2alpha1OnNone(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).
+		WithObjects(oldCRD(&apiextensionsv1.CustomResourceConversion{Strategy: apiextensionsv1.NoneConverter})).Build()
+	require.NoError(t, newConversion(c, testNow).trust(ctx, freshBundle(t)))
+	assert.Equal(t, apiextensionsv1.NoneConverter, liveConversion(t, c).Strategy)
+}
+
+// An older CRD left pointing at this operator's webhook (Helm does not touch CRDs on a
+// rollback) is set back to None, and serving still proceeds.
+func TestTrustReleasesOwnWebhookOnCRDWithoutV2alpha1(t *testing.T) {
+	ctx := context.Background()
+	ours := desiredConversion(testNS, testService, []byte("ca"))
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(oldCRD(ours)).Build()
+	st := &servingState{store: &certStore{}, conversion: newConversion(c, testNow)}
+	b := freshBundle(t)
+	require.NoError(t, st.serve(ctx, b))
+	assert.True(t, st.store.serving(b), "the webhook still serves")
+	got := liveConversion(t, c)
+	assert.Equal(t, apiextensionsv1.NoneConverter, got.Strategy)
+	assert.Nil(t, got.Webhook)
+}
+
+// A webhook conversion that is not this operator's (another install, or the shipped
+// placeholder) on a CRD without v2alpha1 is left alone.
+func TestTrustLeavesForeignWebhookAlone(t *testing.T) {
+	ctx := context.Background()
+	foreign := desiredConversion("other-ns", "other-webhook", []byte("ca"))
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(oldCRD(foreign)).Build()
+	require.NoError(t, newConversion(c, testNow).trust(ctx, freshBundle(t)))
+	assert.True(t, pointsAt(liveConversion(t, c), "other-ns", "other-webhook"))
+}
+
+// Once the new CRD (serving v2alpha1) is applied, the operator points it at the webhook.
+func TestTrustPointsCRDServingV2alpha1AtWebhook(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	require.NoError(t, newConversion(c, testNow).trust(ctx, freshBundle(t)))
+	assert.True(t, pointsAt(liveConversion(t, c), testNS, testService))
 }
