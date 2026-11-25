@@ -168,6 +168,8 @@ var singleEngineBlocks = map[string]components.DBType{
 	"health-dependency-outage": components.Postgres,
 	// Its scenarios refuse health probes, which do not depend on the gateway's database.
 	"health-restricted-clients": components.SQLite,
+	// xff_num_trusted_hops is router config, which does not depend on the gateway's database.
+	"gateway-client-address": components.SQLite,
 }
 
 const coverageSubject = "platform-gateway"

@@ -128,9 +128,9 @@ blocks:
         features:
           - features/gateway/routes/path_variants.feature
       - name: client-address-unset
-        tags: "gateway-version>1.2.0;@trusted-hops-unset"
+        tags: "gateway-version>1.2.0"
         features:
-          - features/gateway/security/client_address.feature
+          - features/gateway/security/client_address_unset.feature
       - name: header-routing
         tags: "gateway-version>=1.2.0"
         features:
@@ -252,7 +252,7 @@ blocks:
       - name: testbench
     runners:
       - name: client-address
-        tags: "gateway-version>1.2.0;~@trusted-hops-unset"
+        tags: "gateway-version>1.2.0"
         features:
           - features/gateway/security/client_address.feature
 

@@ -47,7 +47,7 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/features/gateway/security/client_address.feature
+        - feature: suites/it/features/gateway/security/client_address_unset.feature
           scenario: "X-Forwarded-For passes through unchanged when no trusted hops are set"
   - id: CLADR-004
     title: "With xff_num_trusted_hops unset, deploy a REST API with an advanced-ratelimit quota of 2 requests keyed by ip, then send two requests with X-Forwarded-For 198.51.100.41, one with 198.51.100.41 followed by another address, and one with a different first entry; the first two get 200, the third 429 (same first entry, same bucket) and the fourth 200 (new first entry, new bucket)."
@@ -58,5 +58,5 @@ scenarios:
     it:
       status: automated
       refs:
-        - feature: suites/it/features/gateway/security/client_address.feature
+        - feature: suites/it/features/gateway/security/client_address_unset.feature
           scenario: "An ip-keyed quota follows the first X-Forwarded-For entry when no trusted hops are set"
