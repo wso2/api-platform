@@ -593,7 +593,7 @@ func (s *Steps) sendConfigurationWrite(ctx context.Context, token, id string, va
 	return s.client.Do(ctx, httpx.Request{
 		Method:  http.MethodPut,
 		URL:     target,
-		Headers: map[string]string{"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+		Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(token), "Content-Type": "application/json"},
 		Body:    raw,
 	}, 0, 0)
 }

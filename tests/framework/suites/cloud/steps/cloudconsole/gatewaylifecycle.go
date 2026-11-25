@@ -1317,7 +1317,7 @@ func restoreDefaultDeleter(topo *frameworkruntime.Topology, client *httpx.Client
 			return client.Do(ctx, httpx.Request{
 				Method:  method,
 				URL:     cloudAPIURL(base, path),
-				Headers: map[string]string{"Authorization": "Bearer " + bearer, "Content-Type": "application/json"},
+				Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(bearer), "Content-Type": "application/json"},
 				Body:    payload,
 			}, 0, 0)
 		}, resource.ID)

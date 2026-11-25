@@ -222,6 +222,59 @@ func TestCleanupSendsAReplacedTokenFileOnItsNextRequest(t *testing.T) {
 	require.Equal(t, []string{"Bearer first-token", "Bearer second-token"}, recorder.headers())
 }
 
+func TestPortalDeleteRetrySendsAReplacedTokenFile(t *testing.T) {
+	fastPortalPolls(t)
+	path := writeTokenFile(t, "", "first-token")
+	t.Setenv(cloudConsoleAccessTokenFileEnv, path)
+	var mu sync.Mutex
+	var sent []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		sent = append(sent, r.Header.Get("Authorization"))
+		if len(sent) == 1 {
+			// The portal is still being built; the token file is replaced before the retry.
+			writeTokenFile(t, path, "second-token")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(server.Close)
+
+	require.NoError(t, deletePortal(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		server.URL, "token-at-start", "syn-portal-1", time.Minute))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"Bearer first-token", "Bearer second-token"}, sent)
+}
+
+func TestRestoreDefaultSendsAReplacedTokenFileOnItsUpdate(t *testing.T) {
+	path := writeTokenFile(t, "", "first-token")
+	t.Setenv(cloudConsoleAccessTokenFileEnv, path)
+	var mu sync.Mutex
+	var sent []string
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		sent = append(sent, r.Method+" "+r.Header.Get("Authorization"))
+		if r.Method == http.MethodGet {
+			writeTokenFile(t, path, "second-token")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "gw-1", "isDefault": false})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "gw-1", "isDefault": true})
+	})
+	deleter := restoreDefaultDeleter(topo, httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}))
+
+	require.NoError(t, deleter(context.Background(), cleanup.Resource{Kind: kindDefaultRestore, ID: "gw-1"}))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"GET Bearer first-token", "PUT Bearer second-token"}, sent)
+}
+
 func TestStarterSendsTheTokenTheFileHoldsWhenAScenarioAsks(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "")
 	t.Setenv(cloudGatewayPinEnv, "")

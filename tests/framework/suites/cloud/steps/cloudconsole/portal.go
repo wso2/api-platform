@@ -623,7 +623,7 @@ func deletePortal(ctx context.Context, client *httpx.Client, base, bearer, id st
 			resp, err := client.Do(ctx, httpx.Request{
 				Method:  http.MethodDelete,
 				URL:     cloudAPIURL(base, portalPath(id)),
-				Headers: map[string]string{"Authorization": "Bearer " + bearer},
+				Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(bearer)},
 			}, 0, 0)
 			if err != nil {
 				return nil, retry.Transient(err)
