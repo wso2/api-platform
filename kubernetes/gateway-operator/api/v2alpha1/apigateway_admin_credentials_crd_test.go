@@ -14,9 +14,10 @@
  *  limitations under the License.
  *
  */
-package v1
+package v2alpha1
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -113,14 +114,15 @@ func apiGatewayWithAdminCredentials(version string, creds map[string]interface{}
 	}
 }
 
-// spec.adminCredentials is served by v1 (storage) and v1alpha2 only. v1alpha1 keeps the
-// schema it had before the field was added: the API server prunes the field from a
-// v1alpha1 object instead of storing it.
-func TestAPIGatewayCRDServesAdminCredentialsInV1AndV1alpha2Only(t *testing.T) {
+// spec.adminCredentials is declared by v2alpha1 only. v1 (storage) and v1alpha1 keep
+// their released schemas, so the API server prunes the field from a v1 or v1alpha1
+// object; through v2alpha1 the conversion webhook keeps it in the conversion-data
+// annotation on the stored v1 object (see conversion.go).
+func TestAPIGatewayCRDServesAdminCredentialsInV2alpha1Only(t *testing.T) {
 	versions := apiGatewayServedVersions(t)
-	want := map[string]bool{"v1": true, "v1alpha1": false, "v1alpha2": true}
+	want := map[string]bool{"v1": false, "v1alpha1": false, "v2alpha1": true}
 	if len(versions) != len(want) {
-		t.Fatalf("APIGateway CRD serves %d versions, want %d (v1, v1alpha1, v1alpha2)", len(versions), len(want))
+		t.Fatalf("APIGateway CRD serves %d versions, want %d (v1, v1alpha1, v2alpha1)", len(versions), len(want))
 	}
 	for version, wantField := range want {
 		v, ok := versions[version]
@@ -188,6 +190,30 @@ func TestAPIGatewayCRDValidatesAdminCredentials(t *testing.T) {
 		"unknown source":        {creds: map[string]interface{}{"source": "vault", "passwordSecretRef": ref("gateway-1-admin", "password")}, wantErr: "spec.adminCredentials.source"},
 	}
 
+	// The operator re-validates spec.adminCredentials it reads from the conversion-data
+	// annotation (AdminCredentialsOf), because a v1 client can write that annotation
+	// directly. Its rules must agree with the CRD's.
+	for name, creds := range accepted {
+		t.Run("Validate/accepts "+name, func(t *testing.T) {
+			if err := decodeAndValidate(t, creds); err != nil {
+				t.Fatalf("Validate rejected a value the CRD accepts: %v", err)
+			}
+		})
+	}
+	for name, tc := range rejected {
+		if name == "username empty" {
+			// The CRD rejects an explicit "", but an omitted username is defaulted.
+			// The annotation never distinguishes the two (omitempty), so the operator
+			// defaults it like an omitted one.
+			continue
+		}
+		t.Run("Validate/rejects "+name, func(t *testing.T) {
+			if err := decodeAndValidate(t, tc.creds); err == nil {
+				t.Fatal("Validate accepted a value the CRD rejects")
+			}
+		})
+	}
+
 	for version, v := range apiGatewayServedVersions(t) {
 		if !v.hasAdminCredentials {
 			continue
@@ -212,4 +238,20 @@ func TestAPIGatewayCRDValidatesAdminCredentials(t *testing.T) {
 			})
 		}
 	}
+}
+
+// decodeAndValidate decodes an adminCredentials object as the operator does and runs
+// Default and Validate.
+func decodeAndValidate(t *testing.T, creds map[string]interface{}) error {
+	t.Helper()
+	raw, err := json.Marshal(creds)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var c GatewayAdminCredentials
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	c.Default()
+	return c.Validate()
 }

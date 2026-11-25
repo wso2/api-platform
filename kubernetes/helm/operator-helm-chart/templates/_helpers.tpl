@@ -350,3 +350,34 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - update
 {{- end }}
 {{- end -}}
+
+{{/*
+Names of the APIGateway conversion webhook Service and certificate Secret.
+*/}}
+{{- define "gateway-operator.conversionWebhookServiceName" -}}
+{{- printf "%s-webhook" (include "gateway-operator.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "gateway-operator.conversionWebhookSecretName" -}}
+{{- printf "%s-webhook-cert" (include "gateway-operator.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Pod label that marks operator pods serving the APIGateway conversion webhook. The
+webhook Service selects it, so it only reaches pods of a release that serves the
+webhook. It is not part of the Deployment's selector, which is immutable.
+*/}}
+{{- define "gateway-operator.conversionWebhookPodLabel" -}}
+gateway.api-platform.wso2.com/conversion-webhook-server: "true"
+{{- end -}}
+
+{{/*
+Operator flags for the APIGateway conversion webhook.
+*/}}
+{{- define "gateway-operator.conversionWebhookArgs" -}}
+- --conversion-webhook-port={{ .Values.conversionWebhook.port }}
+- --conversion-webhook-service-name={{ include "gateway-operator.conversionWebhookServiceName" . }}
+- --conversion-webhook-cert-secret={{ include "gateway-operator.conversionWebhookSecretName" . }}
+- --conversion-webhook-max-request-bytes={{ int64 .Values.conversionWebhook.maxRequestBytes }}
+- --conversion-webhook-pqc-key-exchange={{ .Values.conversionWebhook.pqcKeyExchange }}
+{{- end -}}

@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/secretsource"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -217,7 +218,7 @@ func GetDefaultBasicAuthCredentials() (username, password string) {
 // in a newline), so the operator trims the same characters. In env mode the value
 // reaches the controller unchanged, so it is returned unchanged.
 func PasswordAsGatewayReadsIt(value, source string) string {
-	if source == apiv1.AdminCredentialsSourceFile {
+	if source == apiv2alpha1.AdminCredentialsSourceFile {
 		return strings.TrimRight(value, " \t\r\n")
 	}
 	return value
@@ -227,21 +228,26 @@ func PasswordAsGatewayReadsIt(value, source string) string {
 // an empty value means "file" (the CRD defaults it to the same value).
 func AdminCredentialsSource(source string) string {
 	if source == "" {
-		return apiv1.AdminCredentialsSourceFile
+		return apiv2alpha1.AdminCredentialsSourceFile
 	}
 	return source
 }
 
 // DefaultAdminUsername is the admin username used when spec.adminCredentials.username
 // is empty (the CRD defaults it to the same value).
-const DefaultAdminUsername = "admin"
+const DefaultAdminUsername = apiv2alpha1.DefaultAdminUsername
 
 // AdminCredentialsFromSecret returns the username and password from an APIGateway's
-// spec.adminCredentials. It fails closed: a missing Secret, a missing key, or an empty
-// value is an error, never the default admin/admin. The error names the Secret and
-// key but never the value.
+// spec.adminCredentials (served by v2alpha1, stored on the v1 object by the conversion
+// webhook; see apiv2alpha1.AdminCredentialsOf). It fails closed: an invalid
+// spec.adminCredentials, a missing Secret, a missing key, or an empty value is an
+// error, never the default admin/admin. The error names the Secret and key but never
+// the value.
 func AdminCredentialsFromSecret(ctx context.Context, k8sClient client.Client, gateway *apiv1.APIGateway) (username, password string, err error) {
-	creds := gateway.Spec.AdminCredentials
+	creds, err := apiv2alpha1.AdminCredentialsOf(gateway)
+	if err != nil {
+		return "", "", err
+	}
 	if creds == nil {
 		return "", "", fmt.Errorf("gateway %s/%s has no spec.adminCredentials", gateway.Namespace, gateway.Name)
 	}
@@ -288,7 +294,7 @@ func ResolveBasicCredentials(ctx context.Context, k8sClient client.Client, info 
 		gateway := &apiv1.APIGateway{}
 		getErr := k8sClient.Get(ctx, types.NamespacedName{Namespace: info.Namespace, Name: info.Name}, gateway)
 		switch {
-		case getErr == nil && gateway.Spec.AdminCredentials != nil:
+		case getErr == nil && apiv2alpha1.HasAdminCredentials(gateway):
 			return AdminCredentialsFromSecret(ctx, k8sClient, gateway)
 		case getErr != nil && !apierrors.IsNotFound(getErr):
 			return "", "", getErr

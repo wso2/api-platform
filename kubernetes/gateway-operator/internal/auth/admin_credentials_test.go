@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
 
@@ -43,20 +44,24 @@ func newFakeClient(t *testing.T, objs ...client.Object) client.Client {
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 }
 
-func gatewayWithAdminCredentials(username, secretName, key string) *apiv1.APIGateway {
-	return &apiv1.APIGateway{
-		ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: testNS},
-		Spec: apiv1.GatewaySpec{
-			AdminCredentials: &apiv1.GatewayAdminCredentials{
-				Username: username,
-				PasswordSecretRef: corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-					Key:                  key,
-				},
-				Source: apiv1.AdminCredentialsSourceFile,
-			},
+// gatewayWithAdminCredentials returns a stored (v1) APIGateway carrying
+// spec.adminCredentials the way the conversion webhook stores it. mutate, if given,
+// edits the credentials first.
+func gatewayWithAdminCredentials(username, secretName, key string, mutate ...func(*apiv2alpha1.GatewayAdminCredentials)) *apiv1.APIGateway {
+	creds := &apiv2alpha1.GatewayAdminCredentials{
+		Username: username,
+		PasswordSecretRef: corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+			Key:                  key,
 		},
+		Source: apiv2alpha1.AdminCredentialsSourceFile,
 	}
+	for _, m := range mutate {
+		m(creds)
+	}
+	gw := &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: testNS}}
+	apiv2alpha1.SetAdminCredentials(gw, creds)
+	return gw
 }
 
 func passwordSecret(name string, data map[string]string) *corev1.Secret {
@@ -100,17 +105,17 @@ func TestResolveBasicCredentials_MatchesGatewayTrimming(t *testing.T) {
 		wantPass string
 		wantErr  bool
 	}{
-		"file trims newline":         {source: apiv1.AdminCredentialsSourceFile, value: "s3cret-1\n", wantPass: "s3cret-1"},
-		"file trims crlf and blanks": {source: apiv1.AdminCredentialsSourceFile, value: "s3cret-1 \t\r\n", wantPass: "s3cret-1"},
-		"file keeps leading blanks":  {source: apiv1.AdminCredentialsSourceFile, value: "  s3cret-1\n", wantPass: "  s3cret-1"},
-		"file only newline is empty": {source: apiv1.AdminCredentialsSourceFile, value: "\n", wantErr: true},
-		"env keeps newline":          {source: apiv1.AdminCredentialsSourceEnv, value: "s3cret-1\n", wantPass: "s3cret-1\n"},
+		"file trims newline":         {source: apiv2alpha1.AdminCredentialsSourceFile, value: "s3cret-1\n", wantPass: "s3cret-1"},
+		"file trims crlf and blanks": {source: apiv2alpha1.AdminCredentialsSourceFile, value: "s3cret-1 \t\r\n", wantPass: "s3cret-1"},
+		"file keeps leading blanks":  {source: apiv2alpha1.AdminCredentialsSourceFile, value: "  s3cret-1\n", wantPass: "  s3cret-1"},
+		"file only newline is empty": {source: apiv2alpha1.AdminCredentialsSourceFile, value: "\n", wantErr: true},
+		"env keeps newline":          {source: apiv2alpha1.AdminCredentialsSourceEnv, value: "s3cret-1\n", wantPass: "s3cret-1\n"},
 		"unset source is file":       {source: "", value: "s3cret-1\n", wantPass: "s3cret-1"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password")
-			gw.Spec.AdminCredentials.Source = tc.source
+			gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password",
+				func(c *apiv2alpha1.GatewayAdminCredentials) { c.Source = tc.source })
 			c := newFakeClient(t, gw, passwordSecret("gateway-1-admin", map[string]string{"password": tc.value}))
 
 			_, pass, err := ResolveBasicCredentials(context.Background(), c, info())
@@ -150,9 +155,9 @@ func TestResolveBasicCredentials_FailsClosed(t *testing.T) {
 
 // An optional selector must not turn a missing Secret into an empty password.
 func TestResolveBasicCredentials_OptionalSelectorStillFailsClosed(t *testing.T) {
-	gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password")
 	optional := true
-	gw.Spec.AdminCredentials.PasswordSecretRef.Optional = &optional
+	gw := gatewayWithAdminCredentials("gw1-admin", "gateway-1-admin", "password",
+		func(c *apiv2alpha1.GatewayAdminCredentials) { c.PasswordSecretRef.Optional = &optional })
 	c := newFakeClient(t, gw)
 
 	_, _, err := ResolveBasicCredentials(context.Background(), c, info())

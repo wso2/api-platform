@@ -15,16 +15,17 @@
  *
  */
 
-package v1alpha2
+package v2alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// The v1alpha2 APIGateway is field-identical to the v1 (storage) APIGateway. It is
-// the alpha version that carries spec.adminCredentials; v1alpha1 is kept as it
-// was before that field was added.
+// The v2alpha1 APIGateway is the v1 (storage) APIGateway plus spec.adminCredentials.
+// v1 and v1alpha1 keep their released schemas. The CRD converts between versions
+// with the operator's conversion webhook: on a stored v1 object, the fields only
+// v2alpha1 declares live in the ConversionDataAnnotation (see conversion.go).
 
 // APISelectorScope defines the scope of API selection for a gateway
 // +kubebuilder:validation:Enum=Cluster;Namespaced;LabelSelector

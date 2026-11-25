@@ -3,6 +3,23 @@ replicaCount: 1
 # Namespaces to watch (cluster-wide if empty)
 watchNamespaces: []
 
+# APIGateway CRD conversion webhook. APIGateway is served at v1 (storage), v1alpha1 and
+# v2alpha1, and v2alpha1 adds spec.adminCredentials, so the API server converts between
+# versions through the operator. The operator creates and renews the webhook's TLS
+# certificate itself (Secret <fullname>-webhook-cert in the release namespace) and
+# points the APIGateway CRD at the <fullname>-webhook Service. Requests through v1
+# never need the webhook; requests through v1alpha1 or v2alpha1 fail while no operator
+# pod is ready, so consider replicaCount >= 2 where those versions are used.
+conversionWebhook:
+  # Container port the webhook listens on (the Service exposes it on 443)
+  port: 9443
+  # Largest ConversionReview request body accepted, in bytes. A LIST through
+  # v1alpha1/v2alpha1 converts every object in one request.
+  maxRequestBytes: 67108864
+  # Prefer the hybrid post-quantum X25519MLKEM768 TLS key exchange; classical groups
+  # remain as fallback for API servers without it.
+  pqcKeyExchange: true
+
 # Override the chart name used for resource naming
 nameOverride: ""
 # Override the full name used for resource naming

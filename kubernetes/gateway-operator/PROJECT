@@ -43,6 +43,9 @@ resources:
     namespaced: true
   domain: gateway.api-platform.wso2.com
   kind: APIGateway
-  path: github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha2
-  version: v1alpha2
+  path: github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1
+  version: v2alpha1
+  webhooks:
+    conversion: true
+    webhookVersion: v1
 version: "3"

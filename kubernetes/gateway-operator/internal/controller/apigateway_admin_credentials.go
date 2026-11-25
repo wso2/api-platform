@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 )
 
@@ -54,8 +55,10 @@ func basicAuthSecretNames(gw *apiv1.APIGateway, configRefValues string, extra ..
 			names[name] = struct{}{}
 		}
 	}
-	if gw.Spec.AdminCredentials != nil && gw.Spec.AdminCredentials.PasswordSecretRef.Name != "" {
-		names[gw.Spec.AdminCredentials.PasswordSecretRef.Name] = struct{}{}
+	// An invalid spec.adminCredentials names no Secret here; the gateway's reconcile
+	// fails closed on it.
+	if creds, err := apiv2alpha1.AdminCredentialsOf(gw); err == nil && creds != nil {
+		names[creds.PasswordSecretRef.Name] = struct{}{}
 	}
 	users, err := configRefBasicAuthUsers(configRefValues)
 	if err != nil {
@@ -110,18 +113,35 @@ func basicAuthSecretsVersion(ctx context.Context, c client.Client, gw *apiv1.API
 }
 
 // gatewayConfigHash is the value stored in status.configHash. When no basic-auth
-// password comes from a Secret it is exactly the earlier ConfigMap-only hash, so
-// existing gateways are not redeployed on operator upgrade. Otherwise it also covers the
-// Secrets' revisions, so a password rotation triggers the existing "ConfigChanged"
-// redeploy.
-func gatewayConfigHash(configMapValues, secretsVersion string) string {
-	if secretsVersion == "" {
+// password comes from a Secret and the gateway has no v2alpha1-only fields it is
+// exactly the earlier ConfigMap-only hash, so existing gateways are not redeployed on
+// operator upgrade. Otherwise it also covers the Secrets' revisions, so a password
+// rotation triggers the existing "ConfigChanged" redeploy, and the gateway's
+// conversion data (see conversionDataFingerprint).
+func gatewayConfigHash(configMapValues, secretsVersion, conversionData string) string {
+	if secretsVersion == "" && conversionData == "" {
 		if configMapValues == "" {
 			return ""
 		}
 		return auth.CalculateConfigHash(configMapValues)
 	}
-	return auth.CalculateConfigHash(configMapValues + "\n# basic-auth secrets: " + secretsVersion)
+	input := configMapValues
+	if secretsVersion != "" {
+		input += "\n# basic-auth secrets: " + secretsVersion
+	}
+	if conversionData != "" {
+		input += "\n# conversion data: " + conversionData
+	}
+	return auth.CalculateConfigHash(input)
+}
+
+// conversionDataFingerprint returns the gateway's v2alpha1-only fields as stored on the
+// v1 object (spec.adminCredentials today). The conversion webhook keeps them in an
+// annotation, and an annotation change does not bump metadata.generation, so the
+// config hash must cover them: otherwise changing only adminCredentials.username or
+// .source through v2alpha1 would never redeploy the gateway.
+func conversionDataFingerprint(gw *apiv1.APIGateway) string {
+	return gw.Annotations[apiv2alpha1.ConversionDataAnnotation]
 }
 
 // basicAuthChecksumOverlay returns the Helm values that put secretsVersion on the
@@ -159,22 +179,17 @@ func basicAuthChecksumOverlay(secretsVersion string) (string, error) {
 // admin's username. Users from the operator's base values file are not carried over, so
 // its default admin/admin user never comes back.
 func buildAdminCredentialsOverlay(gw *apiv1.APIGateway, configRefValues string) (string, error) {
-	creds := gw.Spec.AdminCredentials
+	// AdminCredentialsOf applies the CRD defaults and validation rules, so username
+	// and source are set and the Secret reference is well formed.
+	creds, err := apiv2alpha1.AdminCredentialsOf(gw)
+	if err != nil {
+		return "", err
+	}
 	if creds == nil {
 		return "", nil
 	}
-	if creds.PasswordSecretRef.Name == "" || creds.PasswordSecretRef.Key == "" {
-		return "", fmt.Errorf("spec.adminCredentials.passwordSecretRef needs both name and key")
-	}
 	username := creds.Username
-	if username == "" {
-		username = auth.DefaultAdminUsername
-	}
-	source := auth.AdminCredentialsSource(creds.Source)
-	if source != apiv1.AdminCredentialsSourceEnv && source != apiv1.AdminCredentialsSourceFile {
-		return "", fmt.Errorf("spec.adminCredentials.source must be %q or %q, got %q",
-			apiv1.AdminCredentialsSourceEnv, apiv1.AdminCredentialsSourceFile, source)
-	}
+	source := creds.Source
 
 	admin := map[string]interface{}{
 		"username": username,
@@ -259,7 +274,7 @@ func (r *GatewayReconciler) enqueueGatewaysForSecret(ctx context.Context, obj cl
 			}
 		}
 		var generated []string
-		if gw.Spec.AdminCredentials == nil && auth.IsGeneratedAdminSecret(secret) {
+		if !apiv2alpha1.HasAdminCredentials(gw) && auth.IsGeneratedAdminSecret(secret) {
 			generated = append(generated, auth.GeneratedAdminSecretName(gw.Name))
 		}
 		names, err := basicAuthSecretNames(gw, configRefValues, generated...)

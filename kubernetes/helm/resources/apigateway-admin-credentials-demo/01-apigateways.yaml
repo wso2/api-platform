@@ -3,7 +3,7 @@
 # read-only file mount; gateway-2 reads it from an environment variable.
 #
 # Each gateway selects APIs by its own label, so a RestApi reaches exactly one of them.
-apiVersion: gateway.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v2alpha1
 kind: APIGateway
 metadata:
   name: gateway-1
@@ -20,7 +20,7 @@ spec:
       name: gateway-1-admin
       key: password
 ---
-apiVersion: gateway.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v2alpha1
 kind: APIGateway
 metadata:
   name: gateway-2
