@@ -2538,7 +2538,9 @@ func (t *Translator) otelOverHTTP() bool {
 }
 
 // otelCollectorEndpoint splits the configured collector endpoint into host and port,
-// defaulting to the protocol's standard OTLP port.
+// defaulting to the protocol's standard OTLP port. An IPv6 host is returned without
+// brackets ("[::1]:4318" and "::1" are both host "::1"), as the socket address and
+// net.JoinHostPort expect.
 func (t *Translator) otelCollectorEndpoint() (endpoint, host string, port uint32) {
 	defaultPort := uint32(4317)
 	if t.otelOverHTTP() {
@@ -2548,15 +2550,17 @@ func (t *Translator) otelCollectorEndpoint() (endpoint, host string, port uint32
 	if endpoint == "" {
 		endpoint = fmt.Sprintf("otel-collector:%d", defaultPort)
 	}
-	host, port = endpoint, defaultPort
-	if colonIdx := strings.LastIndex(endpoint, ":"); colonIdx != -1 {
-		host = endpoint[:colonIdx]
-		if parsedPort, err := strconv.ParseUint(endpoint[colonIdx+1:], 10, 16); err != nil {
-			t.logger.Warn("Invalid OTEL collector port, using the protocol default",
-				slog.String("endpoint", endpoint), slog.Uint64("port", uint64(defaultPort)))
-		} else {
-			port = uint32(parsedPort)
-		}
+	splitHost, splitPort, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		// No port: a hostname, a bare IPv6 address, or a bracketed one.
+		return endpoint, strings.TrimSuffix(strings.TrimPrefix(endpoint, "["), "]"), defaultPort
+	}
+	host, port = splitHost, defaultPort
+	if parsedPort, err := strconv.ParseUint(splitPort, 10, 16); err != nil {
+		t.logger.Warn("Invalid OTEL collector port, using the protocol default",
+			slog.String("endpoint", endpoint), slog.Uint64("port", uint64(defaultPort)))
+	} else {
+		port = uint32(parsedPort)
 	}
 	return endpoint, host, port
 }
