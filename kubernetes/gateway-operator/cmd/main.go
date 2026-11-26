@@ -32,6 +32,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -141,7 +142,8 @@ func main() {
 		setupLog.Error(err, "unable to build cache options")
 		os.Exit(1)
 	}
-	setupLog.Info("informer cache exclusions",
+	setupLog.Info("informer cache settings",
+		"syncTimeout", cfg.Cache.SyncTimeout.String(),
 		"helmReleaseSecrets", cfg.Cache.ExcludeHelmReleaseSecrets,
 		"gatewayChartConfigMaps", cfg.Cache.ExcludeGatewayChartConfigMaps,
 		"servicesAndDeploymentsOutsideGatewayChart", !cfg.GatewayAPI.Enabled)
@@ -149,6 +151,11 @@ func main() {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 		Cache:  cacheOpts,
+		// Every controller waits this long for its informers' initial list; none sets
+		// its own CacheSyncTimeout, so this is the bound for all of them.
+		Controller: ctrlconfig.Controller{
+			CacheSyncTimeout: cfg.Cache.SyncTimeout,
+		},
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
 			SecureServing: secureMetrics,

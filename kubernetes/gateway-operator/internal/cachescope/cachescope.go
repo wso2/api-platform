@@ -1,18 +1,19 @@
 /*
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 
 // Package cachescope decides which objects the operator's informer cache holds.
 //
@@ -33,8 +34,11 @@ limitations under the License.
 // When the Gateway API controllers are off, the operator reads Services and Deployments
 // only to find a gateway release's controller and gateway-runtime workloads, so those
 // caches hold only objects labeled with one of those two components rather than every
-// Service and Deployment in the cluster. HTTPRoute backends can be any Service, so this
-// narrowing applies only when the Gateway API controllers are off.
+// Service and Deployment in the cluster. The gateway chart always sets that label on
+// its Services and Deployments; per-resource labels cannot override it, so every
+// Deployment the readiness checks list by release instance is in the cache. HTTPRoute
+// backends can be any Service, so this narrowing applies only when the Gateway API
+// controllers are off.
 //
 // A Get on a filtered-out object returns NotFound, so a reference to one of these
 // objects fails loudly rather than reading stale data.

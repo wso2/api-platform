@@ -52,6 +52,7 @@ func testOperatorConfigForGatewayClass(t *testing.T, classNames ...string) *conf
 			InitialBackoff:          time.Second,
 			MaxBackoffDuration:      time.Minute,
 		},
+		Cache:   config.CacheConfig{SyncTimeout: 2 * time.Minute},
 		Logging: config.LoggingConfig{Level: "info", Format: "text"},
 	}
 	require.NoError(t, cfg.Validate())
