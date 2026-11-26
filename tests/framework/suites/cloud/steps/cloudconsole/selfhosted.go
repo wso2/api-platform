@@ -68,6 +68,7 @@ func (s *Steps) registerSelfHostedGatewaySteps(sc stepRegistrar) {
 	sc.Step(`^I delete the synthetic self-hosted APIP gateway$`, s.deleteSelfHostedGateway)
 	sc.Step(`^the self-hosted APIP gateway should eventually be absent$`, s.verifySelfHostedGatewayDeleted)
 	s.registerLocalGatewaySteps(sc)
+	s.registerCustomPolicySteps(sc)
 }
 
 func selfHostedGatewayPath(id string) string {
