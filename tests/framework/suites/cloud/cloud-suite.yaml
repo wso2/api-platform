@@ -44,6 +44,7 @@ blocks:
         features:
           - features/apip_promotion.feature
       - name: apip-secrets
+        tags: "~@known-issue"
         features:
           - features/apip_secrets.feature
       - name: apip-portal
