@@ -99,6 +99,8 @@ Component container image tags come from the gateway chart; do not hardcode them
 | `reconciliation.maxRetryAttempts` | Maximum retry attempts for gateway operations | `10` |
 | `reconciliation.initialBackoff` | Initial retry backoff (Go duration) | `1s` |
 | `reconciliation.maxBackoffDuration` | Maximum exponential backoff (Go duration) | `60s` |
+| `cache.excludeHelmReleaseSecrets` | Keep Secrets labeled `owner=helm` (Helm release storage) out of the operator's cache. A reference to such a Secret resolves as not found | `true` |
+| `cache.excludeGatewayChartConfigMaps` | Keep ConfigMaps labeled `app.kubernetes.io/name=gateway` (rendered by the gateway chart) out of the operator's cache. A reference to such a ConfigMap resolves as not found | `true` |
 
 ### Logging Configuration
 

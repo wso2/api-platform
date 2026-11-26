@@ -41,6 +41,7 @@ import (
 	"github.com/go-logr/logr"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	apiv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/cachescope"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/controller"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/pkg/logger"
@@ -135,11 +136,18 @@ func main() {
 		setupLog.Info("watching all namespaces (cluster-wide)")
 	}
 
+	cacheOpts, err := cachescope.Options(defaultNamespaces, cfg.Cache)
+	if err != nil {
+		setupLog.Error(err, "unable to build cache options")
+		os.Exit(1)
+	}
+	setupLog.Info("informer cache exclusions",
+		"helmReleaseSecrets", cfg.Cache.ExcludeHelmReleaseSecrets,
+		"gatewayChartConfigMaps", cfg.Cache.ExcludeGatewayChartConfigMaps)
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
-		Cache: cache.Options{
-			DefaultNamespaces: defaultNamespaces,
-		},
+		Cache:  cacheOpts,
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
 			SecureServing: secureMetrics,
