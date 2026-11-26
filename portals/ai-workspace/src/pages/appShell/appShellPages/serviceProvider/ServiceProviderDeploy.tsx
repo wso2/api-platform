@@ -38,7 +38,7 @@ import {
   useGatewayDeploy,
 } from '../../../../contexts/GatewayDeployContext';
 import { GatewayDeployMainSection } from '../../../../Components/GatewayDeploy';
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import LLLMStepBanner, {
   type LLLMStepBannerStepId,
 } from '../quickStart/lllmStepBanner';
@@ -47,6 +47,9 @@ import {
   buildProjectPath,
 } from '../../../../utils/projectRouting';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
+import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { AIEntityProvider } from '../../../../contexts/AIEntitiesContext';
 
 type ServiceProviderDeployLayoutProps = {
@@ -58,11 +61,34 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
   const { provider } = useLLMProvider();
   const { deployments, isLoadingDeployments } = useGatewayDeploy();
   const { currentOrganization, currentProject } = useAppShell();
+  const { hasPermission } = useAppAuth();
+  const showSnackbar = useAIWorkspaceSnackbar();
+  const intl = useIntl();
   const isProjectLevel = Boolean(currentProject?.id);
+  // Mirrors `isAdminOrgLevel` on the overview page: it only renders the tabbed
+  // layout containing the API Keys section for org-level callers holding
+  // provider management permission.
+  const canManageApiKeys =
+    hasPermission(SCOPES.LLM_PROVIDER_MANAGE) && !isProjectLevel;
   const handleLLLMStepBannerClick = (stepId: LLLMStepBannerStepId) => {
     if (!providerId) return;
 
     if (stepId === 'deploy-to-gateway') {
+      return;
+    }
+
+    if (stepId === 'consume' && !canManageApiKeys) {
+      // The overview page renders no API Keys section in this context, so
+      // navigating there would look like a dead button. Explain instead, and
+      // don't create a focus intent that nothing can honour.
+      showSnackbar(
+        intl.formatMessage({
+          id: 'aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderDeploy.api.key.management.unavailable',
+          defaultMessage:
+            'API key management is available only at the organization level with LLM provider management permission.',
+        }),
+        'info'
+      );
       return;
     }
 
@@ -74,7 +100,13 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
         )
       : buildOrgPath(currentOrganization, `/service-provider/${providerId}`);
 
-    navigate(overviewPath);
+    // The API Keys section lives on the overview page, so the consume step
+    // carries a one-time focus intent that the overview page consumes and
+    // clears on arrival.
+    navigate(
+      overviewPath,
+      stepId === 'consume' ? { state: { focusApiKeys: true } } : undefined
+    );
   };
   const stepBannerRefreshTrigger = useMemo(() => {
     if (isLoadingDeployments) return 'loading';
