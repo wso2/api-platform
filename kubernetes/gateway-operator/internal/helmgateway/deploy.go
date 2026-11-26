@@ -285,21 +285,18 @@ func PreviousReleaseValues(ctx context.Context, in PreviousReleaseInput) (map[st
 	return previousReleaseValues(ctx, helmClient.ReleaseValues, in)
 }
 
-// previousReleaseValues is PreviousReleaseValues with the Helm lookup passed in. A
-// release under the legacy name is only this gateway's when no gateway of the other kind
-// claims the same namespace and name, the rule removeLegacyRelease applies before
-// deleting one. A contested legacy release is not reported: its values would decide this
-// gateway's admin credential from another gateway's deployment.
+// previousReleaseValues is PreviousReleaseValues with the Helm lookup passed in.
+//
+// Release names derive from the gateway name alone, so an APIGateway and a Kubernetes
+// Gateway (on a class this operator manages) with the same namespace and name share
+// both the current and the legacy release. Neither release can then be attributed to
+// this gateway, and its values must not decide this gateway's admin credential.
+// Reporting "no release" would be worse: the gateway would get a fresh credential and
+// overwrite the other gateway's release with it. A contested name is therefore an
+// error, checked before either release is read, so the gateway fails closed until one
+// of the two is renamed or removed (the rule removeLegacyRelease applies before
+// deleting a legacy release).
 func previousReleaseValues(ctx context.Context, read releaseValuesReader, in PreviousReleaseInput) (map[string]interface{}, bool, error) {
-	current := helm.GetReleaseName(in.GatewayName)
-	values, found, err := read(in.Namespace, current)
-	if err != nil || found {
-		return values, found, err
-	}
-	legacy := helm.LegacyReleaseName(in.GatewayName)
-	if legacy == "" || legacy == current {
-		return nil, false, nil
-	}
 	contested, err := otherKindClaimsGateway(ctx, legacyCleanupInput{
 		Client:         in.Client,
 		Config:         in.Config,
@@ -311,6 +308,21 @@ func previousReleaseValues(ctx context.Context, read releaseValuesReader, in Pre
 		return nil, false, fmt.Errorf("check for a competing gateway named %q: %w", in.GatewayName, err)
 	}
 	if contested {
+		other := "a Kubernetes Gateway"
+		if in.FromGatewayAPI {
+			other = "an APIGateway"
+		}
+		return nil, false, fmt.Errorf("%s named %q in namespace %q shares this gateway's Helm release; rename or remove one of them",
+			other, in.GatewayName, in.Namespace)
+	}
+
+	current := helm.GetReleaseName(in.GatewayName)
+	values, found, err := read(in.Namespace, current)
+	if err != nil || found {
+		return values, found, err
+	}
+	legacy := helm.LegacyReleaseName(in.GatewayName)
+	if legacy == "" || legacy == current {
 		return nil, false, nil
 	}
 	return read(in.Namespace, legacy)

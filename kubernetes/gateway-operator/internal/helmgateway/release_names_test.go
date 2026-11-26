@@ -96,28 +96,43 @@ func TestPreviousReleaseValuesPrefersCurrentRelease(t *testing.T) {
 	assert.Equal(t, legacyValues(), v)
 }
 
-// A legacy release that a gateway of the other kind also claims is not reported, for
-// either kind: its values must not decide this gateway's admin credential.
-func TestPreviousReleaseValuesSkipsContestedLegacyRelease(t *testing.T) {
+// When a gateway of the other kind claims the same namespace and name, neither the
+// current nor the legacy release is this gateway's: the lookup fails, for either kind,
+// before reading any release, so their values cannot decide this gateway's admin
+// credential.
+func TestPreviousReleaseValuesFailsOnContestedName(t *testing.T) {
 	legacy := helm.LegacyReleaseName(legacyGateway)
-	f := &fakeReleases{values: map[string]map[string]interface{}{legacy: legacyValues()}}
+	releases := map[string]map[string]map[string]interface{}{
+		"current release": {helm.GetReleaseName(legacyGateway): {"current": true}},
+		"legacy release":  {legacy: legacyValues()},
+	}
+	for name, values := range releases {
+		t.Run(name, func(t *testing.T) {
+			apiGW := apiGateway()
+			apiGW.Name = legacyGateway
+			f := &fakeReleases{values: values}
+			_, found, err := previousReleaseValues(context.Background(), f.read, previousInput(t, true, apiGW))
+			require.Error(t, err, "a Gateway API Gateway, with an APIGateway of the same name")
+			assert.Contains(t, err.Error(), "an APIGateway")
+			assert.False(t, found)
+			assert.Empty(t, f.asked, "no release is read for a contested name")
 
-	apiGW := apiGateway()
-	apiGW.Name = legacyGateway
-	_, found, err := previousReleaseValues(context.Background(), f.read, previousInput(t, true, apiGW))
-	require.NoError(t, err)
-	assert.False(t, found, "a Gateway API Gateway, with an APIGateway of the same name")
+			k8sGW := k8sGateway(managedClass)
+			k8sGW.Name = legacyGateway
+			f = &fakeReleases{values: values}
+			_, found, err = previousReleaseValues(context.Background(), f.read, previousInput(t, false, k8sGW))
+			require.Error(t, err, "an APIGateway, with a managed Gateway API Gateway of the same name")
+			assert.Contains(t, err.Error(), "a Kubernetes Gateway")
+			assert.False(t, found)
+			assert.Empty(t, f.asked)
 
-	k8sGW := k8sGateway(managedClass)
-	k8sGW.Name = legacyGateway
-	_, found, err = previousReleaseValues(context.Background(), f.read, previousInput(t, false, k8sGW))
-	require.NoError(t, err)
-	assert.False(t, found, "an APIGateway, with a managed Gateway API Gateway of the same name")
-
-	// A Gateway on a class this operator does not manage claims nothing.
-	foreign := k8sGateway("someone-else")
-	foreign.Name = legacyGateway
-	_, found, err = previousReleaseValues(context.Background(), f.read, previousInput(t, false, foreign))
-	require.NoError(t, err)
-	assert.True(t, found)
+			// A Gateway on a class this operator does not manage claims nothing.
+			foreign := k8sGateway("someone-else")
+			foreign.Name = legacyGateway
+			f = &fakeReleases{values: values}
+			_, found, err = previousReleaseValues(context.Background(), f.read, previousInput(t, false, foreign))
+			require.NoError(t, err)
+			assert.True(t, found)
+		})
+	}
 }
