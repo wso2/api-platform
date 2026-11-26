@@ -47,6 +47,7 @@ func testScheme(t *testing.T) *runtime.Scheme {
 
 func testConfig() *config.OperatorConfig {
 	cfg := &config.OperatorConfig{}
+	cfg.GatewayAPI.Enabled = true
 	cfg.GatewayAPI.GatewayClassNames = []string{managedClass}
 	return cfg
 }
@@ -129,6 +130,33 @@ func TestOtherKindClaimsGateway(t *testing.T) {
 				t.Fatalf("otherKindClaimsGateway() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestOtherKindClaimsGateway_gatewayAPIDisabled pins that with the Gateway API
+// controllers off, a Kubernetes Gateway on a managed class is not a claim: nothing
+// reconciles it. The fake client has no Gateway API types registered, so a read
+// would fail the way it does on a cluster without the Gateway API CRDs.
+func TestOtherKindClaimsGateway_gatewayAPIDisabled(t *testing.T) {
+	in := cleanupInput(t, false)
+	in.Config.GatewayAPI.Enabled = false
+	noGatewayAPI := runtime.NewScheme()
+	utilruntime.Must(apiv1.AddToScheme(noGatewayAPI))
+	in.Client = fake.NewClientBuilder().WithScheme(noGatewayAPI).Build()
+
+	got, err := otherKindClaimsGateway(context.Background(), in)
+	if err != nil {
+		t.Fatalf("otherKindClaimsGateway() error = %v, want no Gateway read", err)
+	}
+	if got {
+		t.Fatal("no Kubernetes Gateway can claim the release while the Gateway API controllers are off")
+	}
+
+	// Positive control: the same lookup with the controllers on does read Gateways,
+	// and fails on a cluster that cannot serve them.
+	in.Config.GatewayAPI.Enabled = true
+	if _, err := otherKindClaimsGateway(context.Background(), in); err == nil {
+		t.Fatal("with the Gateway API controllers on, the lookup should have read Gateways")
 	}
 }
 

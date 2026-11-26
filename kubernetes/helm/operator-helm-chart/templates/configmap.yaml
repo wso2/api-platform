@@ -33,10 +33,15 @@ data:
       max_retry_attempts: {{ .Values.reconciliation.maxRetryAttempts | default 10 }}
       initial_backoff: {{ .Values.reconciliation.initialBackoff | default "1s" | quote }}
       max_backoff_duration: {{ .Values.reconciliation.maxBackoffDuration | default "60s" | quote }}
+    cache:
+      sync_timeout: {{ dig "syncTimeout" "2m" (.Values.cache | default dict) | quote }}
+      exclude_helm_release_secrets: {{ dig "excludeHelmReleaseSecrets" true (.Values.cache | default dict) }}
+      exclude_gateway_chart_config_maps: {{ dig "excludeGatewayChartConfigMaps" true (.Values.cache | default dict) }}
     logging:
       level: {{ .Values.logging.level | quote }}
       format: {{ .Values.logging.format | quote }}
     gateway_api:
+      enabled: {{ include "gateway-operator.gatewayApiEnabled" . | eq "true" }}
       gateway_class_names:
 {{- range .Values.gatewayApi.managedGatewayClassNames }}
         - {{ . | quote }}

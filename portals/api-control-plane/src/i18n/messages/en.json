@@ -3773,44 +3773,50 @@
     "defaultMessage": "Could not copy. Select the value and copy it manually."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies": {
-    "defaultMessage": "Attach and Manage Policies"
+    "defaultMessage": "Attach and manage policies"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designCustomize": {
-    "defaultMessage": "Design and Customize API Proxies"
+    "defaultMessage": "Design and customize APIs"
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designSelfHostedGateway": {
-    "defaultMessage": "Getting Started with a Self-Hosted Gateway"
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designDeployTest": {
+    "defaultMessage": "Deploy and test an API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designPublish": {
+    "defaultMessage": "Publish an API"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designTitle": {
-    "defaultMessage": "Design and Deploy",
+    "defaultMessage": "Design and deploy",
     "description": "Section heading. Refers to building an API proxy and putting it on a gateway."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.exploreMore": {
     "defaultMessage": "Explore More",
     "description": "Heading above a card of links into the product documentation."
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateProxy": {
-    "defaultMessage": "Create an API Proxy"
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysManage": {
+    "defaultMessage": "Manage gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysPortals": {
+    "defaultMessage": "Manage API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysSelfHosted": {
+    "defaultMessage": "Self-hosted gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysTitle": {
+    "defaultMessage": "Gateways and portals",
+    "description": "Section heading. Refers to running gateways, including self-hosted ones, and managing API portals."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateGraphql": {
+    "defaultMessage": "Create GraphQL APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateRest": {
+    "defaultMessage": "Create REST APIs"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide": {
-    "defaultMessage": "Get Started with the Choreo API Management"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedRestFromScratch": {
-    "defaultMessage": "Create a REST API Proxy from Scratch"
+    "defaultMessage": "Get started with the Choreo API Management"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedTitle": {
-    "defaultMessage": "Get Started",
+    "defaultMessage": "Get started",
     "description": "Section heading for introductory documentation."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governGovernance": {
-    "defaultMessage": "API Governance Overview"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governInsights": {
-    "defaultMessage": "Insights and Analytics"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governTitle": {
-    "defaultMessage": "Govern and Monitor",
-    "description": "Section heading. \"Govern\" means applying organization-wide rules to APIs."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.apiAction": {
     "defaultMessage": "Create an API"
@@ -4512,7 +4518,7 @@
     "defaultMessage": "Create a project"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.createApi": {
-    "defaultMessage": "Create API"
+    "defaultMessage": "Create an API"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayConnect": {
     "defaultMessage": "Connect a gateway"
@@ -4522,13 +4528,13 @@
     "description": "Chip showing how many gateways the organization has."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayDescription": {
-    "defaultMessage": "Deploy to a managed gateway or a self-hosted one in your own cluster."
+    "defaultMessage": "Deploy your APIs to a managed gateway or a self-hosted one in your own cluster."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayManage": {
     "defaultMessage": "Manage gateways"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayTitle": {
-    "defaultMessage": "Run on any gateway"
+    "defaultMessage": "Run your APIs on any gateway"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.greeting": {
     "defaultMessage": "Hello, {name}",
@@ -4538,10 +4544,10 @@
     "defaultMessage": "Turn any service into a managed API with OAuth2, rate limits, and policies. Import a definition or point to a backend URL."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroTitle": {
-    "defaultMessage": "Expose and secure APIs"
+    "defaultMessage": "Govern and manage every API"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.intro": {
-    "defaultMessage": "You're in the <strong>{projectName}</strong> project. It's empty for now, so start creating.",
+    "defaultMessage": "You're in the <strong>{projectName}</strong> project. Nothing is published yet, so start with your first API.",
     "description": "{projectName} is the name of the project the user is in. Never translated."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.portalCount": {
@@ -6251,7 +6257,7 @@
   },
   "branding.BrandLockup.name": {
     "defaultMessage": "Choreo API Management",
-    "description": "Product name in the brand lockup. Choreo is a product name — leave it untranslated."
+    "description": "Alt text of the product logo, which already contains the name. Choreo is a product name — leave it untranslated."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."

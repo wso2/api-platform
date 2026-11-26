@@ -32,6 +32,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -41,6 +42,7 @@ import (
 	"github.com/go-logr/logr"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	apiv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/cachescope"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/controller"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/pkg/logger"
@@ -135,10 +137,24 @@ func main() {
 		setupLog.Info("watching all namespaces (cluster-wide)")
 	}
 
+	cacheOpts, err := cachescope.Options(defaultNamespaces, cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to build cache options")
+		os.Exit(1)
+	}
+	setupLog.Info("informer cache settings",
+		"syncTimeout", cfg.Cache.SyncTimeout.String(),
+		"helmReleaseSecrets", cfg.Cache.ExcludeHelmReleaseSecrets,
+		"gatewayChartConfigMaps", cfg.Cache.ExcludeGatewayChartConfigMaps,
+		"servicesAndDeploymentsOutsideGatewayChart", !cfg.GatewayAPI.Enabled)
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
-		Cache: cache.Options{
-			DefaultNamespaces: defaultNamespaces,
+		Cache:  cacheOpts,
+		// Every controller waits this long for its informers' initial list; none sets
+		// its own CacheSyncTimeout, so this is the bound for all of them.
+		Controller: ctrlconfig.Controller{
+			CacheSyncTimeout: cfg.Cache.SyncTimeout,
 		},
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
@@ -184,32 +200,39 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "RestApi")
 		os.Exit(1)
 	}
-	if err = controller.NewK8sGatewayReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
-		os.Exit(1)
-	}
-	if err = controller.NewK8sGatewayClassReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
-		os.Exit(1)
-	}
-	if err = controller.NewHTTPRouteReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
-		os.Exit(1)
+	// Gateway API controllers (GatewayClass, Gateway, HTTPRoute). When they are off,
+	// nothing watches Gateway API resources, so the operator also runs on clusters
+	// without the Gateway API CRDs.
+	if cfg.GatewayAPI.Enabled {
+		if err = controller.NewK8sGatewayReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
+			os.Exit(1)
+		}
+		if err = controller.NewK8sGatewayClassReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
+			os.Exit(1)
+		}
+		if err = controller.NewHTTPRouteReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Gateway API support disabled; GatewayClass, Gateway and HTTPRoute resources are not reconciled")
 	}
 
 	// Management-API resource controllers (WSO2 APIGateway flow only).

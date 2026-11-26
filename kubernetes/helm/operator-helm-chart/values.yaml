@@ -12,6 +12,17 @@ fullnameOverride: ""
 # Set `false` if CRDs are already managed by another Helm release, a cloud add-on, Traefik, or 
 # OpenShift 4.19+ to avoid ownership and upgrade conflicts.
 gatewayApi:
+  # Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute and the
+  # APIPolicy/ReferenceGrant objects they use) → gateway_api.enabled. Set false on clusters
+  # that deploy gateways only through APIGateway: the operator then watches no Gateway API
+  # resources, needs no Gateway API RBAC or CRDs, and caches only the gateway chart's own
+  # Services and Deployments, found by their app.kubernetes.io/component label (controller
+  # or gateway-runtime). Gateway chart versions after 2026.11.26-r1 always set it; with
+  # an earlier version, do not override that label in the gateway's deployment.labels.
+  # APIGateway, RestApi and the other management resources are unaffected. The upgrade fails while any Gateway of a managedGatewayClassNames class, or
+  # any HTTPRoute still carrying this operator's finalizer, exists: delete those first with
+  # this still true, so their finalizers are removed. Independent of installStandardCRDs.
+  enabled: true
   installStandardCRDs: true
   # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
   managedGatewayClassNames:
@@ -24,7 +35,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.10.1"
+  tag: "0.12.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -740,6 +751,22 @@ reconciliation:
   initialBackoff: 1s
   # Maximum exponential backoff (Go duration) → reconciliation.max_backoff_duration.
   maxBackoffDuration: 60s
+# Objects the operator never reads, kept out of its informer cache. Without these, the
+# cache holds every gateway's Helm release Secrets and the gateway chart's rendered
+# ConfigMaps (several hundred KB per gateway), and its memory grows with the gateway count.
+# Turn one off only if a resource references an object it excludes: that reference then
+# resolves as not found.
+cache:
+  # How long each controller waits for the informer cache's initial list at startup
+  # before it fails, which restarts the operator (Go duration) → cache.sync_timeout.
+  # Raise it on clusters with many gateways if the leader logs "timed out waiting for
+  # cache to be synced".
+  syncTimeout: 2m
+  # Leave Secrets labeled owner=helm (Helm's release storage) out → cache.exclude_helm_release_secrets.
+  excludeHelmReleaseSecrets: true
+  # Leave ConfigMaps labeled app.kubernetes.io/name=gateway (rendered by the gateway chart) out
+  # → cache.exclude_gateway_chart_config_maps.
+  excludeGatewayChartConfigMaps: true
 logging:
   level: "info"
   format: "json"

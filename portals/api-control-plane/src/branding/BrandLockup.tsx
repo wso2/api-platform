@@ -16,46 +16,37 @@
  * under the License.
  */
 
-import { ColorSchemeImage, Stack, Typography } from '@wso2/oxygen-ui';
-import { FormattedMessage } from 'react-intl';
+import { ColorSchemeImage } from '@wso2/oxygen-ui';
+import { useIntl } from 'react-intl';
 
 import { useBrandLogo } from './BrandLogoProvider';
 
 /**
- * The product mark with its name set in Oxygen typography, all in regular
- * weight. Shared by the app header and the login page so both paint the same
- * lockup, on-prem and cloud alike.
+ * The product logo. The artwork is the full wordmark (mark plus the name), so
+ * nothing is drawn beside it; the name only reaches assistive technology, as
+ * the image's alt text.
  */
 export function BrandLockup({
   height,
-  fontSize,
 }: {
   /** Logo height: pixels as a number, or any CSS length such as `1.75rem`. */
   height: number | string;
-  /** Name size, same units. Defaults to three quarters of a numeric `height`. */
-  fontSize?: number | string;
 }) {
   const brandLogo = useBrandLogo();
+  const intl = useIntl();
 
   return (
-    <Stack alignItems="center" direction="row" spacing={1.5}>
-      <ColorSchemeImage alt="" height={height} src={brandLogo} width="auto" />
-      <Typography
-        component="span"
-        sx={{
-          fontSize: fontSize ?? (typeof height === 'number' ? height * 0.75 : undefined),
-          fontWeight: 400,
-          lineHeight: 1,
-          whiteSpace: 'nowrap',
-        }}
-        variant="h6"
-      >
-        <FormattedMessage
-          defaultMessage="Choreo API Management"
-          description="Product name in the brand lockup. Choreo is a product name — leave it untranslated."
-          id="branding.BrandLockup.name"
-        />
-      </Typography>
-    </Stack>
+    <ColorSchemeImage
+      alt={intl.formatMessage({
+        defaultMessage: 'Choreo API Management',
+        description:
+          'Alt text of the product logo, which already contains the name. Choreo is a product name — leave it untranslated.',
+        id: 'branding.BrandLockup.name',
+      })}
+      height={height}
+      src={brandLogo}
+      sx={{ display: 'block', maxWidth: '100%' }}
+      width="auto"
+    />
   );
 }
