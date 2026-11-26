@@ -6955,6 +6955,167 @@ func TestStillActive(t *testing.T) {
 	require.Empty(t, stillActive([]string{"old-1"}, []string{"new-1"}))
 }
 
+// selfHostedPlatform answers the /self-hosted-gateways routes for one environment, keeping the
+// gateways it registered and each gateway's tokens with their status.
+type selfHostedPlatform struct {
+	created   map[string]any
+	gateways  map[string]map[string]any
+	tokens    map[string][]map[string]any
+	minted    int
+	revokes   []string
+	createdBy string
+}
+
+func (p *selfHostedPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const prefix = "/self-hosted-gateways/"
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/self-hosted-gateways":
+			p.created = map[string]any{}
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&p.created))
+			env, _ := p.created["environment"].(string)
+			name, _ := p.created["displayName"].(string)
+			properties, _ := p.created["properties"].(map[string]any)
+			stored := map[string]any{"environment": env}
+			for k, v := range properties {
+				stored[k] = v
+			}
+			id := env + "-" + name
+			p.gateways[id] = map[string]any{
+				"id": id, "environment": env, "isActive": false, "functionalityType": p.created["functionalityType"],
+				"endpoints": p.created["endpoints"], "properties": stored, "createdBy": p.createdBy,
+			}
+			writeJSON(w, http.StatusCreated, p.gateways[id])
+		case r.Method == http.MethodGet && r.URL.Path == "/self-hosted-gateways":
+			list := []any{}
+			for _, gateway := range p.gateways {
+				list = append(list, gateway)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"list": list})
+		case strings.HasSuffix(r.URL.Path, "/tokens") && r.Method == http.MethodPost:
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), "/tokens")
+			p.minted++
+			tokenID := fmt.Sprintf("tok-%d", p.minted)
+			p.tokens[id] = append(p.tokens[id], map[string]any{"id": tokenID, "status": "active"})
+			writeJSON(w, http.StatusCreated, map[string]any{"id": tokenID, "token": "secret-" + tokenID})
+		case strings.HasSuffix(r.URL.Path, "/tokens") && r.Method == http.MethodGet:
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), "/tokens")
+			active := []any{}
+			for _, token := range p.tokens[id] {
+				if token["status"] == "active" {
+					active = append(active, token)
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"list": active})
+		case strings.Contains(r.URL.Path, "/tokens/") && r.Method == http.MethodDelete:
+			id, tokenID, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, prefix), "/tokens/")
+			p.revokes = append(p.revokes, tokenID)
+			for _, token := range p.tokens[id] {
+				if token["id"] == tokenID {
+					token["status"] = "revoked"
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, prefix):
+			gateway, ok := p.gateways[strings.TrimPrefix(r.URL.Path, prefix)]
+			if !ok {
+				writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+				return
+			}
+			writeJSON(w, http.StatusOK, gateway)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func selfHostedSteps(t *testing.T, claims map[string]any) (*Steps, context.Context, *cleanup.Registry, *selfHostedPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, jwtFor(t, map[string]any{"alg": "RS256"}, claims))
+	platform := &selfHostedPlatform{gateways: map[string]map[string]any{}, tokens: map[string][]map[string]any{}, createdBy: "Randil"}
+	steps, ctx, local, registry := cloudSteps(t, platform.handler(t))
+	local.Set(keyEnvironmentName, "development")
+	return steps, ctx, registry, platform
+}
+
+func TestCreateSelfHostedGatewayWithKeepsTheEndpointsAndProperties(t *testing.T) {
+	steps, ctx, registry, platform := selfHostedSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.createSelfHostedGatewayWith(ctx, valuesTable(t,
+		[]string{"endpoints", `["http://a.example.com", "http://b.example.com"]`},
+		[]string{"properties", `{"region": "eu", "tier": "gold"}`})))
+	require.Equal(t, []any{"http://a.example.com", "http://b.example.com"}, platform.created["endpoints"])
+	require.Equal(t, map[string]any{"region": "eu", "tier": "gold"}, platform.created["properties"])
+	id := optionalValue(ctx, keySelfHostedGatewayID)
+	require.True(t, strings.HasPrefix(id, "development-"))
+	require.Contains(t, pendingOf(registry, kindSelfHostedGateway), id)
+
+	require.NoError(t, steps.assertSelfHostedGatewayKeepsItsValues(ctx))
+	require.NoError(t, steps.assertSelfHostedGatewayCreator(ctx))
+	require.NoError(t, steps.assertSelfHostedGatewayListed(ctx))
+
+	gateway := platform.gateways[id]
+	for name, change := range map[string]func(){
+		"another endpoint order": func() { gateway["endpoints"] = []any{"http://b.example.com", "http://a.example.com"} },
+		"a missing endpoint":     func() { gateway["endpoints"] = []any{"http://a.example.com"} },
+		"another property value": func() {
+			gateway["properties"] = map[string]any{"region": "us", "tier": "gold", "environment": "development"}
+		},
+		"no environment property": func() { gateway["properties"] = map[string]any{"region": "eu", "tier": "gold"} },
+		"active":                  func() { gateway["isActive"] = true },
+		"another environment":     func() { gateway["environment"] = "production" },
+		"another kind":            func() { gateway["functionalityType"] = "ai" },
+	} {
+		saved := map[string]any{}
+		for k, v := range gateway {
+			saved[k] = v
+		}
+		change()
+		require.Error(t, steps.assertSelfHostedGatewayKeepsItsValues(ctx), name)
+		for k, v := range saved {
+			gateway[k] = v
+		}
+	}
+
+	gateway["createdBy"] = "user-1"
+	require.Error(t, steps.assertSelfHostedGatewayCreator(ctx), "the creator must be the console user's name")
+	delete(platform.gateways, id)
+	require.Error(t, steps.assertSelfHostedGatewayListed(ctx))
+
+	for _, rows := range [][][]string{
+		{{"endpoints", `[]`}},
+		{{"endpoints", `"http://a.example.com"`}},
+		{{"endpoints", `["http://a.example.com"]`}, {"properties", `["x"]`}},
+		{{"endpoints", `["http://a.example.com"]`}, {"labels", `{}`}},
+	} {
+		require.Error(t, steps.createSelfHostedGatewayWith(ctx, valuesTable(t, rows...)), rows)
+	}
+}
+
+func TestRegistrationTokensAreRevokedOneAtATime(t *testing.T) {
+	steps, ctx, _, platform := selfHostedSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.createSelfHostedGateway(ctx))
+	require.Equal(t, []any{pendingEndpoint}, platform.created["endpoints"], "the console's create is unchanged")
+	_, hasProperties := platform.created["properties"]
+	require.False(t, hasProperties)
+	require.Error(t, steps.revokeFirstRegistrationToken(ctx), "nothing was issued yet")
+
+	require.NoError(t, steps.generateRegistrationToken(ctx))
+	require.NoError(t, steps.generateRegistrationToken(ctx))
+	require.Equal(t, "tok-1,tok-2", optionalValue(ctx, keyIssuedTokenIDs), "ids, never values, are kept")
+	require.NoError(t, steps.assertActiveRegistrationTokens(ctx, 2))
+
+	require.NoError(t, steps.revokeFirstRegistrationToken(ctx))
+	require.NoError(t, steps.revokeFirstRegistrationToken(ctx))
+	require.Equal(t, []string{"tok-1", "tok-1"}, platform.revokes)
+	require.NoError(t, steps.assertActiveRegistrationTokens(ctx, 1))
+	require.NoError(t, steps.assertRevokedTokensInactive(ctx))
+	require.NoError(t, steps.assertLastTokenActive(ctx))
+
+	id := optionalValue(ctx, keySelfHostedGatewayID)
+	platform.tokens[id][1]["status"] = "revoked"
+	require.Error(t, steps.assertLastTokenActive(ctx))
+}
+
 func TestSelfHostedGatewayPathsEscapeID(t *testing.T) {
 	require.Equal(t, "/self-hosted-gateways/id%2Fwith%20separator", selfHostedGatewayPath("id/with separator"))
 	require.Equal(t, "/self-hosted-gateways/gw-1/tokens", selfHostedGatewayTokensPath("gw-1"))
@@ -8750,6 +8911,44 @@ func TestValidateSpecFixtureAndItsAssertions(t *testing.T) {
 	require.Error(t, steps.assertValidation(ctx, "find no errors"))
 	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"isValid":true,"errors":[]}`)
 	require.Error(t, steps.assertValidation(ctx, "find no errors"), "only a 200 is a validation result")
+}
+
+func TestValidateBackendURLSendsTheURLAndExpectsNoContent(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(backendEnv, "https://testbench.example.com/mocks/backend/")
+	var sentURL string
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, validateOpenAPIPath, r.URL.Path)
+		fields, files, ok := handlerForm(t, w, r)
+		if !ok {
+			return
+		}
+		assert.Empty(t, files, "a URL is sent, not a file")
+		sentURL = fields["url"]
+		writeJSON(w, http.StatusOK, map[string]any{"isValid": false, "errors": []map[string]string{{"message": "not an OpenAPI definition"}}})
+	})
+
+	require.NoError(t, steps.validateBackendURL(ctx))
+	require.Equal(t, "https://testbench.example.com/mocks/backend/", sentURL)
+	require.NoError(t, steps.assertValidation(ctx, "list the errors and return no content"))
+	require.Error(t, steps.assertValidation(ctx, "list the errors and return the definition"), "a URL has no fixture to compare")
+
+	for name, body := range map[string]string{
+		"content":       `{"isValid":false,"errors":[{"message":"m"}],"content":"{}"}`,
+		"no errors":     `{"isValid":false,"errors":[]}`,
+		"valid":         `{"isValid":true,"errors":[]}`,
+		"empty message": `{"isValid":false,"errors":[{"message":""}]}`,
+	} {
+		publishedResponse(t, steps, ctx, http.StatusOK, body)
+		require.Error(t, steps.assertValidation(ctx, "list the errors and return no content"), name)
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"code":"DESTINATION_NOT_ALLOWED"}`)
+	require.Error(t, steps.assertValidation(ctx, "list the errors and return no content"), "a refused fetch is not a result")
+
+	t.Setenv(backendEnv, "http://testbench.example.com/backend")
+	require.Error(t, steps.validateBackendURL(ctx), "the backend URL is checked before anything is sent")
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "nothing stale is left published")
 }
 
 // restAPIStub serves one REST API's definition routes from a definition it keeps.

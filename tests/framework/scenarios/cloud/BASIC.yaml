@@ -195,3 +195,12 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_basic.feature
           scenario: "A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is kept"
+  - id: ID_APIP_BASIC_022
+    title: "Validating a URL that serves no OpenAPI definition lists its errors and returns no content, while a valid definition validates."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises APIDEF-011; written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_basic.feature
+          scenario: "Validating a URL that serves no OpenAPI definition lists its errors and returns no content, while a valid definition validates"

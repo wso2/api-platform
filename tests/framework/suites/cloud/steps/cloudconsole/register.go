@@ -56,6 +56,13 @@ const (
 	// keyRevokedTokenIDs holds the comma-joined ids of the registration tokens a reconfigure
 	// revoked. Only token ids are ever stored; a token's secret value never enters the context.
 	keyRevokedTokenIDs = "cloudRevokedRegistrationTokenIDs"
+	// keyIssuedTokenIDs holds the comma-joined ids of the registration tokens the scenario issued,
+	// in the order they were issued.
+	keyIssuedTokenIDs = "cloudIssuedRegistrationTokenIDs"
+	// keySelfHostedGatewayEndpoints and keySelfHostedGatewayProperties hold, as JSON, the endpoints
+	// and properties a self-hosted gateway was created with.
+	keySelfHostedGatewayEndpoints  = "cloudSelfHostedGatewayEndpoints"
+	keySelfHostedGatewayProperties = "cloudSelfHostedGatewayProperties"
 
 	keyAPIDefinition        = "cloudAPIDefinition"
 	keyAPIKey               = "cloudAPIKey"

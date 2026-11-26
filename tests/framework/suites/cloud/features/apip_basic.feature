@@ -355,3 +355,16 @@ Feature: APIP cloud REST API lifecycle
     And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
     And the cloud API error should name the field "upstream.main.url"
     And the synthetic REST API's main upstream should be the testbench backend
+
+  # The cloud counterpart of on-premises APIDEF-011. The URL that is no definition is the
+  # testbench backend, which answers JSON, and it has to be public: the cloud fetches tenant URLs
+  # only from public addresses. A URL the platform cannot fetch is answered 400, so the
+  # validation result proves the URL was fetched. The cloud publishes no spec files to validate
+  # by URL, so the valid definition is validated as a file.
+  @ID_APIP_BASIC_022
+  Scenario: Validating a URL that serves no OpenAPI definition lists its errors and returns no content, while a valid definition validates
+    Given I obtain an APIP cloud console token
+    When I validate the OpenAPI definition at the testbench backend URL
+    Then the OpenAPI validation should list the errors and return no content
+    When I validate the spec fixture "petstore-v1.yaml"
+    Then the OpenAPI validation should find no errors

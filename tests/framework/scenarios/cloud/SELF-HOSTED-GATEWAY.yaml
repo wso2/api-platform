@@ -50,3 +50,31 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_self_hosted_gateway_runtime.feature
           scenario: "A local gateway connects with its registration token and serves the API deployed to it"
+  - id: ID_APIP_SELF_HOSTED_GATEWAY_004
+    title: "A self-hosted gateway registered with endpoints and properties reads back inactive with those endpoints and properties and its environment, and is listed."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "A registered gateway round-trips its endpoints and properties and starts inactive"; written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_self_hosted_gateway.feature
+          scenario: "A self-hosted gateway keeps the endpoints and properties it is registered with, starts inactive, and is listed"
+  - id: ID_APIP_SELF_HOSTED_GATEWAY_005
+    title: "A self-hosted gateway's registration tokens are issued and revoked independently: revoking one, twice, leaves the other active."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Gateway tokens are rotated and revoked independently"; written, not yet run against a cloud environment.
+      status: planned
+      refs:
+        - feature: suites/cloud/features/apip_self_hosted_gateway.feature
+          scenario: "A self-hosted gateway's registration tokens are revoked one at a time"
+  - id: ID_APIP_SELF_HOSTED_GATEWAY_006
+    title: "A self-hosted gateway names the console user who registered it as its creator."
+    priority: P2
+    cloud:
+      # The creator half of on-premises "A registered gateway round-trips its endpoints and properties and starts inactive".
+      status: known-issue
+      issue: "apim-saas: the creator of a self-hosted gateway reads back as deleted_user. platform-api's gateway read already resolves created_by from the user id to the display name (gatewayModelToAPI), and the cloud plugin's showUsers (internal/gateways/service.go) resolves that name again as if it were a user id, which no user has. Seen with apim-saas 6416f234 (platform-api 20261123-r1), the build development runs. https://github.com/wso2-enterprise/apim-saas/issues/3568"
+      refs:
+        - feature: suites/cloud/features/apip_self_hosted_gateway.feature
+          scenario: "A self-hosted gateway names the console user as its creator"
