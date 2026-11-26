@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -528,4 +529,80 @@ func TestProviderDeploy_TemplateFetchFails_NoSecretSync(t *testing.T) {
 
 	assert.Equal(t, "failed", h.nextAck(t).Status, "a provider whose template is missing fails as before")
 	assert.Empty(t, syncer.upserted, "a failed fetch syncs nothing")
+}
+
+// templateStorageFault wraps the harness store with template reads and saves
+// that can be made to fail.
+type templateStorageFault struct {
+	storage.Storage
+	getErr, saveErr error
+}
+
+func (s *templateStorageFault) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	return s.Storage.GetLLMProviderTemplateByHandle(handle)
+}
+
+func (s *templateStorageFault) SaveLLMProviderTemplate(t *models.StoredLLMProviderTemplate) error {
+	if s.saveErr != nil {
+		return s.saveErr
+	}
+	return s.Storage.SaveLLMProviderTemplate(t)
+}
+
+// withTemplateStorageFault rebuilds the harness's LLM deployment service on a
+// store whose template reads and saves fail as configured.
+func withTemplateStorageFault(h *agentEventsHarness, fault *templateStorageFault) {
+	fault.Storage = h.db
+	h.client.llmDeploymentService = utils.NewLLMDeploymentService(h.client.store, fault, nil, nil, nil,
+		h.client.deploymentService, &config.RouterConfig{ListenerPort: 8080}, nil, nil)
+}
+
+func TestEnsureTemplate_WithoutServices_DoesNothing(t *testing.T) {
+	c := &Client{logger: newAgentEventsHarness(t).client.logger}
+	assert.NotPanics(t, func() {
+		c.ensureLLMProviderTemplateFromYAML([]byte(tmplEvtProviderYAML(tmplEvtHandle)), "corr", nil)
+	})
+}
+
+func TestEnsureTemplate_LookupFailure_SkipsFetch(t *testing.T) {
+	h, cp, _ := newTemplateEventsHarness(t)
+	cp.templates[tmplEvtHandle] = tmplEvtTemplateYAML(tmplEvtHandle)
+	withTemplateStorageFault(h, &templateStorageFault{getErr: errors.New("database locked")})
+
+	h.client.ensureLLMProviderTemplateFromYAML([]byte(tmplEvtProviderYAML(tmplEvtHandle)), "corr", nil)
+
+	assert.Empty(t, cp.templateFetches(), "when the gateway cannot tell what it holds, it does not fetch")
+}
+
+func TestEnsureTemplate_ConcurrentSave_TreatedAsDone(t *testing.T) {
+	h, cp, _ := newTemplateEventsHarness(t)
+	cp.templates[tmplEvtHandle] = tmplEvtTemplateYAML(tmplEvtHandle)
+	withTemplateStorageFault(h, &templateStorageFault{saveErr: storage.ErrConflict})
+
+	assert.NotPanics(t, func() {
+		h.client.ensureLLMProviderTemplateFromYAML([]byte(tmplEvtProviderYAML(tmplEvtHandle)), "corr", nil)
+	})
+	assert.Equal(t, []string{tmplEvtHandle}, cp.templateFetches())
+	assert.Empty(t, tmplEvtTemplateCreateEvents(h.hub), "another deploy saved it; nothing more to announce")
+}
+
+func TestEnsureTemplate_InvalidTemplate_NotSaved(t *testing.T) {
+	h, cp, _ := newTemplateEventsHarness(t)
+	cp.templates[tmplEvtHandle] = `apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: ` + tmplEvtHandle + `
+spec:
+  displayName: Acme Inference
+  promptTokens: not-an-identifier
+`
+
+	h.client.ensureLLMProviderTemplateFromYAML([]byte(tmplEvtProviderYAML(tmplEvtHandle)), "corr", nil)
+
+	assert.Equal(t, []string{tmplEvtHandle}, cp.templateFetches())
+	_, err := h.db.GetLLMProviderTemplateByHandle(tmplEvtHandle)
+	assert.True(t, storage.IsNotFoundError(err), "a template that fails validation is not saved")
 }
