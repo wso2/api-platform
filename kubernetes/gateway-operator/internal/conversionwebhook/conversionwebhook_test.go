@@ -565,6 +565,49 @@ func TestSyncServesTheSecretsCurrentCertificate(t *testing.T) {
 	assert.False(t, loaded, "nothing to reload")
 }
 
+// A bundle without a CA never reaches the CRD: patching it would clear the caBundle
+// the API server uses to verify every replica's certificate.
+func TestTrustRejectsBundleWithoutCA(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	good := freshBundle(t)
+	require.NoError(t, newConversion(c, testNow).trust(ctx, good))
+
+	noCA := good
+	noCA.caCert, noCA.caKey = nil, nil
+	require.Error(t, newConversion(c, testNow).trust(ctx, noCA))
+	assert.Equal(t, good.caCert, crdCABundle(t, c), "the CRD keeps trusting the CA it had")
+}
+
+// A Secret rewritten without a usable CA (only tls.crt and tls.key) is repaired by the
+// next sync, instead of waiting for the hourly rotator, and the CRD follows the new CA.
+func TestSyncRepairsSecretWithoutCA(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(placeholderCRD()).Build()
+	m := newSecretManager(c, testNow)
+	m.currentCA = newConversion(c, testNow).caBundle
+	st := &servingState{secrets: m, conversion: newConversion(c, testNow), store: &certStore{}}
+	_, err := st.sync(ctx)
+	require.NoError(t, err)
+	oldCA := crdCABundle(t, c)
+
+	secret := &corev1.Secret{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: testNS, Name: testSecret}, secret))
+	delete(secret.Data, SecretKeyCACert)
+	delete(secret.Data, SecretKeyCAKey)
+	require.NoError(t, c.Update(ctx, secret))
+
+	loaded, err := st.sync(ctx)
+	require.NoError(t, err)
+	assert.True(t, loaded)
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: testNS, Name: testSecret}, secret))
+	require.NotEmpty(t, secret.Data[SecretKeyCACert], "the CA is back")
+	assert.Equal(t, oldCA, secret.Data[SecretKeyPreviousCA], "the CA the CRD trusted is kept for the overlap")
+	assert.Equal(t, 2, pemCount(crdCABundle(t, c)), "the CRD trusts the new CA and, for the overlap, the old one")
+	assert.Contains(t, string(crdCABundle(t, c)), string(secret.Data[SecretKeyCACert]))
+	assert.True(t, st.store.ready())
+}
+
 // A CA key that does not belong to the CA certificate makes the bundle unusable for
 // signing, so the whole bundle is replaced rather than retrying serving renewals.
 func TestMismatchedCAKeyRenewsEverything(t *testing.T) {

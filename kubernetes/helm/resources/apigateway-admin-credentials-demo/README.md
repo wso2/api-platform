@@ -31,6 +31,8 @@ helm upgrade --install gateway-operator kubernetes/helm/operator-helm-chart \
   --wait
 ```
 
+If `gateway-operator` is already installed, this command upgrades it and resets every value it does not set to the chart default. For example, a release limited by `watchNamespaces` would then watch all namespaces, with cluster-wide RBAC. To keep the existing values, add `--reset-then-reuse-values` (Helm 3.14 or later), or run the demo on a separate cluster.
+
 On a cluster without a LoadBalancer implementation (kind, for example), also set `--set gateway.values.gateway.gatewayRuntime.service.type=ClusterIP`. Otherwise the gateway install waits for an external IP until it times out.
 
 To test an unreleased operator and chart locally (the setup this demo was verified on):
@@ -42,6 +44,8 @@ To test an unreleased operator and chart locally (the setup this demo was verifi
   - `gateway.helm.plainHTTP=true`, if the registry is plain HTTP
 
 ### 2. Create the namespaces and Secrets
+
+The namespaces `gw1`, `gw2` and `echo-backend` must not exist yet. The demo uses them for itself, and the clean-up deletes them with everything in them.
 
 Step 1 runs from the repository root. The remaining steps use the manifests in this directory:
 
@@ -86,9 +90,14 @@ kubectl get restapi -A -o jsonpath='{range .items[*]}{.metadata.name}: {.status.
 
 **Each gateway accepts only its own admin user.**
 
+The checks run in one shell. `wait_port` waits until a port-forward accepts connections, so no check runs before its listener is up.
+
 ```bash
-kubectl port-forward -n gw1 svc/gateway-1-gw-controller 19091:9090 &
-kubectl port-forward -n gw2 svc/gateway-2-gw-controller 19092:9090 &
+wait_port() { until curl -s -o /dev/null "localhost:$1"; do sleep 1; done; }
+
+kubectl port-forward -n gw1 svc/gateway-1-gw-controller 19091:9090 & PF1=$!
+kubectl port-forward -n gw2 svc/gateway-2-gw-controller 19092:9090 & PF2=$!
+wait_port 19091; wait_port 19092
 PW1=$(kubectl get secret gateway-1-admin -n gw1 -o jsonpath='{.data.password}' | base64 -d)
 PW2=$(kubectl get secret gateway-2-admin -n gw2 -o jsonpath='{.data.password}' | base64 -d)
 
@@ -117,6 +126,7 @@ helm get values gateway-1-gw -n gw1 -a | grep -cF -- "$PW1"       # 0
 ```bash
 kubectl port-forward -n gw1 svc/gateway-1-gw-gateway-runtime 18081:8080 &
 kubectl port-forward -n gw2 svc/gateway-2-gw-gateway-runtime 18082:8080 &
+wait_port 18081; wait_port 18082
 curl -s -o /dev/null -w '%{http_code}\n' localhost:18081/api1/   # 200
 curl -s -o /dev/null -w '%{http_code}\n' localhost:18081/api2/   # 404
 curl -s -o /dev/null -w '%{http_code}\n' localhost:18082/api2/   # 200
@@ -125,12 +135,28 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:18082/api1/   # 404
 
 **Rotate a password.**
 
+The operator redeploys gateway-1 and its controller pod rolls. The roll ends the management port-forward, which was connected to the old pod, so reconnect before checking the passwords.
+
 ```bash
+OLD_PW1=$PW1
+GEN=$(kubectl get deploy gateway-1-gw-controller -n gw1 -o jsonpath='{.metadata.generation}')
 kubectl create secret generic gateway-1-admin -n gw1 \
   --from-literal=password="$(openssl rand -base64 24)" --dry-run=client -o yaml | kubectl apply -f -
+
+# Wait for the operator to roll the controller, then for the new pod.
+until [ "$(kubectl get deploy gateway-1-gw-controller -n gw1 -o jsonpath='{.metadata.generation}')" != "$GEN" ]; do sleep 2; done
+kubectl rollout status deploy/gateway-1-gw-controller -n gw1 --timeout=5m
+
+kill "$PF1"
+kubectl port-forward -n gw1 svc/gateway-1-gw-controller 19091:9090 & PF1=$!
+wait_port 19091
+PW1=$(kubectl get secret gateway-1-admin -n gw1 -o jsonpath='{.data.password}' | base64 -d)
+
+curl -s -o /dev/null -w '%{http_code}\n' -u "gw1-admin:$OLD_PW1" localhost:19091/api/management/v1/rest-apis   # 401
+curl -s -o /dev/null -w '%{http_code}\n' -u "gw1-admin:$PW1"     localhost:19091/api/management/v1/rest-apis   # 200
 ```
 
-The operator redeploys gateway-1 and its controller pod rolls. The old password then gets `401`, the new one `200`, and later API changes reach the gateway with the new password.
+Later API changes reach the gateway with the new password.
 
 ## Clean up
 

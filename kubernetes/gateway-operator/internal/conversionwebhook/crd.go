@@ -131,6 +131,10 @@ func (c *crdConversion) trust(ctx context.Context, b certBundle) error {
 	if !needsWebhook(crd) {
 		return c.releaseWebhook(ctx, crd)
 	}
+	// A bundle without a CA would clear the CRD's working caBundle.
+	if len(b.caCert) == 0 {
+		return fmt.Errorf("the conversion webhook certificate bundle has no CA certificate; not changing CRD %s", c.crdName)
+	}
 	want := desiredConversion(c.namespace, c.service, trustedCABundle(b, c.now()))
 	if equality.Semantic.DeepEqual(crd.Spec.Conversion, want) {
 		return nil

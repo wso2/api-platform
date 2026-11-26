@@ -495,8 +495,10 @@ resources:
 ```bash
 helm upgrade apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system \
-  --reuse-values
+  --reset-then-reuse-values
 ```
+
+`--reset-then-reuse-values` (Helm 3.14 or later) keeps the values you set on the release and takes every other value from the new chart. Do not use `--reuse-values` for this upgrade: it also keeps the previous chart's defaults, including the `admin`/`admin` user earlier charts shipped in `gateway.values`, so every new gateway would keep getting that shared credential instead of a generated one. Gateways an earlier operator already deployed with `admin`/`admin` keep it either way; the operator recognises them from their Helm release.
 
 > **Note:** CRDs in `crds/` are **not** re-applied on `helm upgrade` (a Helm limitation). If a chart upgrade includes CRD schema changes, apply the updated CRDs manually with `kubectl apply -f crds/`. Because the operator requires the `v1` version to be served, do this **before** rolling out an operator image that expects it.
 >

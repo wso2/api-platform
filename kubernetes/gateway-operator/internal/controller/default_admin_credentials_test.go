@@ -87,7 +87,10 @@ func planInput(t *testing.T, c client.Client, gw *apiv1.APIGateway, base, values
 func ownGeneratedSecret(password string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: generatedName, Namespace: "gw1",
-			Labels: map[string]string{auth.GeneratedAdminCredentialsLabel: auth.GeneratedAdminCredentialsLabelValue}},
+			Labels:      map[string]string{auth.GeneratedAdminCredentialsLabel: auth.GeneratedAdminCredentialsLabelValue},
+			Annotations: map[string]string{auth.GeneratedAdminCredentialsGatewayAnnotation: "gateway-1"},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: apiv1.GroupVersion.String(), Kind: "APIGateway", Name: "gateway-1", UID: "uid-1"}}},
 		Data: map[string][]byte{"username": []byte("admin"), "password": []byte(password)},
 	}
 }
@@ -239,6 +242,21 @@ func TestPlanDefaultAdmin_ExistingGeneratedSecretReused(t *testing.T) {
 		func() (map[string]interface{}, bool, error) { return nil, false, errors.New("must not be read") }))
 	require.NoError(t, err)
 	assert.Equal(t, defaultAdminPlan{Mode: defaultAdminGenerated, SecretName: generatedName}, plan)
+}
+
+// A gateway of the other kind with the same name maps to the same Secret: the gateway
+// that does not own it neither uses nor overwrites it.
+func TestPlanDefaultAdmin_SecretOwnedByOtherGatewayFails(t *testing.T) {
+	owner := plainGateway()
+	twin := plainGateway()
+	twin.UID = "uid-2"
+	c := adminCredsClient(t, ownGeneratedSecret("kept"))
+	_, err := planDefaultAdminCredentials(context.Background(), planInput(t, c, twin, "", "", noRelease))
+	require.ErrorIs(t, err, auth.ErrForeignAdminSecret)
+
+	plan, err := planDefaultAdminCredentials(context.Background(), planInput(t, c, owner, "", "", noRelease))
+	require.NoError(t, err, "the owner still uses it")
+	assert.Equal(t, defaultAdminGenerated, plan.Mode)
 }
 
 // A Secret under the generated name that the operator did not create is neither used

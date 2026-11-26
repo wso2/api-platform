@@ -259,32 +259,61 @@ func Uninstall(ctx context.Context, in UninstallInput) error {
 	})
 }
 
-// releaseNamesFor returns the release names a gateway may be deployed under: the current
-// one, then the one used before the current naming, when the gateway can have one
-// (helm.LegacyReleaseName returns "" otherwise).
-func releaseNamesFor(gatewayName string) []string {
-	names := []string{helm.GetReleaseName(gatewayName)}
-	if legacy := helm.LegacyReleaseName(gatewayName); legacy != "" && legacy != names[0] {
-		names = append(names, legacy)
-	}
-	return names
+// PreviousReleaseInput identifies the gateway whose existing Helm release
+// PreviousReleaseValues reads. Client, Config and FromGatewayAPI decide whether a
+// release under the name used before the current naming belongs to this gateway (see
+// removeLegacyRelease).
+type PreviousReleaseInput struct {
+	Config         *config.OperatorConfig
+	Client         client.Reader
+	GatewayName    string
+	Namespace      string
+	FromGatewayAPI bool
 }
+
+// releaseValuesReader reads a Helm release's values, and whether the release exists.
+type releaseValuesReader func(namespace, releaseName string) (map[string]interface{}, bool, error)
 
 // PreviousReleaseValues returns the values of the gateway's existing Helm release, and
 // whether one exists. It also looks under the release name used before the current
 // naming, so a gateway deployed by an older operator is recognised as deployed.
-func PreviousReleaseValues(cfg *config.OperatorConfig, gatewayName, namespace string) (map[string]interface{}, bool, error) {
-	helmClient, err := helm.NewClientWithOptions(cfg.Gateway.PlainHTTP)
+func PreviousReleaseValues(ctx context.Context, in PreviousReleaseInput) (map[string]interface{}, bool, error) {
+	helmClient, err := helm.NewClientWithOptions(in.Config.Gateway.PlainHTTP)
 	if err != nil {
 		return nil, false, fmt.Errorf("create Helm client: %w", err)
 	}
-	for _, name := range releaseNamesFor(gatewayName) {
-		values, found, err := helmClient.ReleaseValues(namespace, name)
-		if err != nil || found {
-			return values, found, err
-		}
+	return previousReleaseValues(ctx, helmClient.ReleaseValues, in)
+}
+
+// previousReleaseValues is PreviousReleaseValues with the Helm lookup passed in. A
+// release under the legacy name is only this gateway's when no gateway of the other kind
+// claims the same namespace and name, the rule removeLegacyRelease applies before
+// deleting one. A contested legacy release is not reported: its values would decide this
+// gateway's admin credential from another gateway's deployment.
+func previousReleaseValues(ctx context.Context, read releaseValuesReader, in PreviousReleaseInput) (map[string]interface{}, bool, error) {
+	current := helm.GetReleaseName(in.GatewayName)
+	values, found, err := read(in.Namespace, current)
+	if err != nil || found {
+		return values, found, err
 	}
-	return nil, false, nil
+	legacy := helm.LegacyReleaseName(in.GatewayName)
+	if legacy == "" || legacy == current {
+		return nil, false, nil
+	}
+	contested, err := otherKindClaimsGateway(ctx, legacyCleanupInput{
+		Client:         in.Client,
+		Config:         in.Config,
+		GatewayName:    in.GatewayName,
+		Namespace:      in.Namespace,
+		FromGatewayAPI: in.FromGatewayAPI,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("check for a competing gateway named %q: %w", in.GatewayName, err)
+	}
+	if contested {
+		return nil, false, nil
+	}
+	return read(in.Namespace, legacy)
 }
 
 // ReleaseDeployed reports whether the gateway Helm release exists and its latest revision is deployed.
