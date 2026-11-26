@@ -3,9 +3,6 @@
 Use these Dockerfiles to build your own API Portal 1.0.0 images from the API
 Portal binary, for example to use a different base image.
 
-You don't need them to run API Portal. Choreo Labs publishes ready-made images for
-every update.
-
 ## What is here
 
 | Directory | Builds |

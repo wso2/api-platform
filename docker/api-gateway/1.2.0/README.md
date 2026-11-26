@@ -3,9 +3,6 @@
 Use these Dockerfiles to build your own API Gateway 1.2.0 images from the API
 Gateway binary, for example to use a different base image.
 
-You don't need them to run the gateway. Choreo Labs publishes ready-made images for
-every update.
-
 ## What is here
 
 | Directory | Builds |
