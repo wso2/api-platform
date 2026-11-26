@@ -16,8 +16,10 @@ gatewayApi:
   # APIPolicy/ReferenceGrant objects they use) → gateway_api.enabled. Set false on clusters
   # that deploy gateways only through APIGateway: the operator then watches no Gateway API
   # resources, needs no Gateway API RBAC or CRDs, and caches only the gateway chart's own
-  # Services and Deployments. APIGateway, RestApi and the other management resources are
-  # unaffected. The upgrade fails while any Gateway of a managedGatewayClassNames class, or
+  # Services and Deployments, found by their app.kubernetes.io/component label (controller
+  # or gateway-runtime). Gateway chart versions after 2026.11.26-r1 always set it; with
+  # an earlier version, do not override that label in the gateway's deployment.labels.
+  # APIGateway, RestApi and the other management resources are unaffected. The upgrade fails while any Gateway of a managedGatewayClassNames class, or
   # any HTTPRoute still carrying this operator's finalizer, exists: delete those first with
   # this still true, so their finalizers are removed. Independent of installStandardCRDs.
   enabled: true
@@ -674,6 +676,11 @@ reconciliation:
 # Turn one off only if a resource references an object it excludes: that reference then
 # resolves as not found.
 cache:
+  # How long each controller waits for the informer cache's initial list at startup
+  # before it fails, which restarts the operator (Go duration) → cache.sync_timeout.
+  # Raise it on clusters with many gateways if the leader logs "timed out waiting for
+  # cache to be synced".
+  syncTimeout: 2m
   # Leave Secrets labeled owner=helm (Helm's release storage) out → cache.exclude_helm_release_secrets.
   excludeHelmReleaseSecrets: true
   # Leave ConfigMaps labeled app.kubernetes.io/name=gateway (rendered by the gateway chart) out

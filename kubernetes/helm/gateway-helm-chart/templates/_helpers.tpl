@@ -63,7 +63,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{/*
 Standard labels + component label + extra per-resource labels, merged with
-precedence: extra > component > commonLabels > standard.
+precedence: component > extra > commonLabels > standard.
+The component label always wins: the gateway operator finds a release's Services
+and Deployments by it, and caches only objects that carry it, so an override
+would hide the workload from the operator.
 Args (list): root, component, extraLabels (may be nil)
 */}}
 {{- define "gateway-operator.componentLabels" -}}
@@ -71,7 +74,7 @@ Args (list): root, component, extraLabels (may be nil)
 {{- $component := index . 1 -}}
 {{- $extra := default (dict) (index . 2) -}}
 {{- $base := fromYaml (include "gateway-operator.labels" $root) -}}
-{{- include "gateway-operator.renderStringMap" (merge (dict) $extra (dict "app.kubernetes.io/component" $component) $base) -}}
+{{- include "gateway-operator.renderStringMap" (merge (dict) (dict "app.kubernetes.io/component" $component) $extra $base) -}}
 {{- end -}}
 
 {{/*

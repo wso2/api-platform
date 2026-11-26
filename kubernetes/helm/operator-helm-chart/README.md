@@ -77,7 +77,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `gatewayApi.enabled` | Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute). Set `false` where gateways are deployed only through `APIGateway`: the operator then watches no Gateway API resources, gets no Gateway API RBAC, runs without the Gateway API CRDs, and caches only the gateway chart's own Services and Deployments. The upgrade fails while a Gateway of a managed class, or an HTTPRoute with this operator's finalizer, still exists. Independent of `installStandardCRDs` | `true` |
+| `gatewayApi.enabled` | Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute). Set `false` where gateways are deployed only through `APIGateway`: the operator then watches no Gateway API resources, gets no Gateway API RBAC, runs without the Gateway API CRDs, and caches only the gateway chart's own Services and Deployments (by their `app.kubernetes.io/component` label; with gateway chart 2026.11.26-r1 or earlier, do not override it in the gateway's `deployment.labels`). The upgrade fails while a Gateway of a managed class, or an HTTPRoute with this operator's finalizer, still exists. Independent of `installStandardCRDs` | `true` |
 | `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
 | `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
 | `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |
@@ -100,6 +100,7 @@ Component container image tags come from the gateway chart; do not hardcode them
 | `reconciliation.maxRetryAttempts` | Maximum retry attempts for gateway operations | `10` |
 | `reconciliation.initialBackoff` | Initial retry backoff (Go duration) | `1s` |
 | `reconciliation.maxBackoffDuration` | Maximum exponential backoff (Go duration) | `60s` |
+| `cache.syncTimeout` | How long each controller waits for the informer cache's initial list at startup before the operator fails and restarts (Go duration). Raise it on clusters with many gateways if the leader logs `timed out waiting for cache to be synced` | `2m` |
 | `cache.excludeHelmReleaseSecrets` | Keep Secrets labeled `owner=helm` (Helm release storage) out of the operator's cache. A reference to such a Secret resolves as not found | `true` |
 | `cache.excludeGatewayChartConfigMaps` | Keep ConfigMaps labeled `app.kubernetes.io/name=gateway` (rendered by the gateway chart) out of the operator's cache. A reference to such a ConfigMap resolves as not found | `true` |
 
