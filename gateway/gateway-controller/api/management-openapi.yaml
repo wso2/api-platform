@@ -4151,10 +4151,10 @@ paths:
     get:
       summary: List a budget's usage
       description: >-
-        The budget's spend in the current period, one row per allowance, highest spend
+        The budget's spend in the current period, one row per usage, highest spend
         first: the same as the control plane's budget usage. Totals include every gateway
-        sharing the counter store; an allowance's values are known once this gateway has
-        served it, and are empty otherwise (and for a shared allowance).
+        sharing the counter store; an usage's values are known once this gateway has
+        served it, and are empty otherwise (and for a shared usage).
       operationId: getBudgetUsage
       x-basicauth-roles: [admin]
       tags:
@@ -6583,7 +6583,7 @@ components:
           example: "2026-11-01"
         spent:
           type: string
-          description: USD, total across the budget's allowances
+          description: USD, total across the budget's usages
           example: "312.4"
         unpricedRequests:
           type: integer
@@ -6592,16 +6592,16 @@ components:
 
     BudgetUsageListResponse:
       type: object
-      description: A page of a budget's usage, one row per allowance, in the current period
-      required: [periodStart, allowances, total, limit, offset]
+      description: A page of a budget's usage, one row per usage, in the current period
+      required: [periodStart, usages, total, limit, offset]
       properties:
         periodStart:
           type: string
           format: date
-        allowances:
+        usages:
           type: array
           items:
-            $ref: '#/components/schemas/BudgetAllowanceUsage'
+            $ref: '#/components/schemas/BudgetUsageEntry'
         total:
           type: integer
         limit:
@@ -6609,16 +6609,16 @@ components:
         offset:
           type: integer
 
-    BudgetAllowanceUsage:
+    BudgetUsageEntry:
       type: object
-      description: One allowance's spend this period
-      required: [allowance, spent, unpricedRequests]
+      description: One usage's spend this period
+      required: [usage, spent, unpricedRequests]
       properties:
-        allowance:
+        usage:
           type: object
           description: >-
             The allocated values, e.g. {"apiKey":"team-red"}; empty when shared, or when this
-            gateway has not served the allowance
+            gateway has not served the usage
           additionalProperties:
             type: string
         spent:
@@ -6683,7 +6683,7 @@ components:
           $ref: '#/components/schemas/BudgetLimit'
         filters:
           type: array
-          description: Which LLM usage the budget counts. Every filter must match (AND). Empty means all LLM usage.
+          description: Which LLM usage the budget counts. Filters of different types must all match (AND); several of one type are alternatives (OR). Empty means all LLM usage.
           maxItems: 20
           items:
             $ref: '#/components/schemas/BudgetFilter'
@@ -6732,11 +6732,6 @@ components:
           description: A positive amount with up to 2 decimal places, such as "100.00".
           pattern: '^([1-9][0-9]{0,11}(\.[0-9]{1,2})?|0\.([1-9][0-9]?|0[1-9]))$'
           example: "100.00"
-        currency:
-          type: string
-          enum:
-            - USD
-          default: USD
         period:
           type: string
           description: UTC calendar day, ISO week starting Monday, or calendar month.
@@ -6785,13 +6780,18 @@ components:
     BudgetFilter:
       type: object
       description: >-
-        One condition on the LLM usage the budget counts; filters combine with AND. llmProvider is
+        One condition on the LLM usage the budget counts. Filters of different types combine with
+        AND; several filters of the same type (not attribute) are alternatives, combined with OR:
+        two project filters count the usage of either project. List a type either once without
+        an id (any value), or once per value it is limited to, never both and never the same
+        value twice; a type with named values cannot be the split. Each attribute filter is its
+        own condition, and all of them must hold (write OR inside the expression). llmProvider is
         the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy
         (its gateway.api-platform.wso2.com/project-id and agent-id annotations); apiKey is the
         name of the API key the request authenticated with; attribute is a CEL condition over the
         request (token claims). A project, agent or apiKey filter without an id matches any one:
         requests that carry that value at all (an agent filter without an id leaves out requests
-        sent straight to a provider). Each type except attribute is used once.
+        sent straight to a provider).
       additionalProperties: false
       required:
         - type
@@ -6827,7 +6827,7 @@ components:
       type: object
       description: >-
         Traffic left out of the budget: an attribute condition (expression), a project (id),
-        or an agent (id and its project).
+        an LLM provider or an API key (id), or an agent (id and its project).
       additionalProperties: false
       required:
         - type
@@ -6838,6 +6838,8 @@ components:
             - attribute
             - project
             - agent
+            - llmProvider
+            - apiKey
         expression:
           type: string
           description: attribute only. CEL condition over the request.
@@ -6845,7 +6847,7 @@ components:
           maxLength: 1024
         id:
           type: string
-          description: The project or agent name.
+          description: The project, agent or LLM provider name.
           minLength: 1
         project:
           type: string

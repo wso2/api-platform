@@ -204,7 +204,7 @@ Base URLs:
 - [BudgetStatus](schemas.md#budgetstatus)
 - [BudgetCurrentPeriod](schemas.md#budgetcurrentperiod)
 - [BudgetUsageListResponse](schemas.md#budgetusagelistresponse)
-- [BudgetAllowanceUsage](schemas.md#budgetallowanceusage)
+- [BudgetUsageEntry](schemas.md#budgetusageentry)
 - [BudgetMetadata](schemas.md#budgetmetadata)
 - [BudgetSpec](schemas.md#budgetspec)
 - [BudgetLimit](schemas.md#budgetlimit)

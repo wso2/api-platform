@@ -168,6 +168,9 @@ type Client struct {
 	budgetApplier   utils.ControlPlaneBudgetApplier
 	// budgetUsage reports budget spend; nil when budgets are not reported.
 	budgetUsage *BudgetUsageReporter
+	// pricingWarned and pricingRejected make the pricing push log a problem once (pricing_sync.go).
+	pricingWarned   atomic.Bool
+	pricingRejected atomic.Bool
 
 	// httpClient is the single shared outbound *http.Client for this entire process (built
 	// once in cmd/controller/main.go and injected here), used for every plain (non-WebSocket)
@@ -612,6 +615,15 @@ func (c *Client) Connect() error {
 		defer c.wg.Done()
 		c.pushGatewayManifestOnConnect(gwID)
 	}(gatewayID)
+
+	// Push the price catalog to the control plane on connect, when cost tracking or budgets are on.
+	if c.pricingEnabled() {
+		c.wg.Add(1)
+		go func(gwID string) {
+			defer c.wg.Done()
+			c.pushPricingOnConnect(gwID)
+		}(gatewayID)
+	}
 
 	// Start heartbeat monitor
 	c.wg.Add(1)

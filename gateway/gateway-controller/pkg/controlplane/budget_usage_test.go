@@ -51,7 +51,7 @@ func (s *sentUsage) send(data []byte) error {
 	return nil
 }
 
-func TestBudgetUsage_ReportsLabelledAllowanceTotals(t *testing.T) {
+func TestBudgetUsage_ReportsLabelledUsageTotals(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
 	r := usageReporter(&now)
 	window := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
@@ -70,11 +70,11 @@ func TestBudgetUsage_ReportsLabelledAllowanceTotals(t *testing.T) {
 	r.flush(s.send)
 	require.Len(t, s.messages, 1)
 	assert.Equal(t, "budget.usage", s.messages[0].Type)
-	assert.Equal(t, []AllowanceUsage{{
-		Budget: "per-agent", PeriodStart: "2026-11-01", AllowanceUUID: "a-1",
-		Allowance: map[string]string{"agent": "api-platform/support-agent"},
-		Spent:     "80.14", UnpricedRequests: 3,
-	}}, s.messages[0].Payload.Allowances)
+	assert.Equal(t, []UsageEntry{{
+		Budget: "per-agent", PeriodStart: "2026-11-01", UsageUUID: "a-1",
+		Usage: map[string]string{"agent": "api-platform/support-agent"},
+		Spent: "80.14", UnpricedRequests: 3,
+	}}, s.messages[0].Payload.Usages)
 
 	r.flush(s.send)
 	assert.Len(t, s.messages, 1, "unchanged totals are not sent again")
@@ -83,7 +83,7 @@ func TestBudgetUsage_ReportsLabelledAllowanceTotals(t *testing.T) {
 	r.Observe(nil, []counterproto.Total{{Key: spend, Total: 95}})
 	r.flush(s.send)
 	require.Len(t, s.messages, 2)
-	assert.Equal(t, "95", s.messages[1].Payload.Allowances[0].Spent)
+	assert.Equal(t, "95", s.messages[1].Payload.Usages[0].Spent)
 }
 
 func TestBudgetUsage_KeepsTotalsUntilSentAndResendsThemOnConnect(t *testing.T) {
@@ -97,7 +97,7 @@ func TestBudgetUsage_KeepsTotalsUntilSentAndResendsThemOnConnect(t *testing.T) {
 	s := &sentUsage{}
 	r.flush(s.send)
 	require.Len(t, s.messages, 1, "a total that failed to send is sent later")
-	assert.Empty(t, s.messages[0].Payload.Allowances[0].Allowance, "a shared budget's allowance has no values")
+	assert.Empty(t, s.messages[0].Payload.Usages[0].Usage, "a shared budget's usage has no values")
 
 	r.flush(s.send)
 	assert.Len(t, s.messages, 1, "a sent total is not sent again by itself")
@@ -105,7 +105,7 @@ func TestBudgetUsage_KeepsTotalsUntilSentAndResendsThemOnConnect(t *testing.T) {
 	r.Resync()
 	r.flush(s.send)
 	require.Len(t, s.messages, 2, "a (re)connect sends every kept total again")
-	assert.Equal(t, "1", s.messages[1].Payload.Allowances[0].Spent)
+	assert.Equal(t, "1", s.messages[1].Payload.Usages[0].Spent)
 
 	now = now.Add(33 * 24 * time.Hour)
 	other := counterproto.KeyFor("budget", "a-2", time.Date(2026, 12, 17, 0, 0, 0, 0, time.UTC))
@@ -146,10 +146,10 @@ func TestBudgetUsage_SendsAChangeAtOnceAndCoalescesWhileSending(t *testing.T) {
 	close(release)
 
 	got := <-sent
-	assert.Equal(t, "1", got.Payload.Allowances[0].Spent, "the first change is sent at once")
+	assert.Equal(t, "1", got.Payload.Usages[0].Spent, "the first change is sent at once")
 	select {
 	case got = <-sent:
-		assert.Equal(t, "5", got.Payload.Allowances[0].Spent, "changes made while sending go in one next message, latest total")
+		assert.Equal(t, "5", got.Payload.Usages[0].Spent, "changes made while sending go in one next message, latest total")
 	case <-time.After(2 * time.Second):
 		t.Fatal("the changes made while sending were not sent")
 	}
@@ -169,7 +169,7 @@ func TestBudgetUsage_IgnoresUnlabelledCounters(t *testing.T) {
 }
 
 // AI cost stats: the cost, missing-price and usage-unavailable counters of one combination
-// are reported as one costs entry, next to the allowances.
+// are reported as one costs entry, next to the usages.
 func TestBudgetUsage_ReportsCostTotals(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
 	r := usageReporter(&now)
@@ -197,39 +197,39 @@ func TestBudgetUsage_ReportsCostTotals(t *testing.T) {
 		Month: "2026-11-01", CostKey: "c-1", Project: "api-platform", Agent: "support-agent", APIKey: "support-prod",
 		LLMProvider: "openai", Model: "gpt-4o", Cost: "80.14", MissingPriceRequests: 3, UsageUnavailableRequests: 1,
 	}}, s.messages[0].Payload.Costs)
-	require.Len(t, s.messages[0].Payload.Allowances, 1, "allowances and costs travel together")
+	require.Len(t, s.messages[0].Payload.Usages, 1, "usages and costs travel together")
 
 	r.Observe(nil, []counterproto.Total{{Key: missing, Total: 4}})
 	r.flush(s.send)
 	require.Len(t, s.messages, 2)
-	assert.Empty(t, s.messages[1].Payload.Allowances)
+	assert.Empty(t, s.messages[1].Payload.Usages)
 	assert.Equal(t, int64(4), s.messages[1].Payload.Costs[0].MissingPriceRequests)
 }
 
 // Without a control plane nothing is sent, so nothing is kept for sending; the labels are
 // kept for the gateway's own budget usage. Counter IDs carry the budget; the control plane
-// gets the allowance UUID.
+// gets the usage UUID.
 func TestBudgetUsage_StandaloneKeepsOnlyLabels(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
 	r := usageReporter(&now)
 	r.sending = false
 	window := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	key := counterproto.KeyFor("budget", "spend-id/allowance-1", window)
+	key := counterproto.KeyFor("budget", "spend-id/usage-1", window)
 	r.Observe([]counterproto.Add{{Key: key, Delta: 1, Labels: map[string]string{"budget": "team", "apiKey": "red"}}},
 		[]counterproto.Total{{Key: key, Total: 1}})
 	assert.Empty(t, r.entries)
-	assert.Equal(t, map[string]map[string]string{"spend-id/allowance-1": {"apiKey": "red"}}, r.Labels("team"))
+	assert.Equal(t, map[string]map[string]string{"spend-id/usage-1": {"apiKey": "red"}}, r.Labels("team"))
 
 	r.Forget("team")
 	assert.Empty(t, r.Labels("team"))
 }
 
-func TestBudgetUsage_SendsTheAllowanceUUIDAndForgetsDeletedBudgets(t *testing.T) {
+func TestBudgetUsage_SendsTheUsageUUIDAndForgetsDeletedBudgets(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
 	r := usageReporter(&now)
 	window := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	gone := counterproto.KeyFor("budget", "spend-a/allowance-1", window)
-	kept := counterproto.KeyFor("budget", "spend-b/allowance-2", window)
+	gone := counterproto.KeyFor("budget", "spend-a/usage-1", window)
+	kept := counterproto.KeyFor("budget", "spend-b/usage-2", window)
 	r.Observe([]counterproto.Add{
 		{Key: gone, Delta: 1, Labels: map[string]string{"budget": "a"}},
 		{Key: kept, Delta: 2, Labels: map[string]string{"budget": "b"}},
@@ -239,9 +239,9 @@ func TestBudgetUsage_SendsTheAllowanceUUIDAndForgetsDeletedBudgets(t *testing.T)
 	var s sentUsage
 	r.flush(s.send)
 	require.Len(t, s.messages, 1)
-	require.Len(t, s.messages[0].Payload.Allowances, 1)
-	assert.Equal(t, "b", s.messages[0].Payload.Allowances[0].Budget)
-	assert.Equal(t, "allowance-2", s.messages[0].Payload.Allowances[0].AllowanceUUID)
+	require.Len(t, s.messages[0].Payload.Usages, 1)
+	assert.Equal(t, "b", s.messages[0].Payload.Usages[0].Budget)
+	assert.Equal(t, "usage-2", s.messages[0].Payload.Usages[0].UsageUUID)
 }
 
 func TestBudgetUsage_AReconnectDuringASendStillSendsTheSnapshot(t *testing.T) {
@@ -259,5 +259,5 @@ func TestBudgetUsage_AReconnectDuringASendStillSendsTheSnapshot(t *testing.T) {
 	s := &sentUsage{}
 	r.flush(s.send)
 	require.Len(t, s.messages, 1, "the snapshot for the new connection is still sent")
-	assert.Equal(t, "1", s.messages[0].Payload.Allowances[0].Spent)
+	assert.Equal(t, "1", s.messages[0].Payload.Usages[0].Spent)
 }

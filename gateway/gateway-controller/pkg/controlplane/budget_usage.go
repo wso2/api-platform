@@ -31,7 +31,7 @@ import (
 
 // Budget spend reaches the control plane the way deployment acknowledgements do: a
 // usage message on the control-plane connection. The budget system
-// policy labels each allowance's counters with the budget and the allocated values;
+// policy labels each usage's counters with the budget and the allocated values;
 // the counter stream tells BudgetUsageReporter of every applied report, and it sends the
 // changed totals at once. Totals that change while a message is being sent go in the
 // next one, so messages never pile up. On every (re)connect it sends every current total
@@ -55,8 +55,8 @@ const (
 const usageMessageType = "budget.usage"
 
 const (
-	usageKindAllowance = "allowance"
-	usageKindCost      = "cost"
+	usageKindUsage = "usage"
+	usageKindCost  = "cost"
 )
 
 const (
@@ -72,10 +72,10 @@ type BudgetUsageMessage struct {
 	Payload BudgetUsagePayload `json:"payload"`
 }
 
-// BudgetUsagePayload carries allowance totals and cost totals.
+// BudgetUsagePayload carries usage totals and cost totals.
 type BudgetUsagePayload struct {
-	Allowances []AllowanceUsage `json:"allowances,omitempty"`
-	Costs      []CostUsage      `json:"costs,omitempty"`
+	Usages []UsageEntry `json:"usages,omitempty"`
+	Costs  []CostUsage  `json:"costs,omitempty"`
 }
 
 // CostUsage is what one combination of values cost in one month, across every gateway
@@ -98,35 +98,35 @@ type CostUsage struct {
 	UsageUnavailableRequests int64 `json:"usageUnavailableRequests"`
 }
 
-// AllowanceUsage is one allowance's total in one period, across every gateway sharing
+// UsageEntry is one usage's total in one period, across every gateway sharing
 // the counter store. The control plane keeps the higher total.
-type AllowanceUsage struct {
+type UsageEntry struct {
 	// Budget is the budget's name; spend is keyed by name on every gateway.
 	Budget string `json:"budget"`
 	// PeriodStart is the period's first day, UTC.
 	PeriodStart string `json:"periodStart"`
-	// AllowanceUUID keys the allowance; Allowance holds the values it is separated by.
-	AllowanceUUID string            `json:"allowanceUuid"`
-	Allowance     map[string]string `json:"allowance"`
-	Spent         string            `json:"spent"`
-	// UnpricedRequests counts the allowance's requests charged $0, for any reason; a cost
+	// UsageUUID keys the usage; Usage holds the values it is separated by.
+	UsageUUID string            `json:"usageUuid"`
+	Usage     map[string]string `json:"usage"`
+	Spent     string            `json:"spent"`
+	// UnpricedRequests counts the usage's requests charged $0, for any reason; a cost
 	// entry splits the same kind of count by reason (MissingPriceRequests,
 	// UsageUnavailableRequests).
 	UnpricedRequests int64 `json:"unpricedRequests"`
 }
 
-// usageKey names one allowance in one period, or one cost combination in one month.
+// usageKey names one usage in one period, or one cost combination in one month.
 type usageKey struct {
-	kind      string
-	allowance string
-	window    int64
+	kind   string
+	usage  string
+	window int64
 }
 
 type usageEntry struct {
-	budget    string
-	allowance map[string]string // an allowance's values, or a cost combination's
-	spent     float64
-	unpriced  float64
+	budget   string
+	usage    map[string]string // an usage's values, or a cost combination's
+	spent    float64
+	unpriced float64
 	// missingPrice and usageUnavailable count a cost combination's requests charged $0.
 	missingPrice     float64
 	usageUnavailable float64
@@ -138,14 +138,14 @@ type usageEntry struct {
 func usageKindOf(namespace string) string {
 	switch namespace {
 	case usageNamespaceSpend, usageNamespaceUnpriced:
-		return usageKindAllowance
+		return usageKindUsage
 	case usageNamespaceCost, usageNamespaceCostMissingPrice, usageNamespaceCostUsageUnavailable:
 		return usageKindCost
 	}
 	return ""
 }
 
-// BudgetUsageReporter collects allowance totals from the counter stream and sends them
+// BudgetUsageReporter collects usage totals from the counter stream and sends them
 // to the control plane. It implements counters.Observer.
 type BudgetUsageReporter struct {
 	mu      sync.Mutex
@@ -153,9 +153,9 @@ type BudgetUsageReporter struct {
 	// sending is set once run starts: without a control plane nothing is sent, so no
 	// entries are kept for it.
 	sending bool
-	// labels are each allowance counter's budget and values, kept while its window can
-	// still be current, so the gateway's budget usage can name allowances.
-	labels    map[string]*allowanceLabels
+	// labels are each usage counter's budget and values, kept while its window can
+	// still be current, so the gateway's budget usage can name usages.
+	labels    map[string]*usageLabels
 	lastPrune time.Time
 	// lastEntryPrune is when old totals were last forgotten.
 	lastEntryPrune time.Time
@@ -168,25 +168,25 @@ type BudgetUsageReporter struct {
 	logger *slog.Logger
 }
 
-type allowanceLabels struct {
+type usageLabels struct {
 	budget string
 	values map[string]string
 	window int64 // the latest window it was labelled in
 }
 
-// labelsKeptFor is how long after its window starts an allowance's labels are kept, as
+// labelsKeptFor is how long after its window starts an usage's labels are kept, as
 // policy engines keep an idle counter's total.
 const labelsKeptFor = 32 * 24 * time.Hour
 
 // NewBudgetUsageReporter returns an empty reporter.
 func NewBudgetUsageReporter(logger *slog.Logger) *BudgetUsageReporter {
 	return &BudgetUsageReporter{
-		entries: map[usageKey]*usageEntry{}, labels: map[string]*allowanceLabels{},
+		entries: map[usageKey]*usageEntry{}, labels: map[string]*usageLabels{},
 		wake: make(chan struct{}, 1), now: time.Now, logger: logger,
 	}
 }
 
-// Observe records the totals of budget allowances: an allowance is known once an add
+// Observe records the totals of budget usages: an usage is known once an add
 // labels it, and its totals are taken from every later report, including spend from
 // other gateways sharing the store.
 func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterproto.Total) {
@@ -194,10 +194,10 @@ func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterp
 	defer r.mu.Unlock()
 	for _, add := range adds {
 		kind := usageKindOf(add.Key.Namespace)
-		if kind == "" || len(add.Labels) == 0 || (kind == usageKindAllowance && add.Labels[usageLabelBudget] == "") {
+		if kind == "" || len(add.Labels) == 0 || (kind == usageKindUsage && add.Labels[usageLabelBudget] == "") {
 			continue
 		}
-		if kind == usageKindAllowance {
+		if kind == usageKindUsage {
 			r.label(add)
 		}
 		if !r.sending {
@@ -209,10 +209,10 @@ func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterp
 			e = &usageEntry{}
 			r.entries[key] = e
 		}
-		e.allowance = maps.Clone(add.Labels)
-		if kind == usageKindAllowance {
+		e.usage = maps.Clone(add.Labels)
+		if kind == usageKindUsage {
 			e.budget = add.Labels[usageLabelBudget]
-			delete(e.allowance, usageLabelBudget)
+			delete(e.usage, usageLabelBudget)
 		}
 	}
 	now, changed := r.now(), false
@@ -324,17 +324,17 @@ func (r *BudgetUsageReporter) flush(send func([]byte) error) {
 			e, day := p.sent, time.Unix(p.key.window, 0).UTC().Format(time.DateOnly)
 			if p.key.kind == usageKindCost {
 				payload.Costs = append(payload.Costs, CostUsage{
-					Month: day, CostKey: p.key.allowance,
-					Project: e.allowance["project"], Agent: e.allowance["agent"], APIKey: e.allowance["apiKey"],
-					User: e.allowance["user"], LLMProvider: e.allowance["llmProvider"], Model: e.allowance["model"],
+					Month: day, CostKey: p.key.usage,
+					Project: e.usage["project"], Agent: e.usage["agent"], APIKey: e.usage["apiKey"],
+					User: e.usage["user"], LLMProvider: e.usage["llmProvider"], Model: e.usage["model"],
 					Cost: budgetspend.FormatUSD(e.spent), MissingPriceRequests: int64(e.missingPrice),
 					UsageUnavailableRequests: int64(e.usageUnavailable),
 				})
 				continue
 			}
-			payload.Allowances = append(payload.Allowances, AllowanceUsage{
-				Budget: e.budget, PeriodStart: day, AllowanceUUID: budgetspend.Allowance(p.key.allowance),
-				Allowance: maps.Clone(e.allowance), Spent: budgetspend.FormatUSD(e.spent), UnpricedRequests: int64(e.unpriced),
+			payload.Usages = append(payload.Usages, UsageEntry{
+				Budget: e.budget, PeriodStart: day, UsageUUID: budgetspend.Usage(p.key.usage),
+				Usage: maps.Clone(e.usage), Spent: budgetspend.FormatUSD(e.spent), UnpricedRequests: int64(e.unpriced),
 			})
 		}
 		data, err := json.Marshal(BudgetUsageMessage{Type: usageMessageType, Payload: payload})
@@ -378,7 +378,7 @@ func (c *Client) sendBudgetUsage(data []byte) error {
 	return c.sendMessage(data)
 }
 
-// label keeps an allowance counter's budget and values. Callers hold mu.
+// label keeps an usage counter's budget and values. Callers hold mu.
 func (r *BudgetUsageReporter) label(add counterproto.Add) {
 	values := maps.Clone(add.Labels)
 	budget := values[usageLabelBudget]
@@ -386,7 +386,7 @@ func (r *BudgetUsageReporter) label(add counterproto.Add) {
 	if l := r.labels[add.Key.ID]; l != nil && l.window > add.Key.Window {
 		return
 	}
-	r.labels[add.Key.ID] = &allowanceLabels{budget: budget, values: values, window: add.Key.Window}
+	r.labels[add.Key.ID] = &usageLabels{budget: budget, values: values, window: add.Key.Window}
 	now := r.now()
 	if now.Sub(r.lastPrune) < time.Hour {
 		return
@@ -399,7 +399,7 @@ func (r *BudgetUsageReporter) label(add counterproto.Add) {
 	}
 }
 
-// Labels returns the values of each allowance of budget this gateway has served, by
+// Labels returns the values of each usage of budget this gateway has served, by
 // counter ID.
 func (r *BudgetUsageReporter) Labels(budget string) map[string]map[string]string {
 	r.mu.Lock()
@@ -419,7 +419,7 @@ func (r *BudgetUsageReporter) Forget(budget string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for key, e := range r.entries {
-		if key.kind == usageKindAllowance && e.budget == budget {
+		if key.kind == usageKindUsage && e.budget == budget {
 			delete(r.entries, key)
 		}
 	}

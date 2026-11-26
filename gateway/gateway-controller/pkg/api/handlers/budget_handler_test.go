@@ -214,7 +214,7 @@ func TestConfigDumpListsBudgets(t *testing.T) {
 	assert.NotNil(t, budgets[1].Id)
 }
 
-// fakeLabels names allowances as the usage reporter does.
+// fakeLabels names usages as the usage reporter does.
 type fakeLabels struct {
 	byBudget map[string]map[string]map[string]string
 }
@@ -222,7 +222,7 @@ type fakeLabels struct {
 func (f *fakeLabels) Labels(b string) map[string]map[string]string { return f.byBudget[b] }
 func (f *fakeLabels) Forget(b string)                              { delete(f.byBudget, b) }
 
-// The budget shows its spend this period, its usage lists each allowance highest first,
+// The budget shows its spend this period, its usage lists each usage highest first,
 // and deleting it clears its spend, so a budget made again under its name starts at $0.
 func TestBudgetSpendIsShownAndClearedOnDelete(t *testing.T) {
 	server := newBudgetTestServer(t)
@@ -261,9 +261,9 @@ func TestBudgetSpendIsShownAndClearedOnDelete(t *testing.T) {
 	var page api.BudgetUsageListResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
 	assert.Equal(t, 2, page.Total)
-	require.Len(t, page.Allowances, 1)
-	assert.Equal(t, "2.25", page.Allowances[0].Spent, "highest spend first")
-	assert.Empty(t, page.Allowances[0].Allowance, "values not known on this gateway")
+	require.Len(t, page.Usages, 1)
+	assert.Equal(t, "2.25", page.Usages[0].Spent, "highest spend first")
+	assert.Empty(t, page.Usages[0].Usage, "values not known on this gateway")
 
 	bad := 101
 	rec = httptest.NewRecorder()
@@ -276,7 +276,7 @@ func TestBudgetSpendIsShownAndClearedOnDelete(t *testing.T) {
 	left, err := store.Totals(context.Background(), "budget", prefix)
 	require.NoError(t, err)
 	assert.Empty(t, left, "the deleted budget's spend is cleared")
-	assert.Empty(t, labels.byBudget, "and its allowance names")
+	assert.Empty(t, labels.byBudget, "and its usage names")
 
 	require.Equal(t, http.StatusCreated, postBudget(server, testBudgetBody).Code)
 	rec = httptest.NewRecorder()

@@ -611,7 +611,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	// Forward the budget system policy's properties: the budgets the request counted
-	// against (handles only, never allowance values) and how it was priced.
+	// against (handles only, never usage values) and how it was priced.
 	if budget := budgetProperty(typedValuePairsFromMetadata); budget != nil {
 		event.Properties[constants.BudgetPropertyKey] = budget
 	}

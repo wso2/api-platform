@@ -82,9 +82,9 @@ const (
 	metadataLLMCost       = "x-llm-cost"
 	metadataLLMCostStatus = "x-llm-cost-status"
 	costStatusCalculated  = "calculated"
-	// metadataAllowances carries the allowances a request was admitted against to the
+	// metadataUsages carries the usages a request was admitted against to the
 	// response phase.
-	metadataAllowances = "x-wso2-budget-allowances"
+	metadataUsages = "x-wso2-budget-usages"
 	// metadataUsageStatus is published by llm-cost's usage extraction (sdk/ai llmusage):
 	// "extracted" when the response carried token usage.
 	metadataUsageStatus  = "llm:usage:status"
@@ -92,7 +92,7 @@ const (
 )
 
 // Analytics properties added to the request's analytics event: the budgets it counted
-// against, never allowance values, and how it was priced.
+// against, never usage values, and how it was priced.
 const (
 	analyticsBudgetNames      = "budgetNames"
 	analyticsBudgetCostStatus = "budgetCostStatus"
@@ -220,7 +220,7 @@ func (p *BudgetSystemPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// admitted is one allowance a request was admitted against, in the period it was admitted
+// admitted is one usage a request was admitted against, in the period it was admitted
 // in, with the labels that describe it to the control plane.
 type admitted struct {
 	spendKey
@@ -232,7 +232,7 @@ type admitted struct {
 }
 
 // OnRequestHeaders finds the budgets that cover the request and refuses it when a Block
-// budget's allowance has spent its block point.
+// budget's usage has spent its block point.
 func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.RequestHeaderContext, params map[string]any) policy.RequestHeaderAction {
 	if reqCtx == nil || reqCtx.SharedContext == nil {
 		return policy.UpstreamRequestHeaderModifications{}
@@ -293,7 +293,7 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 	var exhausted []*budget
 	var names, limits []any
 	for _, b := range budgets {
-		allowances, ok := b.matches(provider, who, lazyVars)
+		usages, ok := b.matches(provider, who, lazyVars)
 		if !ok {
 			continue
 		}
@@ -301,8 +301,8 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 		limits = append(limits, limitLabel(b))
 		start := periodStart(b.period, now)
 		used := false
-		for _, a := range allowances {
-			key := admitted{spendKey: spendKey{spendID: b.spendID, allowance: a.id, periodStart: start}, labels: a.labels(b.name),
+		for _, a := range usages {
+			key := admitted{spendKey: spendKey{spendID: b.spendID, usage: a.id, periodStart: start}, labels: a.labels(b.name),
 				budget: b.name, budgetUUID: b.uuid}
 			keys = append(keys, key)
 			if b.action == actionBlock && p.tracker.spentIn(key.spendKey) >= b.blockPoint() {
@@ -333,7 +333,7 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 	if reqCtx.Metadata == nil {
 		reqCtx.Metadata = map[string]any{}
 	}
-	reqCtx.Metadata[metadataAllowances] = keys
+	reqCtx.Metadata[metadataUsages] = keys
 	pass.AnalyticsMetadata = analytics
 	return pass
 }
@@ -359,20 +359,20 @@ func (p *BudgetSystemPolicy) OnResponseBody(_ context.Context, respCtx *policy.R
 	return policy.DownstreamResponseModifications{}
 }
 
-// charge adds the cost llm-cost published to every allowance the request was admitted
+// charge adds the cost llm-cost published to every usage the request was admitted
 // against; without a calculated cost the request is charged $0 and counted as unpriced.
-// It charges once: the allowances are removed from the metadata. It returns the analytics
+// It charges once: the usages are removed from the metadata. It returns the analytics
 // property naming how the request was priced, or nil when no budget covered it.
 func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) map[string]any {
 	if shared == nil || shared.Metadata == nil {
 		return nil
 	}
-	keys, _ := shared.Metadata[metadataAllowances].([]admitted)
+	keys, _ := shared.Metadata[metadataUsages].([]admitted)
 	caller, counted := shared.Metadata[metadataCostCaller].(costCaller)
 	if len(keys) == 0 && !counted {
 		return nil
 	}
-	delete(shared.Metadata, metadataAllowances)
+	delete(shared.Metadata, metadataUsages)
 	delete(shared.Metadata, metadataCostCaller)
 
 	status, _ := shared.Metadata[metadataLLMCostStatus].(string)
@@ -421,7 +421,7 @@ func unpricedReason(shared *policy.SharedContext) string {
 	return costStatusUsageUnavailable
 }
 
-// refusalBody is the 429 body: each used-up budget once, in name order; allowances are
+// refusalBody is the 429 body: each used-up budget once, in name order; usages are
 // never shown.
 type refusalBody struct {
 	Code    string          `json:"code"`
@@ -432,7 +432,6 @@ type refusalBody struct {
 type refusedBudget struct {
 	Budget   string `json:"budget"`
 	Limit    string `json:"limit"`
-	Currency string `json:"currency"`
 	Period   string `json:"period"`
 	ResetsAt string `json:"resetsAt"`
 }
@@ -455,7 +454,7 @@ func refusal(exhausted []*budget, now time.Time) policy.ImmediateResponse {
 			latest = resets
 		}
 		body.Budgets = append(body.Budgets, refusedBudget{
-			Budget: b.name, Limit: b.limit, Currency: b.currency, Period: b.period,
+			Budget: b.name, Limit: b.limit, Period: b.period,
 			ResetsAt: resets.Format(time.RFC3339),
 		})
 	}

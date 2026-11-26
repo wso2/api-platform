@@ -163,7 +163,7 @@ func (l *EventListener) SetWebhookSecretHandler(h WebhookSecretEventHandler) {
 }
 
 // BudgetForgetter drops what this replica keeps for a deleted budget: the usage totals it
-// reports to the control plane and the allowances' labels.
+// reports to the control plane and the usages' labels.
 type BudgetForgetter interface {
 	Forget(budget string)
 }

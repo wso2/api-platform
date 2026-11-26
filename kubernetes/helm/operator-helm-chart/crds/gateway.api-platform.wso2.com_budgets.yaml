@@ -1,0 +1,324 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: budgets.gateway.api-platform.wso2.com
+spec:
+  group: gateway.api-platform.wso2.com
+  names:
+    kind: Budget
+    listKind: BudgetList
+    plural: budgets
+    singular: budget
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Budget is the Schema for the budgets API: a spending limit on LLM usage, enforced by
+          the gateway.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the Budget configuration.
+            properties:
+              description:
+                description: |-
+                  Description is accepted so a control plane Budget manifest applies unchanged. It is
+                  control-plane only: the operator does not send it, and the gateway ignores it.
+                type: string
+              displayName:
+                description: |-
+                  DisplayName is accepted so a control plane Budget manifest applies unchanged. It is
+                  control-plane only: the operator does not send it, and the gateway ignores it.
+                type: string
+              exemptions:
+                description: Exemptions are matching traffic left out of this budget.
+                items:
+                  description: |-
+                    BudgetExemption is traffic left out of the budget: an attribute condition, a project
+                    or an agent.
+                  properties:
+                    expression:
+                      description: Expression is a CEL condition over the request.
+                        attribute only.
+                      maxLength: 1024
+                      minLength: 1
+                      type: string
+                    id:
+                      description: Id is the project, agent, LLM provider or API key name.
+                      minLength: 1
+                      type: string
+                    project:
+                      description: Project is the agent's project. agent only.
+                      minLength: 1
+                      type: string
+                    type:
+                      description: Type is what the exemption matches.
+                      enum:
+                      - attribute
+                      - project
+                      - agent
+                      - llmProvider
+                      - apiKey
+                      type: string
+                  required:
+                  - type
+                  type: object
+                maxItems: 100
+                type: array
+              filters:
+                description: |-
+                  Filters are the LLM usage the budget counts. Every filter must match (AND). Empty
+                  means all LLM usage.
+                items:
+                  description: |-
+                    BudgetFilter is one condition on the LLM usage the budget counts. Filters combine
+                    with AND.
+                  properties:
+                    expression:
+                      description: Expression is a CEL condition over the request
+                        returning bool. attribute only.
+                      maxLength: 1024
+                      minLength: 1
+                      type: string
+                    id:
+                      description: |-
+                        Id is the LLM provider, project, agent or API key name. Required for llmProvider;
+                        omitted for project, agent or apiKey means any one. Not for an attribute.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                    project:
+                      description: |-
+                        Project is the agent's project, for an agent filter with an id: agent names are
+                        unique only per project.
+                      minLength: 1
+                      type: string
+                    type:
+                      description: Type is what the filter matches.
+                      enum:
+                      - llmProvider
+                      - project
+                      - agent
+                      - apiKey
+                      - attribute
+                      type: string
+                  required:
+                  - type
+                  type: object
+                maxItems: 20
+                type: array
+              labels:
+                description: |-
+                  Labels are one-word labels to organize and find budgets. Not used to enforce; kept
+                  with the budget and pushed to the control plane with it. At most 10, no repeats;
+                  each 1-63 characters of letters, digits, '.', '_' or '-', starting and ending with a
+                  letter or digit.
+                items:
+                  description: BudgetLabel is one budget label.
+                  maxLength: 63
+                  pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                  type: string
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: set
+              limit:
+                description: Limit is how much may be spent per period and what happens
+                  when it is used up.
+                properties:
+                  action:
+                    description: 'Action: block refuses requests at the block point;
+                      allow only counts.'
+                    enum:
+                    - block
+                    - allow
+                    type: string
+                  amount:
+                    description: Amount is a positive amount in USD with up to 2 decimal
+                      places, such as "100.00".
+                    pattern: ^([1-9][0-9]{0,11}(\.[0-9]{1,2})?|0\.([1-9][0-9]?|0[1-9]))$
+                    type: string
+                  blockAt:
+                    description: |-
+                      BlockAt is the percentage of the amount at which a block budget refuses requests.
+                      Defaults to 100.
+                    format: int32
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                  period:
+                    description: Period is a UTC calendar day, an ISO week starting
+                      Monday, or a calendar month.
+                    enum:
+                    - day
+                    - week
+                    - month
+                    type: string
+                  splitBy:
+                    description: |-
+                      SplitBy gives each value of a type its own limit. Omitted means one shared limit
+                      for all matching usage.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is a CEL expression over the request returning a string or a list of
+                          strings. attribute only.
+                        maxLength: 1024
+                        minLength: 1
+                        type: string
+                      type:
+                        description: |-
+                          Type is what gets its own limit: each LLM provider, project, agent or API key, or
+                          each value of an attribute expression.
+                        enum:
+                        - llmProvider
+                        - project
+                        - agent
+                        - apiKey
+                        - attribute
+                        type: string
+                    required:
+                    - type
+                    type: object
+                required:
+                - action
+                - amount
+                - period
+                type: object
+              status:
+                description: 'Status: an inactive budget is kept but matches no traffic.
+                  Defaults to active.'
+                enum:
+                - active
+                - inactive
+                type: string
+              warnings:
+                description: |-
+                  Warnings is accepted so a control plane Budget manifest applies unchanged. It is
+                  control-plane only: the operator does not send it, and the gateway ignores it.
+                properties:
+                  channels:
+                    description: Channels are the notification channels the control
+                      plane warns.
+                    items:
+                      type: string
+                    type: array
+                  thresholds:
+                    description: Thresholds are the percentages of the limit at which
+                      the control plane warns.
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
+                type: object
+            required:
+            - limit
+            type: object
+          status:
+            description: |-
+              ResourceStatus carries the controller-managed lifecycle fields shared by
+              the new management-API CRDs.
+
+              For UUID-keyed kinds (Subscription, SubscriptionPlan, Certificate) the
+              gateway-controller assigns Id on first deploy; controllers persist it and
+              use it to address the resource for subsequent update/delete calls.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the
+                  resource's state. The standard types are Accepted and Programmed.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              id:
+                description: |-
+                  Id is the gateway-issued identifier for UUID-keyed resources. When
+                  set the controller addresses the resource via PUT/DELETE /<plural>/{id}.
+                type: string
+              lastUpdateTime:
+                description: LastUpdateTime is the last time the status was updated.
+                format: date-time
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

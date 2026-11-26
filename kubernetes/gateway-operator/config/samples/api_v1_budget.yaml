@@ -1,0 +1,43 @@
+---
+# Budget — each Online Shop agent gets $25 a day on the mock-openai provider.
+#
+# The operator is a pure client of the gateway-controller management API: this CR
+# is flattened into an `apiVersion/kind/metadata/spec` envelope and POSTed (or
+# PUT on update) to /api/management/v1/budgets. Deleting the CR removes the
+# budget from the gateway through the finalizer.
+#
+# The gateway must run with ai_cost_management.budgets.enabled = true
+# (APIP_GW_AI_COST_MANAGEMENT_BUDGETS_ENABLED); otherwise the CR's Programmed
+# condition reads False and says so. A gateway in immutable mode takes its
+# budgets from artifact files and refuses the operator's.
+#
+# spec.labels become the budget's labels on the gateway (a list of words). The CR's
+# own metadata.labels only select which gateway it goes to, as on the other kinds.
+# Amounts are in USD.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Budget
+metadata:
+  name: online-shop-agent-daily
+spec:
+  labels:
+    - finance
+    - agents
+  limit:
+    amount: "25.00"
+    period: day
+    action: block
+    # Refuse requests once an agent has used 90% of its $25.
+    blockAt: 90
+    # Each agent gets its own $25.
+    splitBy:
+      type: agent
+  filters:
+    - type: llmProvider
+      id: mock-openai
+  exemptions:
+    - type: agent
+      project: online-shop
+      id: returns-bot
+  # displayName, description and warnings belong to the control plane's Budget. They are
+  # accepted here so a control plane manifest applies unchanged; the operator does not
+  # send them and the gateway would ignore them.

@@ -1,4 +1,5 @@
 {{- $controller := .Values.gateway.controller -}}
+{{- $llmPricing := .Values.gateway.gatewayRuntime.policies.llmPricing -}}
 {{- $deployment := $controller.deployment -}}
 {{- $serverTls := default (dict) .Values.gateway.config.controller.server.tls -}}
 {{- $restApiTls := $controller.restApiTls -}}
@@ -215,6 +216,13 @@ spec:
               mountPath: /etc/gateway-controller/controller-secrets.toml
               subPath: controller-secrets.toml
             {{- end }}
+            {{- if $llmPricing.enabled }}
+            {{- /* The price file the runtime reads, posted to the control plane after each connect when cost tracking or budgets are on. */}}
+            - name: llm-pricing
+              mountPath: /etc/policy-engine/llm-pricing/model_prices.json
+              subPath: model_prices.json
+              readOnly: true
+            {{- end }}
             {{- if $controller.tls.enabled }}
             - name: listener-certs
               mountPath: /app/listener-certs
@@ -267,6 +275,11 @@ spec:
               - key: controller-secrets.toml
                 path: controller-secrets.toml
               {{- end }}
+        {{- if $llmPricing.enabled }}
+        - name: llm-pricing
+          configMap:
+            name: {{ default (printf "%s-llm-pricing" (include "gateway-operator.fullname" .)) $llmPricing.configMapName }}
+        {{- end }}
         {{- if $controller.tls.enabled }}
         - name: listener-certs
           secret:

@@ -840,7 +840,7 @@ func main() {
 	apiServer.SetEncryptionManager(encryptionProviderManager)
 	if cfg.AICostManagement.Budgets.Enabled {
 		// Budget usage reads spend from the counter store; deleting a budget clears it.
-		var labels budget.AllowanceLabels
+		var labels budget.UsageLabels
 		if budgetUsage != nil {
 			labels = budgetUsage
 		}

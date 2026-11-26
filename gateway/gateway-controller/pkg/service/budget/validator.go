@@ -237,27 +237,41 @@ func projectOwner(budget api.BudgetRequest) []config.ValidationError {
 // selectionShapes checks what the schema cannot say about each filter, the split and each
 // exemption: an attribute takes only an expression; an llmProvider filter only its id; a
 // project or API key filter only its id, or nothing for any one; an agent filter its id and
-// project, or neither for any agent; each filter type but attribute is used once; a split takes an expression for an attribute and nothing else otherwise, and is not
-// by a type that is also a filter, except attribute.
+// project, or neither for any agent; a filter type but attribute may be listed several
+// times (the entries are alternatives) when each names its value, but not twice the same
+// and not beside an entry for any value of that type; a split takes an expression for an
+// attribute and nothing else otherwise, and is not by a type that is also a filter,
+// except attribute.
 func selectionShapes(spec api.BudgetSpec) []config.ValidationError {
 	var errs []config.ValidationError
 	set := func(p *string) bool { return p != nil && *p != "" }
 	add := func(field, message string) {
 		errs = append(errs, config.ValidationError{Field: field, Message: message})
 	}
-	filtered := map[api.BudgetFilterType]bool{}
-	// pinned marks the types a filter narrows to one value; such a type cannot be split.
+	// listed counts the entries of each filter type, and anyValue marks the types with an entry
+	// for any value; seen holds the entries already listed.
+	listed := map[api.BudgetFilterType]int{}
+	anyValue := map[api.BudgetFilterType]bool{}
+	seen := map[string]bool{}
+	// pinned marks the types a filter narrows to named values; such a type cannot be split.
 	pinned := map[api.BudgetFilterType]bool{}
 	if spec.Filters != nil {
 		for i, f := range *spec.Filters {
 			field := fmt.Sprintf("spec.filters[%d]", i)
 			if f.Type != api.BudgetFilterTypeAttribute {
-				if filtered[f.Type] {
-					add(field+".type", "each filter type except attribute can be used once")
+				key := string(f.Type) + "|" + deref(f.Project) + "|" + deref(f.Id)
+				switch {
+				case seen[key]:
+					add(field, "is listed twice")
+				case listed[f.Type] > 0 && (!set(f.Id) || anyValue[f.Type]):
+					add(field, "a type is either one entry for any value, or entries that each name a value: they cannot be mixed")
 				}
-				filtered[f.Type] = true
+				seen[key] = true
+				listed[f.Type]++
 				if set(f.Id) {
 					pinned[f.Type] = true
+				} else {
+					anyValue[f.Type] = true
 				}
 			}
 			switch f.Type {
@@ -298,7 +312,7 @@ func selectionShapes(spec api.BudgetSpec) []config.ValidationError {
 				add(field+".expression", "applies only to an attribute")
 			}
 			if pinned[api.BudgetFilterType(split.Type)] {
-				add(field+".type", "cannot be a type a filter narrows to one value: one value cannot be split")
+				add(field+".type", "cannot be a type a filter narrows to named values: only any value can be split")
 			}
 		}
 	}
@@ -313,6 +327,10 @@ func selectionShapes(spec api.BudgetSpec) []config.ValidationError {
 			case api.BudgetExemptionTypeProject:
 				if !set(e.Id) || e.Expression != nil || e.Project != nil {
 					add(field, "a project exemption takes only its id")
+				}
+			case api.BudgetExemptionTypeLlmProvider, api.BudgetExemptionTypeApiKey:
+				if !set(e.Id) || e.Expression != nil || e.Project != nil {
+					add(field, "an "+string(e.Type)+" exemption takes only its id")
 				}
 			case api.BudgetExemptionTypeAgent:
 				if !set(e.Id) || !set(e.Project) || e.Expression != nil {
@@ -464,4 +482,12 @@ func labelKeyErrors(labels *[]string) []config.ValidationError {
 		seen[l] = true
 	}
 	return errs
+}
+
+// deref is the string a pointer holds, or empty.
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }

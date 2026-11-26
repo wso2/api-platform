@@ -69,7 +69,7 @@ func (f *fakeSource) set(bodies ...map[string]any) {
 func budgetBody(name, id, amount, period, action string, resource map[string]any, extra map[string]any) map[string]any {
 	body := map[string]any{
 		"uuid": id, "name": name,
-		"limit":    map[string]any{"amount": amount, "currency": "USD", "period": period, "action": action, "blockAt": float64(100)},
+		"limit":    map[string]any{"amount": amount, "period": period, "action": action, "blockAt": float64(100)},
 		"resource": resource,
 	}
 	for k, v := range extra {
@@ -181,7 +181,7 @@ func TestBlockBudgetRefusesAtItsBlockPoint(t *testing.T) {
 	if err := json.Unmarshal(refused.Body, &body); err != nil {
 		t.Fatal(err)
 	}
-	want := refusedBudget{Budget: "team-daily", Limit: "10.00", Currency: "USD", Period: "day", ResetsAt: "2026-11-12T00:00:00Z"}
+	want := refusedBudget{Budget: "team-daily", Limit: "10.00", Period: "day", ResetsAt: "2026-11-12T00:00:00Z"}
 	if body.Code != policy.FaultCodeThrottledCustomPolicy || len(body.Budgets) != 1 || body.Budgets[0] != want {
 		t.Fatalf("body %+v", body)
 	}
@@ -206,7 +206,7 @@ func TestAllowBudgetNeverRefuses(t *testing.T) {
 			t.Fatal("an Allow budget refused")
 		}
 	}
-	shared := sharedAllowance("watch")
+	shared := sharedUsage("watch")
 	if got := p.tracker.spentIn(spendKey{budgetspend.SpendID("watch"), shared, periodStart(periodDay, wednesdayNoon)}); got != 15 {
 		t.Fatalf("spent %v, want 15", got)
 	}
@@ -262,7 +262,29 @@ func TestConsumersAndExemptions(t *testing.T) {
 	}
 }
 
-func TestSeparateAllowances(t *testing.T) {
+func TestAnLLMProviderAndAnAPIKeyCanBeExempted(t *testing.T) {
+	for _, exemption := range []map[string]any{
+		{"type": "llmProvider", "id": "azure"},
+	} {
+		p, _, _ := testPolicy(t, budgetBody("skip-azure", testBudgetUUID, "1", "day", "block", allProviders, map[string]any{
+			"exemptions": []any{exemption},
+		}))
+		if len(p.catalog.current()) != 1 {
+			t.Fatalf("a budget with exemption %v was not applied", exemption)
+		}
+		openai := call{provider: "openai", subject: "alice"}
+		azure := call{provider: "azure", subject: "alice"}
+		send(t, p, openai, "1")
+		if send(t, p, openai, "") == nil {
+			t.Fatal("an openai request was admitted after the budget was used up")
+		}
+		if send(t, p, azure, "") != nil {
+			t.Fatal("an azure request was refused though azure is exempted")
+		}
+	}
+}
+
+func TestSeparateUsages(t *testing.T) {
 	p, _, _ := testPolicy(t, budgetBody("per-user", testBudgetUUID, "1", "day", "block", allProviders,
 		consumers(attribute("separate", `request.Auth.Claims["sub"]`))))
 	alice := call{provider: "openai", subject: "alice"}
@@ -270,7 +292,7 @@ func TestSeparateAllowances(t *testing.T) {
 
 	send(t, p, alice, "1")
 	if send(t, p, alice, "") == nil {
-		t.Fatal("alice was admitted after using up her allowance")
+		t.Fatal("alice was admitted after using up her usage")
 	}
 	if send(t, p, bob, "") != nil {
 		t.Fatal("bob was refused for alice's spend")
@@ -300,19 +322,19 @@ func TestSeparateProviders(t *testing.T) {
 	p, _, _ := testPolicy(t, budgetBody("per-provider", testBudgetUUID, "1", "day", "block", eachProvider, nil))
 	send(t, p, call{provider: "openai"}, "1")
 	if send(t, p, call{provider: "openai"}, "") == nil {
-		t.Fatal("openai's allowance was not used up")
+		t.Fatal("openai's usage was not used up")
 	}
 	if send(t, p, call{provider: "anthropic"}, "") != nil {
 		t.Fatal("anthropic was refused for openai's spend")
 	}
 }
 
-func TestAllowanceUUIDs(t *testing.T) {
+func TestUsageUUIDs(t *testing.T) {
 	b := &budget{name: "team", spendID: budgetspend.SpendID("team")}
-	if got, want := b.allowanceUUID(nil), uuid.NewSHA1(b.spendID, []byte("")).String(); got != want {
+	if got, want := b.usageUUID(nil), uuid.NewSHA1(b.spendID, []byte("")).String(); got != want {
 		t.Fatalf("shared %s, want %s", got, want)
 	}
-	got := b.allowanceUUID([]allocated{{valueTypeLLMProvider, "openai"}, {valueTypeAttribute, "alice@wso2.com"}})
+	got := b.usageUUID([]allocated{{valueTypeLLMProvider, "openai"}, {valueTypeAttribute, "alice@wso2.com"}})
 	want := uuid.NewSHA1(b.spendID, []byte("attribute=alice%40wso2.com|llmProvider=openai")).String()
 	if got != want {
 		t.Fatalf("separate %s, want %s", got, want)
@@ -339,7 +361,7 @@ func TestUnpricedRequestsChargeNothingButAreCounted(t *testing.T) {
 	req.Metadata[metadataLLMCostStatus] = "not_calculated"
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	key := spendKey{budgetspend.SpendID("all"), sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{budgetspend.SpendID("all"), sharedUsage("all"), periodStart(periodDay, wednesdayNoon)}
 	if p.tracker.spentIn(key) != 0 || p.tracker.unpricedIn(key) != 1 {
 		t.Fatalf("spent %v unpriced %d", p.tracker.spentIn(key), p.tracker.unpricedIn(key))
 	}
@@ -355,7 +377,7 @@ func TestARequestIsChargedOnce(t *testing.T) {
 	p.OnResponseBodyChunk(context.Background(), &policy.ResponseStreamContext{SharedContext: req.SharedContext}, &policy.StreamBody{EndOfStream: true}, nil)
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	key := spendKey{budgetspend.SpendID("all"), sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{budgetspend.SpendID("all"), sharedUsage("all"), periodStart(periodDay, wednesdayNoon)}
 	if got := p.tracker.spentIn(key); got != 1 {
 		t.Fatalf("spent %v, want 1", got)
 	}
@@ -371,7 +393,7 @@ func TestChargedToThePeriodItWasAdmittedIn(t *testing.T) {
 	req.Metadata[metadataLLMCostStatus] = costStatusCalculated
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	shared := sharedAllowance("all")
+	shared := sharedUsage("all")
 	if got := p.tracker.spentIn(spendKey{budgetspend.SpendID("all"), shared, time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)}); got != 3 {
 		t.Fatalf("admitted period spent %v, want 3", got)
 	}
@@ -550,8 +572,8 @@ func equalAny(got any, want []any) bool {
 	return true
 }
 
-// sharedAllowance is the allowance ID of a shared budget, from its name.
-func sharedAllowance(name string) string {
+// sharedUsage is the usage ID of a shared budget, from its name.
+func sharedUsage(name string) string {
 	return uuid.NewSHA1(budgetspend.SpendID(name), nil).String()
 }
 
@@ -561,19 +583,19 @@ func TestSpendIsSharedByNameNotUUID(t *testing.T) {
 	other, _, _ := testPolicy(t, budgetBody("team", otherUUID, "1", "day", "block", allProviders, nil))
 	renamed, _, _ := testPolicy(t, budgetBody("team-2", testBudgetUUID, "1", "day", "block", allProviders, nil))
 	ids := func(p *BudgetSystemPolicy) []string {
-		allowances, _ := p.catalog.current()[0].matches("openai", caller{}, func() map[string]any { return activation(nil, "", "", nil, nil) })
-		names := make([]string, len(allowances))
-		for i, a := range allowances {
+		usages, _ := p.catalog.current()[0].matches("openai", caller{}, func() map[string]any { return activation(nil, "", "", nil, nil) })
+		names := make([]string, len(usages))
+		for i, a := range usages {
 			names[i] = a.id
 		}
 		return names
 	}
 
 	if a, b := ids(one), ids(other); len(a) != 1 || len(b) != 1 || a[0] != b[0] {
-		t.Fatalf("same name, different UUIDs: allowances %v and %v differ", a, b)
+		t.Fatalf("same name, different UUIDs: usages %v and %v differ", a, b)
 	}
 	if a, c := ids(one), ids(renamed); a[0] == c[0] {
-		t.Fatal("different names share an allowance")
+		t.Fatal("different names share an usage")
 	}
 }
 
@@ -652,11 +674,11 @@ func TestConsumersWithoutAnIDMatchAnyValueOfTheirType(t *testing.T) {
 		t.Errorf("a call with no project, agent or key matched %v", got)
 	}
 
-	// A shared consumer adds nothing to the allowance: its ID is the shared budget's.
+	// A shared consumer adds nothing to the usage: its ID is the shared budget's.
 	for _, b := range p.catalog.current() {
-		allowances, ok := b.matches("openai", caller{project: "api-platform", agent: "support-agent", apiKey: "support-agent-prod"}, nil)
-		if !ok || len(allowances) != 1 || allowances[0].id != b.allowanceUUID(nil) {
-			t.Errorf("budget %s charged %v", b.name, allowances)
+		usages, ok := b.matches("openai", caller{project: "api-platform", agent: "support-agent", apiKey: "support-agent-prod"}, nil)
+		if !ok || len(usages) != 1 || usages[0].id != b.usageUUID(nil) {
+			t.Errorf("budget %s charged %v", b.name, usages)
 		}
 	}
 }
@@ -695,10 +717,10 @@ func TestSeparateByAgentAndAgentExemption(t *testing.T) {
 	other := call{provider: "openai", project: "api-platform", params: agentRoute("research-agent")}
 	send(t, p, support, "2")
 	if send(t, p, support, "") == nil {
-		t.Fatal("the agent's own allowance was not used up")
+		t.Fatal("the agent's own usage was not used up")
 	}
 	if send(t, p, other, "") != nil {
-		t.Fatal("another agent shares the allowance")
+		t.Fatal("another agent shares the usage")
 	}
 	if send(t, p, call{provider: "openai", project: "api-platform", params: agentRoute("hotel-booking")}, "5") != nil {
 		t.Fatal("an exempt agent was counted")
@@ -775,11 +797,11 @@ func TestChargedCountersAreDescribedForTheControlPlane(t *testing.T) {
 	if send(t, p, call{provider: "openai", project: "api-platform", params: agentRoute("support-agent")}, "") != nil {
 		t.Fatal("refused")
 	}
-	allowances, _ := p.catalog.current()[0].matches("openai", caller{project: "api-platform", agent: "support-agent"}, nil)
-	if len(allowances) != 1 {
-		t.Fatalf("allowances %v", allowances)
+	usages, _ := p.catalog.current()[0].matches("openai", caller{project: "api-platform", agent: "support-agent"}, nil)
+	if len(usages) != 1 {
+		t.Fatalf("usages %v", usages)
 	}
-	key := spendKey{spendID: budgetspend.SpendID("per-agent"), allowance: allowances[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{spendID: budgetspend.SpendID("per-agent"), usage: usages[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}
 	want := map[string]string{"budget": "per-agent", "agent": "api-platform/support-agent"}
 	for _, counter := range []counters.Key{spendCounter(key), unpricedCounter(key)} {
 		if got := mem.Labels(counter); len(got) != 2 || got["budget"] != want["budget"] || got["agent"] != want["agent"] {
@@ -788,8 +810,8 @@ func TestChargedCountersAreDescribedForTheControlPlane(t *testing.T) {
 	}
 }
 
-func TestAllowanceLabelsNumberRepeatedTypes(t *testing.T) {
-	a := allowance{values: []allocated{{valueTypeAttribute, "R&D"}, {valueTypeAttribute, "alice@wso2.com"}, {valueTypeLLMProvider, "openai"}}}
+func TestUsageLabelsNumberRepeatedTypes(t *testing.T) {
+	a := usage{values: []allocated{{valueTypeAttribute, "R&D"}, {valueTypeAttribute, "alice@wso2.com"}, {valueTypeLLMProvider, "openai"}}}
 	got := a.labels("team")
 	if got["budget"] != "team" || got["attribute"] != "R&D" || got["attribute.2"] != "alice@wso2.com" || got["llmProvider"] != "openai" {
 		t.Fatalf("labels %v", got)
@@ -828,7 +850,7 @@ func TestDeletedBudgetSpendIsForgotten(t *testing.T) {
 	}
 	p, source, _ := testPolicy(t, team(testBudgetUUID, "10"))
 	spent := func() float64 {
-		return p.tracker.spentIn(spendKey{budgetspend.SpendID("team"), sharedAllowance("team"), periodStart(periodDay, wednesdayNoon)})
+		return p.tracker.spentIn(spendKey{budgetspend.SpendID("team"), sharedUsage("team"), periodStart(periodDay, wednesdayNoon)})
 	}
 	send(t, p, call{provider: "openai"}, "4.0")
 	if spent() != 4 {
@@ -864,7 +886,7 @@ func TestARequestEndingAfterItsBudgetWasDeletedIsNotCharged(t *testing.T) {
 		return budgetBody("team", id, "10", "day", "allow", allProviders, nil)
 	}
 	p, source, _ := testPolicy(t, team(testBudgetUUID))
-	key := spendKey{budgetspend.SpendID("team"), sharedAllowance("team"), periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{budgetspend.SpendID("team"), sharedUsage("team"), periodStart(periodDay, wednesdayNoon)}
 
 	req := call{provider: "openai"}.context()
 	p.OnRequestHeaders(context.Background(), req, nil) // admitted under the first budget
@@ -891,5 +913,155 @@ func TestProxyRouteWithoutAProviderLeavesTheRequestToTheProviderRoute(t *testing
 	mods, _ := action.(policy.UpstreamRequestHeaderModifications)
 	if _, stamped := mods.HeadersToSet[headerAdmitted]; stamped {
 		t.Fatalf("a proxy route that did not evaluate the request stamped it: %+v", mods.HeadersToSet)
+	}
+}
+
+// matchedBy compiles the bodies and reports which budgets cover a request.
+func matchedBy(t *testing.T, provider string, who caller, claims map[string]any, bodies ...map[string]any) []string {
+	t.Helper()
+	source := &fakeSource{}
+	source.set(bodies...)
+	c, err := newCatalog(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activate := func() map[string]any {
+		return activation(nil, "/chat/completions", http.MethodPost, nil,
+			&policy.AuthContext{Authenticated: true, TypedProperties: claims})
+	}
+	var names []string
+	for _, b := range c.current() {
+		if _, ok := b.matches(provider, who, activate); ok {
+			names = append(names, b.name)
+		}
+	}
+	return names
+}
+
+func project(id string) map[string]any {
+	return map[string]any{"type": "project", "allocation": "shared", "id": id}
+}
+
+func agentOf(project, id string) map[string]any {
+	return map[string]any{"type": "agent", "allocation": "shared", "project": project, "id": id}
+}
+
+func apiKeyOf(id string) map[string]any {
+	return map[string]any{"type": "apiKey", "allocation": "shared", "id": id}
+}
+
+func TestSeveralFiltersOfOneTypeAreAlternatives(t *testing.T) {
+	severalProviders := map[string]any{"type": "llmProvider", "allocation": "shared", "ids": []any{"openai", "anthropic"}}
+	cases := []struct {
+		name     string
+		provider string
+		who      caller
+		body     map[string]any
+		want     bool
+	}{
+		{"first project", "openai", caller{project: "a"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(project("a"), project("b"))), true},
+		{"second project", "openai", caller{project: "b"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(project("a"), project("b"))), true},
+		{"a third project", "openai", caller{project: "c"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(project("a"), project("b"))), false},
+		{"no project", "openai", caller{}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(project("a"), project("b"))), false},
+		{"first provider", "openai", caller{}, budgetBody("b", testBudgetUUID, "1", "day", "block", severalProviders, nil), true},
+		{"second provider", "anthropic", caller{}, budgetBody("b", testBudgetUUID, "1", "day", "block", severalProviders, nil), true},
+		{"a third provider", "azure", caller{}, budgetBody("b", testBudgetUUID, "1", "day", "block", severalProviders, nil), false},
+		{"one provider by id still works", "openai", caller{}, budgetBody("b", testBudgetUUID, "1", "day", "block", oneProvider("openai"), nil), true},
+		{"one provider by id, another provider", "azure", caller{}, budgetBody("b", testBudgetUUID, "1", "day", "block", oneProvider("openai"), nil), false},
+		{"first agent", "openai", caller{project: "p1", agent: "x"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(agentOf("p1", "x"), agentOf("p2", "y"))), true},
+		{"second agent", "openai", caller{project: "p2", agent: "y"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(agentOf("p1", "x"), agentOf("p2", "y"))), true},
+		{"the same agent name in another project", "openai", caller{project: "p2", agent: "x"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(agentOf("p1", "x"), agentOf("p2", "y"))), false},
+		{"first key", "openai", caller{apiKey: "k1"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(apiKeyOf("k1"), apiKeyOf("k2"))), true},
+		{"another key", "openai", caller{apiKey: "k3"}, budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(apiKeyOf("k1"), apiKeyOf("k2"))), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := matchedBy(t, tc.provider, tc.who, nil, tc.body)
+			if (len(got) == 1) != tc.want {
+				t.Errorf("matched %v, want match=%v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDifferentTypesAreAllRequired(t *testing.T) {
+	body := budgetBody("b", testBudgetUUID, "1", "day", "block", oneProvider("openai"),
+		consumers(project("a"), project("b"), apiKeyOf("k1")))
+	cases := []struct {
+		name     string
+		provider string
+		who      caller
+		want     bool
+	}{
+		{"project a with the key", "openai", caller{project: "a", apiKey: "k1"}, true},
+		{"project b with the key", "openai", caller{project: "b", apiKey: "k1"}, true},
+		{"project a without the key", "openai", caller{project: "a"}, false},
+		{"the key with another project", "openai", caller{project: "c", apiKey: "k1"}, false},
+		{"another provider", "azure", caller{project: "a", apiKey: "k1"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchedBy(t, tc.provider, tc.who, nil, body); (len(got) == 1) != tc.want {
+				t.Errorf("matched %v, want match=%v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAttributeFiltersAreStillAllRequired(t *testing.T) {
+	body := budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, consumers(
+		attribute("shared", `request.Auth.Claims["team"] == "research"`),
+		attribute("shared", `request.Auth.Claims["tier"] == "gold"`)))
+	cases := []struct {
+		name   string
+		claims map[string]any
+		want   bool
+	}{
+		{"both true", map[string]any{"team": "research", "tier": "gold"}, true},
+		{"only the first", map[string]any{"team": "research", "tier": "silver"}, false},
+		{"only the second", map[string]any{"team": "ops", "tier": "gold"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchedBy(t, "openai", caller{}, tc.claims, body); (len(got) == 1) != tc.want {
+				t.Errorf("matched %v, want match=%v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAnExemptionBeatsAnAlternativeFilter(t *testing.T) {
+	body := budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, map[string]any{
+		"consumers":  []any{project("a"), project("b")},
+		"exemptions": []any{project("b")},
+	})
+	if got := matchedBy(t, "openai", caller{project: "a"}, nil, body); len(got) != 1 {
+		t.Errorf("project a matched %v", got)
+	}
+	if got := matchedBy(t, "openai", caller{project: "b"}, nil, body); len(got) != 0 {
+		t.Errorf("the exempt project b matched %v", got)
+	}
+}
+
+func TestAlternativesWithASplitChargeOneUsagePerValue(t *testing.T) {
+	source := &fakeSource{}
+	source.set(budgetBody("b", testBudgetUUID, "1", "day", "block", allProviders, map[string]any{
+		"consumers": []any{project("p1"), project("p2"), map[string]any{"type": "agent", "allocation": "separate"}},
+	}))
+	c, err := newCatalog(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := c.current()[0]
+	first, ok := b.matches("openai", caller{project: "p1", agent: "x"}, nil)
+	if !ok || len(first) != 1 {
+		t.Fatalf("p1/x: %v %v", first, ok)
+	}
+	second, ok := b.matches("openai", caller{project: "p2", agent: "y"}, nil)
+	if !ok || len(second) != 1 || second[0].id == first[0].id {
+		t.Errorf("p2/y shares an usage with p1/x: %v %v", second, first)
+	}
+	if _, ok := b.matches("openai", caller{project: "p3", agent: "z"}, nil); ok {
+		t.Error("p3/z was covered")
 	}
 }

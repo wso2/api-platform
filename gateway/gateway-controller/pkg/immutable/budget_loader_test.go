@@ -97,3 +97,67 @@ func TestLoadArtifacts_BudgetIgnoresControlPlaneOnlyFields(t *testing.T) {
 	assert.NotContains(t, string(stored), `"description"`)
 	assert.NotContains(t, string(stored), `"warnings"`)
 }
+
+// A Budget file may list several projects: they are alternatives, and the loader keeps
+// every entry in order.
+func TestLoadArtifacts_BudgetWithSeveralFiltersOfOneType(t *testing.T) {
+	dir := t.TempDir()
+	writeArtifact(t, dir, "two-projects.yaml", `apiVersion: gateway.api-platform.wso2.com/v1
+kind: Budget
+metadata:
+  name: two-projects
+spec:
+  limit:
+    amount: "50.00"
+    period: day
+    action: allow
+  filters:
+    - type: project
+      id: project-a
+    - type: project
+      id: project-b
+`)
+	gw, db := newAgentOnlyGW(t, dir)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewLazyResourceStore(logger)
+	resources := lazyresourcexds.NewLazyResourceStateManager(store, lazyresourcexds.NewLazyResourceSnapshotManager(store, logger), logger)
+	gw.SetBudgetService(budget.NewService(db, utils.NewBudgetPublisher(db, resources), discardEventHub{}, "test-gateway", logger, false))
+
+	require.NoError(t, gw.LoadArtifacts(logger))
+
+	cfg, err := db.GetConfigByKindAndHandle(models.KindBudget, "two-projects")
+	require.NoError(t, err)
+	stored, err := json.Marshal(cfg.SourceConfiguration)
+	require.NoError(t, err)
+	assert.Contains(t, string(stored), `"id":"project-a"`)
+	assert.Contains(t, string(stored), `"id":"project-b"`)
+}
+
+// The same project listed twice is refused, like in the management API.
+func TestLoadArtifacts_BudgetWithTheSameFilterTwiceFails(t *testing.T) {
+	dir := t.TempDir()
+	writeArtifact(t, dir, "twice.yaml", `apiVersion: gateway.api-platform.wso2.com/v1
+kind: Budget
+metadata:
+  name: twice
+spec:
+  limit:
+    amount: "50.00"
+    period: day
+    action: allow
+  filters:
+    - type: project
+      id: project-a
+    - type: project
+      id: project-a
+`)
+	gw, db := newAgentOnlyGW(t, dir)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewLazyResourceStore(logger)
+	resources := lazyresourcexds.NewLazyResourceStateManager(store, lazyresourcexds.NewLazyResourceSnapshotManager(store, logger), logger)
+	gw.SetBudgetService(budget.NewService(db, utils.NewBudgetPublisher(db, resources), discardEventHub{}, "test-gateway", logger, false))
+
+	err := gw.LoadArtifacts(logger)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "spec.filters[1]")
+}

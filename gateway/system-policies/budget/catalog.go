@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ const (
 )
 
 // Consumer and exemption types, as in the Budget kind's filters, split and exemptions; they
-// also name allocated values in allowance names.
+// also name allocated values in usage names.
 const (
 	valueTypeAttribute   = "attribute"
 	valueTypeProject     = "project"
@@ -84,9 +85,9 @@ func (c caller) value(valueType string) string {
 	return ""
 }
 
-// maxAllowancesPerBudget caps the allowances one request can charge for one budget. List
+// maxUsagesPerBudget caps the usages one request can charge for one budget. List
 // claims allocated separately multiply; a request beyond the cap is not covered.
-const maxAllowancesPerBudget = 64
+const maxUsagesPerBudget = 64
 
 // maxExpressionCost caps the work one expression may do per request, in CEL cost units: a
 // claim or header check costs a few units; walking big lists in nested macros costs more.
@@ -102,23 +103,27 @@ type resourceSource interface {
 type budget struct {
 	uuid uuid.UUID
 	name string
-	// spendID roots the budget's allowance IDs: a UUIDv5 of its name, so the same budget on
+	// spendID roots the budget's usage IDs: a UUIDv5 of its name, so the same budget on
 	// every gateway counts against one total whatever UUID each gateway gave it, and the
 	// shared store's keys hold no names.
-	spendID  uuid.UUID
-	amount   float64
-	limit    string // the amount as written, for refusals
-	currency string
-	period   string
-	action   string
-	blockAt  int
+	spendID uuid.UUID
+	amount  float64
+	limit   string // the amount as written, for refusals
+	period  string
+	action  string
+	blockAt int
 
-	// providerID is the one LLM provider covered; empty for all of them.
-	providerID string
-	// providerSeparate gives each provider its own allowance.
+	// providerIDs are the LLM providers covered (any one of them); empty for all of them.
+	providerIDs []string
+	// providerSeparate gives each provider its own usage.
 	providerSeparate bool
 
-	consumers  []consumer
+	// conditions are the shared consumers, in groups the request must each satisfy: the
+	// entries of one group are alternatives (several of one type: project a or project b),
+	// every attribute is a group of its own, and different types are different groups.
+	conditions [][]consumer
+	// splits are the separate consumers: each value of one gets its own usage.
+	splits     []consumer
 	exemptions []consumer
 }
 
@@ -126,7 +131,7 @@ type budget struct {
 // when shared, the value to allocate by when separate. A project, agent or API key is
 // compared with the caller: the named one when shared (id; an agent also names its
 // project), any one when shared without an id (the request has a value of that type at
-// all), each one its own allowance when separate.
+// all), each one its own usage when separate.
 type consumer struct {
 	valueType string
 	separate  bool
@@ -160,23 +165,23 @@ func (b *budget) blockPoint() float64 {
 	return b.amount * float64(b.blockAt) / 100
 }
 
-// allocated is one value an allowance is separated by.
+// allocated is one value an usage is separated by.
 type allocated struct {
 	valueType string
 	value     string
 }
 
-// allowance is one allowance a request is charged to: its UUID and the values it is
+// usage is one usage a request is charged to: its UUID and the values it is
 // separated by (none for a shared budget).
-type allowance struct {
+type usage struct {
 	id     string
 	values []allocated
 }
 
-// labels describe the allowance for the control plane: the budget's name and the
+// labels describe the usage for the control plane: the budget's name and the
 // allocated values, by type ("agent" is project/agent). A second value of the same type
 // gets a numbered key ("attribute.2").
-func (a allowance) labels(budgetName string) map[string]string {
+func (a usage) labels(budgetName string) map[string]string {
 	out := map[string]string{labelBudget: budgetName}
 	for _, v := range a.values {
 		key := v.valueType
@@ -188,36 +193,41 @@ func (a allowance) labels(budgetName string) map[string]string {
 	return out
 }
 
-// labelBudget is the label naming an allowance's budget.
+// labelBudget is the label naming an usage's budget.
 const labelBudget = "budget"
 
-// matches reports whether the budget covers the request, and the allowances it charges:
+// matches reports whether the budget covers the request, and the usages it charges:
 // one when nothing is separate, otherwise one per combination of separate values.
-func (b *budget) matches(provider string, who caller, activation func() map[string]any) ([]allowance, bool) {
-	if b.providerID != "" && b.providerID != provider {
+func (b *budget) matches(provider string, who caller, activation func() map[string]any) ([]usage, bool) {
+	if len(b.providerIDs) > 0 && !slices.Contains(b.providerIDs, provider) {
 		return nil, false
 	}
 	for _, exemption := range b.exemptions {
+		if exemption.valueType == valueTypeLLMProvider {
+			if exemption.id == provider {
+				return nil, false
+			}
+			continue
+		}
 		if exemption.is(who, activation) {
+			return nil, false
+		}
+	}
+	for _, group := range b.conditions {
+		if !slices.ContainsFunc(group, func(c consumer) bool { return c.is(who, activation) }) {
 			return nil, false
 		}
 	}
 
 	combinations := [][]allocated{nil}
-	for _, c := range b.consumers {
-		if !c.separate {
-			if !c.is(who, activation) {
-				return nil, false
-			}
-			continue
-		}
+	for _, c := range b.splits {
 		values, ok := c.values(who, activation)
 		if !ok {
 			return nil, false
 		}
-		if len(combinations)*len(values) > maxAllowancesPerBudget {
-			slog.Warn("Budget not applied: the request would charge too many allowances",
-				slog.String("budget", b.name), slog.Int("limit", maxAllowancesPerBudget))
+		if len(combinations)*len(values) > maxUsagesPerBudget {
+			slog.Warn("Budget not applied: the request would charge too many usages",
+				slog.String("budget", b.name), slog.Int("limit", maxUsagesPerBudget))
 			return nil, false
 		}
 		next := make([][]allocated, 0, len(combinations)*len(values))
@@ -235,17 +245,17 @@ func (b *budget) matches(provider string, who caller, activation func() map[stri
 		}
 	}
 
-	allowances := make([]allowance, 0, len(combinations))
+	usages := make([]usage, 0, len(combinations))
 	for _, combination := range combinations {
-		allowances = append(allowances, allowance{id: b.allowanceUUID(combination), values: combination})
+		usages = append(usages, usage{id: b.usageUUID(combination), values: combination})
 	}
-	return allowances, true
+	return usages, true
 }
 
-// allowanceUUID is the UUIDv5, under the budget's spendID, of the allocated values sorted
+// usageUUID is the UUIDv5, under the budget's spendID, of the allocated values sorted
 // by type (stable, so consumers keep their order) and written type=value, percent-encoded,
 // joined by "|". A shared budget has the UUID of the empty name.
-func (b *budget) allowanceUUID(values []allocated) string {
+func (b *budget) usageUUID(values []allocated) string {
 	sorted := append([]allocated{}, values...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].valueType < sorted[j].valueType })
 	parts := make([]string, len(sorted))
@@ -410,14 +420,13 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 		return nil, fmt.Errorf("limit.amount %q is not a positive amount", str(limit["amount"]))
 	}
 	b := &budget{
-		uuid:     id,
-		name:     str(body["name"]),
-		amount:   amount,
-		limit:    str(limit["amount"]),
-		currency: str(limit["currency"]),
-		period:   str(limit["period"]),
-		action:   str(limit["action"]),
-		blockAt:  100,
+		uuid:    id,
+		name:    str(body["name"]),
+		amount:  amount,
+		limit:   str(limit["amount"]),
+		period:  str(limit["period"]),
+		action:  str(limit["action"]),
+		blockAt: 100,
 	}
 	if b.name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -433,7 +442,17 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 	}
 	switch str(resource["allocation"]) {
 	case allocationShared:
-		b.providerID = str(resource["id"])
+		// One provider is its id; several are ids (a request to any of them is covered).
+		if id := str(resource["id"]); id != "" {
+			b.providerIDs = append(b.providerIDs, id)
+		}
+		if ids, ok := resource["ids"].([]any); ok {
+			for _, raw := range ids {
+				if id := str(raw); id != "" && !slices.Contains(b.providerIDs, id) {
+					b.providerIDs = append(b.providerIDs, id)
+				}
+			}
+		}
 	case allocationSeparate:
 		b.providerSeparate = true
 	default:
@@ -447,7 +466,7 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 		if err != nil {
 			return nil, fmt.Errorf("consumers[%d]: %w", i, err)
 		}
-		b.consumers = append(b.consumers, cons)
+		b.addConsumer(cons)
 	}
 	exemptions, _ := body["exemptions"].([]any)
 	for i, raw := range exemptions {
@@ -459,6 +478,26 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 		b.exemptions = append(b.exemptions, cons)
 	}
 	return b, nil
+}
+
+// addConsumer files a compiled consumer: a separate one is a split; a shared one is a
+// condition. Shared consumers of one type, other than attributes, are alternatives of one
+// condition (project a or project b); each attribute is a condition of its own, so
+// several are all required.
+func (b *budget) addConsumer(c consumer) {
+	if c.separate {
+		b.splits = append(b.splits, c)
+		return
+	}
+	if c.valueType != valueTypeAttribute {
+		for i, group := range b.conditions {
+			if group[0].valueType == c.valueType {
+				b.conditions[i] = append(group, c)
+				return
+			}
+		}
+	}
+	b.conditions = append(b.conditions, []consumer{c})
 }
 
 // consumer compiles one consumer or exemption. A type left out is an attribute, as budgets
@@ -479,6 +518,12 @@ func (c *catalog) consumer(entry map[string]any, separate, exemption bool) (cons
 		}
 		cons.program = program
 	case valueTypeProject, valueTypeAPIKey:
+		cons.id = str(entry["id"])
+	case valueTypeLLMProvider:
+		// Only an exemption names a provider here: a provider filter or split is read apart.
+		if !exemption {
+			return consumer{}, fmt.Errorf("type %q is not attribute, project, agent or apiKey", valueType)
+		}
 		cons.id = str(entry["id"])
 	case valueTypeAgent:
 		project, agent := str(entry["project"]), str(entry["id"])

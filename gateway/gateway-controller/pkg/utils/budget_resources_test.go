@@ -62,7 +62,6 @@ func newTestBudgetPublisher(t *testing.T, rows *fakeBudgetRows) (*BudgetPublishe
 
 func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredConfig {
 	blockAt := 95
-	currency := api.USD
 	provider := "openai"
 	filters := []api.BudgetFilter{{Type: api.BudgetFilterTypeLlmProvider, Id: &provider}}
 	split := &api.BudgetSplit{
@@ -76,7 +75,7 @@ func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredC
 		Spec: api.BudgetSpec{
 			Status: &status,
 			Limit: api.BudgetLimit{
-				Amount: amount, Currency: &currency, Period: api.BudgetLimitPeriodMonth,
+				Amount: amount, Period: api.BudgetLimitPeriodMonth,
 				Action: api.Block, BlockAt: &blockAt, SplitBy: split,
 			},
 			Filters: &filters,
@@ -191,6 +190,28 @@ func TestEngineSelection_MapsFiltersAndSplitToTheEngineModel(t *testing.T) {
 			name:     "llmProvider filter: that provider, shared",
 			filters:  []api.BudgetFilter{{Type: api.BudgetFilterTypeLlmProvider, Id: s("openai")}},
 			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared", "id": "openai"},
+		},
+		{
+			name: "several llmProvider filters: any of those providers",
+			filters: []api.BudgetFilter{
+				{Type: api.BudgetFilterTypeLlmProvider, Id: s("openai")},
+				{Type: api.BudgetFilterTypeLlmProvider, Id: s("anthropic")},
+			},
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared", "ids": []interface{}{"openai", "anthropic"}},
+		},
+		{
+			name: "several filters of one type stay separate consumers, in order",
+			filters: []api.BudgetFilter{
+				{Type: api.BudgetFilterTypeProject, Id: s("project-a")},
+				{Type: api.BudgetFilterTypeApiKey, Id: s("team-alpha-key")},
+				{Type: api.BudgetFilterTypeProject, Id: s("project-b")},
+			},
+			resource: map[string]interface{}{"type": "llmProvider", "allocation": "shared"},
+			consumers: []interface{}{
+				map[string]interface{}{"type": "project", "allocation": "shared", "id": "project-a"},
+				map[string]interface{}{"type": "apiKey", "allocation": "shared", "id": "team-alpha-key"},
+				map[string]interface{}{"type": "project", "allocation": "shared", "id": "project-b"},
+			},
 		},
 		{
 			name:     "llmProvider split: each provider",

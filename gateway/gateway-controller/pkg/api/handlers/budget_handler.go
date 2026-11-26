@@ -216,8 +216,8 @@ func (s *APIServer) budgetWithUsage(cfg *models.StoredConfig, log *slog.Logger) 
 }
 
 // SetBudgetSpend wires the counter store budget spend is kept in and what names its
-// allowances, for the budget usage and for clearing a deleted budget's spend.
-func (s *APIServer) SetBudgetSpend(counters budget.CounterStore, labels budget.AllowanceLabels) {
+// usages, for the budget usage and for clearing a deleted budget's spend.
+func (s *APIServer) SetBudgetSpend(counters budget.CounterStore, labels budget.UsageLabels) {
 	s.budgetService.SetSpend(counters, labels)
 }
 
@@ -251,14 +251,14 @@ func (s *APIServer) GetBudgetUsage(w http.ResponseWriter, r *http.Request, id st
 		writeBudgetError(w, log, "read the usage of", err)
 		return
 	}
-	page := usage.Allowances[min(offset, len(usage.Allowances)):min(offset+limit, len(usage.Allowances))]
-	rows := make([]api.BudgetAllowanceUsage, 0, len(page))
+	page := usage.Usages[min(offset, len(usage.Usages)):min(offset+limit, len(usage.Usages))]
+	rows := make([]api.BudgetUsageEntry, 0, len(page))
 	for _, a := range page {
-		rows = append(rows, api.BudgetAllowanceUsage{Allowance: a.Allowance, Spent: budgetspend.FormatUSD(a.Spent), UnpricedRequests: a.Unpriced})
+		rows = append(rows, api.BudgetUsageEntry{Usage: a.Usage, Spent: budgetspend.FormatUSD(a.Spent), UnpricedRequests: a.Unpriced})
 	}
 	httputil.WriteJSON(w, http.StatusOK, api.BudgetUsageListResponse{
 		PeriodStart: openapi_types.Date{Time: usage.PeriodStart},
-		Allowances:  rows, Total: len(usage.Allowances), Limit: limit, Offset: offset,
+		Usages:      rows, Total: len(usage.Usages), Limit: limit, Offset: offset,
 	})
 }
 

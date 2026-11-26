@@ -3338,7 +3338,7 @@ Spend in the current period, as the control plane shows it: totals include every
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |periodStart|string(date)|true|none|none|
-|spent|string|true|none|USD, total across the budget's allowances|
+|spent|string|true|none|USD, total across the budget's usages|
 |unpricedRequests|integer(int64)|true|none|Requests charged $0 this period because they had no price|
 
 ## BudgetUsageListResponse
@@ -3351,9 +3351,9 @@ Spend in the current period, as the control plane shows it: totals include every
 ```json
 {
   "periodStart": "2019-08-24",
-  "allowances": [
+  "usages": [
     {
-      "allowance": {
+      "usage": {
         "property1": "string",
         "property2": "string"
       },
@@ -3368,28 +3368,28 @@ Spend in the current period, as the control plane shows it: totals include every
 
 ```
 
-A page of a budget's usage, one row per allowance, in the current period
+A page of a budget's usage, one row per usage, in the current period
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |periodStart|string(date)|true|none|none|
-|allowances|[[BudgetAllowanceUsage](#schemabudgetallowanceusage)]|true|none|[One allowance's spend this period]|
+|usages|[[BudgetUsageEntry](#schemabudgetusageentry)]|true|none|[One usage's spend this period]|
 |total|integer|true|none|none|
 |limit|integer|true|none|none|
 |offset|integer|true|none|none|
 
-## BudgetAllowanceUsage
+## BudgetUsageEntry
 
-<a id="schemabudgetallowanceusage"></a>
-<a id="schema_BudgetAllowanceUsage"></a>
-<a id="tocSbudgetallowanceusage"></a>
-<a id="tocsbudgetallowanceusage"></a>
+<a id="schemabudgetusageentry"></a>
+<a id="schema_BudgetUsageEntry"></a>
+<a id="tocSbudgetusageentry"></a>
+<a id="tocsbudgetusageentry"></a>
 
 ```json
 {
-  "allowance": {
+  "usage": {
     "property1": "string",
     "property2": "string"
   },
@@ -3399,13 +3399,13 @@ A page of a budget's usage, one row per allowance, in the current period
 
 ```
 
-One allowance's spend this period
+One usage's spend this period
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|allowance|object|true|none|The allocated values, e.g. {"apiKey":"team-red"}; empty when shared, or when this gateway has not served the allowance|
+|usage|object|true|none|The allocated values, e.g. {"apiKey":"team-red"}; empty when shared, or when this gateway has not served the usage|
 |» **additionalProperties**|string|false|none|none|
 |spent|string|true|none|USD|
 |unpricedRequests|integer(int64)|true|none|none|
@@ -3452,7 +3452,6 @@ One allowance's spend this period
   "status": "active",
   "limit": {
     "amount": "100.00",
-    "currency": "USD",
     "period": "day",
     "action": "block",
     "blockAt": 100,
@@ -3497,7 +3496,7 @@ One allowance's spend this period
 |---|---|---|---|---|
 |status|string|false|none|An inactive budget is kept but matches no traffic.|
 |limit|[BudgetLimit](#schemabudgetlimit)|true|none|none|
-|filters|[[BudgetFilter](#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Every filter must match (AND). Empty means all LLM usage.|
+|filters|[[BudgetFilter](#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Filters of different types must all match (AND); several of one type are alternatives (OR). Empty means all LLM usage.|
 |exemptions|[[BudgetExemption](#schemabudgetexemption)]|false|none|Matching traffic is left out of this budget.|
 |displayName|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
 |description|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
@@ -3522,7 +3521,6 @@ One allowance's spend this period
 ```json
 {
   "amount": "100.00",
-  "currency": "USD",
   "period": "day",
   "action": "block",
   "blockAt": 100,
@@ -3539,7 +3537,6 @@ One allowance's spend this period
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |amount|string|true|none|A positive amount with up to 2 decimal places, such as "100.00".|
-|currency|string|false|none|none|
 |period|string|true|none|UTC calendar day, ISO week starting Monday, or calendar month.|
 |action|string|true|none|block refuses requests at the block point; allow only counts.|
 |blockAt|integer|false|none|Percentage of the amount at which a block budget refuses requests.|
@@ -3549,7 +3546,6 @@ One allowance's spend this period
 
 |Property|Value|
 |---|---|
-|currency|USD|
 |period|day|
 |period|week|
 |period|month|
@@ -3607,7 +3603,7 @@ Gives each value of the type its own limit: each LLM provider, project, agent or
 
 ```
 
-One condition on the LLM usage the budget counts; filters combine with AND. llmProvider is the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-id and agent-id annotations); apiKey is the name of the API key the request authenticated with; attribute is a CEL condition over the request (token claims). A project, agent or apiKey filter without an id matches any one: requests that carry that value at all (an agent filter without an id leaves out requests sent straight to a provider). Each type except attribute is used once.
+One condition on the LLM usage the budget counts. Filters of different types combine with AND; several filters of the same type (not attribute) are alternatives, combined with OR: two project filters count the usage of either project. List a type either once without an id (any value), or once per value it is limited to, never both and never the same value twice; a type with named values cannot be the split. Each attribute filter is its own condition, and all of them must hold (write OR inside the expression). llmProvider is the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-id and agent-id annotations); apiKey is the name of the API key the request authenticated with; attribute is a CEL condition over the request (token claims). A project, agent or apiKey filter without an id matches any one: requests that carry that value at all (an agent filter without an id leaves out requests sent straight to a provider).
 
 #### Properties
 

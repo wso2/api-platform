@@ -154,20 +154,23 @@ const (
 )
 
 // engineSelection maps the kind's filters and splitBy to the budget system policy's model,
-// which names allowances and spend counters: one LLM provider resource and a list of
-// consumers, each shared (a condition) or separate (one allowance per value). An llmProvider
-// filter is the shared provider resource with that id; an llmProvider split is the separate
-// provider resource; neither is all providers, shared. Every other filter is a shared
-// consumer of its type (without an id it is any value of that type), and every other split
-// a separate consumer of its type.
+// which names usages and spend counters: one LLM provider resource and a list of
+// consumers, each shared (a condition) or separate (one usage per value). An llmProvider
+// filter is the shared provider resource with that id (several llmProvider filters are its
+// ids: a request to any of them is covered); an llmProvider split is the separate provider
+// resource; neither is all providers, shared. Every other filter is a shared consumer of
+// its type (without an id it is any value of that type; several of one type are
+// alternatives, which the policy engine groups), and every other split a separate consumer
+// of its type.
 func engineSelection(spec api.BudgetSpec) (map[string]interface{}, []interface{}) {
 	resource := map[string]interface{}{"type": string(api.BudgetFilterTypeLlmProvider), "allocation": engineAllocationShared}
 	var consumers []interface{}
+	var providerIDs []interface{}
 	if spec.Filters != nil {
 		for _, f := range *spec.Filters {
 			if f.Type == api.BudgetFilterTypeLlmProvider {
 				if f.Id != nil {
-					resource["id"] = *f.Id
+					providerIDs = append(providerIDs, *f.Id)
 				}
 				continue
 			}
@@ -184,10 +187,19 @@ func engineSelection(spec api.BudgetSpec) (map[string]interface{}, []interface{}
 			consumers = append(consumers, consumer)
 		}
 	}
+	switch len(providerIDs) {
+	case 0:
+	case 1:
+		// One provider keeps the single id, so a stored budget's published form is unchanged.
+		resource["id"] = providerIDs[0]
+	default:
+		resource["ids"] = providerIDs
+	}
 	if split := spec.Limit.SplitBy; split != nil {
 		if split.Type == api.BudgetSplitTypeLlmProvider {
 			resource["allocation"] = engineAllocationSeparate
 			delete(resource, "id")
+			delete(resource, "ids")
 		} else {
 			consumer := map[string]interface{}{"type": string(split.Type), "allocation": engineAllocationSeparate}
 			if split.Expression != nil {

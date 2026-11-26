@@ -157,7 +157,6 @@ func TestCreate_StoresBudgetWithDefaults(t *testing.T) {
 	assert.Equal(t, 95, *budget.Spec.Limit.BlockAt)
 	// Defaults come from the spec.
 	assert.Equal(t, api.BudgetSpecStatusActive, *budget.Spec.Status)
-	assert.Equal(t, api.USD, *budget.Spec.Limit.Currency)
 	assert.Equal(t, models.OriginGatewayAPI, stored.Origin)
 }
 
@@ -210,7 +209,7 @@ func TestCreate_RejectsInvalidBudgets(t *testing.T) {
 		{"block at with allow", `"action": "block", "blockAt": 95`, `"action": "allow", "blockAt": 95`, "spec.limit.blockAt"},
 		{"bad period", `"period": "month"`, `"period": "year"`, "spec.limit.period"},
 		{"bad action", `"action": "block"`, `"action": "warn"`, "spec.limit.action"},
-		{"other currency", `"blockAt": 95`, `"blockAt": 95, "currency": "EUR"`, "spec.limit.currency"},
+		{"currency (no longer supported)", `"blockAt": 95`, `"blockAt": 95, "currency": "USD"`, "spec.limit"},
 		{"wrong kind", `"kind": "Budget"`, `"kind": "RestApi"`, "kind"},
 		{"old resource field", `"filters":`, `"resource": {"type": "llmProvider", "id": "openai"}, "filters":`, "spec"},
 		{"old consumers field", `"filters":`, `"consumers": [], "filters":`, "spec"},
@@ -558,11 +557,10 @@ func supportedBudgetShapes() []budgetShape {
 		{"block at 1 percent", map[string]any{"limit": map[string]any{"amount": "10", "period": "day", "action": "block", "blockAt": 1}}},
 		{"block at 100 percent explicitly", map[string]any{"limit": map[string]any{"amount": "10", "period": "day", "action": "block", "blockAt": 100}}},
 		{"inactive", map[string]any{"status": "inactive", "limit": limit("10", "day", "block")}},
-		{"currency given", map[string]any{"limit": map[string]any{"amount": "10", "currency": "USD", "period": "day", "action": "block"}}},
 		{"smallest amount", map[string]any{"limit": limit("0.01", "day", "block")}},
 		{"largest amount", map[string]any{"limit": limit("999999999999.99", "month", "block")}},
 		{"everything at once", map[string]any{"status": "active",
-			"limit": map[string]any{"amount": "500.00", "currency": "USD", "period": "month", "action": "block", "blockAt": 95,
+			"limit": map[string]any{"amount": "500.00", "period": "month", "action": "block", "blockAt": 95,
 				"splitBy": attributeSplit("sub")},
 			"filters":    append(append([]any{}, oneProvider...), attributeFilters(3)...),
 			"exemptions": attributeExemptions(2)}},
@@ -581,9 +579,6 @@ func withDefaults(spec map[string]any) map[string]any {
 	l := map[string]any{}
 	for k, v := range out["limit"].(map[string]any) {
 		l[k] = v
-	}
-	if _, ok := l["currency"]; !ok {
-		l["currency"] = "USD"
 	}
 	if _, ok := l["blockAt"]; !ok && l["action"] == "block" {
 		l["blockAt"] = 100 // the schema's default; an Allow budget has none
@@ -712,16 +707,26 @@ func TestBudgetShapes_RejectsUnsupported(t *testing.T) {
 			"filters": []any{map[string]any{"type": "agent", "project": "api-platform"}}}, "spec.filters[0].id"},
 		{"project filter with a project", map[string]any{"limit": day,
 			"filters": []any{map[string]any{"type": "project", "project": "api-platform"}}}, "spec.filters[0].project"},
-		{"any project used twice", map[string]any{"limit": day,
-			"filters": []any{map[string]any{"type": "project"}, map[string]any{"type": "project", "id": "a"}}}, "spec.filters[1].type"},
+		{"any project beside a named one", map[string]any{"limit": day,
+			"filters": []any{map[string]any{"type": "project"}, map[string]any{"type": "project", "id": "a"}}}, "spec.filters[1]"},
+		{"a named project, then any project", map[string]any{"limit": day,
+			"filters": []any{map[string]any{"type": "project", "id": "a"}, map[string]any{"type": "project"}}}, "spec.filters[1]"},
+		{"any project twice", map[string]any{"limit": day,
+			"filters": []any{map[string]any{"type": "project"}, map[string]any{"type": "project"}}}, "spec.filters[1]"},
+		{"the same project twice", map[string]any{"limit": day,
+			"filters": []any{map[string]any{"type": "project", "id": "a"}, map[string]any{"type": "project", "id": "a"}}}, "spec.filters[1]"},
+		{"the same agent twice", map[string]any{"limit": day,
+			"filters": []any{map[string]any{"type": "agent", "project": "p", "id": "x"}, map[string]any{"type": "agent", "project": "p", "id": "x"}}}, "spec.filters[1]"},
+		{"any agent beside a named one", map[string]any{"limit": day,
+			"filters": []any{map[string]any{"type": "agent", "project": "p", "id": "x"}, map[string]any{"type": "agent"}}}, "spec.filters[1]"},
+		{"split by a type with several named entries", map[string]any{"limit": splitLimit("10", "day", "block", map[string]any{"type": "project"}),
+			"filters": []any{map[string]any{"type": "project", "id": "a"}, map[string]any{"type": "project", "id": "b"}}}, "spec.limit.splitBy.type"},
 		{"project exemption without id", map[string]any{"limit": day,
 			"exemptions": []any{map[string]any{"type": "project"}}}, "spec.exemptions[0]"},
 		{"API key filter with an expression", map[string]any{"limit": day,
 			"filters": []any{map[string]any{"type": "apiKey", "id": "x", "expression": "true"}}}, "spec.filters[0].expression"},
 		{"attribute filter without expression", map[string]any{"limit": day,
 			"filters": []any{map[string]any{"type": "attribute"}}}, "spec.filters[0].expression"},
-		{"project used twice", map[string]any{"limit": day,
-			"filters": []any{map[string]any{"type": "project", "id": "a"}, map[string]any{"type": "project", "id": "b"}}}, "spec.filters[1].type"},
 		{"split by a filtered type", map[string]any{"limit": splitLimit("10", "day", "block", map[string]any{"type": "project"}),
 			"filters": []any{map[string]any{"type": "project", "id": "a"}}}, "spec.limit.splitBy.type"},
 		{"split without type", map[string]any{"limit": splitLimit("10", "day", "block", map[string]any{})}, "spec.limit.splitBy.type"},
@@ -1175,4 +1180,69 @@ func TestCreate_ReadsTheBodyAsItsContentTypeSays(t *testing.T) {
 
 	_, err = svc.Create(CreateParams{Body: []byte(validBudget), ContentType: "application/json"})
 	require.NoError(t, err, "the JSON body is read as JSON")
+}
+
+func TestBudgetShapes_AcceptsSeveralFiltersOfOneType(t *testing.T) {
+	svc, db := newTestService(t, false)
+	seedLLMProvider(t, db, "anthropic")
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "Budget",
+		"metadata": map[string]any{"name": "two-projects"},
+		"spec": map[string]any{
+			"limit": limit("10", "day", "block"),
+			"filters": []any{
+				map[string]any{"type": "llmProvider", "id": "openai"},
+				map[string]any{"type": "project", "id": "project-a"},
+				map[string]any{"type": "llmProvider", "id": "anthropic"},
+				map[string]any{"type": "project", "id": "project-b"},
+				map[string]any{"type": "agent", "project": "project-c", "id": "x"},
+				map[string]any{"type": "agent", "project": "project-d", "id": "y"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	created, err := svc.Create(CreateParams{Body: body})
+	require.NoError(t, err)
+	filters := *created.Configuration.(api.BudgetRequest).Spec.Filters
+	require.Len(t, filters, 6, "every entry is kept, in order")
+	assert.Equal(t, "project-b", *filters[3].Id)
+}
+
+func TestBudgetShapes_SplitsByATypeWithOneEntryForAnyValueBesideOthers(t *testing.T) {
+	svc, _ := newTestService(t, false)
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "Budget",
+		"metadata": map[string]any{"name": "each-agent-of-two-projects"},
+		"spec": map[string]any{
+			"limit": splitLimit("10", "day", "block", map[string]any{"type": "agent"}),
+			"filters": []any{
+				map[string]any{"type": "project", "id": "project-a"},
+				map[string]any{"type": "project", "id": "project-b"},
+				map[string]any{"type": "agent"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	_, err = svc.Create(CreateParams{Body: body})
+	require.NoError(t, err)
+}
+
+func TestBudgetShapes_ANamedProviderAmongSeveralMustExist(t *testing.T) {
+	svc, _ := newTestService(t, false)
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "Budget",
+		"metadata": map[string]any{"name": "one-unknown-provider"},
+		"spec": map[string]any{
+			"limit": limit("10", "day", "block"),
+			"filters": []any{
+				map[string]any{"type": "llmProvider", "id": "openai"},
+				map[string]any{"type": "llmProvider", "id": "nowhere"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	_, err = svc.Create(CreateParams{Body: body})
+	var invalid *ValidationError
+	require.True(t, errors.As(err, &invalid), "got %v", err)
+	assert.Equal(t, "spec.filters[1].id", invalid.Errors[0].Field)
 }

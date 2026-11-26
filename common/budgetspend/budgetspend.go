@@ -55,10 +55,10 @@ func SpendID(name string) uuid.UUID {
 	return uuid.NewSHA1(spendNamespace, []byte(name))
 }
 
-// CounterID is the ID of one allowance's counters: the budget's spend ID, then the
-// allowance, so every counter of a budget can be found (and cleared) by its prefix.
-func CounterID(spendID uuid.UUID, allowance string) string {
-	return spendID.String() + "/" + allowance
+// CounterID is the ID of one usage's counters: the budget's spend ID, then the
+// usage, so every counter of a budget can be found (and cleared) by its prefix.
+func CounterID(spendID uuid.UUID, usage string) string {
+	return spendID.String() + "/" + usage
 }
 
 // CounterIDPrefix is the prefix of every counter ID of the budget named name.
@@ -66,10 +66,10 @@ func CounterIDPrefix(name string) string {
 	return SpendID(name).String() + "/"
 }
 
-// Allowance returns the allowance UUID of a counter ID; the ID itself when it has none.
-func Allowance(counterID string) string {
-	if _, allowance, ok := strings.Cut(counterID, "/"); ok {
-		return allowance
+// Usage returns the usage UUID of a counter ID; the ID itself when it has none.
+func Usage(counterID string) string {
+	if _, usage, ok := strings.Cut(counterID, "/"); ok {
+		return usage
 	}
 	return counterID
 }

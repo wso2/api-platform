@@ -226,14 +226,13 @@ Status Code **200**
 |»»»» status|string|false|none|An inactive budget is kept but matches no traffic.|
 |»»»» limit|[BudgetLimit](schemas.md#schemabudgetlimit)|true|none|none|
 |»»»»» amount|string|true|none|A positive amount with up to 2 decimal places, such as "100.00".|
-|»»»»» currency|string|false|none|none|
 |»»»»» period|string|true|none|UTC calendar day, ISO week starting Monday, or calendar month.|
 |»»»»» action|string|true|none|block refuses requests at the block point; allow only counts.|
 |»»»»» blockAt|integer|false|none|Percentage of the amount at which a block budget refuses requests.|
 |»»»»» splitBy|[BudgetSplit](schemas.md#schemabudgetsplit)|false|none|Gives each value of the type its own limit: each LLM provider, project, agent or API key, or each value of an attribute expression. Omitted means one shared limit for all matching usage.|
 |»»»»»» type|string|true|none|none|
 |»»»»»» expression|string|false|none|attribute only. CEL over the request returning a string or a list of strings.|
-|»»»» filters|[[BudgetFilter](schemas.md#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Every filter must match (AND). Empty means all LLM usage.|
+|»»»» filters|[[BudgetFilter](schemas.md#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Filters of different types must all match (AND); several of one type are alternatives (OR). Empty means all LLM usage.|
 |»»»»» type|string|true|none|none|
 |»»»»» id|string|false|none|The LLM provider, project, agent or API key name. Required for llmProvider; omitted for project, agent or apiKey means any one. Not for an attribute.|
 |»»»»» project|string|false|none|agent only, with id: the agent's project; agent names are unique only per project. Omit both for any agent.|
@@ -260,7 +259,7 @@ Status Code **200**
 |»»»» updatedAt|string(date-time)|false|none|Timestamp when the budget was last updated (UTC)|
 |»»»» currentPeriod|[BudgetCurrentPeriod](schemas.md#schemabudgetcurrentperiod)|false|none|Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.|
 |»»»»» periodStart|string(date)|true|none|none|
-|»»»»» spent|string|true|none|USD, total across the budget's allowances|
+|»»»»» spent|string|true|none|USD, total across the budget's usages|
 |»»»»» unpricedRequests|integer(int64)|true|none|Requests charged $0 this period because they had no price|
 
 #### Enumerated Values
@@ -271,7 +270,6 @@ Status Code **200**
 |kind|Budget|
 |status|active|
 |status|inactive|
-|currency|USD|
 |period|day|
 |period|week|
 |period|month|
@@ -572,7 +570,7 @@ curl -X GET http://localhost:9090/api/management/v1/budgets/{id}/usage \
 
 ```
 
-The budget's spend in the current period, one row per allowance, highest spend first: the same as the control plane's budget usage. Totals include every gateway sharing the counter store; an allowance's values are known once this gateway has served it, and are empty otherwise (and for a shared allowance).
+The budget's spend in the current period, one row per usage, highest spend first: the same as the control plane's budget usage. Totals include every gateway sharing the counter store; an usage's values are known once this gateway has served it, and are empty otherwise (and for a shared usage).
 
 ### Authentication
 
@@ -598,9 +596,9 @@ Required roles: `admin`
 ```json
 {
   "periodStart": "2019-08-24",
-  "allowances": [
+  "usages": [
     {
-      "allowance": {
+      "usage": {
         "property1": "string",
         "property2": "string"
       },

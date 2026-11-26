@@ -38,10 +38,10 @@ var (
 	periodEnd   = budgetspend.PeriodEnd
 )
 
-// spendKey names one allowance in one period.
+// spendKey names one usage in one period.
 type spendKey struct {
 	spendID     uuid.UUID // the budget's: its counters are found and cleared by it
-	allowance   string
+	usage       string
 	periodStart time.Time
 }
 
@@ -71,7 +71,7 @@ func (installedCounters) Describe(key counters.Key, labels map[string]string) {
 }
 func (installedCounters) Forget(namespace, idPrefix string) { counters.Forget(namespace, idPrefix) }
 
-// tracker charges spend per allowance and period to the shared counters.
+// tracker charges spend per usage and period to the shared counters.
 type tracker struct {
 	counters counterService
 }
@@ -81,11 +81,11 @@ func newTracker(c counterService) *tracker {
 }
 
 func spendCounter(key spendKey) counters.Key {
-	return counters.Key{Namespace: namespaceSpend, ID: budgetspend.CounterID(key.spendID, key.allowance), Window: key.periodStart}
+	return counters.Key{Namespace: namespaceSpend, ID: budgetspend.CounterID(key.spendID, key.usage), Window: key.periodStart}
 }
 
 func unpricedCounter(key spendKey) counters.Key {
-	return counters.Key{Namespace: namespaceUnpriced, ID: budgetspend.CounterID(key.spendID, key.allowance), Window: key.periodStart}
+	return counters.Key{Namespace: namespaceUnpriced, ID: budgetspend.CounterID(key.spendID, key.usage), Window: key.periodStart}
 }
 
 // spentIn returns the USD charged to key so far, across every gateway sharing the store,
@@ -103,7 +103,7 @@ func (t *tracker) unpricedIn(key spendKey) int64 {
 }
 
 // charge adds cost to every key, describing each counter so the gateway-controller can
-// report the allowance's spend to the control plane.
+// report the usage's spend to the control plane.
 func (t *tracker) charge(keys []admitted, cost float64) {
 	for _, key := range keys {
 		counter := spendCounter(key.spendKey)

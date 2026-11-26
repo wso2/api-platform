@@ -32,8 +32,8 @@ func TestCounterIDsCarryTheBudget(t *testing.T) {
 	if strings.HasPrefix(id, CounterIDPrefix("team-b")) {
 		t.Fatal("another budget's prefix matches")
 	}
-	if got := Allowance(id); got != "0b0d4f0e-1111-5222-8333-444455556666" {
-		t.Fatalf("Allowance = %s", got)
+	if got := Usage(id); got != "0b0d4f0e-1111-5222-8333-444455556666" {
+		t.Fatalf("Usage = %s", got)
 	}
 	if SpendID("team-a") != SpendID("team-a") {
 		t.Fatal("spend ID is not stable")

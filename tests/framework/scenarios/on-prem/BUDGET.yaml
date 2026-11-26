@@ -11,7 +11,7 @@ code: BUDGET
 title: Gateway budgets
 scenarios:
   - id: BUDGET-001
-    title: "Create a budget on one LLM provider; 201, the defaults are filled in (status active, currency USD, blockAt 100) and status.id is the name."
+    title: "Create a budget on one LLM provider; 201, the defaults are filled in (status active, blockAt 100) and status.id is the name."
     priority: P1
     ui:
       status: exempt
@@ -196,9 +196,9 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/gateway/core/budget_management.feature
-          scenario: "Separate allowances are used up one by one and exempt traffic is never refused"
+          scenario: "Separate usages are used up one by one and exempt traffic is never refused"
   - id: BUDGET-018
-    title: "Traffic matching an exemption is served even when its allowance is used up."
+    title: "Traffic matching an exemption is served even when its usage is used up."
     priority: P1
     ui:
       status: exempt
@@ -207,7 +207,7 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/gateway/core/budget_management.feature
-          scenario: "Separate allowances are used up one by one and exempt traffic is never refused"
+          scenario: "Separate usages are used up one by one and exempt traffic is never refused"
   - id: BUDGET-019
     title: "An LLM provider without llm-cost attached: the gateway prices its calls and its Block budget refuses once used up."
     priority: P1
@@ -275,7 +275,7 @@ scenarios:
         - feature: suites/it/features/gateway/core/budget_redis_multigateway.feature
           scenario: "Spend through one gateway refuses the same budget on another gateway sharing Redis"
   - id: BUDGET-025
-    title: "On an LLM provider secured with jwt-auth, a budget allocated separately by the token subject refuses one user's used-up allowance while another user is served, and a request without a token is refused by jwt-auth (401), not the budget."
+    title: "On an LLM provider secured with jwt-auth, a budget allocated separately by the token subject refuses one user's used-up usage while another user is served, and a request without a token is refused by jwt-auth (401), not the budget."
     priority: P1
     ui:
       status: exempt
@@ -329,3 +329,14 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A Budget copied from the control plane keeps its control-plane-only fields out of the gateway"
+  - id: BUDGET-030
+    title: "A Budget with two llmProvider filters counts the traffic of both providers as one total: spending through one refuses the other too, and a third provider is not covered."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A Budget naming two providers counts the traffic of both together and leaves a third provider alone"

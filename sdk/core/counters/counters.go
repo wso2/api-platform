@@ -48,7 +48,7 @@ import (
 type Key struct {
 	// Namespace keeps one policy's counters apart from another's, e.g. "budget".
 	Namespace string
-	// ID names the counter within its namespace, e.g. a budget allowance UUID.
+	// ID names the counter within its namespace, e.g. a budget usage UUID.
 	ID string
 	// Window is the start of the counter's period.
 	Window time.Time
@@ -68,7 +68,7 @@ type Service interface {
 // Describer is implemented by a Service that reports what its counters are: the
 // policy engine forwards the labels to its gateway-controller with the counter's adds,
 // so the controller can report the counter's total (budgets report spend per
-// allowance to the control plane). Labels are never written to the shared store.
+// usage to the control plane). Labels are never written to the shared store.
 type Describer interface {
 	// Describe sets the counter's labels, replacing any it had.
 	Describe(key Key, labels map[string]string)

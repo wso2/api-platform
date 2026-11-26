@@ -61,7 +61,7 @@ type Service struct {
 	pusher utils.ResourcePusher
 	// counters and labels hold budget spend; nil until SetSpend (budgets off).
 	counters CounterStore
-	labels   AllowanceLabels
+	labels   UsageLabels
 	now      func() time.Time
 }
 
@@ -71,17 +71,17 @@ type CounterStore interface {
 	Delete(ctx context.Context, namespace, idPrefix string) error
 }
 
-// AllowanceLabels knows the values of the allowances this gateway has served.
-type AllowanceLabels interface {
-	// Labels returns the values of each allowance of the budget, by counter ID.
+// UsageLabels knows the values of the usages this gateway has served.
+type UsageLabels interface {
+	// Labels returns the values of each usage of the budget, by counter ID.
 	Labels(budget string) map[string]map[string]string
 	// Forget drops what is kept for a deleted budget.
 	Forget(budget string)
 }
 
-// SetSpend wires the counter store budget spend is kept in, and what names allowances:
+// SetSpend wires the counter store budget spend is kept in, and what names usages:
 // the budget usage reads them, and deleting a budget clears its spend.
-func (s *Service) SetSpend(counters CounterStore, labels AllowanceLabels) {
+func (s *Service) SetSpend(counters CounterStore, labels UsageLabels) {
 	s.counters, s.labels = counters, labels
 }
 
@@ -132,24 +132,24 @@ func (s *Service) deleteSpend(name string, log *slog.Logger) {
 	log.Info("Budget spend cleared", slog.String("handle", name))
 }
 
-// AllowanceUsage is one allowance's spend in the current period.
-type AllowanceUsage struct {
-	// Allowance holds the values it is separated by; empty when shared, or when this
+// UsageEntry is one usage's spend in the current period.
+type UsageEntry struct {
+	// Usage holds the values it is separated by; empty when shared, or when this
 	// gateway has not served it.
-	Allowance map[string]string
-	Spent     float64
-	Unpriced  int64
+	Usage    map[string]string
+	Spent    float64
+	Unpriced int64
 }
 
 // PeriodUsage is a budget's spend in its current period, highest spend first.
 type PeriodUsage struct {
 	PeriodStart time.Time
-	Allowances  []AllowanceUsage
+	Usages      []UsageEntry
 }
 
-// Spent is the total across the allowances.
+// Spent is the total across the usages.
 func (u PeriodUsage) Spent() (spent float64, unpriced int64) {
-	for _, a := range u.Allowances {
+	for _, a := range u.Usages {
 		spent += a.Spent
 		unpriced += a.Unpriced
 	}
@@ -208,11 +208,11 @@ func (s *Service) UsageOf(cfg *models.StoredConfig, totals SpendTotals) PeriodUs
 	usage := PeriodUsage{PeriodStart: start}
 	prefix := budgetspend.CounterIDPrefix(cfg.Handle)
 	window := start.Unix()
-	byID := map[string]*AllowanceUsage{}
-	row := func(id string) *AllowanceUsage {
+	byID := map[string]*UsageEntry{}
+	row := func(id string) *UsageEntry {
 		a := byID[id]
 		if a == nil {
-			a = &AllowanceUsage{Allowance: map[string]string{}}
+			a = &UsageEntry{Usage: map[string]string{}}
 			byID[id] = a
 		}
 		return a
@@ -234,7 +234,7 @@ func (s *Service) UsageOf(cfg *models.StoredConfig, totals SpendTotals) PeriodUs
 	ids := make([]string, 0, len(byID))
 	for id := range byID {
 		if values, ok := labels[id]; ok {
-			byID[id].Allowance = values
+			byID[id].Usage = values
 		}
 		ids = append(ids, id)
 	}
@@ -246,7 +246,7 @@ func (s *Service) UsageOf(cfg *models.StoredConfig, totals SpendTotals) PeriodUs
 		return ids[i] < ids[j]
 	})
 	for _, id := range ids {
-		usage.Allowances = append(usage.Allowances, *byID[id])
+		usage.Usages = append(usage.Usages, *byID[id])
 	}
 	return usage
 }
@@ -529,7 +529,7 @@ func artifactID(metadata api.BudgetMetadata) string {
 }
 
 // fixedFieldChanges lists the fields that differ but cannot change after
-// creation: the artifact-id annotation, period, currency, splitBy and filters.
+// creation: the artifact-id annotation, period, splitBy and filters.
 func fixedFieldChanges(stored, updated api.BudgetRequest) []config.ValidationError {
 	const message = "cannot be changed after creation; create a new budget instead"
 	var errs []config.ValidationError
@@ -538,9 +538,6 @@ func fixedFieldChanges(stored, updated api.BudgetRequest) []config.ValidationErr
 	}
 	if stored.Spec.Limit.Period != updated.Spec.Limit.Period {
 		errs = append(errs, config.ValidationError{Field: "spec.limit.period", Message: message})
-	}
-	if !reflect.DeepEqual(stored.Spec.Limit.Currency, updated.Spec.Limit.Currency) {
-		errs = append(errs, config.ValidationError{Field: "spec.limit.currency", Message: message})
 	}
 	if !reflect.DeepEqual(stored.Spec.Limit.SplitBy, updated.Spec.Limit.SplitBy) {
 		errs = append(errs, config.ValidationError{Field: "spec.limit.splitBy", Message: message})

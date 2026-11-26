@@ -55,7 +55,6 @@ Feature: Budget management
     And the JSON response field "status.state" should not exist
     And the JSON response field "status.deployedAt" should not exist
     And the JSON response field "spec.status" should be "active"
-    And the JSON response field "spec.limit.currency" should be "USD"
     And the JSON response field "spec.limit.blockAt" should be 100
 
     When I send a "GET" request to the "gateway-controller" service at "/budgets/${CTX:budgetName}"
@@ -569,4 +568,100 @@ Feature: Budget management
     And the JSON response field "spec.description" should not exist
     And the JSON response field "spec.warnings" should not exist
     When I delete the Budget "${CTX:budgetName}"
+    Then the response status code should be 200
+
+  @BUDGET-030
+  Scenario: A Budget naming two providers counts the traffic of both together and leaves a third provider alone
+    Given I generate a unique resource name from "bgt-or-a" and store it as "providerA"
+    And I generate a unique API version from "bgt-or-a" and store it as "versionA"
+    And I generate a unique API context from "/bgt-or-a" and store it as "contextA"
+    And I generate a unique resource name from "bgt-or-b" and store it as "providerB"
+    And I generate a unique API version from "bgt-or-b" and store it as "versionB"
+    And I generate a unique API context from "/bgt-or-b" and store it as "contextB"
+    And I generate a unique resource name from "bgt-or-c" and store it as "providerC"
+    And I generate a unique API version from "bgt-or-c" and store it as "versionC"
+    And I generate a unique API context from "/bgt-or-c" and store it as "contextC"
+    And I generate a unique resource name from "bgt-or" and store it as "budgetName"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerA}           |
+      | displayName        | ${CTX:providerA}           |
+      | version            | ${CTX:versionA}            |
+      | template           | openai                     |
+      | spec.context       | ${CTX:contextA}            |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+      | spec.policies      | [{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
+    Then the response status code should be 201
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerB}           |
+      | displayName        | ${CTX:providerB}           |
+      | version            | ${CTX:versionB}            |
+      | template           | openai                     |
+      | spec.context       | ${CTX:contextB}            |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+      | spec.policies      | [{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
+    Then the response status code should be 201
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerC}           |
+      | displayName        | ${CTX:providerC}           |
+      | version            | ${CTX:versionC}            |
+      | template           | openai                     |
+      | spec.context       | ${CTX:contextC}            |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+      | spec.policies      | [{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
+    Then the response status code should be 201
+
+    # Two llmProvider filters are alternatives: the budget counts providers A and B, one total.
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "0.01"                    |
+      | period              | day                       |
+      | action              | block                     |
+      | spec.filters        | [{"type":"llmProvider","id":"${CTX:providerA}"},{"type":"llmProvider","id":"${CTX:providerB}"}] |
+      | spec.limit.blockAt  | 1                         |
+    Then the response status code should be 201
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the response status code should be 200
+    And I send a "POST" request to "${CTX:contextA}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    And I send a "POST" request to "${CTX:contextB}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    And I send a "POST" request to "${CTX:contextC}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+
+    # Spending through provider A uses up the one budget.
+    When I send a "POST" request to "${CTX:contextA}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:contextA}/openai/v1/chat-cached" until status 429 with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the JSON response field "code" should be "900806"
+    And the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
+
+    # Provider B is refused by the same total; provider C is not covered.
+    When I send a "POST" request to "${CTX:contextB}/openai/v1/chat-cached" until status 429 with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
+    When I send a "POST" request to "${CTX:contextC}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
     Then the response status code should be 200

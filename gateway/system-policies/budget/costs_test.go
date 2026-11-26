@@ -145,8 +145,8 @@ func TestABudgetAndTheCostStatsAreBothCharged(t *testing.T) {
 	if analytics[analyticsBudgetCostStatus] != costStatusPriced {
 		t.Fatalf("analytics %v", analytics)
 	}
-	allowances, _ := p.catalog.current()[0].matches("openai", caller{}, nil)
-	spent, _ := mem.Total(spendCounter(spendKey{spendID: budgetspend.SpendID("all"), allowance: allowances[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}))
+	usages, _ := p.catalog.current()[0].matches("openai", caller{}, nil)
+	spent, _ := mem.Total(spendCounter(spendKey{spendID: budgetspend.SpendID("all"), usage: usages[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}))
 	if spent != 3 {
 		t.Fatalf("budget spend %v, want 3", spent)
 	}

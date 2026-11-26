@@ -37,7 +37,7 @@ func init() {
 }
 
 // Observer is told of every applied report: its adds, with the labels the engine gave
-// them, and the totals returned. Budgets use it to report spend per allowance to the
+// them, and the totals returned. Budgets use it to report spend per usage to the
 // control plane. It must not block.
 type Observer interface {
 	Observe(adds []counterproto.Add, totals []counterproto.Total)
