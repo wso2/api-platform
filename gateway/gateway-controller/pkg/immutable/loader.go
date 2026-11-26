@@ -53,7 +53,15 @@ type ImmutableGW struct {
 	llmService     *utils.LLMDeploymentService
 	mcpService     *utils.MCPDeploymentService
 	agentService   *agent.AgentService
-	parser         *config.Parser
+	// endpointService applies kind: Endpoint artifacts. Set through
+	// SetEndpointService; nil when the gateway has no Endpoint support wired.
+	endpointService *utils.EndpointService
+	parser          *config.Parser
+}
+
+// SetEndpointService wires the service that applies kind: Endpoint artifacts.
+func (g *ImmutableGW) SetEndpointService(service *utils.EndpointService) {
+	g.endpointService = service
 }
 
 // NewImmutableGW creates an ImmutableGW. All methods are no-ops when cfg.Enabled is false.
@@ -96,7 +104,10 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	}
 
 	// Dependency order:
-	//   pass1: LlmProviderTemplate — no dependencies
+	//   pass1: LlmProviderTemplate, Endpoint — no dependencies. An API that names an
+	//          Endpoint would deploy without it (its routes answer 503 until the
+	//          Endpoint exists), so loading Endpoints first is not required for
+	//          correctness; it only spares the warning and the brief 503 window.
 	//   pass2: LlmProvider         — depends on LlmProviderTemplate
 	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp, Agent — LlmProxy depends on LlmProvider;
 	//          an Agent references no other artifact, so it needs no earlier pass
@@ -131,7 +142,7 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 
 		a := artifact{path: path, data: data, kind: envelope.Kind, contentType: contentType}
 		switch envelope.Kind {
-		case string(api.LLMProviderTemplateKindLlmProviderTemplate):
+		case string(api.LLMProviderTemplateKindLlmProviderTemplate), models.KindEndpoint:
 			pass1 = append(pass1, a)
 		case models.KindLlmProvider:
 			pass2 = append(pass2, a)
@@ -167,6 +178,17 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 	switch kind {
 	case string(api.LLMProviderTemplateKindLlmProviderTemplate):
 		if _, err := g.llmService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
+			Spec:        data,
+			ContentType: contentType,
+			Logger:      log,
+		}); err != nil {
+			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
+		}
+	case models.KindEndpoint:
+		if g.endpointService == nil {
+			return fmt.Errorf("failed to apply %s %s: endpoints are not supported by this gateway", kind, path)
+		}
+		if _, err := g.endpointService.Create(utils.EndpointParams{
 			Spec:        data,
 			ContentType: contentType,
 			Logger:      log,

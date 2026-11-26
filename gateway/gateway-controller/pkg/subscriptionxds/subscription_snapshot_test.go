@@ -674,3 +674,14 @@ func TestSnapshotManager_UpdateSnapshot_DPToCPSyncedAPI(t *testing.T) {
 func TestSubscriptionStateTypeURL(t *testing.T) {
 	assert.Equal(t, "api-platform.wso2.org/v1.SubscriptionState", SubscriptionStateTypeURL)
 }
+
+func (m *MockStorage) SaveEndpoint(endpoint *models.StoredEndpoint) error   { return nil }
+func (m *MockStorage) UpdateEndpoint(endpoint *models.StoredEndpoint) error { return nil }
+func (m *MockStorage) DeleteEndpoint(id string) error                       { return nil }
+func (m *MockStorage) GetEndpoint(id string) (*models.StoredEndpoint, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetEndpointByHandle(handle string) (*models.StoredEndpoint, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetAllEndpoints() ([]*models.StoredEndpoint, error) { return nil, nil }

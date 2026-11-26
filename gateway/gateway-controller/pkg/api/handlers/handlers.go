@@ -84,6 +84,10 @@ type APIServer struct {
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
 
+	// endpointService manages gateway-wide Endpoints. Set through
+	// SetEndpointService; nil on a controller started without Endpoint support.
+	endpointService *utils.EndpointService
+
 	// clientAuthorities republishes the client certificate authority pool to
 	// the policy engine after every certificate write that can change it.
 	clientAuthorities *utils.ClientAuthorityPublisher

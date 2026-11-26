@@ -1590,3 +1590,14 @@ func TestClient_handleSubscriptionUpdatedEvent_RestoresAndKeepsBillingIDs(t *tes
 	update(map[string]interface{}{})
 	assertBillingIDs("after an update without billing ids")
 }
+
+func (m *mockStorageForDeletion) SaveEndpoint(endpoint *models.StoredEndpoint) error   { return nil }
+func (m *mockStorageForDeletion) UpdateEndpoint(endpoint *models.StoredEndpoint) error { return nil }
+func (m *mockStorageForDeletion) DeleteEndpoint(id string) error                       { return nil }
+func (m *mockStorageForDeletion) GetEndpoint(id string) (*models.StoredEndpoint, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *mockStorageForDeletion) GetEndpointByHandle(handle string) (*models.StoredEndpoint, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *mockStorageForDeletion) GetAllEndpoints() ([]*models.StoredEndpoint, error) { return nil, nil }

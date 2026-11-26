@@ -1136,6 +1136,16 @@ func artifactPushRank(kind string) int {
 	return len(artifactPushOrder)
 }
 
+// IsControlPlanePushKind reports whether a gateway-created artifact of this kind
+// is pushed to the control plane. A gateway-wide Endpoint is not: the control
+// plane has no Endpoint artifact to import it into, and one rejected entry
+// would mark the artifact as failed on every reconnect. Its artifacts row
+// already records origin gateway_api and a pending sync status, so nothing
+// needs backfilling when the control plane gains the kind.
+func IsControlPlanePushKind(kind string) bool {
+	return kind != models.KindEndpoint
+}
+
 // isOrgLevelKind reports whether the artifact kind is organization-level and thus
 // does not belong to a project (the control plane ignores the project for these).
 func isOrgLevelKind(kind string) bool {

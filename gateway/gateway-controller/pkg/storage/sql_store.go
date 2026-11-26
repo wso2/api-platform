@@ -291,6 +291,8 @@ func kindToResourceTable(kind string) (string, error) {
 		return agentsResourceTable, nil
 	case "GraphQLApi":
 		return "graphql_apis", nil
+	case models.KindEndpoint:
+		return endpointsResourceTable, nil
 	default:
 		if table, ok := extraResourceTables[kind]; ok {
 			return table, nil
@@ -319,6 +321,12 @@ var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies"
 // so the read paths have to recognise the table too. It is named once here
 // rather than spelled out at each of them.
 const agentsResourceTable = "agents"
+
+// endpointsResourceTable holds gateway-wide Endpoints. It is deliberately NOT in
+// builtinResourceTables: GetAllConfigs unions those tables and every reader of
+// its result assumes each row is an API with routes, which an Endpoint is not.
+// Endpoints are read through the Endpoint methods instead.
+const endpointsResourceTable = "endpoints"
 
 // RegisterKindResourceTable registers the resource table name for an artifact
 // kind not known to core. Intended to be called from an init() (or equivalent
@@ -364,6 +372,13 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		cfg.Configuration = config
 	case "LlmProvider":
 		var config api.LLMProviderConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case models.KindEndpoint:
+		var config api.EndpointConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
@@ -1703,6 +1718,253 @@ func (s *sqlStore) resolveProviderUUID(tx *sqlStoreTx, providerHandle string) (s
 		return "", fmt.Errorf("failed to look up provider UUID: %w", err)
 	}
 	return uuid, nil
+}
+
+// SaveEndpoint persists a new gateway-wide Endpoint. It writes the artifacts
+// tracking row and the endpoints row in a single transaction.
+func (s *sqlStore) SaveEndpoint(endpoint *models.StoredEndpoint) error {
+	configJSON, err := json.Marshal(endpoint.Configuration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal endpoint configuration: %w", err)
+	}
+
+	handle := endpoint.GetHandle()
+
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now()
+
+	// The artifacts row goes first: the endpoints row references it.
+	if err := s.insertEndpointArtifactRow(tx, endpoint.UUID, handle, now); err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: endpoint with name '%s' already exists", ErrConflict, handle)
+		}
+		return fmt.Errorf("failed to insert endpoint artifact row: %w", err)
+	}
+
+	if _, err := tx.ExecQ(`
+		INSERT INTO endpoints (
+			uuid, gateway_id, handle, configuration, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?)
+	`, endpoint.UUID, s.gatewayId, handle, string(configJSON), now, now); err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: endpoint with name '%s' already exists", ErrConflict, handle)
+		}
+		return fmt.Errorf("failed to insert endpoint: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit endpoint transaction: %w", err)
+	}
+	committed = true
+
+	s.logger.Info("Endpoint saved", slog.String("uuid", endpoint.UUID), slog.String("handle", handle))
+	return nil
+}
+
+// insertEndpointArtifactRow inserts the artifacts-table tracking row for an
+// Endpoint within the given transaction. An Endpoint created here is
+// gateway-originated, so the row is marked origin gateway_api with
+// cp_sync_status pending. Endpoints carry no version, so version is stored
+// empty and display_name mirrors the name. The row keeps a control-plane
+// reconcile from sweeping away a locally created Endpoint: orphan deletion is
+// scoped to origin control_plane.
+func (s *sqlStore) insertEndpointArtifactRow(tx *sqlStoreTx, uuid, handle string, now time.Time) error {
+	_, err := tx.ExecQ(`
+		INSERT INTO artifacts (
+			uuid, gateway_id, display_name, version, kind, handle,
+			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
+			cp_sync_status, cp_sync_info, cp_artifact_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		uuid,
+		s.gatewayId,
+		handle, // display_name
+		"",     // version (endpoints are unversioned)
+		string(models.KindEndpoint),
+		handle,
+		string(models.StateDeployed),
+		nil, // deployment_id
+		string(models.OriginGatewayAPI),
+		now,
+		now,
+		nil, // deployed_at
+		string(models.CPSyncStatusPending),
+		nil, // cp_sync_info
+		nil, // cp_artifact_id
+	)
+	return err
+}
+
+// UpdateEndpoint replaces an existing Endpoint's configuration and marks its
+// artifacts row as pending control-plane sync, in a single transaction. The
+// name is the Endpoint's identity and is never changed here.
+func (s *sqlStore) UpdateEndpoint(endpoint *models.StoredEndpoint) error {
+	configJSON, err := json.Marshal(endpoint.Configuration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal endpoint configuration: %w", err)
+	}
+
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now()
+
+	result, err := tx.ExecQ(`
+		UPDATE endpoints
+		SET configuration = ?, updated_at = ?
+		WHERE uuid = ? AND gateway_id = ? AND handle = ?
+	`, string(configJSON), now, endpoint.UUID, s.gatewayId, endpoint.GetHandle())
+	if err != nil {
+		return fmt.Errorf("failed to update endpoint: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: uuid=%s", ErrNotFound, endpoint.UUID)
+	}
+
+	if _, err := tx.ExecQ(`
+		UPDATE artifacts
+		SET updated_at = ?, cp_sync_status = ?, cp_sync_info = NULL
+		WHERE uuid = ? AND gateway_id = ? AND kind = ?
+	`, now, string(models.CPSyncStatusPending), endpoint.UUID, s.gatewayId, string(models.KindEndpoint)); err != nil {
+		return fmt.Errorf("failed to update endpoint artifact row: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit endpoint transaction: %w", err)
+	}
+	committed = true
+
+	s.logger.Info("Endpoint updated", slog.String("uuid", endpoint.UUID), slog.String("handle", endpoint.GetHandle()))
+	return nil
+}
+
+// DeleteEndpoint removes an Endpoint by UUID, deleting the endpoints row and
+// its artifacts tracking row in a single transaction.
+func (s *sqlStore) DeleteEndpoint(id string) error {
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	result, err := tx.ExecQ(`DELETE FROM endpoints WHERE uuid = ? AND gateway_id = ?`, id, s.gatewayId)
+	if err != nil {
+		return fmt.Errorf("failed to delete endpoint: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: uuid=%s", ErrNotFound, id)
+	}
+
+	if _, err := tx.ExecQ(`DELETE FROM artifacts WHERE uuid = ? AND gateway_id = ? AND kind = ?`,
+		id, s.gatewayId, string(models.KindEndpoint)); err != nil {
+		return fmt.Errorf("failed to delete endpoint artifact row: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit endpoint transaction: %w", err)
+	}
+	committed = true
+
+	s.logger.Info("Endpoint deleted", slog.String("uuid", id))
+	return nil
+}
+
+// GetEndpoint retrieves an Endpoint by UUID.
+func (s *sqlStore) GetEndpoint(id string) (*models.StoredEndpoint, error) {
+	return s.scanEndpoint(s.queryRow(`
+		SELECT uuid, configuration, created_at, updated_at
+		FROM endpoints
+		WHERE uuid = ? AND gateway_id = ?
+	`, id, s.gatewayId), "uuid="+id)
+}
+
+// GetEndpointByHandle retrieves an Endpoint by name (metadata.name).
+func (s *sqlStore) GetEndpointByHandle(handle string) (*models.StoredEndpoint, error) {
+	return s.scanEndpoint(s.queryRow(`
+		SELECT uuid, configuration, created_at, updated_at
+		FROM endpoints
+		WHERE handle = ? AND gateway_id = ?
+	`, handle, s.gatewayId), "handle="+handle)
+}
+
+// scanEndpoint reads one endpoints row. notFound describes the lookup for the
+// ErrNotFound message.
+func (s *sqlStore) scanEndpoint(row *sql.Row, notFound string) (*models.StoredEndpoint, error) {
+	var endpoint models.StoredEndpoint
+	var configJSON string
+	if err := row.Scan(&endpoint.UUID, &configJSON, &endpoint.CreatedAt, &endpoint.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, notFound)
+		}
+		return nil, fmt.Errorf("failed to query endpoint: %w", err)
+	}
+	if err := json.Unmarshal([]byte(configJSON), &endpoint.Configuration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal endpoint configuration: %w", err)
+	}
+	return &endpoint, nil
+}
+
+// GetAllEndpoints retrieves every Endpoint of this gateway, ordered by name so
+// callers that build xDS from the result do so deterministically.
+func (s *sqlStore) GetAllEndpoints() ([]*models.StoredEndpoint, error) {
+	rows, err := s.query(`
+		SELECT uuid, configuration, created_at, updated_at
+		FROM endpoints
+		WHERE gateway_id = ?
+		ORDER BY handle ASC
+	`, s.gatewayId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query endpoints: %w", err)
+	}
+	defer rows.Close()
+
+	endpoints := []*models.StoredEndpoint{}
+	for rows.Next() {
+		var endpoint models.StoredEndpoint
+		var configJSON string
+		if err := rows.Scan(&endpoint.UUID, &configJSON, &endpoint.CreatedAt, &endpoint.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan endpoint row: %w", err)
+		}
+		if err := json.Unmarshal([]byte(configJSON), &endpoint.Configuration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal endpoint configuration: %w", err)
+		}
+		endpoints = append(endpoints, &endpoint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating endpoint rows: %w", err)
+	}
+	return endpoints, nil
 }
 
 // SaveLLMProviderTemplate persists a new LLM provider template. It writes both the

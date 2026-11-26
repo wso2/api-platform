@@ -20,6 +20,7 @@ package storage
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -45,6 +46,10 @@ type ConfigStore struct {
 	templates          map[string]*models.StoredLLMProviderTemplate // Key: template ID
 	templateIdByHandle map[string]string
 
+	// Gateway-wide Endpoints
+	endpoints          map[string]*models.StoredEndpoint // Key: endpoint name (metadata.name)
+	endpointNameByUUID map[string]string
+
 	// API Keys storage
 	apiKeysByAPI map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
 
@@ -62,6 +67,8 @@ func NewConfigStore() *ConfigStore {
 		TopicManager:       NewTopicManager(),
 		templates:          make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle: make(map[string]string),
+		endpoints:          make(map[string]*models.StoredEndpoint),
+		endpointNameByUUID: make(map[string]string),
 		apiKeysByAPI:       make(map[string]map[string]*models.APIKey),
 		labelsByAPI:        make(map[string]map[string]string),
 	}
@@ -429,6 +436,91 @@ func (cs *ConfigStore) GetTemplateByHandle(handle string) (*models.StoredLLMProv
 	}
 
 	return cs.templates[templateId], nil
+}
+
+// ========================================
+// Endpoint Methods
+// ========================================
+
+// SetEndpoint adds a gateway-wide Endpoint, or replaces the stored one of the
+// same UUID. The name is the Endpoint's identity: a different Endpoint already
+// holding the name is a conflict, and a stored Endpoint cannot be renamed.
+func (cs *ConfigStore) SetEndpoint(endpoint *models.StoredEndpoint) error {
+	if endpoint == nil {
+		return fmt.Errorf("endpoint is required")
+	}
+	uuid := strings.TrimSpace(endpoint.UUID)
+	name := strings.TrimSpace(endpoint.GetHandle())
+	if uuid == "" || name == "" {
+		return fmt.Errorf("endpoint UUID and name are required")
+	}
+
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if existing, exists := cs.endpoints[name]; exists && existing.UUID != uuid {
+		return fmt.Errorf("endpoint with name '%s' already exists", name)
+	}
+	if storedName, exists := cs.endpointNameByUUID[uuid]; exists && storedName != name {
+		return fmt.Errorf("endpoint '%s' cannot be renamed to '%s'", storedName, name)
+	}
+
+	cs.endpoints[name] = endpoint
+	cs.endpointNameByUUID[uuid] = name
+	return nil
+}
+
+// DeleteEndpoint removes an Endpoint by name. It returns the removed Endpoint,
+// or nil when there was none, so deleting twice is harmless.
+func (cs *ConfigStore) DeleteEndpoint(name string) *models.StoredEndpoint {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	endpoint, exists := cs.endpoints[name]
+	if !exists {
+		return nil
+	}
+	delete(cs.endpoints, name)
+	delete(cs.endpointNameByUUID, endpoint.UUID)
+	return endpoint
+}
+
+// GetEndpoint retrieves an Endpoint by name.
+func (cs *ConfigStore) GetEndpoint(name string) (*models.StoredEndpoint, bool) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	endpoint, exists := cs.endpoints[name]
+	return endpoint, exists
+}
+
+// GetEndpointByUUID retrieves an Endpoint by UUID.
+func (cs *ConfigStore) GetEndpointByUUID(uuid string) (*models.StoredEndpoint, bool) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	name, exists := cs.endpointNameByUUID[uuid]
+	if !exists {
+		return nil, false
+	}
+	endpoint, exists := cs.endpoints[name]
+	return endpoint, exists
+}
+
+// GetAllEndpoints returns every Endpoint ordered by name, so xDS built from the
+// result is deterministic.
+func (cs *ConfigStore) GetAllEndpoints() []*models.StoredEndpoint {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	endpoints := make([]*models.StoredEndpoint, 0, len(cs.endpoints))
+	for _, endpoint := range cs.endpoints {
+		endpoints = append(endpoints, endpoint)
+	}
+	sort.Slice(endpoints, func(i, j int) bool {
+		return endpoints[i].GetHandle() < endpoints[j].GetHandle()
+	})
+	return endpoints
 }
 
 // GetAllTemplates retrieves all LLM provider templates

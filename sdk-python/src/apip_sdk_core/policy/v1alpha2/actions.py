@@ -225,6 +225,7 @@ class FaultCode:
     NO_POLICY_CHAIN: Final[str] = "905005"
     RESOLUTION_BAD_REQUEST: Final[str] = "905006"
     RESOLUTION_UNSUPPORTED_ENCODING: Final[str] = "905007"
+    ENDPOINT_UNAVAILABLE: Final[str] = "905008"
 
     # ── Where a new code may go ──────────────────────────────────────────────
     #

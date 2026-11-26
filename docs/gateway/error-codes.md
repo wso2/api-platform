@@ -86,10 +86,17 @@ it takes next.
 | Route has no policy chain | `905005` |
 | Resolver could not turn the request into an operation | `905006` |
 | Content coding the gateway cannot decode | `905007` |
+| Policy routed the request to a gateway-wide Endpoint the gateway does not have | `905008` |
 | Resolver found no operation for the request | `900906` |
 
 `905005` is distinct from `905003` because it is a different thing to fix: the chain never
 arrived, rather than arrived and failed. Both are opaque 500s to the caller.
+
+`905008` is a `503`. It is not an upstream code, because no upstream was contacted: a policy
+named an [Endpoint](endpoints/README.md) as its fixed target and that Endpoint does not exist
+(yet, or any more). The request fails rather than falling back to the route's own upstream,
+which is not where the policy sent it. The route recovers, with no redeploy, as soon as the
+Endpoint is created.
 
 Resolution failures are coded by the **status**, never one code per internal failure kind. The
 status already tells a caller which class of thing went wrong, so a code tracking it discloses

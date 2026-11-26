@@ -1,7 +1,7 @@
 -- SQLite Schema for Gateway-Controller API Configurations
 -- Version: 6
 
--- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies, Agents)
+-- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies, Agents, Endpoints)
 CREATE TABLE IF NOT EXISTS artifacts (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
@@ -178,6 +178,29 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
 
     -- Template handles must be unique per gateway
     PRIMARY KEY (gateway_id, uuid),
+    UNIQUE(gateway_id, handle)
+);
+
+-- Gateway-wide Endpoints: named backends shared by every API on the gateway,
+-- which the dynamic-endpoint policy routes requests to. Each row has an
+-- artifacts row of kind 'Endpoint' carrying its origin and control-plane sync
+-- state. An existing database gets this table from the guarded CREATE below on
+-- its next start; no column of an existing table changes.
+CREATE TABLE IF NOT EXISTS endpoints (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+
+    -- Endpoint name (metadata.name); unique within a gateway
+    handle TEXT NOT NULL,
+
+    -- Full Endpoint configuration as JSON
+    configuration TEXT NOT NULL,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE,
     UNIQUE(gateway_id, handle)
 );
 

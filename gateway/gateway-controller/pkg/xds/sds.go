@@ -70,6 +70,10 @@ type UpstreamTLSSecretRef struct {
 	// TrustedCANames lists the usage: upstream certificates trusted for this
 	// definition. Empty means the gateway-wide bundle applies.
 	TrustedCANames []string
+	// SecretName, when set, is the ValidationContext secret's name, used in
+	// place of the one derived from APIHandle and DefinitionName. A
+	// gateway-wide Endpoint sets it: its trust bundle belongs to no API.
+	SecretName string
 
 	// material, when set, is the identity's chain and key as the translator
 	// loaded them. SDS serves it without a second lookup, so the secret a
@@ -81,6 +85,7 @@ type UpstreamTLSSecretRef struct {
 const (
 	SecretNamePrefixGatewayIdentity = "gateway_identity:"
 	SecretNamePrefixUpstreamCA      = "upstream_ca:"
+	SecretNamePrefixEndpointCA      = "endpoint_ca:"
 )
 
 // GatewayIdentitySecretName builds the SDS secret name carrying a gateway
@@ -94,6 +99,23 @@ func GatewayIdentitySecretName(identityName string) string {
 // same-named definitions never collide.
 func UpstreamCAValidationContextSecretName(apiHandle, definitionName string) string {
 	return SecretNamePrefixUpstreamCA + apiHandle + ":" + definitionName
+}
+
+// EndpointCAValidationContextSecretName builds the SDS secret name for a
+// gateway-wide Endpoint's trust bundle. Its prefix differs from
+// SecretNamePrefixUpstreamCA, so it can never collide with the secret of an
+// API's upstream definition, whatever the API and the definition are called.
+func EndpointCAValidationContextSecretName(endpointName string) string {
+	return SecretNamePrefixEndpointCA + endpointName
+}
+
+// validationContextSecretName returns the name of the ValidationContext secret
+// this ref's cluster references.
+func (r UpstreamTLSSecretRef) validationContextSecretName() string {
+	if r.SecretName != "" {
+		return r.SecretName
+	}
+	return UpstreamCAValidationContextSecretName(r.APIHandle, r.DefinitionName)
 }
 
 // NewSDSSecretManager creates a new SDS secret manager, sharing the same
@@ -256,7 +278,7 @@ func (sm *SDSSecretManager) GetSecrets(upstreamTLSRefs []UpstreamTLSSecretRef) (
 		if len(ref.TrustedCANames) == 0 {
 			continue
 		}
-		secretName := UpstreamCAValidationContextSecretName(ref.APIHandle, ref.DefinitionName)
+		secretName := ref.validationContextSecretName()
 		if seenValidationContexts[secretName] {
 			continue
 		}
@@ -265,6 +287,7 @@ func (sm *SDSSecretManager) GetSecrets(upstreamTLSRefs []UpstreamTLSSecretRef) (
 		bundle, err := sm.certStore.GetUpstreamTrustBundle(ref.TrustedCANames)
 		if err != nil {
 			sm.logger.Error("Failed to load per-upstream trust bundle for SDS secret; skipping this secret only",
+				slog.String("secret_name", secretName),
 				slog.String("api_handle", ref.APIHandle),
 				slog.String("definition", ref.DefinitionName),
 				slog.Any("error", err))

@@ -192,6 +192,21 @@ CREATE TABLE dbo.llm_provider_templates (
     UNIQUE(gateway_id, handle)
 );
 
+-- Gateway-wide Endpoints: named backends shared by every API on the gateway.
+-- Each row has an artifacts row of kind 'Endpoint'.
+IF OBJECT_ID(N'dbo.endpoints', N'U') IS NULL
+CREATE TABLE dbo.endpoints (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    handle NVARCHAR(255) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE,
+    UNIQUE(gateway_id, handle)
+);
+
 -- Table for API keys
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (

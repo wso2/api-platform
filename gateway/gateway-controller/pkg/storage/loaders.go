@@ -46,6 +46,24 @@ func LoadFromDatabase(storage Storage, cache *ConfigStore) error {
 	return nil
 }
 
+// LoadEndpointsFromDatabase loads every gateway-wide Endpoint from the database
+// into the in-memory store. It must run before the first xDS snapshot and the
+// first lazy-resource push, so both already contain every Endpoint.
+func LoadEndpointsFromDatabase(storage Storage, cache *ConfigStore) error {
+	endpoints, err := storage.GetAllEndpoints()
+	if err != nil {
+		return fmt.Errorf("failed to load endpoints from database: %w", err)
+	}
+
+	for _, endpoint := range endpoints {
+		if err := cache.SetEndpoint(endpoint); err != nil {
+			return fmt.Errorf("failed to load endpoint %s into cache: %w", endpoint.GetHandle(), err)
+		}
+	}
+
+	return nil
+}
+
 // LoadLLMProviderTemplatesFromDatabase loads all LLM Provider templates from database into in-memory store.
 func LoadLLMProviderTemplatesFromDatabase(storage Storage, cache *ConfigStore) error {
 	templates, err := storage.GetAllLLMProviderTemplates()

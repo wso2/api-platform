@@ -165,87 +165,105 @@ func (v *UpstreamTLSValidator) validateUpstreamDefinitionsTLS(defs *[]api.Upstre
 	}
 
 	for d, def := range *defs {
-		if def.Tls == nil {
-			continue
-		}
-		fieldPath := fmt.Sprintf("spec.upstreamDefinitions[%d].tls", d)
-		resolved, paramErrs := parseUpstreamTLSParams(fieldPath, *def.Tls)
-		errs = append(errs, paramErrs...)
+		errs = append(errs, v.validateUpstreamDefinitionTLS(fmt.Sprintf("spec.upstreamDefinitions[%d]", d), def)...)
+	}
 
-		if v.sslVerificationDisabled {
-			_, wantsTrust := (*def.Tls)["trustedCAs"]
-			_, wantsHostname := (*def.Tls)["verifyHostName"]
-			if wantsTrust || wantsHostname {
-				errs = append(errs, ValidationError{
-					Field:   fieldPath,
-					Message: "per-upstream trust cannot be enforced while router.upstream.tls.disable_ssl_verification is on",
-				})
-			}
-		}
+	return errs
+}
 
-		if resolved.identity != "" {
-			cert, err := v.store.GetCertificateByName(resolved.identity)
-			if err != nil || cert == nil {
-				errs = append(errs, ValidationError{
-					Field:   fieldPath + ".identity",
-					Message: fmt.Sprintf("no gateway identity named %s exists on this gateway", resolved.identity),
-				})
-			} else {
-				usage := cert.EffectiveUsage()
-				if usage != models.CertificateUsageIdentity {
-					errs = append(errs, ValidationError{
-						Field:   fieldPath + ".identity",
-						Message: fmt.Sprintf("%s is not a gateway identity (usage: identity)", resolved.identity),
-					})
-				}
-			}
-		}
+// ValidateEndpoint reports every blocking problem with the tls block of a
+// gateway-wide Endpoint, whose spec has the fields of an upstreamDefinitions
+// entry.
+func (v *UpstreamTLSValidator) ValidateEndpoint(endpoint *api.EndpointConfiguration) []ValidationError {
+	return v.validateUpstreamDefinitionTLS("spec",
+		models.EndpointUpstreamDefinition(endpoint.Metadata.Name, endpoint.Spec))
+}
 
-		if resolved.hasTrustedCAs && !resolved.trustedCAsListed {
+// validateUpstreamDefinitionTLS reports every blocking problem with the tls
+// block of one upstream definition. definitionPath is the definition's own
+// field path.
+func (v *UpstreamTLSValidator) validateUpstreamDefinitionTLS(definitionPath string, def api.UpstreamDefinition) []ValidationError {
+	var errs []ValidationError
+	if def.Tls == nil {
+		return errs
+	}
+	fieldPath := definitionPath + ".tls"
+	resolved, paramErrs := parseUpstreamTLSParams(fieldPath, *def.Tls)
+	errs = append(errs, paramErrs...)
+
+	if v.sslVerificationDisabled {
+		_, wantsTrust := (*def.Tls)["trustedCAs"]
+		_, wantsHostname := (*def.Tls)["verifyHostName"]
+		if wantsTrust || wantsHostname {
 			errs = append(errs, ValidationError{
-				Field:   fieldPath + ".trustedCAs",
-				Message: "omit trustedCAs to use the gateway trust bundle, or list at least one certificate",
+				Field:   fieldPath,
+				Message: "per-upstream trust cannot be enforced while router.upstream.tls.disable_ssl_verification is on",
 			})
 		}
-		for k, name := range resolved.trustedCAs {
-			caPath := fmt.Sprintf("%s.trustedCAs[%d]", fieldPath, k)
-			cert, err := v.store.GetCertificateByName(name)
-			if err != nil || cert == nil {
-				errs = append(errs, ValidationError{
-					Field:   caPath,
-					Message: fmt.Sprintf("no certificate named %s exists on this gateway", name),
-				})
-				continue
-			}
+	}
+
+	if resolved.identity != "" {
+		cert, err := v.store.GetCertificateByName(resolved.identity)
+		if err != nil || cert == nil {
+			errs = append(errs, ValidationError{
+				Field:   fieldPath + ".identity",
+				Message: fmt.Sprintf("no gateway identity named %s exists on this gateway", resolved.identity),
+			})
+		} else {
 			usage := cert.EffectiveUsage()
-			switch usage {
-			case models.CertificateUsageUpstream:
-				// OK — trustedCAs takes usage: upstream certificates.
-			case models.CertificateUsageDownstream:
+			if usage != models.CertificateUsageIdentity {
 				errs = append(errs, ValidationError{
-					Field:   caPath,
-					Message: fmt.Sprintf("%s is a client authority (usage: downstream); trustedCAs takes usage: upstream certificates", name),
-				})
-			case models.CertificateUsageIdentity:
-				errs = append(errs, ValidationError{
-					Field:   caPath,
-					Message: fmt.Sprintf("%s is a gateway identity (usage: identity); trustedCAs takes usage: upstream certificates", name),
-				})
-			default:
-				errs = append(errs, ValidationError{
-					Field:   caPath,
-					Message: fmt.Sprintf("%s has an unrecognized usage; trustedCAs takes usage: upstream certificates", name),
+					Field:   fieldPath + ".identity",
+					Message: fmt.Sprintf("%s is not a gateway identity (usage: identity)", resolved.identity),
 				})
 			}
 		}
+	}
 
-		for u, up := range def.Upstreams {
-			if !strings.HasPrefix(strings.ToLower(up.Url), "https://") {
-				errs = append(errs, ValidationError{
-					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", d, u),
-					Message: "tls is configured but this target is http://; every target of a definition with tls must be https://",
-				})
-			}
+	if resolved.hasTrustedCAs && !resolved.trustedCAsListed {
+		errs = append(errs, ValidationError{
+			Field:   fieldPath + ".trustedCAs",
+			Message: "omit trustedCAs to use the gateway trust bundle, or list at least one certificate",
+		})
+	}
+	for k, name := range resolved.trustedCAs {
+		caPath := fmt.Sprintf("%s.trustedCAs[%d]", fieldPath, k)
+		cert, err := v.store.GetCertificateByName(name)
+		if err != nil || cert == nil {
+			errs = append(errs, ValidationError{
+				Field:   caPath,
+				Message: fmt.Sprintf("no certificate named %s exists on this gateway", name),
+			})
+			continue
+		}
+		usage := cert.EffectiveUsage()
+		switch usage {
+		case models.CertificateUsageUpstream:
+			// OK — trustedCAs takes usage: upstream certificates.
+		case models.CertificateUsageDownstream:
+			errs = append(errs, ValidationError{
+				Field:   caPath,
+				Message: fmt.Sprintf("%s is a client authority (usage: downstream); trustedCAs takes usage: upstream certificates", name),
+			})
+		case models.CertificateUsageIdentity:
+			errs = append(errs, ValidationError{
+				Field:   caPath,
+				Message: fmt.Sprintf("%s is a gateway identity (usage: identity); trustedCAs takes usage: upstream certificates", name),
+			})
+		default:
+			errs = append(errs, ValidationError{
+				Field:   caPath,
+				Message: fmt.Sprintf("%s has an unrecognized usage; trustedCAs takes usage: upstream certificates", name),
+			})
+		}
+	}
+
+	for u, up := range def.Upstreams {
+		if !strings.HasPrefix(strings.ToLower(up.Url), "https://") {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("%s.upstreams[%d].url", definitionPath, u),
+				Message: "tls is configured but this target is http://; every target of a definition with tls must be https://",
+			})
 		}
 	}
 

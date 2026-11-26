@@ -832,6 +832,42 @@ func TestGenerateAuthConfig(t *testing.T) {
 			assert.Equal(t, authConfig.ResourceRoles[prefixed], authConfig.ResourceRoles[route])
 		}
 	})
+
+	t.Run("Every Endpoint management route has a role entry", func(t *testing.T) {
+		cfg := &config.Config{
+			Controller: config.Controller{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{Enabled: false},
+					IDP:   config.IDPConfig{Enabled: false},
+				},
+			},
+		}
+
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
+
+		// A gateway-wide Endpoint is shared by every API, so only an admin
+		// changes one. A developer reads them to see the names and labels an
+		// API can route to, and nothing more: no write entry may list
+		// "developer", or an API author could repoint every API's traffic.
+		endpointRoutes := map[string][]string{
+			"POST /endpoints":        {"admin"},
+			"GET /endpoints":         {"admin", "developer"},
+			"GET /endpoints/{id}":    {"admin", "developer"},
+			"PUT /endpoints/{id}":    {"admin"},
+			"DELETE /endpoints/{id}": {"admin"},
+		}
+
+		for route, wantRoles := range endpointRoutes {
+			prefixed := route[:strings.Index(route, " ")+1] + managementAPIBasePath + route[strings.Index(route, " ")+1:]
+
+			require.Contains(t, authConfig.ResourceRoles, prefixed, "no role entry for %q — the endpoint would 403 for every caller", prefixed)
+			assert.ElementsMatch(t, wantRoles, authConfig.ResourceRoles[prefixed], "unexpected roles for %q", prefixed)
+
+			require.Contains(t, authConfig.ResourceRoles, route)
+			assert.Equal(t, authConfig.ResourceRoles[prefixed], authConfig.ResourceRoles[route])
+		}
+	})
 }
 
 // Additional edge case tests for policybuilder.DerivePolicyFromAPIConfig

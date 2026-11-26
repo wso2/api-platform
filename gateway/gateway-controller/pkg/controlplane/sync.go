@@ -706,6 +706,9 @@ func (c *Client) pushGatewayArtifacts() {
 	// The query returns metadata only; load each full config to push.
 	full := make([]*models.StoredConfig, 0, len(configs))
 	for _, meta := range configs {
+		if !utils.IsControlPlanePushKind(meta.Kind) {
+			continue
+		}
 		cfg, err := c.db.GetConfig(meta.UUID)
 		if err != nil || cfg == nil {
 			c.logger.Warn("Failed to load full config for control plane push",
