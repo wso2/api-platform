@@ -103,6 +103,11 @@ func (s *APIServer) CreateLLMProxy(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
+		if errors.Is(err, utils.ErrProviderNotFound) {
+			log.Warn("LLM proxy references a provider that does not exist", slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			return
+		}
 		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
@@ -197,6 +202,11 @@ func (s *APIServer) UpdateLLMProxy(w http.ResponseWriter, r *http.Request, id st
 	})
 	if err != nil {
 		if mapRenderError(w, "update", err) {
+			return
+		}
+		if errors.Is(err, utils.ErrProviderNotFound) {
+			log.Warn("LLM proxy references a provider that does not exist", slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
 		if storage.IsNotFoundError(err) {
