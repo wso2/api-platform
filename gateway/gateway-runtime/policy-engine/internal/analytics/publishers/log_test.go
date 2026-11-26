@@ -496,6 +496,56 @@ func TestLog_Publish_EmptyStructFieldsOmitted(t *testing.T) {
 	assert.False(t, hasTarget, "all-zero target must be omitted, not emitted as {}")
 }
 
+// The matched operation path template is emitted under operation.pathTemplate,
+// relative to the API context, next to the concrete operation.path.
+func TestLog_Publish_OperationPathTemplate(t *testing.T) {
+	l, read := newLogToFile(t, bothFlowsConfig())
+	event := createBaseEvent()
+	event.Operation.APIResourceTemplate = "/test/student/123"
+	event.Properties[dto.PropKeyOperationPath] = "/student/{ID}"
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	op, ok := decoded["operation"].(map[string]interface{})
+	require.True(t, ok, "operation object must be present")
+	assert.Equal(t, "GET", op["method"])
+	assert.Equal(t, "/test/student/123", op["path"])
+	assert.Equal(t, "/student/{ID}", op["pathTemplate"])
+}
+
+// With no matched operation template, pathTemplate is omitted rather than emitted as "".
+func TestLog_Publish_OperationPathTemplateOmittedWhenAbsent(t *testing.T) {
+	l, read := newLogToFile(t, bothFlowsConfig())
+	event := createBaseEvent()
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	op, ok := decoded["operation"].(map[string]interface{})
+	require.True(t, ok, "operation object must be present")
+	_, hasTemplate := op["pathTemplate"]
+	assert.False(t, hasTemplate, "pathTemplate must be absent when no template was matched")
+}
+
+// operation.pathTemplate alone can be dropped with a dotted exclude_fields path.
+func TestLog_Publish_FieldsExcludeOperationPathTemplate(t *testing.T) {
+	cfg := bothFlowsConfig()
+	cfg.ExcludeFields = []string{"operation.pathTemplate"}
+	l, read := newLogToFile(t, cfg)
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyOperationPath] = "/student/{ID}"
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	op, ok := decoded["operation"].(map[string]interface{})
+	require.True(t, ok, "operation object must be present")
+	assert.Equal(t, "/resource", op["path"])
+	_, hasTemplate := op["pathTemplate"]
+	assert.False(t, hasTemplate, "excluded operation.pathTemplate must be absent")
+}
+
 // A Target with at least one non-zero field must still be emitted in full.
 func TestLog_Publish_NonEmptyTargetKept(t *testing.T) {
 	l, read := newLogToFile(t, bothFlowsConfig())
