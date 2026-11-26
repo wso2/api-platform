@@ -19,9 +19,11 @@ require (
 	github.com/wso2/api-platform/common v0.0.0-20260326194347-3d85c50eae71
 	github.com/wso2/api-platform/gateway/common v0.0.0
 	github.com/wso2/api-platform/httpkit v0.0.0-local
+	github.com/wso2/api-platform/sdk/ai v0.2.3
 	github.com/wso2/api-platform/sdk/core v0.5.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
 	go.opentelemetry.io/otel/sdk v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	go.opentelemetry.io/proto/otlp v1.11.1
@@ -43,7 +45,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.33.0 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

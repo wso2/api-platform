@@ -518,7 +518,19 @@ graph TB
 
 - **Metrics**: All three processes expose Prometheus metrics. The policy engine emits per-request, per-policy, and per-chain metrics — request count, latency histograms, action counts, chain length, xDS connection state, snapshot version, body mode distribution.
 
-- **Tracing**: OpenTelemetry tracing in both Envoy and the Policy Engine. The default exporter points at an `otel-collector` sidecar that fans out to Jaeger or any OTLP backend. The Policy Engine creates a child span per policy execution and links across the ext_proc boundary using a propagated request ID.
+- **Tracing**: OpenTelemetry tracing in both Envoy and the Policy Engine, exported over OTLP/gRPC or OTLP/HTTP (`[tracing] protocol`) to a collector that fans out to Jaeger or any OTLP backend. Each request is one trace. The Policy Engine's `external_processing.process` span is a child of the ext_proc client span Envoy propagates in the stream's gRPC metadata, falling back to a `traceparent` request header. It follows Envoy's sampling decision. Under it are one span per processing phase and one per policy execution; a streamed body is one phase span with one span per policy for the whole stream. With `[tracing.genai]` (on by default when tracing is on), the engine also records a CLIENT span for each LLM, MCP and A2A call, following the OpenTelemetry GenAI and MCP semantic conventions. These are `chat {model}` with token usage, `tools/call {tool}` (whose context is propagated to the MCP server in `params._meta`), and `invoke_agent {agent}`. Prompts and tool data are recorded only when `capture_content` is on. Policies' outbound calls through the shared HTTP client get CLIENT spans too, and analytics events carry their trace and span ids.
+
+  ```text
+  ingress                                  Envoy, SERVER
+  ├─ ext_proc client span                  Envoy, CLIENT
+  │  └─ external_processing.process        Policy Engine, SERVER
+  │     ├─ process_request_headers
+  │     │  └─ policy.request.<policy>      wso2.policy.action, wso2.guardrail.name
+  │     ├─ process_request_body
+  │     ├─ chat gpt-4o                     CLIENT, gen_ai.* (LLM provider routes)
+  │     └─ process_response_body           one per streamed body, stream.chunk_count
+  └─ router egress                         Envoy, CLIENT, the upstream's parent
+  ```
 
 - **Logging**: Structured logs from both Go and Python processes, with consistent per-process prefixes so a single `docker logs` stream stays readable.
 

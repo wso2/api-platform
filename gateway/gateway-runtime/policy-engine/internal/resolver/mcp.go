@@ -171,6 +171,14 @@ var spanSafeAttributes = map[string]bool{
 	// alert on: a rising count means someone is probing the parser.
 	AttrMCPBodyUnusable: true,
 
+	// The A2A protocol facts: the operation comes from the version's closed set, the
+	// transport from a two-valued enum and the version from the registry. The A2A message,
+	// context and task ids are absent: one value per request, recorded on the invoke_agent
+	// span instead.
+	AttrA2AOperation:       true,
+	AttrA2ATransport:       true,
+	AttrA2AProtocolVersion: true,
+
 	// AttrMCPBodyPresent is deliberately absent. It is a closed set and so would pass the
 	// rule above, but its value is always "true" — a span attribute with one possible
 	// value carries no information and only costs an index entry.

@@ -323,7 +323,7 @@ func TestBuildRecordSuccessOmitsErrorAttributes(t *testing.T) {
 }
 
 // gen_ai.operation.name is the only AI attribute derived from the route rather
-// than from a property the AI pipeline wrote, and otelGenAIOperationName
+// than from a property the AI pipeline wrote, and genai.OperationName
 // matches routes ending in "/messages" and "/completions". Without a gate, ordinary REST
 // routes containing those words emit a GenAI attribute and pollute GenAI
 // dashboards with traffic that never reached a model.
@@ -379,6 +379,7 @@ func TestBuildRecordAIRouteKeepsGenAIOperation(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			event := restEvent()
 			event.API.APIType = "LlmProxy"
+			event.Operation.APIMethod = "POST"
 			event.Operation.APIResourceTemplate = route
 			event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
 
@@ -392,9 +393,27 @@ func TestBuildRecordAIRouteKeepsGenAIOperation(t *testing.T) {
 	}
 }
 
+// A GET on an inference route reads stored data (OpenAI's stored chat completion
+// messages), so it is not labelled with a GenAI operation.
+func TestBuildRecordAIRouteGetHasNoGenAIOperation(t *testing.T) {
+	event := restEvent()
+	event.API.APIType = "LlmProxy"
+	event.Operation.APIMethod = "GET"
+	event.Operation.APIResourceTemplate = "/v1/chat/completions/{id}/messages"
+	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if _, ok := got["gen_ai.operation.name"]; ok {
+		t.Fatalf("gen_ai.operation.name = %v, want unset", got["gen_ai.operation.name"])
+	}
+}
+
 func TestBuildRecordGenAI(t *testing.T) {
 	event := restEvent()
 	event.API.APIType = "LlmProxy"
+	event.Operation.APIMethod = "POST"
 	event.Operation.APIResourceTemplate = "/ai/chat/completions"
 	event.Properties["aiMetadata"] = dto.AIMetadata{
 		Model:         "claude-opus-4",

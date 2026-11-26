@@ -19,6 +19,7 @@
 package kernel
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -1700,7 +1701,7 @@ func mergeDynamicMetadata(dest map[string]map[string]interface{}, src map[string
 
 // TranslateStreamingRequestChunkAction converts a streaming request execution result
 // into an ext_proc StreamedBodyResponse.
-func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
+func TranslateStreamingRequestChunkAction(ctx context.Context, result *executor.StreamingRequestExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	var outputBody []byte
 	if result.FinalChunk != nil {
 		outputBody = result.FinalChunk.Chunk
@@ -1725,7 +1726,7 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 			// still return nil if the codec rejects its options.
 			comp := newStreamCompressor(execCtx.requestContentEncoding)
 			if comp == nil {
-				slog.Error("[streaming] no compressor available for request encoding; failing stream",
+				slog.ErrorContext(ctx, "[streaming] no compressor available for request encoding; failing stream",
 					"encoding", execCtx.requestContentEncoding,
 				)
 				return nil, fmt.Errorf("no stream compressor for request encoding %q", execCtx.requestContentEncoding)
@@ -1737,7 +1738,7 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 			// The Content-Encoding header is already on its way upstream, so
 			// falling back to plaintext here would corrupt the request. Fail the
 			// stream instead and let Envoy reset it.
-			slog.Error("[streaming] failed to re-compress request chunk; failing stream",
+			slog.ErrorContext(ctx, "[streaming] failed to re-compress request chunk; failing stream",
 				"encoding", execCtx.requestContentEncoding,
 				"error", err,
 			)
@@ -1798,7 +1799,7 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 
 // TranslateStreamingResponseChunkAction converts a streaming response execution result
 // into an ext_proc StreamedBodyResponse.
-func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
+func TranslateStreamingResponseChunkAction(ctx context.Context, result *executor.StreamingResponseExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	var outputBody []byte
 	if result.FinalChunk != nil {
 		outputBody = result.FinalChunk.Chunk
@@ -1835,7 +1836,7 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 			// ext_proc handler mid-response.
 			comp := newStreamCompressor(execCtx.responseContentEncoding)
 			if comp == nil {
-				slog.Error("[streaming] no compressor available for response encoding; failing stream",
+				slog.ErrorContext(ctx, "[streaming] no compressor available for response encoding; failing stream",
 					"encoding", execCtx.responseContentEncoding,
 				)
 				return nil, fmt.Errorf("no stream compressor for response encoding %q", execCtx.responseContentEncoding)
@@ -1847,7 +1848,7 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 			// The client is mid-stream with a committed Content-Encoding header, so
 			// falling back to plaintext here would corrupt the response. Fail the
 			// stream instead and let Envoy reset it.
-			slog.Error("[streaming] failed to re-compress response chunk; failing stream",
+			slog.ErrorContext(ctx, "[streaming] failed to re-compress response chunk; failing stream",
 				"encoding", execCtx.responseContentEncoding,
 				"error", err,
 			)

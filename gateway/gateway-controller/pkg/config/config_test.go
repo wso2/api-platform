@@ -3107,3 +3107,26 @@ func TestLoadConfig_ShippedRouterHealthSectionIsValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
 }
+
+func TestConfig_Validate_TracingProtocol(t *testing.T) {
+	for protocol, wantErr := range map[string]bool{
+		"":                  false,
+		TracingProtocolGRPC: false,
+		TracingProtocolHTTP: false,
+		"http/json":         true,
+	} {
+		cfg := validConfig()
+		cfg.TracingConfig.Enabled = true
+		cfg.TracingConfig.Protocol = protocol
+		err := cfg.Validate()
+		if wantErr {
+			assert.ErrorContains(t, err, "tracing.protocol", "protocol %q", protocol)
+		} else {
+			assert.NoError(t, err, "protocol %q", protocol)
+		}
+	}
+}
+
+func TestDefaultConfig_TracingProtocolIsGRPC(t *testing.T) {
+	assert.Equal(t, TracingProtocolGRPC, defaultConfig().TracingConfig.Protocol)
+}

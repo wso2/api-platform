@@ -4521,3 +4521,118 @@ func TestTranslator_TranslateConfigs_HealthRouteRBAC(t *testing.T) {
 		assert.EqualError(t, err, `router.health.allowed_clients: "*" cannot be combined with other entries`)
 	})
 }
+
+// With protocol "http" Envoy exports with OTLP/HTTP: an HttpService posting to
+// /v1/traces through the collector cluster, instead of a gRPC service.
+func TestTranslator_CreateTracingConfig_HTTP(t *testing.T) {
+	cfg := testConfig()
+	cfg.TracingConfig.Enabled = true
+	cfg.TracingConfig.Protocol = config.TracingProtocolHTTP
+	cfg.TracingConfig.Endpoint = "collector.observability:4318"
+	translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, cfg)
+	require.NoError(t, err)
+
+	tracingCfg, err := translator.createTracingConfig()
+	require.NoError(t, err)
+	otelConfig := &tracev3.OpenTelemetryConfig{}
+	require.NoError(t, tracingCfg.GetProvider().GetTypedConfig().UnmarshalTo(otelConfig))
+
+	assert.Nil(t, otelConfig.GetGrpcService(), "the two services are alternatives")
+	uri := otelConfig.GetHttpService().GetHttpUri()
+	require.NotNil(t, uri)
+	assert.Equal(t, "http://collector.observability:4318/v1/traces", uri.GetUri())
+	assert.Equal(t, OTELCollectorClusterName, uri.GetCluster())
+	assert.Positive(t, uri.GetTimeout().AsDuration())
+}
+
+func TestTranslator_CreateTracingConfig_GRPCByDefault(t *testing.T) {
+	for _, protocol := range []string{"", config.TracingProtocolGRPC} {
+		cfg := testConfig()
+		cfg.TracingConfig.Enabled = true
+		cfg.TracingConfig.Protocol = protocol
+		translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, cfg)
+		require.NoError(t, err)
+
+		tracingCfg, err := translator.createTracingConfig()
+		require.NoError(t, err)
+		otelConfig := &tracev3.OpenTelemetryConfig{}
+		require.NoError(t, tracingCfg.GetProvider().GetTypedConfig().UnmarshalTo(otelConfig))
+		assert.Equal(t, OTELCollectorClusterName, otelConfig.GetGrpcService().GetEnvoyGrpc().GetClusterName(), "protocol %q", protocol)
+		assert.Nil(t, otelConfig.GetHttpService())
+	}
+}
+
+// The collector endpoint splits into an unbracketed host and a port, taking the
+// protocol's default port when none is given or the given one is not a number.
+func TestTranslator_OTELCollectorEndpoint(t *testing.T) {
+	for _, tc := range []struct {
+		endpoint, protocol, wantHost, wantURI string
+		wantPort                              uint32
+	}{
+		{"collector:4317", "", "collector", "", 4317},
+		{"collector:9999", config.TracingProtocolHTTP, "collector", "http://collector:9999/v1/traces", 9999},
+		{"collector", config.TracingProtocolHTTP, "collector", "http://collector:4318/v1/traces", 4318},
+		{"collector:abc", config.TracingProtocolHTTP, "collector", "http://collector:4318/v1/traces", 4318},
+		{"10.0.0.5:4318", config.TracingProtocolHTTP, "10.0.0.5", "http://10.0.0.5:4318/v1/traces", 4318},
+		{"[::1]:4318", config.TracingProtocolHTTP, "::1", "http://[::1]:4318/v1/traces", 4318},
+		{"[fd00::5]", config.TracingProtocolHTTP, "fd00::5", "http://[fd00::5]:4318/v1/traces", 4318},
+		{"::1", "", "::1", "", 4317},
+		{"", "", "otel-collector", "", 4317},
+	} {
+		t.Run(tc.endpoint+"/"+tc.protocol, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.TracingConfig.Enabled = true
+			cfg.TracingConfig.Protocol = tc.protocol
+			cfg.TracingConfig.Endpoint = tc.endpoint
+			translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, cfg)
+			require.NoError(t, err)
+
+			addr := translator.createOTELCollectorCluster().GetLoadAssignment().GetEndpoints()[0].
+				GetLbEndpoints()[0].GetEndpoint().GetAddress().GetSocketAddress()
+			assert.Equal(t, tc.wantHost, addr.GetAddress())
+			assert.Equal(t, tc.wantPort, addr.GetPortValue())
+
+			if tc.wantURI != "" {
+				tracingCfg, err := translator.createTracingConfig()
+				require.NoError(t, err)
+				otelConfig := &tracev3.OpenTelemetryConfig{}
+				require.NoError(t, tracingCfg.GetProvider().GetTypedConfig().UnmarshalTo(otelConfig))
+				assert.Equal(t, tc.wantURI, otelConfig.GetHttpService().GetHttpUri().GetUri())
+			}
+		})
+	}
+}
+
+// OTLP/HTTP is HTTP/1.1, so the collector cluster must not force HTTP/2 on it; OTLP/gRPC
+// needs it. A missing port takes the protocol's standard one.
+func TestTranslator_CreateOTELCollectorCluster_HTTPNoHTTP2(t *testing.T) {
+	cases := map[string]struct {
+		protocol, endpoint string
+		port               uint32
+		http2              bool
+	}{
+		"http":                 {config.TracingProtocolHTTP, "collector:4318", 4318, false},
+		"http default port":    {config.TracingProtocolHTTP, "collector", 4318, false},
+		"grpc":                 {config.TracingProtocolGRPC, "collector:4317", 4317, true},
+		"grpc default port":    {config.TracingProtocolGRPC, "collector", 4317, true},
+		"grpc when unset":      {"", "collector:9999", 9999, true},
+		"http with a bad port": {config.TracingProtocolHTTP, "collector:notaport", 4318, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.TracingConfig.Enabled = true
+			cfg.TracingConfig.Protocol = tc.protocol
+			cfg.TracingConfig.Endpoint = tc.endpoint
+			translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, cfg)
+			require.NoError(t, err)
+
+			c := translator.createOTELCollectorCluster()
+			require.NotNil(t, c)
+			assert.Equal(t, tc.http2, c.GetHttp2ProtocolOptions() != nil)
+			addr := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()[0].GetEndpoint().GetAddress().GetSocketAddress()
+			assert.Equal(t, "collector", addr.GetAddress())
+			assert.Equal(t, tc.port, addr.GetPortValue())
+		})
+	}
+}

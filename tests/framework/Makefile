@@ -1,13 +1,14 @@
 # Build and run targets for the v2 integration framework.
 #
-# The testbench and A2A trip-planner images are rebuilt only when their source changes, which is
-# why each is a separate target rather than a test dependency. The test-api-portal* targets run
+# The testbench, A2A trip-planner and OTLP collector images are rebuilt only when their source
+# changes, which is why each is a separate target rather than a test dependency. The test-api-portal* targets run
 # the API Portal blocks; the API Portal release workflow calls test-api-portal.
 
 TESTBENCH_IMAGE ?= ghcr.io/wso2/api-platform/testbench:test
 A2A_TRIP_PLANNER_IMAGE ?= ghcr.io/wso2/api-platform/a2a-trip-planner:test
+OTEL_COLLECTOR_IMAGE ?= ghcr.io/wso2/api-platform/mock-otlp-collector:test
 
-.PHONY: help testbench a2a-trip-planner ap-cli coverage-report standards-check snapshots snapshots-check \
+.PHONY: help testbench a2a-trip-planner otel-collector ap-cli coverage-report standards-check snapshots snapshots-check \
         test-api-portal test-api-portal-it test-api-portal-ui
 
 # API Portal blocks, run by the API Portal release (make test-api-portal). Keep these lists in
@@ -25,6 +26,9 @@ testbench: ## Build the testbench image (run after changing testbench/**)
 
 a2a-trip-planner: ## Build the A2A trip-planner agent image used as the Agent proxy upstream
 	docker build -t $(A2A_TRIP_PLANNER_IMAGE) ../mock-servers/a2a-trip-planner
+
+otel-collector: ## Build the OTLP collector image the tracing blocks export spans to
+	docker build -t $(OTEL_COLLECTOR_IMAGE) ../mock-servers/mock-otlp-collector
 
 ap-cli: ## Build the ap CLI binary the ai-workspace-cli block drives (lands at cli/src/build/ap)
 	$(MAKE) -C ../../cli/src build-skip-tests

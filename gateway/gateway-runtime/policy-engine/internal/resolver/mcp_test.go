@@ -726,6 +726,15 @@ func TestMCPSpanSafeAttributes_ExcludeOpenSets(t *testing.T) {
 		"an unknown key must not inherit permission by default")
 }
 
+func TestA2ASpanSafeAttributes_KeepProtocolFactsDropIDs(t *testing.T) {
+	for _, key := range []string{AttrA2AOperation, AttrA2ATransport, AttrA2AProtocolVersion} {
+		assert.True(t, IsSpanSafeAttribute(key), "%s is a closed set", key)
+	}
+	for _, key := range []string{AttrA2AMessageID, AttrA2AContextID, AttrA2ATaskID} {
+		assert.False(t, IsSpanSafeAttribute(key), "%s is one value per request", key)
+	}
+}
+
 // ─── Registration ────────────────────────────────────────────────────────────
 
 func TestMCPResolver_IsRegisteredButInert(t *testing.T) {
