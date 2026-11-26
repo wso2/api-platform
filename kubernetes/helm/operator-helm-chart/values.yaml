@@ -731,6 +731,17 @@ reconciliation:
   initialBackoff: 1s
   # Maximum exponential backoff (Go duration) → reconciliation.max_backoff_duration.
   maxBackoffDuration: 60s
+# Objects the operator never reads, kept out of its informer cache. Without these, the
+# cache holds every gateway's Helm release Secrets and the gateway chart's rendered
+# ConfigMaps (several hundred KB per gateway), and its memory grows with the gateway count.
+# Turn one off only if a resource references an object it excludes: that reference then
+# resolves as not found.
+cache:
+  # Leave Secrets labeled owner=helm (Helm's release storage) out → cache.exclude_helm_release_secrets.
+  excludeHelmReleaseSecrets: true
+  # Leave ConfigMaps labeled app.kubernetes.io/name=gateway (rendered by the gateway chart) out
+  # → cache.exclude_gateway_chart_config_maps.
+  excludeGatewayChartConfigMaps: true
 logging:
   level: "info"
   format: "json"

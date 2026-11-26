@@ -41,6 +41,9 @@ type OperatorConfig struct {
 	// Reconciliation configuration
 	Reconciliation ReconciliationConfig `koanf:"reconciliation"`
 
+	// Cache selects which objects the operator's informer cache holds.
+	Cache CacheConfig `koanf:"cache"`
+
 	// Logging configuration
 	Logging LoggingConfig `koanf:"logging"`
 }
@@ -126,6 +129,19 @@ type ReconciliationConfig struct {
 	InitialBackoff time.Duration `koanf:"initial_backoff"`
 }
 
+// CacheConfig keeps objects the operator never reads out of its informer cache.
+// Both exclusions are on by default; turn one off only if a resource references an
+// object it excludes.
+type CacheConfig struct {
+	// ExcludeHelmReleaseSecrets leaves Secrets labeled owner=helm (Helm's release
+	// storage) out of the cache.
+	ExcludeHelmReleaseSecrets bool `koanf:"exclude_helm_release_secrets"`
+
+	// ExcludeGatewayChartConfigMaps leaves ConfigMaps labeled
+	// app.kubernetes.io/name=gateway (rendered by the gateway chart) out of the cache.
+	ExcludeGatewayChartConfigMaps bool `koanf:"exclude_gateway_chart_config_maps"`
+}
+
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	// Level is the log level (debug, info, warn, error)
@@ -157,6 +173,10 @@ func getDefaults() map[string]interface{} {
 			"max_retry_attempts":        10,
 			"max_backoff_duration":      "60s",
 			"initial_backoff":           "1s",
+		},
+		"cache": map[string]interface{}{
+			"exclude_helm_release_secrets":      true,
+			"exclude_gateway_chart_config_maps": true,
 		},
 		"logging": map[string]interface{}{
 			"level":       "info",
