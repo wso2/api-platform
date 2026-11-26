@@ -75,6 +75,27 @@ logging:
 
 When a **per-gateway** overlay is supplied (Kubernetes `Gateway` annotation `helm-values-configmap`, or `APIGateway` `spec.configRef`), the operator loads `gateway.helm.valuesFilePath` first and **deep-merges** the ConfigMap YAML on top. Nested maps (e.g. `gateway.config`) are merged; leaves and lists from the overlay replace the base. Standalone `helm install -f` with a single file behaves the same only if that file already contains the merged result.
 
+### Values Policy
+
+Per-gateway values (the `APIGateway`/`Gateway` overlay merged with the referenced ConfigMap) are checked against a small allow-list on every reconcile, before the gateway chart is rendered. The operator's own values file (`gateway.helm.valuesFilePath`) is not checked.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `gateway.values_policy.enabled` | bool | `true` | Enable the values policy (`GATEWAY_VALUES_POLICY_ENABLED`) |
+| `gateway.values_policy.allowed_image_registries` | []string | `ghcr.io/wso2/api-platform/`, `registry.wso2.com/wso2-api-platform/` | Image repository prefixes per-gateway values may use, matched at a path boundary; an empty list refuses every override (`GATEWAY_VALUES_POLICY_ALLOWED_IMAGE_REGISTRIES`, comma-separated) |
+
+When enabled, per-gateway values may not:
+
+- set an `image.repository` (or `image` string) outside `allowed_image_registries`;
+- read a Secret from `extraEnv` (`valueFrom.secretKeyRef`) or `extraEnvFrom` (`secretRef`);
+- add `extraVolumes` other than `emptyDir`, `configMap`, `downwardAPI`, or `projected` with `configMap`/`downwardAPI` sources (so no `secret`, `hostPath`, `persistentVolumeClaim`, CSI, ...), or set `mountPropagation` on `extraVolumeMounts`;
+- set a `securityContext`/`podSecurityContext` that is privileged, allows privilege escalation, sets `runAsNonRoot: false` or `runAsUser: 0`, adds capabilities other than `NET_BIND_SERVICE`, uses an `Unconfined` seccomp or AppArmor profile, a non-default `procMount`, an SELinux `type`/`user`/`role`, or a Windows host process, or set any of these blocks or their hardening fields to `null`;
+- set `hostNetwork`, `hostPID` or `hostIPC` to `true`.
+
+The chart's dedicated Secret settings (for example `gateway.controller.tls.secret.name`, `gateway.controller.controlPlane.token.secretName`, `gateway.controller.encryptionKeys.secretName`) are not affected. Values that need any of the refused settings belong in the operator's values file.
+
+On refusal nothing is rendered or applied and the installed release keeps running. An `APIGateway` gets `Accepted=False` (`InvalidConfiguration`) and `Programmed=False` (`Invalid`); a `Gateway` gets `Programmed=False` (`Invalid`). Both get a `Warning` Event with reason `ValuesPolicyViolation` naming the refused keys. The gateway is reconciled again when the CR or its ConfigMap changes.
+
 ### Reconciliation Configuration
 
 | Field | Type | Default | Description |

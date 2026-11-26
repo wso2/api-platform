@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -34,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,6 +54,7 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helmgateway"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/valuespolicy"
 )
 
 // GatewayTrackingStatus represents the deployment status tracked in memory
@@ -125,6 +128,8 @@ type GatewayReconciler struct {
 	Config         *config.OperatorConfig
 	gatewayTracker *GatewayTracker
 	Logger         *slog.Logger
+	// Recorder emits Events on APIGateways; set by SetupWithManager when nil.
+	Recorder events.EventRecorder
 }
 
 // NewGatewayReconciler creates a new GatewayReconciler
@@ -430,6 +435,10 @@ func (r *GatewayReconciler) processGatewayDeployment(
 
 	// Apply the gateway manifest
 	if err := r.applyGatewayManifest(ctx, gatewayConfig, dockerUsername, dockerPassword); err != nil {
+		var violation *valuespolicy.ViolationError
+		if errors.As(err, &violation) {
+			return r.handleValuesPolicyViolation(ctx, gatewayConfig, trackingKey, entry, violation, selectedCount, configHash)
+		}
 		log.Error("failed to apply gateway manifest", slog.Any("error", err))
 		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry, err, selectedCount, configHash)
 	}
@@ -848,6 +857,12 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 			slog.String("values_file", valuesFilePath))
 	}
 
+	// Validate the per-gateway values (CR overlay + ConfigMap) before anything is
+	// rendered. The operator's base values file is trusted and not checked.
+	if err := checkGatewayValuesPolicy(r.Config, valuesYAML); err != nil {
+		return err
+	}
+
 	log.Info("Deploying gateway using Helm",
 		slog.String("chart_name", r.Config.Gateway.HelmChartName),
 		slog.String("version", r.Config.Gateway.HelmChartVersion),
@@ -992,6 +1007,10 @@ func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		GenericFunc: func(event event.GenericEvent) bool {
 			return false
 		},
+	}
+
+	if r.Recorder == nil {
+		r.Recorder = mgr.GetEventRecorder("apigateway-controller")
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
