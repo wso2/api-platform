@@ -409,8 +409,22 @@ paths:
       tags:
         - APIs
       summary: Delete API metadata
-      description: Deletes API metadata when the API has no active subscriptions.
+      description: >-
+        Deletes API metadata when the API has no subscriptions and no active API keys; otherwise refuses with 409.
+        With `force=true`, it removes the API's subscriptions and revokes its active API keys first, publishing
+        `subscription.deleted` and `apikey.revoked` for each, then deletes the API. A paid subscription billed through
+        the payment provider still refuses a forced delete with 409.
       operationId: deleteApiMetadata
+      parameters:
+        - in: query
+          name: force
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            Remove the API's subscriptions and revoke its active API keys instead of refusing the delete. Paid
+            subscriptions still refuse it.
       responses:
         "200":
           $ref: "#/components/responses/TextMessageResponse"
@@ -2182,8 +2196,20 @@ paths:
       tags:
         - MCP Servers
       summary: Delete MCP server metadata
-      description: Deletes MCP server metadata when the MCP server has no active subscriptions.
+      description: >-
+        Deletes MCP server metadata when the MCP server has no subscriptions and no active API keys; otherwise refuses
+        with 409. With `force=true`, it removes them first, as `DELETE /apis/{apiId}?force=true` does.
       operationId: deleteMcpServer
+      parameters:
+        - in: query
+          name: force
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            Remove the MCP server's subscriptions and revoke its active API keys instead of refusing the delete. Paid
+            subscriptions still refuse it.
       responses:
         "200":
           $ref: "#/components/responses/TextMessageResponse"

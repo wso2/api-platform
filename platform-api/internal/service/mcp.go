@@ -46,6 +46,9 @@ const (
 
 // MCPProxyService handles business logic for MCP proxy operations
 type MCPProxyService struct {
+	// unpublisher removes the artifact's API Portal listings before it is deleted;
+	// nil in a build without API Portals.
+	unpublisher          ArtifactUnpublisher
 	repo                 repository.MCPProxyRepository
 	projectRepo          repository.ProjectRepository
 	deploymentRepo       repository.DeploymentRepository
@@ -56,6 +59,12 @@ type MCPProxyService struct {
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
 	identity             *IdentityService
+}
+
+// SetArtifactUnpublisher sets what unpublishes the artifact from every API Portal
+// before Delete removes it.
+func (s *MCPProxyService) SetArtifactUnpublisher(u ArtifactUnpublisher) {
+	s.unpublisher = u
 }
 
 // NewMCPProxyService creates a new MCPProxyService instance
@@ -527,6 +536,12 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, mcpProxy.Origin, mcpProxy.UUID, orgUUID); err != nil {
+		return err
+	}
+
+	// Take the API off every API Portal first. Deleting the artifact cascades away
+	// its publication rows, so a portal left out now could never be told to drop it.
+	if err := unpublishBeforeDelete(s.unpublisher, "mcp-proxy", handle, mcpProxy.UUID, orgUUID, deletedBy); err != nil {
 		return err
 	}
 

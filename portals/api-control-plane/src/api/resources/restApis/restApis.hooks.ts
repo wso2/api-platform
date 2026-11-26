@@ -48,6 +48,7 @@ import {
 } from './restApis.endpoints';
 import { graphQLApiKeys } from '../graphqlApis/graphqlApis.queries';
 import { restApiKeys, restApiQueries } from './restApis.queries';
+import { apiPublicationKeys } from '../apiPublications/apiPublications.queries';
 
 /**
  * The public hook surface for REST APIs — the only thing components import.
@@ -377,6 +378,11 @@ export const useDeleteRestApi = (overrides: { orgId?: string } = {}) => {
       // were last read, so a user who deletes an API keeps seeing the old
       // number until the tab is refocused or the backstop fires.
       refreshResourceLimits();
+    },
+    // A failed delete may already have taken the API off some API Portals before it
+    // stopped, so the portal count the delete dialog shows is refreshed.
+    onError: () => {
+      if (org) queryClient.invalidateQueries({ queryKey: apiPublicationKeys.lists(org) });
     },
   });
 };

@@ -253,6 +253,25 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
     return [rowCount, [updatedInstance]];
 };
 
+/**
+ * Locks the API's row for the rest of transaction `t` and resolves to whether the API exists.
+ * Deleting an API and generating a key for it both take this lock first, so a key cannot be
+ * committed between the delete's snapshot of active keys and its removal of every key: it is
+ * either in the snapshot (and revoked with an event) or created after the API is gone (and
+ * refused). On PostgreSQL and SQL Server this is a row lock; SQLite runs one write
+ * transaction at a time, so it needs none.
+ */
+const lockForUpdate = async (orgId, apiId, t) => {
+    const dialect = db.getDialect();
+    const lockHint = dialect === 'mssql' ? ' WITH (UPDLOCK, ROWLOCK)' : '';
+    const forUpdate = dialect === 'postgres' ? ' FOR UPDATE' : '';
+    const row = await t.queryOne(
+        `SELECT uuid FROM ${API_METADATA_TABLE}${lockHint} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?${forUpdate}`,
+        [apiId, orgId, getPortalId()]
+    );
+    return !!row;
+};
+
 const deleteApi = async (orgId, apiId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
@@ -541,6 +560,7 @@ module.exports = {
     create,
     update,
     delete: deleteApi,
+    lockForUpdate,
     get,
     getByCondition,
     list,

@@ -1210,3 +1210,22 @@ func TestHTTPPortalPublisher_MCPProxyUsesTheMCPServersCollection(t *testing.T) {
 		t.Fatalf("want portal calls %v, got %v", want, calls)
 	}
 }
+
+// ForceUnpublish sends the same DELETE as Unpublish with ?force=true, so the portal
+// removes the listing's subscriptions and keys instead of refusing.
+func TestHTTPPortalPublisher_ForceUnpublish_SendsForce(t *testing.T) {
+	var gotMethod, gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotQuery = r.Method, r.URL.Path, r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	if err := p.ForceUnpublish(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api"); err != nil {
+		t.Fatalf("ForceUnpublish: %v", err)
+	}
+	if gotMethod != http.MethodDelete || gotPath != portalRESTBase+"/apis/my-api" || gotQuery != "force=true" {
+		t.Fatalf("want DELETE %s/apis/my-api?force=true, got %s %s?%s", portalRESTBase, gotMethod, gotPath, gotQuery)
+	}
+}

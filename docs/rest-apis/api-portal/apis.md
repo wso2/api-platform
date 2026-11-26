@@ -646,7 +646,7 @@ curl -X DELETE https://localhost:9543/api-portal/api/v0.9/apis/{apiId} \
 
 ```
 
-Deletes API metadata when the API has no active subscriptions.
+Deletes API metadata when the API has no subscriptions and no active API keys; otherwise refuses with 409. With `force=true`, it removes the API's subscriptions and revokes its active API keys first, publishing `subscription.deleted` and `apikey.revoked` for each, then deletes the API. A paid subscription billed through the payment provider still refuses a forced delete with 409.
 
 ### Authentication
 
@@ -661,6 +661,7 @@ Required scopes (the token must carry at least one of): `dp:api:delete`, `dp:api
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|force|query|boolean|false|Remove the API's subscriptions and revoke its active API keys instead of refusing the delete. Paid subscriptions still refuse it.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
