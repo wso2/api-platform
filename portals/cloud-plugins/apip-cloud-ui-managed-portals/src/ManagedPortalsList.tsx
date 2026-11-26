@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -33,6 +34,7 @@ import {
 } from "@wso2/oxygen-ui";
 import {
   ExternalLink,
+  PanelTop,
   Pencil,
   Plus,
   Search,
@@ -47,9 +49,6 @@ import { changeFailed, describeChange, isBeingChanged } from "./utils/change";
 import { PortalPublishAnimation } from "./PortalPublishAnimation";
 import { usePortalFeature } from "./portContext";
 import UnexpectedErrorState from "./components/UnexpectedErrorState";
-
-const devportalLogo = new URL("./images/devportal-logo.png", import.meta.url)
-  .href;
 
 /**
  * Create button, disabled with the no-permission tooltip when the user holds no
@@ -348,32 +347,22 @@ export default function ManagedPortalsList({
                               flex: 1,
                             }}
                           >
-                            <Box
-                              sx={{
+                            {/* Tinted rounded square with a primary-coloured icon, like the API fallback tile. */}
+                            <Avatar
+                              sx={(theme) => ({
                                 width: { xs: 64, sm: 72 },
                                 height: { xs: 64, sm: 72 },
                                 flexShrink: 0,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
+                                borderRadius: "25%",
+                                color: "primary.main",
+                                bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 14%, transparent)`,
                                 border: 1,
-                                borderColor: "divider",
-                                borderRadius: 1,
-                                bgcolor: "action.hover",
+                                borderColor: `color-mix(in srgb, ${theme.palette.primary.main} 35%, transparent)`,
                                 opacity: isPending || isDeleting ? 0.4 : 1,
-                              }}
+                              })}
                             >
-                              <Box
-                                component="img"
-                                src={devportalLogo}
-                                alt=""
-                                sx={{
-                                  width: "75%",
-                                  height: "75%",
-                                  objectFit: "contain",
-                                }}
-                              />
-                            </Box>
+                              <PanelTop size={32} />
+                            </Avatar>
                             <Stack
                               spacing={0.5}
                               sx={{ flex: 1, minWidth: 0, pt: 0.5 }}
