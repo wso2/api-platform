@@ -655,6 +655,56 @@ func (s *Steps) assertDeploymentReportsEchoEndpoint(ctx context.Context) error {
 	return nil
 }
 
+// assertDeploymentOnGatewayHost checks that a deployment made with no main host of its own is
+// reported on the public host its gateway lists, and with no sandbox host.
+func (s *Steps) assertDeploymentOnGatewayHost(ctx context.Context) error {
+	host, err := requiredValue(ctx, keyGatewayHost)
+	if err != nil {
+		return fmt.Errorf("the active gateway lists no public host: %w", err)
+	}
+	return s.assertDeploymentHosts(ctx, host, "")
+}
+
+// assertDeploymentHosts checks the main and sandbox hosts the deployment response reports for the
+// active gateway. An empty sandbox host means the response must report none.
+func (s *Steps) assertDeploymentHosts(ctx context.Context, mainHost, sandboxHost string) error {
+	response, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	gatewayID, err := requiredValue(ctx, keyGatewayID)
+	if err != nil {
+		return err
+	}
+	entry, err := deploymentEntry(response, gatewayID)
+	if err != nil {
+		return err
+	}
+	wantMain, err := expandCloudValue(ctx, mainHost)
+	if err != nil {
+		return err
+	}
+	wantSandbox, err := expandCloudValue(ctx, sandboxHost)
+	if err != nil {
+		return err
+	}
+	gotMain, _ := entry["vhostMain"].(string)
+	gotSandbox, hasSandbox := entry["vhostSandbox"]
+	if gotMain != wantMain {
+		return fmt.Errorf("the deployment reports main host %q, want %q (%s)", gotMain, wantMain, response.Describe())
+	}
+	if wantSandbox == "" {
+		if hasSandbox {
+			return fmt.Errorf("the deployment reports sandbox host %v, want none (%s)", gotSandbox, response.Describe())
+		}
+		return nil
+	}
+	if gotSandbox != wantSandbox {
+		return fmt.Errorf("the deployment reports sandbox host %v, want %q (%s)", gotSandbox, wantSandbox, response.Describe())
+	}
+	return nil
+}
+
 // useEchoBackend records the backend deployment overrides are pointed at.
 func (s *Steps) useEchoBackend(ctx context.Context) error {
 	backend, err := testbenchURL(echoBackendEnv, defaultEchoBackend)

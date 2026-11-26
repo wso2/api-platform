@@ -623,6 +623,37 @@ func TestApplyAPIOverridesRejectsUnsupportedAndMalformedValues(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestApplyAPIOverridesSetsAWholeUpstreamAndPadding(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set("ref", `{{ secret \"h\" }}`)
+
+	definition := map[string]any{"upstream": map[string]any{"main": map[string]string{"url": "https://old.example.com"}}}
+	require.NoError(t, applyAPIOverrides(ctx, definition, map[string]string{
+		"upstream":     `{"main":{"url":"https://echo.example.com","auth":{"type":"api-key","header":"x-probe","value":"${CTX:ref}"}}}`,
+		"paddingBytes": " 5 ",
+	}))
+	upstream, ok := definition["upstream"].(map[string]any)
+	require.True(t, ok)
+	main, ok := upstream["main"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "https://echo.example.com", main["url"])
+	require.Equal(t, map[string]any{"type": "api-key", "header": "x-probe", "value": `{{ secret "h" }}`}, main["auth"])
+	require.Equal(t, "xxxxx", definition["padding"])
+
+	for _, invalid := range []string{"0", "-1", "many", ""} {
+		err := applyAPIOverrides(ctx, map[string]any{}, map[string]string{"paddingBytes": invalid})
+		require.ErrorContains(t, err, "positive byte count", invalid)
+	}
+	err := applyAPIOverrides(ctx, map[string]any{}, map[string]string{"upstream": "not json"})
+	require.ErrorContains(t, err, "not valid JSON")
+	err = applyAPIOverrides(ctx, map[string]any{}, map[string]string{
+		"upstream": `{"main":{"url":"https://a.example.com"}}`, "upstreamUrl": "https://b.example.com",
+	})
+	require.ErrorContains(t, err, "not both")
+}
+
 func TestAPIRefForSelectsPrimaryOrNewVersion(t *testing.T) {
 	require.Equal(t, primaryAPI, apiRefFor("synthetic REST API"))
 	require.Equal(t, versionAPI, apiRefFor(newVersionAPILabel))
@@ -737,6 +768,30 @@ func TestFindActiveGatewayRecordsItsEnvironment(t *testing.T) {
 		require.NoError(t, err, key)
 		require.Equal(t, want, got, key)
 	}
+}
+
+func TestFindActiveGatewayRecordsItsPublicHostAndDropsAnEarlierOne(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	host := " gw.example.com "
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		item := map[string]any{"id": "gw-1", "isActive": true, "endpoints": []string{"https://gw.example.com"}}
+		if host != "" {
+			item["host"] = host
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{item}})
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+	require.NoError(t, steps.findActiveGateway(ctx))
+	got, err := requiredValue(ctx, keyGatewayHost)
+	require.NoError(t, err)
+	require.Equal(t, "gw.example.com", got)
+
+	host = ""
+	require.NoError(t, steps.findActiveGateway(ctx))
+	require.Empty(t, optionalValue(ctx, keyGatewayHost), "a gateway that lists no host must not inherit the previous gateway's")
 }
 
 func TestFindActiveGatewayDropsTheEnvironmentOfAnEarlierChoice(t *testing.T) {
@@ -1333,6 +1388,31 @@ func TestDeploymentAssertionsRequireTheActiveGateway(t *testing.T) {
 	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default"}]}`)
 	require.ErrorContains(t, steps.assertDeploymentListsActiveGateway(ctx), "no deployment id")
 	require.Error(t, steps.assertDeployedBuildIsPrepared(ctx))
+}
+
+func TestDeploymentHostAssertions(t *testing.T) {
+	steps, ctx, local, _ := cloudSteps(t, nil)
+	local.Set(keyGatewayID, "dev-default")
+	local.Set(keyAPIID, "syn-api-1")
+
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"gw.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentOnGatewayHost(ctx), "lists no public host")
+	local.Set(keyGatewayHost, "gw.example.com")
+	require.NoError(t, steps.assertDeploymentOnGatewayHost(ctx))
+	local.Set(keyGatewayHost, "other.example.com")
+	require.ErrorContains(t, steps.assertDeploymentOnGatewayHost(ctx), `main host "gw.example.com", want "other.example.com"`)
+
+	local.Set(keyGatewayHost, "gw.example.com")
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"gw.example.com","vhostSandbox":"sb.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentOnGatewayHost(ctx), "want none")
+
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"syn-api-1.example.com","vhostSandbox":"syn-api-1-sandbox.example.com"}]}`)
+	require.NoError(t, steps.assertDeploymentHosts(ctx, "${CTX:cloudAPIID}.example.com", "${CTX:cloudAPIID}-sandbox.example.com"))
+	require.ErrorContains(t, steps.assertDeploymentHosts(ctx, "${CTX:cloudAPIID}.example.com", "other-sandbox.example.com"), "sandbox host")
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"syn-api-1.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentHosts(ctx, "${CTX:cloudAPIID}.example.com", "syn-api-1-sandbox.example.com"), "sandbox host")
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"other","deploymentId":"d","vhostMain":"gw.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentHosts(ctx, "gw.example.com", ""), "does not list gateway")
 }
 
 func TestEchoBackendSteps(t *testing.T) {
