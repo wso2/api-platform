@@ -219,3 +219,50 @@ that component's secret. Fails the render when a required secret is unset.
 {{- end -}}
 {{- $name -}}
 {{- end -}}
+
+{{- /* "true" when the BFF serves HTTPS on containerPort, port name "https" (config.server.https.enabled, default true). */ -}}
+{{- define "apip.aiWorkspace.httpsEnabled" -}}
+{{- if dig "server" "https" "enabled" true .Values.config }}true{{ end -}}
+{{- end -}}
+
+{{- /* "true" when the BFF serves plain HTTP on config.server.http.port, port name "http".
+       Always on while HTTPS is off, so the BFF keeps a listener. */ -}}
+{{- define "apip.aiWorkspace.httpEnabled" -}}
+{{- if or (not (include "apip.aiWorkspace.httpsEnabled" .)) (dig "server" "http" "enabled" false .Values.config) }}true{{ end -}}
+{{- end -}}
+
+{{- /* Renders a probe against the listeners that run; a null probe renders nothing. HTTPS off: port "https" -> "http"
+       and httpGet scheme HTTP. HTTPS on: a 1.0.x port name "http" (then the HTTPS port) -> "https" for an HTTPS
+       httpGet probe, or for a tcpSocket probe while no plain-HTTP listener runs. */ -}}
+{{- define "apip.aiWorkspace.probe" -}}
+{{- if .probe -}}
+{{- $probe := deepCopy .probe -}}
+{{- $get := $probe.httpGet -}}
+{{- $tcp := $probe.tcpSocket -}}
+{{- if .plainHttp -}}
+{{- if $get -}}
+{{- $_ := set $get "scheme" "HTTP" -}}
+{{- if eq (toString $get.port) "https" -}}
+{{- $_ := set $get "port" "http" -}}
+{{- end -}}
+{{- end -}}
+{{- if $tcp -}}
+{{- if eq (toString $tcp.port) "https" -}}
+{{- $_ := set $tcp "port" "http" -}}
+{{- end -}}
+{{- end -}}
+{{- else -}}
+{{- if $get -}}
+{{- if and (eq (toString $get.port) "http") (eq (upper (toString $get.scheme)) "HTTPS") -}}
+{{- $_ := set $get "port" "https" -}}
+{{- end -}}
+{{- end -}}
+{{- if $tcp -}}
+{{- if and (eq (toString $tcp.port) "http") (not .httpListener) -}}
+{{- $_ := set $tcp "port" "https" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $probe -}}
+{{- end -}}
+{{- end -}}

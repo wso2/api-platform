@@ -168,6 +168,10 @@ kubectl port-forward svc/ai-workspace-ai-workspace 9643:9643 -n ai-workspace
 # then open https://localhost:9643/ai-workspace/
 ```
 
+If a proxy terminates TLS in front of the UI (an OpenShift edge Route or an Ingress), set
+`ai-workspace-ui.config.server.https.enabled=false`. See
+[Terminating TLS in front of the BFF](../ai-workspace-ui-helm-chart/README.md#terminating-tls-in-front-of-the-bff).
+
 In `basic` auth mode, log in with the admin credential that `generate-secrets.sh` printed.
 `helm status ai-workspace -n ai-workspace` prints the same access instructions for your
 configuration.

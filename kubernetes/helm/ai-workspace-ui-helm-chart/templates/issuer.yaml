@@ -1,6 +1,7 @@
 {{- $ui := .Values -}}
 {{- $tls := $ui.tls -}}
-{{- if and $ui.deployment.enabled (eq $tls.certificateProvider "cert-manager") }}
+{{- $https := eq (include "apip.aiWorkspace.httpsEnabled" .) "true" -}}
+{{- if and $ui.deployment.enabled $https (eq $tls.certificateProvider "cert-manager") }}
 {{- if and (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer }}
 ---
 # Self-signed Issuer for development/testing. In production replace this with a

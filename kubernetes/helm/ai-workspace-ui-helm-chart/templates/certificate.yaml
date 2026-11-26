@@ -1,6 +1,7 @@
 {{- $ui := .Values -}}
 {{- $tls := $ui.tls -}}
-{{- if and $ui.deployment.enabled (eq $tls.certificateProvider "cert-manager") $tls.certManager.create }}
+{{- $https := eq (include "apip.aiWorkspace.httpsEnabled" .) "true" -}}
+{{- if and $ui.deployment.enabled $https (eq $tls.certificateProvider "cert-manager") $tls.certManager.create }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
