@@ -711,6 +711,105 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	return stored, nil
 }
 
+// says what ApplyControlPlaneLLMProviderTemplate did.
+type ControlPlaneTemplateResult string
+
+const (
+	// ControlPlaneTemplateCreated: the gateway did not hold the template; it was saved.
+	ControlPlaneTemplateCreated ControlPlaneTemplateResult = "created"
+	// ControlPlaneTemplateUpdated: the gateway held an older control-plane copy; it was replaced.
+	ControlPlaneTemplateUpdated ControlPlaneTemplateResult = "updated"
+	// ControlPlaneTemplateUnchanged: the gateway already held this exact control-plane copy.
+	ControlPlaneTemplateUnchanged ControlPlaneTemplateResult = "unchanged"
+	// ControlPlaneTemplateNotOwned: the gateway holds a template of this handle that did not come from the control
+	// plane (one it ships, or one applied through the management API or the operator); it was left as it is.
+	ControlPlaneTemplateNotOwned ControlPlaneTemplateResult = "not_owned"
+)
+
+func (s *LLMDeploymentService) ApplyControlPlaneLLMProviderTemplate(params LLMTemplateParams) (*models.StoredLLMProviderTemplate, ControlPlaneTemplateResult, error) {
+	tmpl, err := s.parseAndValidateLLMTemplate(params)
+	if err != nil {
+		return nil, "", err
+	}
+	annotations := map[string]string{}
+	if tmpl.Metadata.Annotations != nil {
+		for k, v := range *tmpl.Metadata.Annotations {
+			annotations[k] = v
+		}
+	}
+	annotations[models.AnnotationTemplateOrigin] = string(models.OriginControlPlane)
+	tmpl.Metadata.Annotations = &annotations
+	handle := tmpl.Metadata.Name
+
+	existing, err := s.db.GetLLMProviderTemplateByHandle(handle)
+	if err != nil && !storage.IsNotFoundError(err) {
+		return nil, "", fmt.Errorf("failed to get LLM provider template by handle '%s': %w", handle, err)
+	}
+
+	if existing == nil {
+		id, err := GenerateUUID()
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to generate template ID: %w", err)
+		}
+		now := time.Now()
+		stored := &models.StoredLLMProviderTemplate{UUID: id, Configuration: *tmpl, CreatedAt: now, UpdatedAt: now}
+		if err := s.db.SaveLLMProviderTemplate(stored); err != nil {
+			if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+				return nil, "", fmt.Errorf("%w: template with handle '%s' already exists", storage.ErrConflict, handle)
+			}
+			return nil, "", fmt.Errorf("failed to save template to database: %w", err)
+		}
+		s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
+		return stored, ControlPlaneTemplateCreated, nil
+	}
+
+	if !existing.IsFromControlPlane() {
+		return existing, ControlPlaneTemplateNotOwned, nil
+	}
+
+	same, err := sameTemplateConfiguration(existing.Configuration, *tmpl)
+	if err != nil {
+		return nil, "", err
+	}
+	if same {
+		return existing, ControlPlaneTemplateUnchanged, nil
+	}
+
+	proposed := &models.StoredLLMProviderTemplate{Configuration: *tmpl}
+	if oldGroupID, newGroupID := existing.GetGroupID(), proposed.GetGroupID(); oldGroupID != newGroupID {
+		return nil, "", fmt.Errorf("%w: cannot change template groupId from '%s' to '%s'; groupId is immutable", ErrLLMTemplateValidation, oldGroupID, newGroupID)
+	}
+	if oldVersion, newVersion := existing.GetVersion(), proposed.GetVersion(); oldVersion != newVersion {
+		return nil, "", fmt.Errorf("%w: cannot change template version from '%s' to '%s'; version is immutable", ErrLLMTemplateValidation, oldVersion, newVersion)
+	}
+
+	updated := &models.StoredLLMProviderTemplate{
+		UUID:          existing.UUID,
+		Configuration: *tmpl,
+		CreatedAt:     existing.CreatedAt,
+		UpdatedAt:     time.Now(),
+	}
+	if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
+		return nil, "", fmt.Errorf("failed to update template in database: %w", err)
+	}
+	s.publishLLMTemplateEvent("UPDATE", updated.UUID, params.CorrelationID, params.Logger)
+	return updated, ControlPlaneTemplateUpdated, nil
+}
+
+// sameTemplateConfiguration compares two templates by their JSON form, so a copy read back from the database equals
+// the same template freshly parsed.
+func sameTemplateConfiguration(a, b api.LLMProviderTemplate) (bool, error) {
+	aj, err := json.Marshal(a)
+	if err != nil {
+		return false, fmt.Errorf("failed to compare templates: %w", err)
+	}
+	bj, err := json.Marshal(b)
+	if err != nil {
+		return false, fmt.Errorf("failed to compare templates: %w", err)
+	}
+	return string(aj) == string(bj), nil
+}
+
 // InitializeOOBTemplates persists OOB templates to database and memory store
 func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[string]*api.LLMProviderTemplate) error {
 	if len(templateDefinitions) == 0 {

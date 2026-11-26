@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,7 @@ import (
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"gopkg.in/yaml.v3"
 )
 
 // defaultMaxResponseBytes is the fallback ceiling applied to response bodies
@@ -725,7 +727,10 @@ func (s *APIUtilsService) fetchZip(resourcePath, resourceLabel string) ([]byte, 
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxResponseBytes))
-		return nil, "", fmt.Errorf("%s request failed with status %d: %s", resourceLabel, resp.StatusCode, string(bodyBytes))
+		return nil, "", &controlPlaneStatusError{
+			msg:    fmt.Sprintf("%s request failed with status %d: %s", resourceLabel, resp.StatusCode, string(bodyBytes)),
+			status: resp.StatusCode,
+		}
 	}
 
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxResponseBytes+1))
@@ -741,6 +746,76 @@ func (s *APIUtilsService) fetchZip(resourcePath, resourceLabel string) ([]byte, 
 	)
 
 	return bodyBytes, resp.Header.Get("Content-Type"), nil
+}
+
+
+var ErrControlPlaneNotFound = errors.New("control plane resource not found")
+
+// controlPlaneStatusError is a non-200 answer from the control plane. Its
+// message is the one fetchZip has always returned; it additionally matches
+// ErrControlPlaneNotFound when the status was 404.
+type controlPlaneStatusError struct {
+	msg    string
+	status int
+}
+
+func (e *controlPlaneStatusError) Error() string { return e.msg }
+
+func (e *controlPlaneStatusError) Is(target error) bool {
+	return target == ErrControlPlaneNotFound && e.status == http.StatusNotFound
+}
+
+// ErrInvalidLLMProviderTemplateArtifact is returned by
+// FetchLLMProviderTemplateDefinition for a handle that cannot be a template
+// handle, or when the control plane answered 200 with something other than the
+// requested template.
+var ErrInvalidLLMProviderTemplateArtifact = errors.New("invalid LLM provider template artifact")
+
+// llmProviderTemplateHandlePattern is the set of handles the control plane can
+// hold: letters, digits, hyphens and underscores. Restricting it keeps the
+// handle a single, unescaped path segment.
+var llmProviderTemplateHandlePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,255}$`)
+
+// FetchLLMProviderTemplateDefinition downloads an LLM provider template from
+// the control plane's gateway-internal API, GET {base}/llm-provider-templates/{handle},
+// and returns the template's YAML. The control plane answers with a ZIP holding
+// one entry, llm-provider-template-{handle}.yaml, or 404 when it has no such
+// template (errors.Is(err, ErrControlPlaneNotFound)). The YAML must be an
+// LlmProviderTemplate whose metadata.name is handle; anything else is
+// ErrInvalidLLMProviderTemplateArtifact.
+func (s *APIUtilsService) FetchLLMProviderTemplateDefinition(handle string) ([]byte, error) {
+	if !llmProviderTemplateHandlePattern.MatchString(handle) {
+		return nil, fmt.Errorf("%w: handle is not a valid template handle", ErrInvalidLLMProviderTemplateArtifact)
+	}
+
+	zipData, err := s.FetchResourceZip("/llm-provider-templates/"+handle, "LLM provider template definition")
+	if err != nil {
+		return nil, err
+	}
+
+	yamlData, err := s.ExtractYAMLFromZip(zipData)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidLLMProviderTemplateArtifact, err)
+	}
+
+	var envelope struct {
+		Kind     string `yaml:"kind"`
+		Metadata struct {
+			Name string `yaml:"name"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(yamlData, &envelope); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidLLMProviderTemplateArtifact, err)
+	}
+	if envelope.Kind != string(models.KindLlmProviderTemplate) {
+		return nil, fmt.Errorf("%w: expected kind %s, got %q", ErrInvalidLLMProviderTemplateArtifact,
+			models.KindLlmProviderTemplate, envelope.Kind)
+	}
+	if envelope.Metadata.Name != handle {
+		return nil, fmt.Errorf("%w: requested template %q, got %q", ErrInvalidLLMProviderTemplateArtifact,
+			handle, envelope.Metadata.Name)
+	}
+	return yamlData, nil
 }
 
 // ErrInvalidAgentArtifact is returned by FetchAgentDefinition when the control

@@ -2569,6 +2569,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	// sync are not yet cached, so we fetch them on demand here.
 	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
+	c.ensureLLMProviderTemplateFromYAML(yamlData, deployedEvent.CorrelationID, nil)
+
 	// Reuse the existing local UUID for a bottom-up (DP->CP) synced provider so
 	// the control-plane deploy is an in-place update
 	deployProviderID := c.resolveLocalArtifactID(providerID)
