@@ -248,41 +248,74 @@ func (c *StoredConfig) GetPolicies() *[]api.Policy {
 	return nil
 }
 
-// GetMetadata returns the metadata from the Configuration, regardless of type.
+// GetMetadata returns the metadata from the Configuration or SourceConfiguration, regardless of type.
 func (c *StoredConfig) GetMetadata() *api.Metadata {
-	switch cfg := c.Configuration.(type) {
+	if md := extractMetadata(c.Configuration); md != nil {
+		return md
+	}
+	return extractMetadata(c.SourceConfiguration)
+}
+
+func extractMetadata(cfg any) *api.Metadata {
+	switch v := cfg.(type) {
 	case api.RestAPI:
-		return &cfg.Metadata
+		return &v.Metadata
+	case *api.RestAPI:
+		if v != nil {
+			return &v.Metadata
+		}
 	case api.AgentConfiguration:
-		return &cfg.Metadata
+		return &v.Metadata
+	case *api.AgentConfiguration:
+		if v != nil {
+			return &v.Metadata
+		}
 	case api.GraphQLAPI:
-		return &cfg.Metadata
+		return &v.Metadata
+	case *api.GraphQLAPI:
+		if v != nil {
+			return &v.Metadata
+		}
+	case api.MCPProxyConfiguration:
+		return &v.Metadata
+	case *api.MCPProxyConfiguration:
+		if v != nil {
+			return &v.Metadata
+		}
+	case api.LLMProxyConfiguration:
+		return &v.Metadata
+	case *api.LLMProxyConfiguration:
+		if v != nil {
+			return &v.Metadata
+		}
+	case api.LLMProviderConfiguration:
+		return &v.Metadata
+	case *api.LLMProviderConfiguration:
+		if v != nil {
+			return &v.Metadata
+		}
+	case api.LLMProviderTemplate:
+		return &v.Metadata
+	case *api.LLMProviderTemplate:
+		if v != nil {
+			return &v.Metadata
+		}
 	}
 	return nil
 }
 
 // GetLabels returns the labels from the Configuration metadata, regardless of type.
 func (c *StoredConfig) GetLabels() *map[string]string {
-	switch cfg := c.Configuration.(type) {
-	case api.RestAPI:
-		return cfg.Metadata.Labels
-	case api.AgentConfiguration:
-		return cfg.Metadata.Labels
-	case api.GraphQLAPI:
-		return cfg.Metadata.Labels
+	if md := c.GetMetadata(); md != nil {
+		return md.Labels
 	}
 	return nil
 }
 
 // GetAnnotations returns the annotations from the Configuration metadata, regardless of type.
 func (c *StoredConfig) GetAnnotations() *map[string]string {
-	switch cfg := c.Configuration.(type) {
-	case api.RestAPI:
-		return cfg.Metadata.Annotations
-	case api.AgentConfiguration:
-		return cfg.Metadata.Annotations
-	case api.GraphQLAPI:
-		return cfg.Metadata.Annotations
+	if md := c.GetMetadata(); md != nil {
+		return md.Annotations
 	}
 	return nil
 }

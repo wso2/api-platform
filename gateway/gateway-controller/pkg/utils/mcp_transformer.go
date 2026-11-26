@@ -327,7 +327,9 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	output.Spec = apiData
 
 	output.Metadata = api.Metadata{
-		Name: mcpConfig.Metadata.Name,
+		Name:        mcpConfig.Metadata.Name,
+		Annotations: mcpConfig.Metadata.Annotations,
+		Labels:      mcpConfig.Metadata.Labels,
 	}
 
 	return output, nil

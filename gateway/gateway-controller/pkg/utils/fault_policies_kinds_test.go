@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 )
 
 // Every non-REST kind is normalised into a RestAPI before the runtime transformer builds
@@ -69,6 +70,31 @@ func TestMCPTransformer_NoFaultPoliciesStaysNil(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got.Spec.FaultPolicies,
 		"an unset list must stay unset, not become empty")
+}
+
+func TestMCPTransformer_PreservesMetadataAnnotationsAndLabels(t *testing.T) {
+	annotations := map[string]string{
+		commonconstants.AnnotationProjectID: "proj-123",
+	}
+	labels := map[string]string{
+		commonconstants.DeprecatedLabelProjectID: "proj-123",
+	}
+	mcp := &api.MCPProxyConfiguration{
+		Metadata: api.Metadata{
+			Name:        "test-mcp",
+			Annotations: &annotations,
+			Labels:      &labels,
+		},
+	}
+
+	var out api.RestAPI
+	got, err := (&MCPTransformer{}).Transform(mcp, &out)
+	require.NoError(t, err)
+	assert.Equal(t, "test-mcp", got.Metadata.Name)
+	require.NotNil(t, got.Metadata.Annotations)
+	assert.Equal(t, "proj-123", (*got.Metadata.Annotations)[commonconstants.AnnotationProjectID])
+	require.NotNil(t, got.Metadata.Labels)
+	assert.Equal(t, "proj-123", (*got.Metadata.Labels)[commonconstants.DeprecatedLabelProjectID])
 }
 
 // The LLM provider path, using the same fixture shape the transformer's own tests use.
