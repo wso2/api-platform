@@ -18,6 +18,10 @@
 package controller
 
 const (
+	// AnnAPIGatewayDeleteImmediately, set to "true" on an APIGateway, uninstalls its release
+	// as soon as the APIGateway is deleted, skipping the operator's deletion grace period.
+	AnnAPIGatewayDeleteImmediately = "gateway.api-platform.wso2.com/delete-immediately"
+
 	// AnnK8sGatewayHelmValuesConfigMap references a ConfigMap in the Gateway namespace with key values.yaml.
 	AnnK8sGatewayHelmValuesConfigMap = "gateway.api-platform.wso2.com/helm-values-configmap"
 

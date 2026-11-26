@@ -69,13 +69,18 @@ func InstallOrUpgrade(ctx context.Context, in DeployInput) error {
 		return fmt.Errorf("create Helm client: %w", err)
 	}
 
+	valuesYAML, err := withVolumeRetention(in.ValuesYAML, in.Config.Gateway.RetainVolumeOnDelete)
+	if err != nil {
+		return err
+	}
+
 	releaseName := helm.GetReleaseName(in.GatewayName)
 	if err := helmClient.InstallOrUpgrade(ctx, helm.InstallOrUpgradeOptions{
 		ReleaseName:     releaseName,
 		Namespace:       in.Namespace,
 		ChartPath:       in.Config.Gateway.HelmChartPath,
 		ChartName:       in.Config.Gateway.HelmChartName,
-		ValuesYAML:      in.ValuesYAML,
+		ValuesYAML:      valuesYAML,
 		ValuesFilePath:  in.ValuesFilePath,
 		Version:         in.Config.Gateway.HelmChartVersion,
 		CreateNamespace: false,
@@ -100,6 +105,30 @@ func InstallOrUpgrade(ctx context.Context, in DeployInput) error {
 		Namespace:      in.Namespace,
 		FromGatewayAPI: in.FromGatewayAPI,
 	})
+}
+
+// volumeRetentionValues annotates the gateway controller's PersistentVolumeClaim so
+// Helm leaves it, and the data on it, in place when the release is uninstalled. A
+// release installed again under the same name adopts the claim, because Helm keeps
+// its release annotations on it.
+const volumeRetentionValues = `gateway:
+  controller:
+    persistence:
+      annotations:
+        helm.sh/resource-policy: keep
+`
+
+// withVolumeRetention layers volumeRetentionValues over the per-gateway values when
+// retain is set, so the operator setting wins over anything that says otherwise.
+func withVolumeRetention(valuesYAML string, retain bool) (string, error) {
+	if !retain {
+		return valuesYAML, nil
+	}
+	merged, err := helm.MergeValuesYAML(valuesYAML, volumeRetentionValues)
+	if err != nil {
+		return "", fmt.Errorf("add volume retention to gateway values: %w", err)
+	}
+	return merged, nil
 }
 
 // removeLegacyRelease uninstalls the release a gateway was deployed under before

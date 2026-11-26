@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -142,5 +143,42 @@ func TestOtherKindClaimsGateway_ignoresTheSameKind(t *testing.T) {
 	}
 	if got {
 		t.Fatal("an APIGateway reconcile must not treat its own APIGateway as a competing claim")
+	}
+}
+
+func TestWithVolumeRetention(t *testing.T) {
+	const values = "gateway:\n  controller:\n    persistence:\n      size: 1Gi\n      annotations:\n        team: payments\n"
+
+	unchanged, err := withVolumeRetention(values, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged != values {
+		t.Fatalf("values changed with retention off:\n%s", unchanged)
+	}
+
+	merged, err := withVolumeRetention(values, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := yaml.Unmarshal([]byte(merged), &got); err != nil {
+		t.Fatal(err)
+	}
+	persistence := got["gateway"].(map[string]interface{})["controller"].(map[string]interface{})["persistence"].(map[string]interface{})
+	annotations := persistence["annotations"].(map[string]interface{})
+	if annotations["helm.sh/resource-policy"] != "keep" {
+		t.Errorf("resource-policy annotation = %v, want keep", annotations["helm.sh/resource-policy"])
+	}
+	if annotations["team"] != "payments" || persistence["size"] != "1Gi" {
+		t.Errorf("existing persistence values were not preserved: %v", persistence)
+	}
+
+	fromEmpty, err := withVolumeRetention("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromEmpty == "" {
+		t.Fatal("retention produced no values from an empty overlay")
 	}
 }
