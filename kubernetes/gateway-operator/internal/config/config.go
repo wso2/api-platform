@@ -135,10 +135,16 @@ type ReconciliationConfig struct {
 	InitialBackoff time.Duration `koanf:"initial_backoff"`
 }
 
-// CacheConfig keeps objects the operator never reads out of its informer cache.
+// CacheConfig keeps objects the operator never reads out of its informer cache, and
+// bounds how long a controller waits for that cache to fill at startup.
 // Both exclusions are on by default; turn one off only if a resource references an
 // object it excludes.
 type CacheConfig struct {
+	// SyncTimeout is how long each controller waits for the informers it watches to
+	// complete their initial list before it fails to start, which stops the operator.
+	// On a large cluster the initial list can take longer than the default.
+	SyncTimeout time.Duration `koanf:"sync_timeout"`
+
 	// ExcludeHelmReleaseSecrets leaves Secrets labeled owner=helm (Helm's release
 	// storage) out of the cache.
 	ExcludeHelmReleaseSecrets bool `koanf:"exclude_helm_release_secrets"`
@@ -182,6 +188,7 @@ func getDefaults() map[string]interface{} {
 			"initial_backoff":           "1s",
 		},
 		"cache": map[string]interface{}{
+			"sync_timeout":                      "2m",
 			"exclude_helm_release_secrets":      true,
 			"exclude_gateway_chart_config_maps": true,
 		},
@@ -239,6 +246,16 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 			return "gateway.helm_chart_version"
 		case "helm_values_file_path":
 			return "gateway.helm_values_file_path"
+		// Keys whose own names contain underscores; the generic mapping below would
+		// split them into the wrong path (GATEWAY_API_ENABLED -> api.enabled).
+		case "api_enabled":
+			return "gateway_api.enabled"
+		case "cache_sync_timeout":
+			return "cache.sync_timeout"
+		case "cache_exclude_helm_release_secrets":
+			return "cache.exclude_helm_release_secrets"
+		case "cache_exclude_gateway_chart_config_maps":
+			return "cache.exclude_gateway_chart_config_maps"
 		default:
 			// For other vars, use standard mapping (underscore to dot)
 			s = strings.ReplaceAll(s, "_", ".")
@@ -317,6 +334,10 @@ func (c *OperatorConfig) Validate() error {
 	// Validate reconciliation config
 	if c.Reconciliation.MaxConcurrentReconciles < 1 {
 		return fmt.Errorf("max concurrent reconciles must be at least 1")
+	}
+
+	if c.Cache.SyncTimeout <= 0 {
+		return fmt.Errorf("cache.sync_timeout must be a positive duration")
 	}
 
 	// Validate retry/backoff config

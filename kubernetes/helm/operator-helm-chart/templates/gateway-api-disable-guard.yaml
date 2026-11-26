@@ -5,26 +5,32 @@ reconciles those Gateways, and the finalizers it put on Gateways and HTTPRoutes 
 deleting them, so the install or upgrade fails here and the running operator is left as it
 was. Delete those resources with gatewayApi.enabled still true, then disable it.
 
+Only the namespaces the operator watches are checked: watchNamespaces when it is set, every
+namespace otherwise. Gateway API resources elsewhere belong to another controller.
+
 Renders nothing. lookup returns nothing under `helm template` or a dry run, and when the
 Gateway API CRDs are absent, so the guard only acts on a real install or upgrade.
 */ -}}
 {{- if not (include "gateway-operator.gatewayApiEnabled" .) }}
 {{- $classes := default (list) .Values.gatewayApi.managedGatewayClassNames }}
+{{- $namespaces := default (list "") .Values.watchNamespaces }}
 {{- $blocking := list }}
-{{- range $gw := (dig "items" (list) (lookup "gateway.networking.k8s.io/v1" "Gateway" "" "")) }}
+{{- range $ns := $namespaces }}
+{{- range $gw := (dig "items" (list) (lookup "gateway.networking.k8s.io/v1" "Gateway" (trim $ns) "")) }}
   {{- $finalizers := default (list) $gw.metadata.finalizers }}
   {{- if or (has (toString $gw.spec.gatewayClassName) $classes) (has "gateway.api-platform.wso2.com/k8s-gateway-finalizer" $finalizers) }}
     {{- $blocking = append $blocking (printf "Gateway %s/%s" $gw.metadata.namespace $gw.metadata.name) }}
   {{- end }}
 {{- end }}
-{{- range $route := (dig "items" (list) (lookup "gateway.networking.k8s.io/v1" "HTTPRoute" "" "")) }}
+{{- range $route := (dig "items" (list) (lookup "gateway.networking.k8s.io/v1" "HTTPRoute" (trim $ns) "")) }}
   {{- if has "gateway.api-platform.wso2.com/httproute-finalizer" (default (list) $route.metadata.finalizers) }}
     {{- $blocking = append $blocking (printf "HTTPRoute %s/%s" $route.metadata.namespace $route.metadata.name) }}
   {{- end }}
 {{- end }}
+{{- end }}
 {{- if $blocking }}
 {{- $shown := $blocking }}
 {{- if gt (len $blocking) 10 }}{{ $shown = slice $blocking 0 10 }}{{ end }}
-{{- fail (printf "gatewayApi.enabled=false, but the operator still manages %d Gateway API resource(s): %s%s. Delete them with gatewayApi.enabled=true so their finalizers are removed, then disable it." (len $blocking) (join ", " $shown) (ternary ", ..." "" (gt (len $blocking) 10))) }}
+{{- fail (printf "gatewayApi.enabled=false, but the operator still manages %d Gateway API resource(s) in the namespaces it watches: %s%s. Delete them with gatewayApi.enabled=true so their finalizers are removed, then disable it." (len $blocking) (join ", " $shown) (ternary ", ..." "" (gt (len $blocking) 10))) }}
 {{- end }}
 {{- end }}
