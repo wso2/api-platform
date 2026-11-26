@@ -1532,7 +1532,7 @@ func (s *APIUtilsService) FetchPlatformSecrets(updatedAfter *time.Time, includeV
 // Platform API internal endpoint GET /internal/v1/secrets/:handle/value.
 // The Gateway authenticates using the same api-key header used for all Platform API calls.
 func (s *APIUtilsService) FetchPlatformSecretValue(secretHandle string) (string, error) {
-	valueURL := s.getBaseURL() + "/secrets/" + secretHandle + "/value"
+	valueURL := s.getBaseURL() + "/secrets/" + url.PathEscape(secretHandle) + "/value"
 
 	s.logger.Debug("Fetching platform secret value",
 		slog.String("secret_handle", secretHandle),

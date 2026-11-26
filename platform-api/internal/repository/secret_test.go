@@ -18,6 +18,8 @@
 package repository
 
 import (
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -516,6 +518,43 @@ func TestSecretRepo_FindRefs_DeduplicatesAcrossGateways(t *testing.T) {
 	// them into exactly one SecretReference.
 	if len(refs) != 1 {
 		t.Errorf("expected 1 deduplicated ref, got %d", len(refs))
+	}
+}
+
+// Only gateway rows count: the artifact-level row (empty gateway_id) is the
+// artifact's own config, not a deployment.
+func TestSecretRepo_FindDeployedGatewayIDs(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	orgID := "org-ref-005"
+	createTestOrganizationAndProject(t, db, orgID, "proj-ref-005")
+
+	for _, art := range []string{"art-uuid-005", "art-uuid-006"} {
+		if _, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, 'RestApi', ?)`, art, orgID); err != nil {
+			t.Fatalf("insert artifact: %v", err)
+		}
+	}
+	for _, row := range [][3]string{
+		{"art-uuid-005", "rotated", ""},
+		{"art-uuid-005", "rotated", "gw-001"},
+		{"art-uuid-006", "rotated", "gw-001"},
+		{"art-uuid-006", "rotated", "gw-002"},
+		{"art-uuid-006", "other", "gw-003"},
+	} {
+		if _, err := db.Exec(`INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id)
+			VALUES (?, ?, ?, ?)`, orgID, row[0], row[1], row[2]); err != nil {
+			t.Fatalf("insert ref %v: %v", row, err)
+		}
+	}
+
+	ids, err := NewSecretRepo(db).FindDeployedGatewayIDs(orgID, "rotated")
+	if err != nil {
+		t.Fatalf("FindDeployedGatewayIDs: %v", err)
+	}
+	sort.Strings(ids)
+	if want := []string{"gw-001", "gw-002"}; !reflect.DeepEqual(ids, want) {
+		t.Errorf("gateway ids = %v, want %v", ids, want)
 	}
 }
 

@@ -508,8 +508,17 @@ Rules the translator follows:
   the secret and redeploy. A failure to look a secret up at all (the secret store unreachable)
   is not the deployment's fault and is not recorded: the single fetch is a plain `500` and a
   batch fails as a whole. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
-  gateway only through a redeploy, and a `1.2.0` gateway only after its controller reconnects (it
-  caches each secret after the first fetch).
+  gateway only through a redeploy. A `1.2.0` gateway caches each secret after its first fetch:
+  its controller fetches the new value only when it reconnects, and routes already deployed keep
+  the old value until they are redeployed after that reconnect.
+- Rotating a secret's value (`PUT /secrets/{id}` with a different value) sends a `secret.updated`
+  event, carrying the handle only, to each gateway that has an artifact referencing the secret
+  deployed. Only current gateway builds handle it (no LTS release does, so LTS gateways are not
+  sent it): the controller fetches the new value and re-renders the deployed artifacts that use
+  it, so their routes send the new value without a redeploy. A current build also fetches every
+  referenced secret on each deployment, and re-renders the affected artifacts when a reconnect
+  sync brings in a changed value, so a gateway that missed the event catches up on its next
+  deployment or reconnect.
 - A gateway with no reported version (never connected, or a non-semver dev build) is treated as a
   current build.
 

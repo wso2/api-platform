@@ -114,6 +114,7 @@ type ControlPlaneClient interface {
 // *secrets.SecretService satisfies this interface.
 type secretSyncer interface {
 	UpsertFromPlatform(handle, displayName, plaintext string) error
+	Get(handle, correlationID string) (*models.Secret, error)
 }
 
 // WebhookSecretSnapshotRefresher is the extension point through which an
@@ -1533,6 +1534,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebBrokerAPIDeleted(c, event) })
 	case "application.updated":
 		c.handleApplicationUpdatedEvent(event)
+	case "secret.updated":
+		c.handleSecretUpdatedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),

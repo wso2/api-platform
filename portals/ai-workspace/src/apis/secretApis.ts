@@ -121,8 +121,10 @@ export async function getSecret(handle: string): Promise<SecretMetadata> {
 }
 
 /**
- * Rotates a secret's value. All {{ secret "handle" }} references remain valid —
- * the gateway picks up the new value on its next sync cycle.
+ * Rotates a secret's value. All {{ secret "handle" }} references remain valid.
+ * A current gateway build re-renders its deployed routes with the new value
+ * within seconds; a 1.2.0 gateway fetches it only on reconnect and applies it
+ * on the next deployment, and 1.0.0/1.1.0 gateways only on a redeploy.
  * Sent as multipart/form-data; the new plaintext value is never returned.
  */
 export async function updateSecret(

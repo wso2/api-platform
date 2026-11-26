@@ -30,6 +30,7 @@ func TestMinVersionsParse(t *testing.T) {
 	for name, v := range map[string]string{
 		"MinGatewayV1Version":                    MinGatewayV1Version,
 		"MinSecretSyncGatewayVersion":            MinSecretSyncGatewayVersion,
+		"MinSecretUpdatedEventGatewayVersion":    MinSecretUpdatedEventGatewayVersion,
 		"MinVerbatimMCPUpstreamPathVersion":      MinVerbatimMCPUpstreamPathVersion,
 		"MinLLMUpstreamAuthTypeNoneOtherVersion": MinLLMUpstreamAuthTypeNoneOtherVersion,
 		"MinMCPUpstreamAuthTypeNoneOtherVersion": MinMCPUpstreamAuthTypeNoneOtherVersion,
@@ -92,6 +93,12 @@ func TestSecretPredicates(t *testing.T) {
 	for _, raw := range []string{"1.2.0", "1.2.0-rc", "1.3.0", "", "it-e2e"} {
 		assert.Truef(t, SupportsSecretSync(raw), "%q syncs secrets itself", raw)
 		assert.Falsef(t, RequiresInlineSecrets(raw), "%q must keep its placeholders", raw)
+	}
+	for _, raw := range []string{"1.0.0", "1.1.0", "1.2.0", "1.3.0"} {
+		assert.Falsef(t, HandlesSecretUpdatedEvent(raw), "LTS %s does not handle secret.updated", raw)
+	}
+	for _, raw := range []string{"", "it-e2e", "2026.09.24"} {
+		assert.Truef(t, HandlesSecretUpdatedEvent(raw), "current build %q handles secret.updated", raw)
 	}
 }
 
