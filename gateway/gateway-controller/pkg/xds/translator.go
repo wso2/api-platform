@@ -52,7 +52,6 @@ import (
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	grpc_accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/grpc/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
-	headermutationv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_mutation/v3"
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	rbacv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
@@ -1545,14 +1544,6 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 	// Build HTTP filters chain
 	httpFilters := make([]*hcm.HttpFilter, 0)
 
-	// The client-address filter runs first, so no later filter, the access log or the
-	// backend sees a caller-set X-Forwarded-For.
-	clientAddressFilter, err := createClientAddressFilter()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create client address filter: %w", err)
-	}
-	httpFilters = append(httpFilters, clientAddressFilter)
-
 	// RBAC runs first, with no rules: only routes that enable it per route (the
 	// gateway health routes) are restricted, and a request it refuses never
 	// reaches the policy engine.
@@ -1621,12 +1612,6 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
 		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
 		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
-		// The client address is the connection's peer, or the X-Forwarded-For entry written by
-		// the outermost of xff_num_trusted_hops trusted proxies; never one the caller chose.
-		UseRemoteAddress:  wrapperspb.Bool(true),
-		XffNumTrustedHops: t.routerConfig.HTTPListener.XffNumTrustedHops,
-		// Keep a caller's x-request-id, as before use_remote_address marked requests external.
-		PreserveExternalRequestId: true,
 		// SANITIZE_SET, never APPEND_FORWARD: a caller-sent
 		// x-forwarded-client-cert must never survive as this connection's.
 		ForwardClientCertDetails: hcm.HttpConnectionManager_SANITIZE_SET,
@@ -3816,34 +3801,6 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: luaAny,
 		},
-	}, nil
-}
-
-// createClientAddressFilter returns a header_mutation filter that replaces X-Forwarded-For with
-// the client address the HCM resolved. Policies such as IP rate limits read the first entry, and
-// backends should not see in-cluster proxy addresses.
-func createClientAddressFilter() (*hcm.HttpFilter, error) {
-	mutationAny, err := anypb.New(&headermutationv3.HeaderMutation{
-		Mutations: &headermutationv3.Mutations{
-			RequestMutations: []*mutationrules.HeaderMutation{{
-				Action: &mutationrules.HeaderMutation_Append{
-					Append: &core.HeaderValueOption{
-						Header: &core.HeaderValue{
-							Key:   "x-forwarded-for",
-							Value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%",
-						},
-						AppendAction: core.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-					},
-				},
-			}},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &hcm.HttpFilter{
-		Name:       constants.ClientAddressFilterName,
-		ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: mutationAny},
 	}, nil
 }
 
