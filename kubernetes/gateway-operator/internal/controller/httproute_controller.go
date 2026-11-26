@@ -449,7 +449,10 @@ func (r *HTTPRouteReconciler) reconcileParentGateway(
 	}
 
 	auth := httprouteAuthFunc(r.Client, log, gwInfo)
-	ep := gwInfo.GetGatewayServiceEndpoint()
+	ep, err := managementEndpoint(ctx, r.Client, gwInfo)
+	if err != nil {
+		return restFailureOutcome(o, route, attachedRefs, log, err)
+	}
 	exists, err := r.rest().Exists(ctx, ep, handle, auth)
 	if err != nil {
 		return restFailureOutcome(o, route, attachedRefs, log, err)
@@ -484,7 +487,11 @@ func (r *HTTPRouteReconciler) reconcileParentGateway(
 
 	// The api-handle annotation changed: the new handle is live, so remove the old one.
 	if hadPrev && prev.Handle != "" && prev.Handle != handle {
-		if err := r.rest().Delete(ctx, ep, prev.Handle, auth); err != nil {
+		ep, err := managementEndpoint(ctx, r.Client, gwInfo)
+		if err == nil {
+			err = r.rest().Delete(ctx, ep, prev.Handle, auth)
+		}
+		if err != nil {
 			log.Error("failed to remove previous API handle from gateway",
 				slog.Any("error", err),
 				slog.String("previousHandle", prev.Handle))
@@ -609,7 +616,11 @@ func (r *HTTPRouteReconciler) removeFromGateway(ctx context.Context, c cleanupCa
 		if registered {
 			auth := httprouteAuthFunc(r.Client, log, info)
 			for _, h := range handles {
-				if err := r.rest().Delete(ctx, info.GetGatewayServiceEndpoint(), h, auth); err != nil {
+				ep, err := managementEndpoint(ctx, r.Client, info)
+				if err == nil {
+					err = r.rest().Delete(ctx, ep, h, auth)
+				}
+				if err != nil {
 					log.Info("skip API removal from Gateway being deleted", slog.String("handle", h), slog.Any("error", err))
 				}
 			}
@@ -619,7 +630,11 @@ func (r *HTTPRouteReconciler) removeFromGateway(ctx context.Context, c cleanupCa
 	if registered {
 		auth := httprouteAuthFunc(r.Client, log, info)
 		for _, h := range handles {
-			if err := r.rest().Delete(ctx, info.GetGatewayServiceEndpoint(), h, auth); err != nil {
+			ep, err := managementEndpoint(ctx, r.Client, info)
+			if err == nil {
+				err = r.rest().Delete(ctx, ep, h, auth)
+			}
+			if err != nil {
 				log.Error("failed to remove HTTPRoute API from Gateway", slog.Any("error", err), slog.String("handle", h))
 				return false, &gatewayRESTError{err: err}
 			}
@@ -837,7 +852,7 @@ func forEachBounded(n, limit int, fn func(i int)) {
 }
 
 func httprouteAuthFunc(c client.Client, log *slog.Logger, info *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
-	return func(ctx context.Context, req *http.Request) error {
+	return verifiedAuth(c, info, func(ctx context.Context, req *http.Request) error {
 		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, c, info)
 		if err != nil {
 			if log != nil {
@@ -855,7 +870,7 @@ func httprouteAuthFunc(c client.Client, log *slog.Logger, info *registry.Gateway
 		}
 		req.Header.Set("Authorization", "Basic "+auth.EncodeBasicAuth(username, password))
 		return nil
-	}
+	})
 }
 
 func payloadMetadataForHTTPRoute(route *gatewayv1.HTTPRoute, handle string) gatewayclient.RestAPIPayloadMetadata {

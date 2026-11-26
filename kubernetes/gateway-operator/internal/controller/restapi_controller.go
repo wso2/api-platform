@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -361,6 +362,9 @@ func (r *RestApiReconciler) processDeployment(
 
 	// Execute deployment (executeDeployment will check existence and decide POST vs PUT)
 	fp, err := r.executeDeployment(ctx, apiConfig, gateway)
+	if errors.Is(err, errControllerServiceUnverified) {
+		return r.handleControllerServiceWait(ctx, apiConfig, trackingKey, entry, err)
+	}
 	if err != nil {
 		return r.handleDeploymentError(ctx, apiConfig, trackingKey, entry, err)
 	}
@@ -422,14 +426,14 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 	}
 
 	handle := apiConfig.Name
-	auth := func(c context.Context, req *http.Request) error {
-		if err := r.addAuthToRequest(c, req, gateway); err != nil {
-			return err
-		}
-		return nil
-	}
+	auth := verifiedAuth(r.Client, gateway, func(c context.Context, req *http.Request) error {
+		return r.addAuthToRequest(c, req, gateway)
+	})
 
-	ep := gateway.GetGatewayServiceEndpoint()
+	ep, err := managementEndpoint(ctx, r.Client, gateway)
+	if err != nil {
+		return "", err
+	}
 	exists, err := gatewayclient.RestAPIExists(ctx, ep, handle, auth)
 	if err != nil {
 		return "", err
@@ -635,6 +639,31 @@ func (r *RestApiReconciler) handleNoGateway(ctx context.Context, apiConfig *apiv
 	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
+// handleControllerServiceWait holds a deployment while the gateway's controller Service cannot be
+// verified (see managementEndpoint). Like handleNoGateway, it waits for the gateway rather than
+// counting a failed attempt, so the retry budget is not used up and the API deploys once the
+// gateway is rediscovered, without a spec change.
+func (r *RestApiReconciler) handleControllerServiceWait(ctx context.Context, apiConfig *apiv1.RestApi, trackingKey string, entry *APITrackingEntry, cause error) (ctrl.Result, error) {
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
+	log.Info("Waiting for the gateway controller Service to be verified", slog.String("reason", cause.Error()))
+	// Retrying (not Processing) so the next reconcile deploys again; RetryCount is left as is.
+	entry.Status = TrackingStatusRetrying
+	r.apiTracker.Set(trackingKey, entry)
+
+	if err := r.updateProgrammedCondition(ctx, apiConfig, metav1.Condition{
+		Type:               apiv1.APIConditionProgrammed,
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: 0,
+		Reason:             apiv1.APIProgrammedReasonGatewayNotReady,
+		Message:            "Waiting for the gateway controller Service to be verified",
+		LastTransitionTime: metav1.Now(),
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+}
+
 // calculateBackoff calculates exponential backoff duration using operator configuration
 func (r *RestApiReconciler) calculateBackoff(retryCount int) time.Duration {
 	cfg := r.Config.Reconciliation
@@ -741,31 +770,36 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 	registryInstance := registry.GetGatewayRegistry()
 	matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
 
+	// Every gateway is attempted; any failure is returned so the finalizer stays and deletion
+	// is retried, rather than the CR disappearing while the API is still deployed. Gateways
+	// already cleaned up are cleaned up again on retry, which a delete tolerates.
+	var errs []error
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
 			log.Error("failed to delete API from gateway",
 				slog.Any("error", err),
 				slog.String("api", handle),
 				slog.String("gateway", gateway.Name))
-			// Continue with other gateways even if one fails
+			errs = append(errs, fmt.Errorf("%s/%s: %w", gateway.Namespace, gateway.Name, err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // deleteAPIFromGateway removes an API from a specific gateway
 func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle string, gateway *registry.GatewayInfo) error {
 	log := r.Logger.With(slog.String("controller", "RestApi"))
 
-	auth := func(c context.Context, req *http.Request) error {
-		if err := r.addAuthToRequest(c, req, gateway); err != nil {
-			return err
-		}
-		return nil
-	}
+	auth := verifiedAuth(r.Client, gateway, func(c context.Context, req *http.Request) error {
+		return r.addAuthToRequest(c, req, gateway)
+	})
 
-	if err := gatewayclient.DeleteRestAPI(ctx, gateway.GetGatewayServiceEndpoint(), handle, auth); err != nil {
+	ep, err := managementEndpoint(ctx, r.Client, gateway)
+	if err == nil {
+		err = gatewayclient.DeleteRestAPI(ctx, ep, handle, auth)
+	}
+	if err != nil {
 		log.Error("failed to delete API from gateway", slog.Any("error", err), slog.String("gateway", gateway.Name))
 		return err
 	}

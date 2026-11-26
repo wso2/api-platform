@@ -40,6 +40,12 @@ type GatewayInfo struct {
 
 	// FromGatewayAPI is true when this entry was registered from gateway.networking.k8s.io/Gateway.
 	FromGatewayAPI bool
+
+	// ServiceUID and ServiceSelector identify the controller Service as discovery verified it.
+	// Management calls check the live Service against them before using ServiceName, so a
+	// Service replaced or retargeted after registration is not trusted.
+	ServiceUID      string
+	ServiceSelector map[string]string
 }
 
 // GatewayRegistry maintains an in-memory registry of deployed gateways

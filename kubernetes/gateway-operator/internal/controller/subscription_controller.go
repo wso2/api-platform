@@ -279,6 +279,11 @@ func updateSubscriptionStatusOnFailure(ctx context.Context, gatewayEndpoint, sub
 		return cause
 	}
 	_, err := gatewayclient.UpdateSubscriptionStatus(ctx, gatewayEndpoint, subscriptionID, cr.Spec.Status, authFn)
+	if errors.Is(err, errControllerServiceUnverified) {
+		// The status was not sent because the controller Service could not be verified: report the
+		// wait, so the reconciler retries once the gateway is rediscovered and the status still applies.
+		return err
+	}
 	var retryable *gatewayclient.RetryableError
 	if errors.As(err, &retryable) {
 		return &gatewayclient.RetryableError{

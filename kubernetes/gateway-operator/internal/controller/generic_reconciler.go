@@ -405,9 +405,16 @@ func (r *GenericReconciler) processDeployment(ctx context.Context, obj client.Ob
 	}
 
 	authFn := r.buildAuthFn(gateway)
-	endpoint := gateway.GetGatewayServiceEndpoint()
+	endpoint, err := managementEndpoint(ctx, r.Client, gateway)
+	if err != nil {
+		return r.handleControllerServiceWait(ctx, obj, trackingKey, entry, err)
+	}
 
 	result, err := r.Adapter.Deploy(ctx, r.Client, endpoint, obj, authFn)
+	if errors.Is(err, errControllerServiceUnverified) {
+		// authFn verifies the Service before each request; a refusal mid-Deploy is a wait too.
+		return r.handleControllerServiceWait(ctx, obj, trackingKey, entry, err)
+	}
 	if err != nil {
 		return r.handleDeploymentError(ctx, obj, trackingKey, entry, err)
 	}
@@ -439,7 +446,7 @@ func (r *GenericReconciler) findTargetGateway(obj client.Object) *registry.Gatew
 }
 
 func (r *GenericReconciler) buildAuthFn(gateway *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
-	return func(ctx context.Context, req *http.Request) error {
+	return verifiedAuth(r.Client, gateway, func(ctx context.Context, req *http.Request) error {
 		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gateway)
 		if err != nil {
 			return fmt.Errorf("retrieve auth config for gateway %q: %w", gateway.Name, err)
@@ -456,7 +463,7 @@ func (r *GenericReconciler) buildAuthFn(gateway *registry.GatewayInfo) gatewaycl
 		}
 		req.Header.Set("Authorization", "Basic "+auth.EncodeBasicAuth(username, password))
 		return nil
-	}
+	})
 }
 
 func (r *GenericReconciler) setInitialConditions(ctx context.Context, obj client.Object, generation int64) error {
@@ -626,6 +633,30 @@ func (r *GenericReconciler) handleNoGateway(ctx context.Context, obj client.Obje
 	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
+// handleControllerServiceWait holds a deployment while the gateway's controller Service cannot be
+// verified (see managementEndpoint). Like handleNoGateway, it waits for the gateway rather than
+// counting a failed attempt, so the retry budget is not used up and the resource deploys once
+// the gateway is rediscovered, without a spec change.
+func (r *GenericReconciler) handleControllerServiceWait(ctx context.Context, obj client.Object, trackingKey string, entry *ResourceTrackingEntry, cause error) (ctrl.Result, error) {
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
+	log.Info("waiting for the gateway controller Service to be verified", slog.String("reason", cause.Error()))
+	// Retrying (not Processing) so the next reconcile deploys again; RetryCount is left as is.
+	entry.Status = ResourceStatusRetrying
+	entry.GatewayDeploySucceeded = false
+	r.Tracker.Set(trackingKey, entry)
+	if err := r.updateProgrammed(ctx, obj, metav1.Condition{
+		Type:               apiv1.ConditionProgrammed,
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: 0,
+		Reason:             apiv1.ReasonGatewayNotReady,
+		Message:            "Waiting for the gateway controller Service to be verified",
+		LastTransitionTime: metav1.Now(),
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+}
+
 func (r *GenericReconciler) calculateBackoff(retryCount int) time.Duration {
 	cfg := r.Config.Reconciliation
 	initial := cfg.InitialBackoff
@@ -715,7 +746,11 @@ func (r *GenericReconciler) cleanupAllGateways(ctx context.Context, obj client.O
 	var deleteErrs []error
 	for _, gateway := range matched {
 		authFn := r.buildAuthFn(gateway)
-		if err := r.Adapter.Delete(ctx, gateway.GetGatewayServiceEndpoint(), obj, authFn); err != nil {
+		endpoint, err := managementEndpoint(ctx, r.Client, gateway)
+		if err == nil {
+			err = r.Adapter.Delete(ctx, endpoint, obj, authFn)
+		}
+		if err != nil {
 			log.Error("failed to delete from gateway",
 				slog.Any("error", err),
 				slog.String("gateway", gateway.Name))

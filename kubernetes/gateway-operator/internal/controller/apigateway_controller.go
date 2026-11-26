@@ -125,6 +125,9 @@ type GatewayReconciler struct {
 	Config         *config.OperatorConfig
 	gatewayTracker *GatewayTracker
 	Logger         *slog.Logger
+	// releaseServices reads the controller Service from the gateway's Helm release; nil
+	// builds a Helm client from Config.
+	releaseServices releaseServiceSource
 }
 
 // NewGatewayReconciler creates a new GatewayReconciler
@@ -887,7 +890,14 @@ func (r *GatewayReconciler) registerAPIGateway(ctx context.Context, gatewayConfi
 	if gatewayConfig.Spec.ControlPlane != nil {
 		cpHost = gatewayConfig.Spec.ControlPlane.Host
 	}
-	if err := registerGatewayInRegistry(ctx, r.Client, gatewayConfig.Name, namespace, &gatewayConfig.Spec.APISelector, cpHost, helmCM, false); err != nil {
+	src := r.releaseServices
+	if src == nil {
+		var err error
+		if src, err = newReleaseServiceSource(r.Config); err != nil {
+			return fmt.Errorf("create helm client: %w", err)
+		}
+	}
+	if err := registerGatewayInRegistry(ctx, r.Client, src, gatewayConfig.Name, namespace, &gatewayConfig.Spec.APISelector, cpHost, helmCM, false); err != nil {
 		return err
 	}
 	log.Info("Successfully registered gateway in registry", slog.String("name", gatewayConfig.Name))
