@@ -3325,6 +3325,42 @@ const promotionStages = `{"list":[
 	{"environment":"env-1","gateways":[{"gatewayId":"gw-1","status":"NOT_DEPLOYED"}]},
 	{"environment":"env-2","gateways":[]}]}`
 
+func TestTestbenchURLAcceptsALocalTestbenchOnlyWhenTheLocalDataPlaneIsOn(t *testing.T) {
+	const env = "CLOUD_IT_TEST_TESTBENCH_URL"
+	local := "http://development-wso2cloud.openchoreoapis.localhost:19080/apip-testbench-mocks/backend/"
+
+	got, err := testbenchURL(env, "https://testbench.example.com/mocks/backend/")
+	require.NoError(t, err)
+	require.Equal(t, "https://testbench.example.com/mocks/backend", got, "the default, without a trailing slash")
+
+	for _, value := range []string{local, "http://testbench.example.com/backend", "ftp://x.localhost/b", "https://", " "} {
+		t.Setenv(env, value)
+		if strings.TrimSpace(value) == "" {
+			got, err := testbenchURL(env, "https://testbench.example.com/backend")
+			require.NoError(t, err, "a blank value falls back to the default")
+			require.Equal(t, "https://testbench.example.com/backend", got)
+			continue
+		}
+		_, err := testbenchURL(env, "https://testbench.example.com/backend")
+		require.ErrorContains(t, err, env, value)
+	}
+
+	t.Setenv(cloudLocalDataPlaneEnv, "true")
+	t.Setenv(env, local)
+	got, err = testbenchURL(env, "")
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSuffix(local, "/"), got)
+	for _, value := range []string{"http://testbench.example.com/backend", "http://127.0.0.1:19080/backend",
+		"http://user:pass@x.localhost/backend", "ftp://x.localhost/backend"} {
+		t.Setenv(env, value)
+		_, err := testbenchURL(env, "")
+		require.Error(t, err, "only a named .localhost host over http(s) is widened: %s", value)
+	}
+	t.Setenv(env, "https://testbench.example.com/backend")
+	_, err = testbenchURL(env, "")
+	require.NoError(t, err, "https stays accepted")
+}
+
 func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) {
 	local := []string{
 		"http://gw-development.openchoreoapis.localhost:19080/api",

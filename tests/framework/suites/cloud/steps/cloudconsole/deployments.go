@@ -44,15 +44,18 @@ const (
 )
 
 // testbenchURL reads the https base URL of a testbench service from the environment, falling
-// back to the given default, without a trailing slash.
+// back to the given default, without a trailing slash. With CLOUD_IT_LOCAL_DATA_PLANE on, the
+// testbench of a cloud on the developer's machine is accepted as well: http on a .localhost host.
 func testbenchURL(env, fallback string) (string, error) {
 	value := strings.TrimSpace(os.Getenv(env))
 	if value == "" {
 		value = fallback
 	}
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return "", fmt.Errorf("%s must be an https URL with a host", env)
+	if err != nil || parsed.Host == "" ||
+		(parsed.Scheme != "https" && !(localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed))) {
+		return "", fmt.Errorf("%s must be an https URL with a host, or http on a .localhost host with %s on",
+			env, cloudLocalDataPlaneEnv)
 	}
 	return strings.TrimRight(value, "/"), nil
 }
