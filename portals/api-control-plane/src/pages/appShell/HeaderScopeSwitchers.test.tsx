@@ -367,16 +367,30 @@ describe('HeaderScopeSwitchers — project menu', () => {
       params: { orgHandle: ORG, projectHandler: 'retail-apis' },
     });
 
-  it('shows a search field and each project’s description, and never its id', async () => {
+  it('shows a search field and each project’s name only, with no description or id', async () => {
     const { user } = renderTrail(scopeInProject());
 
     await user.click(trigger('Switch project'));
 
     // Only two projects — below Oxygen's own search threshold.
     expect(await screen.findByPlaceholderText('Search projects...')).toBeInTheDocument();
-    expect(screen.getByText('Everything the shops call')).toBeInTheDocument();
+    expect(screen.queryByText('Everything the shops call')).not.toBeInTheDocument();
     expect(screen.queryByText('plain-project')).not.toBeInTheDocument();
     expect(screen.queryByText('retail-apis')).not.toBeInTheDocument();
+  });
+
+  it('opens the chosen project from the organization’s Projects page', async () => {
+    // The Projects page has no project-level counterpart, so the current page
+    // resolves back to the same URL: picking a project must still leave it.
+    const { user } = renderTrail(
+      makeConsoleScope({ projects: SCENARIO_PROJECTS, params: { orgHandle: ORG } }),
+      { route: routes.projects(ORG) },
+    );
+
+    await user.click(trigger('Select Project'));
+    await user.click(await screen.findByRole('menuitemradio', { name: /Retail APIs/ }));
+
+    expect(screen.getByText(`at ${routes.projectHome(ORG, 'retail-apis')}`)).toBeInTheDocument();
   });
 
   it('opens the new-project page from the New project action', async () => {

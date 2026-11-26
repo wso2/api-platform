@@ -190,7 +190,11 @@ export function HeaderScopeSwitchers() {
       orgHandle: params.orgHandle,
       projectHandler,
     });
-    navigate(target ?? routes.projectHome(params.orgHandle, projectHandler));
+    // A page with no project-level counterpart (the organization's Projects
+    // list, say) resolves to its own organization URL, which would navigate
+    // nowhere: only a target inside the chosen project is taken.
+    const projectHome = routes.projectHome(params.orgHandle, projectHandler);
+    navigate(target?.startsWith(projectHome) ? target : projectHome);
   };
 
   const changeApi = (apiHandler: string) => {
@@ -329,7 +333,7 @@ export function HeaderScopeSwitchers() {
       id: ORGANIZATION_LEVEL,
       label: intl.formatMessage(messages.orgLevel),
       icon: <Building2 size={LEVEL_ICON_SIZE} />,
-      items: orgOptions.map((item) => ({ id: item.handle, name: item.name, description: item.handle })),
+      items: orgOptions.map((item) => ({ id: item.handle, name: item.name })),
       selectedId: params.orgHandle,
       menuTitle: intl.formatMessage(messages.orgMenuTitle),
       searchPlaceholder: intl.formatMessage(messages.orgSearch),
@@ -342,7 +346,6 @@ export function HeaderScopeSwitchers() {
       items: projectOptions.map((item) => ({
         id: item.handler,
         name: item.name,
-        description: item.description || undefined,
       })),
       selectedId: params.projectHandler,
       searchable: true,

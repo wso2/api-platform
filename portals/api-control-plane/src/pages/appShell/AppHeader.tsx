@@ -37,8 +37,7 @@ import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
 import { useSlot } from '@/slots';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
-const BRAND_LOGO_HEIGHT = '1.75rem';
-const BRAND_NAME_FONT_SIZE = '1.125rem';
+const BRAND_LOGO_HEIGHT = '2rem';
 /** Matches Oxygen's own Header.Toggle icon size, so swapping the glyph doesn't resize the button. */
 const TOGGLE_ICON_SIZE = 20;
 
@@ -110,7 +109,7 @@ export function AppHeader() {
         onClick={goToOrganizationHome}
       >
         <Header.BrandLogo>
-          <BrandLockup fontSize={BRAND_NAME_FONT_SIZE} height={BRAND_LOGO_HEIGHT} />
+          <BrandLockup height={BRAND_LOGO_HEIGHT} />
         </Header.BrandLogo>
       </Header.Brand>
 
