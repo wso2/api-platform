@@ -100,13 +100,20 @@ func (s *Steps) createServiceAccount(ctx context.Context, role string) error {
 		}
 		return responseError(resp)
 	}
-	var created struct {
-		ID           string `json:"id"`
+	// The answer is ServiceAccountCredentials: the account, with its id, next to the credentials.
+	var answer struct {
+		ServiceAccount struct {
+			ID string `json:"id"`
+		} `json:"serviceAccount"`
 		ClientID     string `json:"clientId"`
 		ClientSecret string `json:"clientSecret"`
 	}
-	if err := json.Unmarshal(resp.Body, &created); err != nil || created.ID == "" || created.ClientID == "" || created.ClientSecret == "" {
+	if err := json.Unmarshal(resp.Body, &answer); err != nil || answer.ServiceAccount.ID == "" ||
+		answer.ClientID == "" || answer.ClientSecret == "" {
 		return fmt.Errorf("the service account %q was created, but its answer names no id, client ID and secret", name)
+	}
+	created := struct{ ID, ClientID, ClientSecret string }{
+		answer.ServiceAccount.ID, answer.ClientID, answer.ClientSecret,
 	}
 	if created.ID != name {
 		// Register the id the platform answered with before dropping the guess, so the account is

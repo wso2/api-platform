@@ -10311,7 +10311,8 @@ func serviceAccountSteps(t *testing.T) (*Steps, context.Context, *cleanup.Regist
 
 func TestCreateServiceAccountKeepsTheCredentialsAndRegistersTheAccount(t *testing.T) {
 	steps, ctx, registry, platform := serviceAccountSteps(t)
-	platform.createBody = `{"id":"{{name}}","clientId":"sa_client","clientSecret":"apsa_secret"}`
+	platform.createBody = `{"serviceAccount":{"id":"{{name}}","displayName":"{{name}}"},` +
+		`"clientId":"sa_client","clientSecret":"apsa_secret"}`
 
 	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
 	name := optionalValue(ctx, keyServiceAccountID)
@@ -10324,16 +10325,25 @@ func TestCreateServiceAccountKeepsTheCredentialsAndRegistersTheAccount(t *testin
 	require.Error(t, err, "the answer that carries the secret is never published")
 
 	// The platform may answer with another id than the name: that one is registered instead.
-	platform.createBody = `{"id":"other-id","clientId":"sa_client","clientSecret":"apsa_secret"}`
+	platform.createBody = `{"serviceAccount":{"id":"other-id"},"clientId":"sa_client","clientSecret":"apsa_secret"}`
 	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
 	require.Equal(t, "other-id", optionalValue(ctx, keyServiceAccountID))
 	require.ElementsMatch(t, []string{name, "other-id"}, pendingOf(registry, kindServiceAccount))
 
+	// The id is the account's, inside serviceAccount: an id beside the credentials is not read,
+	// and the account stays registered under the name it was created with.
+	platform.createBody = `{"id":"flat-id","clientId":"sa_client","clientSecret":"apsa_secret"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "names no id")
+	require.NotContains(t, pendingOf(registry, kindServiceAccount), "flat-id")
+	require.Len(t, pendingOf(registry, kindServiceAccount), 3)
+
 	// A refused create stores nothing, so nothing stays registered; the answer has no secret.
+	before := pendingOf(registry, kindServiceAccount)
 	platform.createStatus, platform.createBody = http.StatusBadRequest, `{"code":"VALIDATION_FAILED"}`
 	err = steps.createServiceAccount(ctx, "ap_service_account")
 	require.ErrorContains(t, err, "VALIDATION_FAILED")
-	require.ElementsMatch(t, []string{name, "other-id"}, pendingOf(registry, kindServiceAccount))
+	require.ElementsMatch(t, before, pendingOf(registry, kindServiceAccount))
 
 	// A created account whose answer cannot be read stays registered under its name, and the
 	// error never repeats the answer, which may carry the secret.
