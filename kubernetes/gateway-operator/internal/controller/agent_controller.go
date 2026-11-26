@@ -194,7 +194,7 @@ func (a *agentAdapter) Deploy(ctx context.Context, k8sClient client.Client, gate
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,
-			Annotations: cr.Annotations,
+			Annotations: payloadAnnotations(cr.Annotations),
 		}, specPayload)
 	if err != nil {
 		return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("build payload: %w", err)}

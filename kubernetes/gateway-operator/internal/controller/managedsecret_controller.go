@@ -118,7 +118,7 @@ func (a *managedSecretAdapter) Deploy(ctx context.Context, k8sClient client.Clie
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,
-			Annotations: cr.Annotations,
+			Annotations: payloadAnnotations(cr.Annotations),
 		}, flat)
 	if err != nil {
 		return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("build payload: %w", err)}

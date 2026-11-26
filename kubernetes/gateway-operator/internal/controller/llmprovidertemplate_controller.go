@@ -98,7 +98,7 @@ func (a *llmProviderTemplateAdapter) Deploy(ctx context.Context, _ client.Client
 		gatewayclient.EnvelopeMetadata{
 			Name:        cr.Name,
 			Labels:      cr.Labels,
-			Annotations: cr.Annotations,
+			Annotations: payloadAnnotations(cr.Annotations),
 		}, cr.Spec)
 	if err != nil {
 		return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("build payload: %w", err)}
