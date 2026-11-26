@@ -109,7 +109,8 @@ func (h *GraphQLAPIDeploymentHandler) UndeployGraphQLAPIDeployment(w http.Respon
 	if apiId == "" {
 		return apperror.ValidationFailed.New("GraphQL API ID is required")
 	}
-	deployment, err := h.deploymentService.UndeployGraphQLAPIDeployment(apiId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.UndeployGraphQLAPIDeployment(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to undeploy GraphQL API %s deployment %s on gateway %q", apiId, deploymentId, gatewayId))
 	}
@@ -133,7 +134,8 @@ func (h *GraphQLAPIDeploymentHandler) RestoreGraphQLAPIDeployment(w http.Respons
 	if apiId == "" {
 		return apperror.ValidationFailed.New("GraphQL API ID is required")
 	}
-	deployment, err := h.deploymentService.RestoreGraphQLAPIDeployment(apiId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.RestoreGraphQLAPIDeployment(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to restore GraphQL API %s deployment %s on gateway %q", apiId, deploymentId, gatewayId))
 	}

@@ -21,8 +21,6 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
-
-	"github.com/google/uuid"
 )
 
 // AuditRepo writes records to the audit table.
@@ -31,14 +29,13 @@ type AuditRepo struct {
 }
 
 // NewAuditRepo creates a new AuditRepo.
-func NewAuditRepo(db *database.DB) AuditRepository {
+func NewAuditRepo(db *database.DB) *AuditRepo {
 	return &AuditRepo{db: db}
 }
 
 // Record inserts a single audit row. Failures are non-fatal — callers should ignore the returned error.
-func (r *AuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	id := uuid.New().String()
+func (r *AuditRepo) Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error {
 	query := `INSERT INTO audit (uuid, action, resource_uuid, resource_type, organization_uuid, performed_by, performed_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
-	_, err := r.db.Exec(r.db.Rebind(query), id, action, resourceUUID, resourceType, orgUUID, performedBy, time.Now().UTC())
+	_, err := r.db.Exec(r.db.Rebind(query), id, action, resourceUUID, resourceType, orgUUID, performedBy, performedAt)
 	return err
 }

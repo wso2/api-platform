@@ -51,6 +51,7 @@ type WebSubAPIDeploymentService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	auditService         *coreservice.AuditService
 }
 
 // NewWebSubAPIDeploymentService creates a new WebSubAPIDeploymentService
@@ -65,8 +66,10 @@ func NewWebSubAPIDeploymentService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	auditService *coreservice.AuditService,
 ) *WebSubAPIDeploymentService {
 	return &WebSubAPIDeploymentService{
+		auditService:         auditService,
 		websubAPIRepo:        websubAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
@@ -90,21 +93,21 @@ func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(apiHandle string, r
 }
 
 // RestoreWebSubAPIDeploymentByHandle restores a previous deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) RestoreWebSubAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) RestoreWebSubAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.restoreWebSubAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.restoreWebSubAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
 }
 
 // UndeployWebSubAPIDeploymentByHandle undeploys a deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) UndeployWebSubAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) UndeployWebSubAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.undeployWebSubAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.undeployWebSubAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
 }
 
 // DeleteWebSubAPIDeploymentByHandle deletes a deployment using WebSub API handle
@@ -279,6 +282,10 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("DEPLOY", deploymentID, "deployment", orgID, createdBy)
+	}
+
 	return toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -294,7 +301,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 }
 
 // undeployWebSubAPIDeployment undeploys a WebSub API from a gateway
-func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so the control plane must not
 	// initiate an undeployment for them.
@@ -378,6 +385,10 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 		}
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("UNDEPLOY", deployment.DeploymentID, "deployment", orgID, actor)
+	}
+
 	return toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -393,7 +404,7 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 }
 
 // restoreWebSubAPIDeployment restores a previously undeployed WebSub API deployment
-func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
@@ -461,6 +472,10 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
 		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("RESTORE", targetDeployment.DeploymentID, "deployment", orgID, actor)
 	}
 
 	return toAPIDeploymentResponse(

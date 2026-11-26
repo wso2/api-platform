@@ -96,6 +96,7 @@ type Deps struct {
 	GatewayEventsService *service.GatewayEventsService
 	APIKeyService        *service.APIKeyService
 	IdentityService      *service.IdentityService
+	AuditService         *service.AuditService
 
 	// DBEncryptionKey is the derived hex key used for encrypted DB columns.
 	DBEncryptionKey string
