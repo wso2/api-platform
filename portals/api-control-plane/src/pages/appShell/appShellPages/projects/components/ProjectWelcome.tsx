@@ -53,7 +53,7 @@ const messages = defineMessages({
   intro: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.intro',
     defaultMessage:
-      "You're in the <strong>{projectName}</strong> project. It's empty for now, so start creating.",
+      "You're in the <strong>{projectName}</strong> project. Nothing is published yet, so start with your first API.",
     description: '{projectName} is the name of the project the user is in. Never translated.',
   },
   startHere: {
@@ -63,7 +63,7 @@ const messages = defineMessages({
   },
   heroTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroTitle',
-    defaultMessage: 'Expose and secure APIs',
+    defaultMessage: 'Govern and manage every API',
   },
   heroDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroDescription',
@@ -72,15 +72,15 @@ const messages = defineMessages({
   },
   createApi: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.createApi',
-    defaultMessage: 'Create API',
+    defaultMessage: 'Create an API',
   },
   gatewayTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayTitle',
-    defaultMessage: 'Run on any gateway',
+    defaultMessage: 'Run your APIs on any gateway',
   },
   gatewayDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayDescription',
-    defaultMessage: 'Deploy to a managed gateway or a self-hosted one in your own cluster.',
+    defaultMessage: 'Deploy your APIs to a managed gateway or a self-hosted one in your own cluster.',
   },
   gatewayCount: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayCount',

@@ -124,15 +124,15 @@ describe('ProjectWelcome', () => {
     expect(await screen.findByText('Acme')).toBeInTheDocument();
     expect(screen.getByText(/Hello,/)).toBeInTheDocument();
     expect(screen.getByText('Retail')).toBeInTheDocument();
-    expect(screen.getByText('Expose and secure APIs')).toBeInTheDocument();
+    expect(screen.getByText('Govern and manage every API')).toBeInTheDocument();
   });
 
-  it('opens API creation from Create API', async () => {
+  it('opens API creation from Create an API', async () => {
     serveCounts(0, 0);
     const onCreateApi = vi.fn();
     const { user } = renderWelcome({ onCreateApi });
 
-    await user.click(await screen.findByRole('button', { name: 'Create API' }));
+    await user.click(await screen.findByRole('button', { name: 'Create an API' }));
 
     expect(onCreateApi).toHaveBeenCalledTimes(1);
   });
@@ -141,8 +141,8 @@ describe('ProjectWelcome', () => {
     serveCounts(0, 0);
     renderWelcome({ enforce: true, scopes: [] });
 
-    await screen.findByText('Expose and secure APIs');
-    expect(screen.queryByRole('button', { name: 'Create API' })).not.toBeInTheDocument();
+    await screen.findByText('Govern and manage every API');
+    expect(screen.queryByRole('button', { name: 'Create an API' })).not.toBeInTheDocument();
   });
 
   describe('gateway and portal cards', () => {
@@ -176,7 +176,7 @@ describe('ProjectWelcome', () => {
       serveCounts(0, 0);
       renderWelcome({ enforce: true, scopes: [] });
 
-      await screen.findByText('Run on any gateway');
+      await screen.findByText('Run your APIs on any gateway');
       expect(screen.queryByRole('button', { name: /Connect a gateway/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Create a portal/ })).not.toBeInTheDocument();
     });
