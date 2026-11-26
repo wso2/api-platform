@@ -26,12 +26,12 @@ Docker selects your machine's architecture automatically.
 
 ## Example
 
-If your ZIP is `/tmp/binaries/api-gateway.1.2.0.13.zip`, run this from the
+If your ZIP is `/tmp/binaries/api-gateway-1.2.0.13.zip`, run this from the
 repository root:
 
 ```bash
 docker build \
-  --build-arg BINARY_PATH=api-gateway.1.2.0.13.zip \
+  --build-arg BINARY_PATH=api-gateway-1.2.0.13.zip \
   --build-arg PRODUCT_VERSION=1.2.0.13 \
   -f gateway/distribution/Dockerfile.gateway-runtime \
   -t local/gateway-runtime:1.2.0.13 \

@@ -26,7 +26,7 @@ RUN set -eu; \
     elif [ -f "$root/controller-amd64" ] || [ -f "$root/controller-arm64" ]; then \
         component="$root"; \
     else \
-        set -- "$root"/api-gateway.*/gateway-controller; \
+        set -- "$root"/api-gateway-*/gateway-controller; \
         if [ "$#" -ne 1 ] || [ ! -d "$1" ]; then \
             echo "Error: BINARY_PATH does not contain a gateway-controller binary package" >&2; \
             exit 1; \
