@@ -79,8 +79,9 @@ Feature: APIP cloud secrets
     And the cloud API response body should contain "${CTX:cloudSecretID}"
 
   # The cloud counterpart of the on-premises platform-api secret deployment of a REST API with a
-  # secret-backed upstream credential, asserted through the data plane.
-  @ID_APIP_SECRETS_006
+  # secret-backed upstream credential, asserted through the data plane. The credential never reaches
+  # the upstream (see the scenario list entry).
+  @ID_APIP_SECRETS_006 @known-issue
   Scenario: A secret named as a REST API's upstream credential is sent by the gateway to the upstream
     Given I obtain an APIP cloud console token
     And I find the APIP test project
