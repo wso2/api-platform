@@ -50,6 +50,12 @@ type OperatorConfig struct {
 
 // GatewayAPIConfig holds settings for gateway.networking.k8s.io resources.
 type GatewayAPIConfig struct {
+	// Enabled turns on the Gateway API controllers (GatewayClass, Gateway, HTTPRoute).
+	// When false they are not started, nothing caches Gateway API resources, and the
+	// Service and Deployment caches hold only the gateway chart's own objects. The
+	// APIGateway flow and the management resources are unaffected.
+	Enabled bool `koanf:"enabled"`
+
 	// GatewayClassNames lists spec.gatewayClassName values this operator manages.
 	// Only Gateway and HTTPRoute parentRefs targeting these classes are reconciled.
 	GatewayClassNames []string `koanf:"gateway_class_names"`
@@ -164,6 +170,7 @@ func getDefaults() map[string]interface{} {
 			"helm_values_file_path": "",
 		},
 		"gateway_api": map[string]interface{}{
+			"enabled":             true,
 			"gateway_class_names": []string{"wso2-api-platform"},
 			"cluster_domain":      "cluster.local",
 		},

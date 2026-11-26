@@ -49,3 +49,25 @@ func TestCacheExclusionsCanBeTurnedOff(t *testing.T) {
 		t.Fatalf("Cache = %+v, want both exclusions off", cfg.Cache)
 	}
 }
+
+func TestGatewayAPIEnabledByDefault(t *testing.T) {
+	cfg, err := LoadConfig("")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !cfg.GatewayAPI.Enabled {
+		t.Fatal("GatewayAPI.Enabled = false, want true by default")
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("gateway_api:\n  enabled: false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.GatewayAPI.Enabled {
+		t.Fatal("GatewayAPI.Enabled = true, want false from the config file")
+	}
+}
