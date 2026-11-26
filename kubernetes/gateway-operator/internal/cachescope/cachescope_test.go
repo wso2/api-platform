@@ -17,9 +17,11 @@ limitations under the License.
 package cachescope
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -28,6 +30,14 @@ import (
 
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 )
+
+// operatorConfig returns an operator config with the given cache settings and the
+// Gateway API controllers on, as they are by default.
+func operatorConfig(c config.CacheConfig) *config.OperatorConfig {
+	cfg := &config.OperatorConfig{Cache: c}
+	cfg.GatewayAPI.Enabled = true
+	return cfg
+}
 
 // selectorFor returns the ByObject label selector for obj's type, or nil.
 func selectorFor(t *testing.T, opts cache.Options, obj client.Object) labels.Selector {
@@ -41,7 +51,7 @@ func selectorFor(t *testing.T, opts cache.Options, obj client.Object) labels.Sel
 }
 
 func TestOptionsExcludesHelmReleaseSecrets(t *testing.T) {
-	opts, err := Options(nil, config.CacheConfig{ExcludeHelmReleaseSecrets: true})
+	opts, err := Options(nil, operatorConfig(config.CacheConfig{ExcludeHelmReleaseSecrets: true}))
 	if err != nil {
 		t.Fatalf("Options: %v", err)
 	}
@@ -77,7 +87,7 @@ func TestOptionsExcludesHelmReleaseSecrets(t *testing.T) {
 }
 
 func TestOptionsExcludesGatewayChartConfigMaps(t *testing.T) {
-	opts, err := Options(nil, config.CacheConfig{ExcludeGatewayChartConfigMaps: true})
+	opts, err := Options(nil, operatorConfig(config.CacheConfig{ExcludeGatewayChartConfigMaps: true}))
 	if err != nil {
 		t.Fatalf("Options: %v", err)
 	}
@@ -122,7 +132,7 @@ func TestOptionsExcludesGatewayChartConfigMaps(t *testing.T) {
 
 func TestOptionsWithExclusionsOff(t *testing.T) {
 	ns := map[string]cache.Config{"team-a": {}}
-	opts, err := Options(ns, config.CacheConfig{})
+	opts, err := Options(ns, operatorConfig(config.CacheConfig{}))
 	if err != nil {
 		t.Fatalf("Options: %v", err)
 	}
@@ -134,8 +144,70 @@ func TestOptionsWithExclusionsOff(t *testing.T) {
 	}
 }
 
+func TestOptionsNarrowsServicesAndDeploymentsWithGatewayAPIOff(t *testing.T) {
+	cfg := operatorConfig(config.CacheConfig{})
+	cfg.GatewayAPI.Enabled = false
+	opts, err := Options(nil, cfg)
+	if err != nil {
+		t.Fatalf("Options: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		labels map[string]string
+		cached bool
+	}{
+		// Labels the gateway chart puts on a gateway's controller and runtime workloads.
+		{"gateway controller", map[string]string{
+			"app.kubernetes.io/component": "controller",
+			"app.kubernetes.io/instance":  "gw-b15b11a4",
+			"app.kubernetes.io/name":      "gateway",
+		}, true},
+		{"gateway runtime", map[string]string{
+			"app.kubernetes.io/component": "gateway-runtime",
+			"app.kubernetes.io/instance":  "gw-b15b11a4",
+			"app.kubernetes.io/name":      "gateway",
+		}, true},
+		// nameOverride changes app.kubernetes.io/name, never the component.
+		{"gateway with nameOverride", map[string]string{
+			"app.kubernetes.io/component": "controller",
+			"app.kubernetes.io/name":      "my-gateway",
+		}, true},
+		{"unrelated workload", map[string]string{"app": "orders"}, false},
+		{"unlabeled", nil, false},
+		{"other component", map[string]string{"app.kubernetes.io/component": "database"}, false},
+	}
+	for _, obj := range []client.Object{&corev1.Service{}, &appsv1.Deployment{}} {
+		sel := selectorFor(t, opts, obj)
+		if sel == nil {
+			t.Fatalf("no selector for %T", obj)
+		}
+		for _, tc := range cases {
+			t.Run(fmt.Sprintf("%T/%s", obj, tc.name), func(t *testing.T) {
+				if got := sel.Matches(labels.Set(tc.labels)); got != tc.cached {
+					t.Fatalf("cached = %v, want %v (selector %q)", got, tc.cached, sel)
+				}
+			})
+		}
+	}
+}
+
+// With the Gateway API controllers on, HTTPRoute backends can be any Service, so
+// Services and Deployments stay unfiltered.
+func TestOptionsKeepsServicesAndDeploymentsWithGatewayAPIOn(t *testing.T) {
+	opts, err := Options(nil, operatorConfig(config.CacheConfig{}))
+	if err != nil {
+		t.Fatalf("Options: %v", err)
+	}
+	for _, obj := range []client.Object{&corev1.Service{}, &appsv1.Deployment{}} {
+		if sel := selectorFor(t, opts, obj); sel != nil {
+			t.Fatalf("%T selector = %q, want none", obj, sel)
+		}
+	}
+}
+
 func TestOptionsStripsManagedFields(t *testing.T) {
-	opts, err := Options(nil, config.CacheConfig{})
+	opts, err := Options(nil, operatorConfig(config.CacheConfig{}))
 	if err != nil {
 		t.Fatalf("Options: %v", err)
 	}

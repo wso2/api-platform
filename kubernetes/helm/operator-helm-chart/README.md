@@ -77,6 +77,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `gatewayApi.enabled` | Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute). Set `false` where gateways are deployed only through `APIGateway`: the operator then watches no Gateway API resources, gets no Gateway API RBAC, runs without the Gateway API CRDs, and caches only the gateway chart's own Services and Deployments. The upgrade fails while a Gateway of a managed class, or an HTTPRoute with this operator's finalizer, still exists. Independent of `installStandardCRDs` | `true` |
 | `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
 | `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
 | `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |

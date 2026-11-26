@@ -1,0 +1,30 @@
+{{- /*
+Refuses to turn the Gateway API controllers off (gatewayApi.enabled=false) while the
+operator still has Gateway API resources to manage. With the controllers off nothing
+reconciles those Gateways, and the finalizers it put on Gateways and HTTPRoutes would block
+deleting them, so the install or upgrade fails here and the running operator is left as it
+was. Delete those resources with gatewayApi.enabled still true, then disable it.
+
+Renders nothing. lookup returns nothing under `helm template` or a dry run, and when the
+Gateway API CRDs are absent, so the guard only acts on a real install or upgrade.
+*/ -}}
+{{- if not (include "gateway-operator.gatewayApiEnabled" .) }}
+{{- $classes := default (list) .Values.gatewayApi.managedGatewayClassNames }}
+{{- $blocking := list }}
+{{- range $gw := (dig "items" (list) (lookup "gateway.networking.k8s.io/v1" "Gateway" "" "")) }}
+  {{- $finalizers := default (list) $gw.metadata.finalizers }}
+  {{- if or (has (toString $gw.spec.gatewayClassName) $classes) (has "gateway.api-platform.wso2.com/k8s-gateway-finalizer" $finalizers) }}
+    {{- $blocking = append $blocking (printf "Gateway %s/%s" $gw.metadata.namespace $gw.metadata.name) }}
+  {{- end }}
+{{- end }}
+{{- range $route := (dig "items" (list) (lookup "gateway.networking.k8s.io/v1" "HTTPRoute" "" "")) }}
+  {{- if has "gateway.api-platform.wso2.com/httproute-finalizer" (default (list) $route.metadata.finalizers) }}
+    {{- $blocking = append $blocking (printf "HTTPRoute %s/%s" $route.metadata.namespace $route.metadata.name) }}
+  {{- end }}
+{{- end }}
+{{- if $blocking }}
+{{- $shown := $blocking }}
+{{- if gt (len $blocking) 10 }}{{ $shown = slice $blocking 0 10 }}{{ end }}
+{{- fail (printf "gatewayApi.enabled=false, but the operator still manages %d Gateway API resource(s): %s%s. Delete them with gatewayApi.enabled=true so their finalizers are removed, then disable it." (len $blocking) (join ", " $shown) (ternary ", ..." "" (gt (len $blocking) 10))) }}
+{{- end }}
+{{- end }}

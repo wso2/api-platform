@@ -41,6 +41,16 @@ configured image.repository:tag.
 {{- end -}}
 
 {{- /*
+Renders "true" when the Gateway API controllers (GatewayClass, Gateway, HTTPRoute) are
+on: gatewayApi.enabled, true when unset.
+*/ -}}
+{{- define "gateway-operator.gatewayApiEnabled" -}}
+{{- if dig "enabled" true (default (dict) .Values.gatewayApi) -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- /*
 RBAC for GatewayClass (cluster-scoped). Namespace Roles cannot grant these
 verbs at cluster scope; when watchNamespaces is set, chart also installs
 clusterrole-gatewayclass.yaml + binding.
@@ -204,6 +214,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - get
   - patch
   - update
+{{- if include "gateway-operator.gatewayApiEnabled" . }}
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
@@ -220,6 +231,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - get
   - patch
   - update
+{{- end }}
 - apiGroups:
   - apps
   resources:
@@ -246,6 +258,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - update
   - watch
+{{- if include "gateway-operator.gatewayApiEnabled" . }}
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
@@ -303,6 +316,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - get
   - list
   - watch
+{{- end }}
 {{- if include "gateway-operator.isOpenShift" . }}
 - apiGroups:
   - route.openshift.io

@@ -136,14 +136,15 @@ func main() {
 		setupLog.Info("watching all namespaces (cluster-wide)")
 	}
 
-	cacheOpts, err := cachescope.Options(defaultNamespaces, cfg.Cache)
+	cacheOpts, err := cachescope.Options(defaultNamespaces, cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to build cache options")
 		os.Exit(1)
 	}
 	setupLog.Info("informer cache exclusions",
 		"helmReleaseSecrets", cfg.Cache.ExcludeHelmReleaseSecrets,
-		"gatewayChartConfigMaps", cfg.Cache.ExcludeGatewayChartConfigMaps)
+		"gatewayChartConfigMaps", cfg.Cache.ExcludeGatewayChartConfigMaps,
+		"servicesAndDeploymentsOutsideGatewayChart", !cfg.GatewayAPI.Enabled)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -192,32 +193,39 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "RestApi")
 		os.Exit(1)
 	}
-	if err = controller.NewK8sGatewayReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
-		os.Exit(1)
-	}
-	if err = controller.NewK8sGatewayClassReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
-		os.Exit(1)
-	}
-	if err = controller.NewHTTPRouteReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
-		os.Exit(1)
+	// Gateway API controllers (GatewayClass, Gateway, HTTPRoute). When they are off,
+	// nothing watches Gateway API resources, so the operator also runs on clusters
+	// without the Gateway API CRDs.
+	if cfg.GatewayAPI.Enabled {
+		if err = controller.NewK8sGatewayReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
+			os.Exit(1)
+		}
+		if err = controller.NewK8sGatewayClassReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
+			os.Exit(1)
+		}
+		if err = controller.NewHTTPRouteReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Gateway API support disabled; GatewayClass, Gateway and HTTPRoute resources are not reconciled")
 	}
 
 	// Management-API resource controllers (WSO2 APIGateway flow only).
