@@ -3,7 +3,7 @@
  cannot grant list/watch at cluster scope; scoped mode (watchNamespaces) only
  creates Roles per watched namespace, so we add this minimal ClusterRole.
 */ -}}
-{{- if .Values.watchNamespaces }}
+{{- if and .Values.watchNamespaces (include "gateway-operator.gatewayApiEnabled" .) }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
