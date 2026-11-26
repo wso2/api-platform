@@ -188,3 +188,91 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/fault_policies_upstream.feature
           scenario: "A fault policy's execution condition separates gateway and backend failures"
+  - id: FAULT-017
+    title: "Send a request that a guardrail rejects to an LLM provider of each template, with enable_openai_format on; 422 in the OpenAI error envelope with error.type invalid_request_error, the guardrail block and param null, while a request the guardrail accepts gets 200."
+    priority: P0
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
+          scenario: "A policy rejection on a <template> provider is returned in the OpenAI envelope"
+  - id: FAULT-018
+    title: "Send a request that a guardrail rejects to an LLM proxy, with enable_openai_format on; 422 in the OpenAI error envelope with error.type invalid_request_error and the guardrail block."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
+          scenario: "A policy rejection on an LLM proxy is returned in the OpenAI envelope"
+  - id: FAULT-019
+    title: "Send a request to an LLM provider of each template whose upstream refuses connections, with enable_openai_format on; the router's 503 is returned in the OpenAI error envelope with error.type server_error and code 101503, without the router's plain-text reply."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
+          scenario: "A router failure on a <template> provider is returned in the OpenAI envelope"
+  - id: FAULT-020
+    title: "Send requests to an LLM provider of each template whose backend returns errors, with enable_openai_format on; a backend error with a body and one without (429, 500) both reach the client unchanged."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
+          scenario: "A <template> backend error is preserved with or without a body"
+  - id: FAULT-021
+    title: "Send a request that a guardrail rejects to a REST API, with enable_openai_format on; 422 with the guardrail's own body, not the OpenAI error envelope."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
+          scenario: "A REST API rejection is not reshaped"
+  - id: FAULT-022
+    title: "With enable_openai_format off, send a request that a guardrail rejects to an LLM provider; 422 with the guardrail's own body and no OpenAI error envelope."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors_disabled.feature
+          scenario: "A policy rejection keeps the policy's own body"
+  - id: FAULT-023
+    title: "With enable_openai_format off, send a request to an LLM provider whose upstream refuses connections; the router's 503 keeps its own plain-text reply."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors_disabled.feature
+          scenario: "A router failure keeps the router's own reply"
+  - id: FAULT-024
+    title: "With enable_openai_format off, send requests to an LLM provider whose backend returns errors; a backend error with a body and one without both reach the client unchanged."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The error format is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace-gateway/llm/llm_openai_compatible_errors_disabled.feature
+          scenario: "A backend error is preserved with or without a body"
