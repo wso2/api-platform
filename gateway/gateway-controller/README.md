@@ -31,7 +31,7 @@ xDS gRPC Server (Port 18000)
 
 ### Prerequisites
 
-- Go 1.26.10+
+- Go 1.26.11+
 - Make
 - Docker buildx
    - brew install docker-buildx
@@ -330,18 +330,42 @@ The Admin API (health, config dump) is reached on its own port and is governed s
 
 ### Endpoints
 
-#### Health Check (Admin API)
+#### Health Check
+
+The controller serves liveness and readiness on the admin server and on the management API. Both
+answer without credentials, from the same evaluation, so they always agree:
 
 ```bash
-GET /health
-# i.e. GET http://localhost:9092/api/admin/v0.9/health
+# Admin server
+GET http://localhost:9092/api/admin/v1/health        # liveness
+GET http://localhost:9092/api/admin/v1/ready         # readiness
+# Management API, TLS disabled
+GET http://localhost:9090/api/management/v1/health   # liveness
+GET http://localhost:9090/api/management/v1/ready    # readiness
+# Management API, [controller.server.tls] enabled (replaces the plaintext listener)
+GET https://localhost:9093/api/management/v1/health  # liveness
+GET https://localhost:9093/api/management/v1/ready   # readiness
 ```
 
-Response:
+The admin server answers from the moment the controller starts, with `503` and a `starting` reason
+until startup has finished. The management API listener opens only once startup has finished, so
+its health endpoints refuse connections until then. The management API has no unprefixed `/health`
+or `/ready` alias.
+
+Health endpoints answer every client by default (`[controller.health] allowed_clients`). If you list
+IPs or CIDRs, any other caller gets `403`, on both ports. A call from the host through a published Docker port
+arrives from the Docker network (or Docker Desktop's VM), so keep the caller's network in the list,
+for example with `APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7`.
+
+Response (`200` when every check is up, `503` when any is down):
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-10-12T15:45:00Z"
+  "timestamp": "2025-10-12T15:45:00Z",
+  "checks": {
+    "database": { "status": "up" },
+    "startup": { "status": "up" }
+  }
 }
 ```
 

@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
@@ -785,6 +786,10 @@ func (r *K8sGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				secret, ok := obj.(*corev1.Secret)
 				return ok && secret.Type == corev1.SecretTypeTLS
 			})),
+		).
+		Watches(
+			&gatewayv1beta1.ReferenceGrant{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueK8sGatewaysForReferenceGrant),
 		).
 		Complete(r)
 }

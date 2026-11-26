@@ -1,0 +1,59 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  annotations:
+    example.com/owner: team-a
+    gateway.api-platform.wso2.com/api-handle: orders-api
+    gateway.api-platform.wso2.com/api-version: v2.1
+    gateway.api-platform.wso2.com/context: /orders/$version
+    gateway.api-platform.wso2.com/display-name: Orders
+    gateway.api-platform.wso2.com/project-id: proj-1
+  name: orders-api
+spec:
+  context: /orders/$version
+  displayName: Orders
+  operations:
+  - match:
+      method: GET
+      path:
+        type: PathPrefix
+        value: /*
+  - match:
+      method: POST
+      path:
+        type: PathPrefix
+        value: /*
+  - match:
+      method: PUT
+      path:
+        type: PathPrefix
+        value: /*
+  - match:
+      method: PATCH
+      path:
+        type: PathPrefix
+        value: /*
+  - match:
+      method: DELETE
+      path:
+        type: PathPrefix
+        value: /*
+  - match:
+      method: HEAD
+      path:
+        type: PathPrefix
+        value: /*
+  - match:
+      method: OPTIONS
+      path:
+        type: PathPrefix
+        value: /*
+  upstream:
+    main:
+      hostRewrite: manual
+      url: http://echo-v1.golden-apps.svc.cluster.local:8080
+  upstreamDefinitions:
+  - name: golden-apps-echo-v1-8080
+    upstreams:
+    - url: http://echo-v1.golden-apps.svc.cluster.local:8080
+  version: v2.1

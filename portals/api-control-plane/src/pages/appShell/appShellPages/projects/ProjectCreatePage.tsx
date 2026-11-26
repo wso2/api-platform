@@ -42,6 +42,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCreateProject } from '@/api/resources/projects';
 import { AppPage } from '@/components/AppPage';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 
 const NAME_MAX = 128;
@@ -238,6 +239,7 @@ function ProjectCreatePageContent() {
   const navigate = useNavigate();
   const { notify } = useNotifications();
   const mutation = useCreateProject();
+  const trackFeature = useTrackFeature();
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
   const [description, setDescription] = useState('');
@@ -267,6 +269,7 @@ function ProjectCreatePageContent() {
     // Real form submit; Enter in the name field works as expected.
     event.preventDefault();
     if (!canSubmit) return;
+    trackFeature('apip.admin.project-create-click', {});
     try {
       const project = await mutation.mutateAsync({
         displayName: trimmedName,

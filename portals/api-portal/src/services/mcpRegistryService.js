@@ -50,7 +50,7 @@ const DIALECT = db.getDialect();
 
 // metadata_search is JSONB on postgres, TEXT on sqlite, and NVARCHAR(MAX) on mssql
 // (see database/schema.*.sql). Postgres's '->>' text-extraction operator also happens to
-// work unmodified on sqlite (3.38+, via better-sqlite3, which implements '->>' as a JSON
+// work unmodified on sqlite (3.38+, as bundled with node:sqlite, which implements '->>' as a JSON
 // accessor on TEXT columns too), but SQL Server has no '->>' operator at all — the
 // equivalent there is JSON_VALUE() against the same NVARCHAR(MAX) JSON text. This mirrors
 // the previous Sequelize implementation, which used raw

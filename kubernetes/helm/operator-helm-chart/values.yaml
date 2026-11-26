@@ -12,6 +12,17 @@ fullnameOverride: ""
 # Set `false` if CRDs are already managed by another Helm release, a cloud add-on, Traefik, or 
 # OpenShift 4.19+ to avoid ownership and upgrade conflicts.
 gatewayApi:
+  # Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute and the
+  # APIPolicy/ReferenceGrant objects they use) → gateway_api.enabled. Set false on clusters
+  # that deploy gateways only through APIGateway: the operator then watches no Gateway API
+  # resources, needs no Gateway API RBAC or CRDs, and caches only the gateway chart's own
+  # Services and Deployments, found by their app.kubernetes.io/component label (controller
+  # or gateway-runtime). Gateway chart versions after 2026.11.26-r1 always set it; with
+  # an earlier version, do not override that label in the gateway's deployment.labels.
+  # APIGateway, RestApi and the other management resources are unaffected. The upgrade fails while any Gateway of a managedGatewayClassNames class, or
+  # any HTTPRoute still carrying this operator's finalizer, exists: delete those first with
+  # this still true, so their finalizers are removed. Independent of installStandardCRDs.
+  enabled: true
   installStandardCRDs: true
   # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
   managedGatewayClassNames:
@@ -24,7 +35,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.10.1"
+  tag: "0.12.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -85,7 +96,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "1.2.0"
+    chartVersion: "2026.11.19-r1"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
@@ -239,6 +250,17 @@ gateway:
             # - text: Human-readable text format (recommended for development)
             format: json
 
+          # Clients (IPs or CIDRs) allowed to call the admin health and ready endpoints. The
+          # default, "*", allows every client. To restrict access, list addresses or ranges;
+          # any other client then gets 403. Keep the cluster's pod and node ranges in the
+          # list, or kubelet probes are refused and the pods never become Ready, and add
+          # external load balancers (or clients whose address is preserved,
+          # externalTrafficPolicy: Local). For example:
+          #   ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+          health:
+            allowed_clients:
+              - "*"
+
         # Router (Envoy) configuration
         router:
           # Gateway host for incoming requests
@@ -317,6 +339,9 @@ gateway:
             # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
             # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
             path_with_escaped_slashes_action: KEEP_UNCHANGED
+            # Let a request whose path matches a route only case-insensitively fall through to a
+            # broader route instead of getting a 404
+            allow_path_case_variants: false
 
             # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
             timeouts:
@@ -367,6 +392,17 @@ gateway:
 
               # Skip server certificate verification (insecure, development only)
               skip_verify: false
+
+          # Clients (IPs or CIDRs) allowed to call the gateway health routes. The default,
+          # "*", allows every client. To restrict access, list addresses or ranges; any other
+          # client then gets 403. Keep the cluster's pod and node ranges in the list, or
+          # kubelet probes are refused and the pods never become Ready, and add external load
+          # balancers (or clients whose address is preserved, externalTrafficPolicy: Local).
+          # For example:
+          #   ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+          health:
+            allowed_clients:
+              - "*"
 
         policy_engine:
           server:
@@ -443,7 +479,7 @@ gateway:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "1.2.0"
+          tag: "latest"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -549,26 +585,38 @@ gateway:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
-          # Use named port admin (controller admin HTTP server), not rest. GET /health on :9090
-          # goes through Gin + basic auth and returns 401 for kube-probe; standalone chart defaults
-          # use admin :9092 where /health is probe-safe.
-          # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
+          # The probes call the controller's management API health endpoints, which answer 503 while
+          # the database is down. They leave out port and scheme: the gateway chart fills in the
+          # management listener, "rest" over HTTP, or "rest-tls" over HTTPS when
+          # gateway.config.controller.server.tls.enabled is true. The listener opens only once startup
+          # has finished, so the probes fail with a refused connection until then; the startup probe
+          # allows for that. Readiness takes the pod out of the Service after about 15 s of failed
+          # answers; liveness restarts it only after about 2 minutes, so a short database outage never
+          # causes a restart. These match the gateway chart's defaults.
+          # They need a gateway chart and a controller image that serve them (gateway chart
+          # 2026.11.19-r1 or later). With an older chart or image, probe the admin server
+          # instead: path /api/admin/v1/health with port: admin.
           livenessProbe:
             httpGet:
-              path: /api/admin/v1/health
-              port: admin
-            initialDelaySeconds: 10
+              path: /api/management/v1/health
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
-              path: /api/admin/v1/health
-              port: admin
-            initialDelaySeconds: 5
+              path: /api/management/v1/ready
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          # Holds off the liveness probe while the controller starts. It allows 6 minutes;
+          # keep this above gateway.config.controller.health.database.startup_wait so the controller,
+          # not the probe, decides when a database wait gives up. Set to null to disable.
+          startupProbe:
+            httpGet:
+              path: /api/management/v1/health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 72
           # Resource limits and requests
           # Uncomment and adjust based on your workload
           resources: {}
@@ -587,7 +635,7 @@ gateway:
       gatewayRuntime:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-runtime
-          tag: "1.2.0"
+          tag: "latest"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -627,25 +675,41 @@ gateway:
           # Probes hit the router's own health routes on the main traffic listener;
           # the gateway chart rewrites httpGet.port/scheme from gateway.config.router
           # so they always follow the router's actual bind port.
-          # These MUST use the same handler type as gateway-helm-chart's defaults
+          # These MUST use the same handler type as gateway-helm-chart's defaults.
+          # Both routes are answered by the policy engine through the router. Liveness
+          # depends on no dependency check, so once a runtime has its configuration a controller
+          # outage never restarts it. The traffic listener arrives with the controller's first
+          # configuration, so a runtime that never receives one is restarted when the startup
+          # probe gives up. Readiness takes the pod out of the Service after
+          # about 15 s of failed answers; liveness restarts it only after about 2 minutes
+          # of no answer. These match the gateway chart's defaults.
           livenessProbe:
             httpGet:
               path: /_gateway-health/healthy
               port: https
               scheme: HTTPS
-            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
               path: /_gateway-health/ready
               port: https
               scheme: HTTPS
-            initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 6
+            failureThreshold: 3
+          # Holds off the liveness probe until the router and policy engine answer, which
+          # needs the traffic listener from the controller's first configuration. It allows
+          # 5 minutes; set to null to disable.
+          startupProbe:
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
           # Resource limits and requests
           # Uncomment and adjust based on your workload
           resources: {}
@@ -673,6 +737,22 @@ reconciliation:
   initialBackoff: 1s
   # Maximum exponential backoff (Go duration) → reconciliation.max_backoff_duration.
   maxBackoffDuration: 60s
+# Objects the operator never reads, kept out of its informer cache. Without these, the
+# cache holds every gateway's Helm release Secrets and the gateway chart's rendered
+# ConfigMaps (several hundred KB per gateway), and its memory grows with the gateway count.
+# Turn one off only if a resource references an object it excludes: that reference then
+# resolves as not found.
+cache:
+  # How long each controller waits for the informer cache's initial list at startup
+  # before it fails, which restarts the operator (Go duration) → cache.sync_timeout.
+  # Raise it on clusters with many gateways if the leader logs "timed out waiting for
+  # cache to be synced".
+  syncTimeout: 2m
+  # Leave Secrets labeled owner=helm (Helm's release storage) out → cache.exclude_helm_release_secrets.
+  excludeHelmReleaseSecrets: true
+  # Leave ConfigMaps labeled app.kubernetes.io/name=gateway (rendered by the gateway chart) out
+  # → cache.exclude_gateway_chart_config_maps.
+  excludeGatewayChartConfigMaps: true
 logging:
   level: "info"
   format: "json"

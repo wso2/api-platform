@@ -253,7 +253,7 @@ const loadApplication = async (req, res, next) => {
         metaData = data.applicationList;
         const actor = resolveActor(req);
         const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId, actor);
-        const { associatedOAuth2Keys, availableOAuth2Keys } = await loadApplicationOAuth2KeysData(data.orgId, data.applicationId, actor);
+        const { associatedOAuth2Keys, availableOAuth2Keys, oauth2KeysElsewhere } = await loadApplicationOAuth2KeysData(data.orgId, data.applicationId, actor);
 
         // productionKeys / sandboxKeys / applicationKeys / keyManagersMetadata /
         // subscriptionScopes fed the removed "Manage Keys" section and nothing else
@@ -266,7 +266,8 @@ const loadApplication = async (req, res, next) => {
             associatedApiKeys,
             availableKeysByApi,
             associatedOAuth2Keys,
-            availableOAuth2Keys
+            availableOAuth2Keys,
+            oauth2KeysElsewhere
         }
         const templateResponse = await templateResponseValue('application');
         const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
@@ -307,14 +308,26 @@ function formatApiDisplayName(apiMetadata, fallbackId) {
  * The OAuth2 keys on this application, plus the caller's other keys that could be
  * associated instead.
  *
- * "Available" deliberately includes keys already on ANOTHER application: a key
- * belongs to at most one, so choosing one here moves it. Hiding those would make
- * a key the caller owns look like it had vanished. Only keys already on THIS
- * application are excluded, since associating one again is a no-op.
+ * "Available" is only keys attached to nothing. Three kinds are left out: keys
+ * already on THIS application, since associating one again is a no-op; keys whose
+ * key type this application already holds, since the server refuses those with a
+ * 409; and keys on ANOTHER application.
+ *
+ * That last one used to be offered, on the grounds that a key belongs to one
+ * application so picking it here simply moves it. But detaching a live credential
+ * from an application the caller is not even looking at is exactly the side
+ * effect the 409 exists to prevent within one application — refusing it there and
+ * performing it silently here was one rule pointing two ways. Moving a key is the
+ * OAuth2 Keys page's job: that picker is key-centric, names the application the
+ * key is on, and offers `— None —` to detach it. The modal hint here says so, so
+ * a key missing from this list is explained rather than simply absent.
  */
 async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
     let associatedOAuth2Keys = [];
     let availableOAuth2Keys = [];
+    // Counted, not listed: enough for the picker to explain an empty list without
+    // naming applications this view has no other reason to load.
+    let oauth2KeysElsewhere = 0;
     try {
         const names = new Map();
         try {
@@ -330,14 +343,6 @@ async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
 
         const all = await oauth2KeyDao.listByCreator(orgId, userId);
         const appByKey = await keyAppMappingDao.getByKeys((all || []).map((k) => k.keyId));
-
-        // One lookup per distinct application, not per key.
-        const appNames = new Map();
-        for (const appUuid of new Set(appByKey.values())) {
-            if (appUuid === applicationId) continue;
-            const app = await appDao.get(orgId, appUuid, userId);
-            if (app) appNames.set(appUuid, app.display_name);
-        }
 
         for (const key of all || []) {
             const on = appByKey.get(key.keyId);
@@ -358,16 +363,26 @@ async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
             };
             if (on === applicationId) {
                 associatedOAuth2Keys.push(row);
+            } else if (!on) {
+                // Attached to nothing, so it can be taken without detaching it from
+                // anywhere. A key on another application is deliberately absent.
+                availableOAuth2Keys.push(row);
             } else {
-                availableOAuth2Keys.push({ ...row, applicationName: on ? appNames.get(on) || '' : '' });
+                oauth2KeysElsewhere += 1;
             }
         }
+
+        // Filtered after the loop rather than inside it: a key's type is only
+        // "taken" once every associated key has been seen, and the loop visits
+        // them in no particular order.
+        const takenTypes = new Set(associatedOAuth2Keys.map((k) => k.keyType));
+        availableOAuth2Keys = availableOAuth2Keys.filter((k) => !takenTypes.has(k.keyType));
     } catch (error) {
         logger.warn('Failed to load OAuth2 keys for the application OAuth2 keys section', {
             orgId, applicationId, error: error.message,
         });
     }
-    return { associatedOAuth2Keys, availableOAuth2Keys };
+    return { associatedOAuth2Keys, availableOAuth2Keys, oauth2KeysElsewhere };
 }
 
 async function loadApplicationApiKeysData(orgId, applicationId, userId) {

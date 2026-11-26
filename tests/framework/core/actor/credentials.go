@@ -44,6 +44,11 @@ func Publisher() Credentials {
 	return Credentials{Username: "publisher", Password: "publisher"}
 }
 
+// Viewer returns the suite's read-only console user, who holds the ap_viewer role.
+func Viewer() Credentials {
+	return Credentials{Username: "viewer", Password: "viewer"}
+}
+
 // Narrow returns the deliberately read-only actor used to distinguish scope and role authorization.
 func Narrow() Credentials {
 	return Credentials{Username: "narrow", Password: "narrow"}

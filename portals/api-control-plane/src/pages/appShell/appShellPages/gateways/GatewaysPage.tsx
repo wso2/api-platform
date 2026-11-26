@@ -135,7 +135,7 @@ const messages = defineMessages({
   subtitle: {
     id: 'gateways.subtitle',
     defaultMessage:
-      'Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients.',
+      'Provision and manage self-hosted or cloud gateways to expose your APIs to clients.',
   },
   title: {
     id: 'gateways.title',

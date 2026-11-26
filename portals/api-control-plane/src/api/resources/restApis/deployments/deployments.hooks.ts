@@ -30,7 +30,11 @@ import {
   type DeploymentListResponse,
   type ListDeploymentsQuery,
 } from './deployments.endpoints';
-import { deploymentQueries, hasTransitioningDeployment } from './deployments.queries';
+import {
+  deploymentQueries,
+  hasTransitioningDeployment,
+  isTransitioning
+} from './deployments.queries';
 import { restApiKeys } from '../restApis.queries';
 
 /**
@@ -59,6 +63,17 @@ const POLL_CAP_MS = 30_000;
  */
 const MAX_POLL_ROUNDS = 25;
 
+/** Each query's current transitions, and its `dataUpdateCount` when first seen. */
+const transitionStart = new WeakMap<object, { key: string; count: number }>();
+
+/** Which deployments are mid-transition, and to what; each new action changes it. */
+const transitionKey = (deployments: readonly Deployment[] | undefined): string =>
+  (deployments ?? [])
+    .filter(isTransitioning)
+    .map((d) => `${d.deploymentId}:${d.status}`)
+    .sort()
+    .join();
+
 /**
  * Backing-off poll interval, used while any deployment is still settling.
  *
@@ -67,17 +82,29 @@ const MAX_POLL_ROUNDS = 25;
  * than polling for the life of the tab, and it pauses while the tab is hidden
  * (`refetchIntervalInBackground` is left at its default of false).
  *
- * The round count is approximated by `dataUpdateCount`, which also counts
- * fetches from before polling began. That errs toward backing off sooner, which
- * is the safe direction.
+ * Rounds count from the fetch that first saw the current set of transitions,
+ * not over the query's lifetime: a lifetime count left the page polling every
+ * 30 seconds after a few actions, and not at all after 25 fetches, so a later
+ * Stop or Redeploy never settled on screen. A new action restarts the count
+ * even while another gateway is still settling.
  */
 const pollWhileTransitioning = (
-  updateCount: number,
-  transitioning: boolean
+  query: { state: { dataUpdateCount: number } },
+  key: string
 ): number | false => {
-  if (!transitioning) return false;
-  if (updateCount > MAX_POLL_ROUNDS) return false;
-  return Math.min(POLL_START_MS * POLL_FACTOR ** updateCount, POLL_CAP_MS);
+  if (!key) {
+    transitionStart.delete(query);
+    return false;
+  }
+  const updateCount = query.state.dataUpdateCount;
+  let start = transitionStart.get(query);
+  if (start?.key !== key) {
+    start = { key, count: updateCount };
+    transitionStart.set(query, start);
+  }
+  const rounds = updateCount - start.count;
+  if (rounds > MAX_POLL_ROUNDS) return false;
+  return Math.min(POLL_START_MS * POLL_FACTOR ** rounds, POLL_CAP_MS);
 };
 
 /* -------------------------------------------------------------------------- */
@@ -101,10 +128,7 @@ export const useDeployments = (
     ...deploymentQueries.list(org!, restApiId!, filters),
     enabled: Boolean(org && restApiId),
     refetchInterval: (query) =>
-      pollWhileTransitioning(
-        query.state.dataUpdateCount,
-        hasTransitioningDeployment(query.state.data?.list)
-      ),
+      pollWhileTransitioning(query, transitionKey(query.state.data?.list)),
   });
 };
 
@@ -121,10 +145,8 @@ export const useDeployment = (
     enabled: Boolean(org && restApiId && deploymentId),
     refetchInterval: (query) =>
       pollWhileTransitioning(
-        query.state.dataUpdateCount,
-        hasTransitioningDeployment(
-          query.state.data ? [query.state.data] : undefined
-        )
+        query,
+        transitionKey(query.state.data ? [query.state.data] : undefined)
       ),
   });
 };
@@ -181,10 +203,10 @@ export const useUndeployDeployment = (overrides: { orgId?: string } = {}) => {
   return useMutation<
     Deployment,
     ApiError,
-    { restApiId: string; deploymentId: string }
+    { restApiId: string; deploymentId: string; gatewayId: string }
   >({
-    mutationFn: ({ restApiId, deploymentId }) =>
-      undeployDeployment(restApiId, deploymentId, { orgId }),
+    mutationFn: ({ restApiId, deploymentId, gatewayId }) =>
+      undeployDeployment(restApiId, deploymentId, gatewayId, { orgId }),
     onSuccess: (_deployment, { restApiId }) => invalidate(restApiId),
   });
 };
@@ -196,10 +218,10 @@ export const useRestoreDeployment = (overrides: { orgId?: string } = {}) => {
   return useMutation<
     Deployment,
     ApiError,
-    { restApiId: string; deploymentId: string }
+    { restApiId: string; deploymentId: string; gatewayId: string }
   >({
-    mutationFn: ({ restApiId, deploymentId }) =>
-      restoreDeployment(restApiId, deploymentId, { orgId }),
+    mutationFn: ({ restApiId, deploymentId, gatewayId }) =>
+      restoreDeployment(restApiId, deploymentId, gatewayId, { orgId }),
     onSuccess: (_deployment, { restApiId }) => invalidate(restApiId),
   });
 };

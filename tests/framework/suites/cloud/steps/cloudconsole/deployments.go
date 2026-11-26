@@ -39,9 +39,26 @@ import (
 const (
 	// echoBackendEnv overrides the backend deployment overrides are pointed at.
 	echoBackendEnv = "CLOUD_IT_ECHO_BACKEND_URL"
-	// defaultEchoBackend is a public service that answers with the URL it was asked for.
-	defaultEchoBackend = "https://httpbin.org/anything"
+	// defaultEchoBackend is the testbench echo service, which answers with the request it received.
+	defaultEchoBackend = "https://development-wso2cloud.gateway.dev.cloud.wso2.com/apip-testbench-mocks/echo"
 )
+
+// testbenchURL reads the https base URL of a testbench service from the environment, falling
+// back to the given default, without a trailing slash.
+func testbenchURL(env, fallback string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(env))
+	if value == "" {
+		value = fallback
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", fmt.Errorf("%s must be an https URL with a host", env)
+	}
+	return strings.TrimRight(value, "/"), nil
+}
+
+// deployedTimeout bounds how long a deployment on a gateway may take to report DEPLOYED.
+const deployedTimeout = 10 * time.Minute
 
 // buildIDPattern is the shape of a build identifier: the day it was prepared and that day's index.
 var buildIDPattern = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})-[1-9]\d*$`)
@@ -62,13 +79,20 @@ var deploymentRequestKeys = map[string]bool{
 	"buildId": true, "fromEnvironment": true, "parameters": true,
 }
 
-// apiScopePath is the project-and-API prefix of the cloud-extension build and deployment routes.
+// apiScopePath is the project-and-API prefix of the cloud-extension build and deployment routes
+// for the synthetic REST API.
 func apiScopePath(ctx context.Context) (string, error) {
+	return refScopePath(ctx, primaryAPI)
+}
+
+// refScopePath is the project-and-API prefix of the build and deployment routes for the API a ref
+// points at. A route under it still needs the ref's kind.
+func refScopePath(ctx context.Context, ref apiRef) (string, error) {
 	projectID, err := requiredValue(ctx, keyProjectID)
 	if err != nil {
 		return "", err
 	}
-	apiID, err := requiredValue(ctx, keyAPIID)
+	apiID, err := requiredValue(ctx, ref.id)
 	if err != nil {
 		return "", err
 	}
@@ -84,23 +108,73 @@ func optionalValue(ctx context.Context, key string) string {
 	return strings.TrimSpace(value)
 }
 
-// ownBuildState drops the builds a previous scenario recorded. Scenario state lives as long as the
-// runner and a build id is a day and an index that is only unique within one API, so builds
-// recorded for another API must not be mistaken for this API's.
+// ownBuildState drops the builds a previous scenario recorded for the synthetic REST API.
 func ownBuildState(ctx context.Context) error {
-	apiID, err := requiredValue(ctx, keyAPIID)
+	return ownBuildsOf(ctx, primaryAPI, keyBuildID, keyBuildMetadata, keyBuildMetadataOf)
+}
+
+// ownBuildsOf drops the builds, and the related keys, that the scenario state holds for an API
+// other than the one a ref points at now. Scenario state lives as long as the runner and a build
+// id is a day and an index that is only unique within one API, so builds recorded for another API
+// must not be mistaken for this API's.
+func ownBuildsOf(ctx context.Context, ref apiRef, related ...string) error {
+	apiID, err := requiredValue(ctx, ref.id)
 	if err != nil {
 		return err
 	}
-	if optionalValue(ctx, keyBuildsOwner) == apiID {
+	if optionalValue(ctx, ref.buildsOwner) == apiID {
 		return nil
 	}
-	for _, key := range []string{keyBuildIDs, keyBuildID, keyBuildMetadata} {
+	for _, key := range append([]string{ref.builds}, related...) {
 		if err := tcontext.Set(ctx, key, ""); err != nil {
 			return err
 		}
 	}
-	return tcontext.Set(ctx, keyBuildsOwner, apiID)
+	return tcontext.Set(ctx, ref.buildsOwner, apiID)
+}
+
+// ownRefBuilds drops the builds the scenario state holds for an API other than the one a ref
+// points at, with the related keys of the synthetic REST API's builds.
+func ownRefBuilds(ctx context.Context, ref apiRef) error {
+	if ref.builds == primaryAPI.builds {
+		return ownBuildState(ctx)
+	}
+	return ownBuildsOf(ctx, ref)
+}
+
+// appendBuild adds a build to the builds the scenario saw for the API a ref points at.
+func appendBuild(ctx context.Context, ref apiRef, buildID string) error {
+	if err := ownRefBuilds(ctx, ref); err != nil {
+		return err
+	}
+	if seen := optionalValue(ctx, ref.builds); seen != "" {
+		buildID = seen + "," + buildID
+	}
+	return tcontext.Set(ctx, ref.builds, buildID)
+}
+
+// seenBuilds lists the builds the scenario saw for the API a ref points at, oldest first.
+func seenBuilds(ctx context.Context, ref apiRef) ([]string, error) {
+	if err := ownRefBuilds(ctx, ref); err != nil {
+		return nil, err
+	}
+	seen := optionalValue(ctx, ref.builds)
+	if seen == "" {
+		return nil, nil
+	}
+	return strings.Split(seen, ","), nil
+}
+
+// seenBuild is the nth build, counted from 1, that the scenario saw for the API a ref points at.
+func seenBuild(ctx context.Context, ref apiRef, n int) (string, error) {
+	builds, err := seenBuilds(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	if n < 1 || n > len(builds) {
+		return "", fmt.Errorf("build %d was not seen; the scenario has seen %d builds", n, len(builds))
+	}
+	return builds[n-1], nil
 }
 
 // prepareBuild prepares a build of the synthetic REST API, optionally recording metadata with it.
@@ -150,6 +224,9 @@ func (s *Steps) prepareBuild(ctx context.Context, table *godog.Table) error {
 	if err := tcontext.Set(ctx, keyBuildMetadata, encoded); err != nil {
 		return err
 	}
+	if err := tcontext.Set(ctx, keyBuildMetadataOf, buildID); err != nil {
+		return err
+	}
 	if err := tcontext.Set(ctx, keyBuildID, buildID); err != nil {
 		return err
 	}
@@ -159,8 +236,11 @@ func (s *Steps) prepareBuild(ctx context.Context, table *godog.Table) error {
 	return tcontext.Set(ctx, keyBuildIDs, buildID)
 }
 
-// latestPreparedBuild is the most recently prepared build of the scenario.
+// latestPreparedBuild is the most recently prepared build of the scenario's API.
 func latestPreparedBuild(ctx context.Context) (string, error) {
+	if err := ownBuildState(ctx); err != nil {
+		return "", err
+	}
 	prepared, err := requiredValue(ctx, keyBuildIDs)
 	if err != nil {
 		return "", fmt.Errorf("no build has been prepared: %w", err)
@@ -228,18 +308,26 @@ func (s *Steps) awaitBuilds(ctx context.Context, ids []string) ([]map[string]any
 	return listed, err
 }
 
-// assertBuildListed checks that the latest prepared build is listed with the metadata it was
-// prepared with.
+// assertBuildListed checks that the build the scenario last prepared is listed, with the metadata
+// it was prepared with. That is the build a prepare recorded, which a later deployment's build does
+// not replace; without a prepare it is the latest build the scenario saw.
 func (s *Steps) assertBuildListed(ctx context.Context) error {
-	id, err := latestPreparedBuild(ctx)
-	if err != nil {
+	if err := ownBuildState(ctx); err != nil {
 		return err
 	}
+	id := optionalValue(ctx, keyBuildMetadataOf)
+	if id == "" {
+		latest, err := latestPreparedBuild(ctx)
+		if err != nil {
+			return err
+		}
+		id = latest
+	}
+	encoded := optionalValue(ctx, keyBuildMetadata)
 	listed, err := s.awaitBuilds(ctx, []string{id})
 	if err != nil {
 		return err
 	}
-	encoded := optionalValue(ctx, keyBuildMetadata)
 	if encoded == "" {
 		return nil
 	}
@@ -329,6 +417,8 @@ func buildDeploymentRequest(ctx context.Context, values map[string]string) (map[
 // requestDeployment asks for a deployment through the project and environment route and publishes
 // the response without requiring success, so a scenario can assert on a refusal.
 func (s *Steps) requestDeployment(ctx context.Context, table *godog.Table) error {
+	// The targets of an earlier request must not answer for this one if it creates none.
+	tcontext.Remove(ctx, keyDeployedTargets)
 	values, err := tableValues(table)
 	if err != nil {
 		return err
@@ -359,12 +449,14 @@ func recordDeployments(ctx context.Context, resp *httpx.Response) error {
 		return fmt.Errorf("decoding the deployment response: %w", err)
 	}
 	build := ""
+	targets := map[string]string{}
 	for _, item := range items {
 		gatewayID, _ := item["gatewayId"].(string)
 		deploymentID, _ := item["deploymentId"].(string)
 		if gatewayID == "" || deploymentID == "" {
 			continue
 		}
+		targets[gatewayID] = deploymentID
 		if id, _ := item["buildId"].(string); id != "" {
 			build = id
 		}
@@ -374,7 +466,84 @@ func recordDeployments(ctx context.Context, resp *httpx.Response) error {
 			}
 		}
 	}
+	encoded, err := json.Marshal(targets)
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyDeployedTargets, string(encoded)); err != nil {
+		return err
+	}
 	return tcontext.Set(ctx, keyDeployedBuildID, build)
+}
+
+// stillDeployed are the statuses a deployment listing gives a gateway that serves, or is about to
+// serve, the API.
+var stillDeployed = map[string]bool{"DEPLOYED": true, "DEPLOYING": true}
+
+// recordedTargets reads the deployments the last successful request created, by gateway.
+func recordedTargets(ctx context.Context) (map[string]string, error) {
+	encoded, err := requiredValue(ctx, keyDeployedTargets)
+	if err != nil {
+		return nil, fmt.Errorf("no deployment has been requested: %w", err)
+	}
+	targets := map[string]string{}
+	if err := json.Unmarshal([]byte(encoded), &targets); err != nil {
+		return nil, err
+	}
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("the deployment request created no deployment")
+	}
+	return targets, nil
+}
+
+// waitDeployedOnTargets waits until every deployment the last request created is DEPLOYED.
+func (s *Steps) waitDeployedOnTargets(ctx context.Context) error {
+	targets, err := recordedTargets(ctx)
+	if err != nil {
+		return err
+	}
+	apiID, err := requiredValue(ctx, keyAPIID)
+	if err != nil {
+		return err
+	}
+	return retry.Await(ctx, retry.Options{Timeout: deployedTimeout, Interval: 5 * time.Second},
+		func(ctx context.Context) (string, error) {
+			resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/rest-apis/"+url.PathEscape(apiID)+"/deployments", nil)
+			if err != nil {
+				return "", retry.Transient(err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				return "", retry.Transient(responseError(resp))
+			}
+			items, err := listItems(resp)
+			if err != nil {
+				return "", retry.Transient(fmt.Errorf("decoding APIP deployments: %w", err))
+			}
+			status := map[string]string{}
+			for _, item := range items {
+				deploymentID, _ := item["deploymentId"].(string)
+				state, _ := item["status"].(string)
+				status[deploymentID] = state
+			}
+			pending := make([]string, 0, len(targets))
+			for gatewayID, deploymentID := range targets {
+				if status[deploymentID] != "DEPLOYED" {
+					pending = append(pending, gatewayID+": "+status[deploymentID])
+				}
+			}
+			sort.Strings(pending)
+			return strings.Join(pending, ", "), nil
+		},
+		func(pending string) bool { return pending == "" },
+		"waiting for every requested deployment to be DEPLOYED")
+}
+
+// assertBuildCount waits until the synthetic REST API holds exactly the given number of builds.
+func (s *Steps) assertBuildCount(ctx context.Context, want int) error {
+	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo), Interval: 3 * time.Second},
+		s.fetchBuilds,
+		func(items []map[string]any) bool { return len(items) == want },
+		fmt.Sprintf("waiting for the synthetic REST API to hold %d builds", want))
 }
 
 // deploymentEntry finds the response entry for a gateway.
@@ -485,47 +654,29 @@ func (s *Steps) assertDeploymentReportsEchoEndpoint(ctx context.Context) error {
 
 // useEchoBackend records the backend deployment overrides are pointed at.
 func (s *Steps) useEchoBackend(ctx context.Context) error {
-	backend := strings.TrimSpace(os.Getenv(echoBackendEnv))
-	if backend == "" {
-		backend = defaultEchoBackend
+	backend, err := testbenchURL(echoBackendEnv, defaultEchoBackend)
+	if err != nil {
+		return err
 	}
-	parsed, err := url.Parse(backend)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return fmt.Errorf("%s must be an https URL with a host", echoBackendEnv)
-	}
-	return tcontext.Set(ctx, keyEchoBackendURL, strings.TrimRight(backend, "/"))
+	return tcontext.Set(ctx, keyEchoBackendURL, backend)
 }
 
-// assertEchoBackendReceived checks that the data-plane response comes from the echo backend and
-// that the backend saw the given path below its own base path.
+// assertEchoBackendReceived checks that the data-plane response is the echo backend's reflection of
+// the request and that the path it saw ends with the given path, whether or not the route in front
+// of the backend keeps the backend's own base path.
 func (s *Steps) assertEchoBackendReceived(ctx context.Context, path string) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
 		return err
 	}
-	backend, err := requiredValue(ctx, keyEchoBackendURL)
-	if err != nil {
-		return err
-	}
-	base, err := url.Parse(backend)
-	if err != nil {
-		return err
-	}
 	var echoed struct {
-		URL string `json:"url"`
+		Path string `json:"path"`
 	}
-	if err := json.Unmarshal(response.Body, &echoed); err != nil || echoed.URL == "" {
+	if err := json.Unmarshal(response.Body, &echoed); err != nil || echoed.Path == "" {
 		return fmt.Errorf("the response is not an echo of the request: %s", response.Describe())
 	}
-	received, err := url.Parse(echoed.URL)
-	if err != nil {
-		return fmt.Errorf("the echoed URL is not valid: %w", err)
-	}
-	if !strings.EqualFold(received.Host, base.Host) {
-		return fmt.Errorf("the echo came from host %q, want %q", received.Host, base.Host)
-	}
-	if want := strings.TrimRight(base.Path, "/") + path; received.Path != want {
-		return fmt.Errorf("the echo backend received path %q, want %q", received.Path, want)
+	if !strings.HasSuffix(echoed.Path, path) {
+		return fmt.Errorf("the echo backend received path %q, want one ending in %q", echoed.Path, path)
 	}
 	return nil
 }
@@ -546,56 +697,128 @@ func (s *Steps) stages(ctx context.Context) ([]map[string]any, error) {
 	return listItems(resp)
 }
 
-// pipelineEnvironments reads the environments of the deployment pipeline a project is bound to.
-func (s *Steps) pipelineEnvironments(ctx context.Context) (map[string]bool, error) {
+// pipelinePaths reads the promotion paths of the deployment pipeline the scenario's project is
+// bound to.
+func (s *Steps) pipelinePaths(ctx context.Context) ([]promotionPath, error) {
 	projectID, err := requiredValue(ctx, keyProjectID)
 	if err != nil {
 		return nil, err
 	}
-	bound, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/projects/"+url.PathEscape(projectID)+"/deployment-pipeline", nil)
+	return pipelinePathsOf(ctx, projectID, func(ctx context.Context, path string) (*httpx.Response, error) {
+		return s.doAuthenticatedRaw(ctx, http.MethodGet, path, nil)
+	})
+}
+
+// pipelineEnvironments reads the environments of the deployment pipeline a project is bound to.
+func (s *Steps) pipelineEnvironments(ctx context.Context) (map[string]bool, error) {
+	paths, err := s.pipelinePaths(ctx)
 	if err != nil {
 		return nil, err
 	}
+	return environmentsOf(paths), nil
+}
+
+// pipelineGetter reads a path of the platform's API.
+type pipelineGetter func(ctx context.Context, path string) (*httpx.Response, error)
+
+// environmentsOf collects the environments a pipeline's promotion paths reach.
+func environmentsOf(paths []promotionPath) map[string]bool {
+	environments := map[string]bool{}
+	for _, path := range paths {
+		environments[path.SourceEnvironment] = true
+		for _, target := range path.TargetEnvironments {
+			environments[target] = true
+		}
+	}
+	return environments
+}
+
+// entryEnvironmentsOf collects the entry environments of a pipeline: the sources no promotion path
+// targets. They are the only environments the platform accepts a deployment to without a
+// promotion.
+func entryEnvironmentsOf(paths []promotionPath) map[string]bool {
+	targets := map[string]bool{}
+	for _, path := range paths {
+		for _, target := range path.TargetEnvironments {
+			targets[target] = true
+		}
+	}
+	entries := map[string]bool{}
+	for _, path := range paths {
+		if path.SourceEnvironment != "" && !targets[path.SourceEnvironment] {
+			entries[path.SourceEnvironment] = true
+		}
+	}
+	return entries
+}
+
+// promotionPath is one step of a deployment pipeline: where a build is promoted from and to.
+type promotionPath struct {
+	SourceEnvironment  string   `json:"sourceEnvironment"`
+	TargetEnvironments []string `json:"targetEnvironments"`
+}
+
+// pipelinePathsOf reads the promotion paths of the deployment pipeline a project is bound to.
+func pipelinePathsOf(ctx context.Context, projectID string, get pipelineGetter) ([]promotionPath, error) {
+	_, paths, err := boundPipelineOf(ctx, projectID, get)
+	return paths, err
+}
+
+// boundPipelineOf reads which deployment pipeline a project is bound to and that pipeline's
+// promotion paths.
+func boundPipelineOf(ctx context.Context, projectID string, get pipelineGetter) (string, []promotionPath, error) {
+	bound, err := get(ctx, "/projects/"+url.PathEscape(projectID)+"/deployment-pipeline")
+	if err != nil {
+		return "", nil, err
+	}
+	if bound.StatusCode == http.StatusNotFound {
+		return "", nil, &pipelineBindingMissingError{cause: responseError(bound)}
+	}
 	if bound.StatusCode != http.StatusOK {
-		return nil, responseError(bound)
+		return "", nil, responseError(bound)
 	}
 	name, err := stringField(bound, "pipeline")
 	if err != nil {
-		return nil, fmt.Errorf("reading the project's deployment pipeline: %w", err)
+		return "", nil, fmt.Errorf("reading the project's deployment pipeline: %w", err)
 	}
-	listed, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/pipelines", nil)
+	listed, err := get(ctx, "/pipelines")
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if listed.StatusCode != http.StatusOK {
-		return nil, responseError(listed)
+		return "", nil, responseError(listed)
 	}
+	listedName, paths, err := findListedPipeline(listed, name)
+	return listedName, paths, err
+}
+
+// listedPipelinePaths finds a pipeline in a /pipelines listing and returns its promotion paths.
+func listedPipelinePaths(listed *httpx.Response, pipeline string) ([]promotionPath, error) {
+	_, paths, err := findListedPipeline(listed, pipeline)
+	return paths, err
+}
+
+func findListedPipeline(listed *httpx.Response, pipeline string) (string, []promotionPath, error) {
 	var document struct {
 		List []struct {
-			Name           string `json:"name"`
-			PromotionPaths []struct {
-				SourceEnvironment  string   `json:"sourceEnvironment"`
-				TargetEnvironments []string `json:"targetEnvironments"`
-			} `json:"promotionPaths"`
+			ID             string          `json:"id"`
+			Name           string          `json:"name"`
+			PromotionPaths []promotionPath `json:"promotionPaths"`
 		} `json:"list"`
 	}
 	if err := json.Unmarshal(listed.Body, &document); err != nil {
-		return nil, fmt.Errorf("decoding deployment pipelines: %w", err)
+		return "", nil, fmt.Errorf("decoding deployment pipelines: %w", err)
 	}
-	for _, pipeline := range document.List {
-		if pipeline.Name != name {
-			continue
-		}
-		environments := map[string]bool{}
-		for _, path := range pipeline.PromotionPaths {
-			environments[path.SourceEnvironment] = true
-			for _, target := range path.TargetEnvironments {
-				environments[target] = true
+	for _, candidate := range document.List {
+		if candidate.ID == pipeline || candidate.Name == pipeline {
+			name := candidate.Name
+			if strings.TrimSpace(name) == "" {
+				name = candidate.ID
 			}
+			return name, candidate.PromotionPaths, nil
 		}
-		return environments, nil
 	}
-	return nil, fmt.Errorf("deployment pipeline %q is not listed", name)
+	return "", nil, &pipelineNotListedError{pipeline: pipeline}
 }
 
 // assertStagesMatchPipeline checks that the deployment listing has exactly one stage for each

@@ -16,12 +16,13 @@
  * under the License.
  */
 
-import { AppShell, Box, Footer, NotificationPanel } from '@wso2/oxygen-ui';
+import { AppShell, Box, NotificationPanel } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Fragment, Suspense, useMemo } from 'react';
 
 import { useInvalidateApiPortals } from '../../api/resources/apiPortals';
 import { useInvalidateGateways } from '../../api/resources/gateways';
+import { useInvalidateApiDeployments } from '../../api/resources/restApis';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { getBillingOrganization } from '../../billing/organization';
@@ -32,6 +33,7 @@ import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
+import { useTrackFeatureByName } from '../../featureUsage';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useResourceLimits } from '../../hooks/useResourceLimits';
 import { usePageTitle } from '../../navigation/usePageTitle';
@@ -45,16 +47,21 @@ import {
   type InvalidatableResource,
 } from '../../hostPort';
 import { useSlot } from '../../slots';
+import { usePermissions } from '../../permissions';
 import { AppHeader } from './AppHeader';
-import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
 import { FormattedMessage } from 'react-intl';
+
+/** Expanded width of the left navigation, in pixels. Oxygen UI's own default is 250. */
+const SIDEBAR_WIDTH = 280;
 
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { params } = useConsoleScope();
   const { notify } = useNotifications();
+  const { hasScope } = usePermissions();
+  const trackFeature = useTrackFeatureByName();
 
   // Every page inside the shell gets its tab title from here, so a new route
   // is named by its sidebar entry without touching the page itself.
@@ -114,14 +121,16 @@ export default function AppLayout() {
   // and pagination elsewhere too.
   const invalidateGateways = useInvalidateGateways();
   const invalidateApiPortals = useInvalidateApiPortals();
+  const invalidateApiDeployments = useInvalidateApiDeployments();
   const resources = useMemo(
     () => ({
       invalidate: (resource: InvalidatableResource) => {
         if (resource === 'gateways') invalidateGateways();
+        else if (resource === 'apiDeployments') invalidateApiDeployments();
         else invalidateApiPortals();
       },
     }),
-    [invalidateGateways, invalidateApiPortals]
+    [invalidateGateways, invalidateApiPortals, invalidateApiDeployments]
   );
 
   // Built once per render from this portal's own hooks, then handed down as
@@ -142,12 +151,19 @@ export default function AppLayout() {
     gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHostOverride || undefined,
     resourceLimits,
     resources,
+    // Answered by this console's own permission layer (exact any-of over the
+    // session's scopes; allowed while the session loads and in permissive mode),
+    // so a cloud control disables under the conditions a built-in one does.
+    permissions: { canAny: (scopes) => scopes.some(hasScope) },
     user: auth.user ? { email: auth.user.email, name: auth.user.name } : undefined,
+    // A cloud page that replaces a built-in one (Gateways, Deploy) reports the
+    // same features, so they reach Moesif whichever page the deployment shows.
+    trackFeature,
   };
 
   return (
     <PortProvider value={port}>
-      <AppShell initialCollapsed={false} collapseOnSelectOnMobile>
+      <AppShell initialCollapsed={false} collapseOnSelectOnMobile sidebarWidth={SIDEBAR_WIDTH}>
         <AppShell.Navbar>
           <AppHeader />
         </AppShell.Navbar>
@@ -192,7 +208,13 @@ export default function AppLayout() {
             directly), so the shell adds none and a page owns its width and
             padding. The fallbacks stand in for a page, so they bring one of
             their own. */}
-            <Box sx={{ flex: 1, minWidth: 0, width: '100%', p: 1 }}>
+            {/* No bottom or side padding: the footer is the last thing in the page,
+              and Oxygen's `plain` footer puts its divider one sidebar-footer row
+              up from its own bottom edge and insets it by its own padding, so it
+              only lines up with the sidebar's divider (and with Oxygen's
+              `PageContent` footer story) when it spans the shell flush with its
+              bottom. Pages keep their own padding through `PageContent`. */}
+            <Box sx={{ flex: 1, minWidth: 0, width: '100%', pt: 1, px: 0, pb: 0 }}>
               {/* Error boundary scoped to routed page only; resets on pathname change */}
               <ErrorBoundary
                 fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
@@ -211,34 +233,6 @@ export default function AppLayout() {
             </Box>
           </Box>
         </AppShell.Main>
-
-        <AppShell.Footer>
-          {/* id is an anchor for measuring the footer height so sticky action
-            bars (develop tabs' SaveBar) can offset above it — see SaveBar. */}
-          <Box id={APP_FOOTER_ID}>
-            <Footer>
-              <Footer.Copyright>© {new Date().getFullYear()} WSO2 LLC.</Footer.Copyright>
-              {/* Show the environment label only for pinned on-prem builds. */}
-              {runtimeConfig.deploymentMode === 'onprem' && (
-                <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
-              )}
-              <Footer.Link href={runtimeConfig.termsOfUseLink}>
-                <FormattedMessage
-                  id="appLayout.footer.termsOfUse"
-                  defaultMessage="Terms of Use"
-                  description="Footer link to the Terms of Use page"
-                />
-              </Footer.Link>
-              <Footer.Link href={runtimeConfig.privacyPolicyLink}>
-                <FormattedMessage
-                  id="appLayout.footer.privacyPolicy"
-                  defaultMessage="Privacy Policy"
-                  description="Footer link to the Privacy Policy page"
-                />
-              </Footer.Link>
-            </Footer>
-          </Box>
-        </AppShell.Footer>
 
         <AppShell.NotificationPanel>
           <NotificationPanel>

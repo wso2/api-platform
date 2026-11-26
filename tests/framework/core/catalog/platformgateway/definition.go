@@ -45,6 +45,9 @@ func PlatformGateway() *components.Definition {
 	env := map[string]string{
 		EnvImagePGController: shared.Image(shared.EnvImageGatewayController, shared.GatewayControllerRunImage()).Ref,
 		EnvImagePGRuntime:    shared.Image(shared.EnvImageGatewayRuntime, shared.GatewayRuntimeRunImage()).Ref,
+		// The controller reads both: the router value shapes the runtime's health routes.
+		envControllerHealthAllowedClients: shared.HealthAllowedClients,
+		envRouterHealthAllowedClients:     shared.HealthAllowedClients,
 	}
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
@@ -155,6 +158,10 @@ type PlatformGatewayWiring struct {
 	// SigningKeys gives the runtime the fixed integration-test signing keys at
 	// /secrets/gateway-runtime/signing. The block's overlay configures them under [signing].
 	SigningKeys bool `yaml:"signingKeys"`
+	// CustomPolicies makes the controller load the integration-test policy definitions under
+	// resources/custom-policies, and report all but it-builtin as custom policies. It needs the
+	// one-controller gateway.
+	CustomPolicies bool `yaml:"customPolicies"`
 	// SecondOrganizationReplicas lists the replicas, numbered from 1 as in platform-gateway#2,
 	// that register in the control plane's second organization instead of the default one.
 	SecondOrganizationReplicas []int `yaml:"secondOrganizationReplicas"`
@@ -200,5 +207,8 @@ func gatewayGeneratedFiles() map[string][]byte {
 		// The testbench Jev service's certificate, which the runtime trusts through
 		// SSL_CERT_DIR so a Jev policy can call the mock over HTTPS.
 		"testbench-ca/jev.pem": shared.JevTLS().CertPEM,
+		// The testbench OIDC identity provider's certificate, trusted the same way so a policy
+		// can fetch the provider's keys over HTTPS without disabling certificate verification.
+		"testbench-ca/oidc.pem": shared.IdentityProviderTLS().CertPEM,
 	}
 }

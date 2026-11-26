@@ -18,6 +18,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -79,6 +80,9 @@ func main() {
 	// platform façade. builtins.Plugins() is build-tag selected in its own package
 	// so this entry point stays buildable as a single file (`go build ./cmd/main.go`).
 	srv, err := server.StartPlatformAPIServer(cfg, slogger, builtins.Plugins(), nil)
+	if errors.Is(err, server.ErrStartupInterrupted) {
+		return
+	}
 	if err != nil {
 		slogger.Error("Failed to create server", "error", err)
 		os.Exit(1)
@@ -87,7 +91,7 @@ func main() {
 	slogger.Info("Starting server",
 		"http_enabled", cfg.Listeners.HTTP.Enabled, "http_port", cfg.Listeners.HTTP.Port,
 		"https_enabled", cfg.Listeners.HTTPS.Enabled, "https_port", cfg.Listeners.HTTPS.Port)
-	if err := srv.Start(cfg.Listeners, cfg.Listeners.Timeouts); err != nil {
+	if err := srv.Start(); err != nil {
 		slogger.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}

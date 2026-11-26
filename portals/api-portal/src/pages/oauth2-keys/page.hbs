@@ -49,11 +49,11 @@
           children, whatever it holds. --}}
     <div class="ok-head-actions">
       <button class="dp-btn dp-btn--outline" id="ok-import-btn" type="button" hidden>
-        <i class="bi bi-link-45deg"></i> Add existing key
+        <i class="bi bi-link-45deg"></i> Import OAuth2 client
       </button>
       <button class="dp-btn dp-btn--primary" id="ok-add-btn" type="button"
         {{#unless generationAvailable}}disabled title="No key manager is available for OAuth2 keys"{{/unless}}>
-        <i class="bi bi-plus"></i> Generate key
+        <i class="bi bi-plus"></i> Register OAuth2 client
       </button>
     </div>
     {{/if}}
@@ -85,6 +85,9 @@
                 not here, so selecting one has to fetch them. --}}
           <tr class="ok-row" data-key-id="{{this.keyId}}" data-key-manager-id="{{this.keyManagerId}}"
               data-application-id="{{this.applicationId}}" data-consumer-key="{{this.consumerKey}}"
+              {{!-- Read by the associate picker, which greys out any application
+                    that already holds a key of this type. --}}
+              data-key-type="{{this.keyType}}"
               tabindex="0" role="button" aria-label="Open {{#if this.name}}{{this.name}}{{else}}{{this.consumerKey}}{{/if}}">
             {{!-- What the developer called it. Falls back to the consumer key, which
                   is what a key created before names existed has to be found by. --}}
@@ -202,10 +205,10 @@
       {{#unless (designMode)}}
       <div class="ok-empty-actions">
         <button class="dp-btn dp-btn--primary dp-btn--lg" id="ok-add-btn-empty" type="button">
-          <i class="bi bi-plus"></i> Generate key
+          <i class="bi bi-plus"></i> Register OAuth2 client
         </button>
         <button class="dp-btn dp-btn--outline dp-btn--lg" id="ok-import-btn-empty" type="button" hidden>
-          <i class="bi bi-link-45deg"></i> Add existing key
+          <i class="bi bi-link-45deg"></i> Import OAuth2 client
         </button>
       </div>
       {{/unless}}
@@ -327,7 +330,7 @@
         <button type="button" class="ok-modal-close" id="ok-app-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
       </div>
       <div class="ok-modal-body">
-        <p class="ok-form-hint" style="margin-top:0;">Used to attribute this key's usage. It has no effect on whether the key works, and a key belongs to at most one application.</p>
+        <p class="ok-form-hint" style="margin-top:0;">Used to attribute this key's usage. It has no effect on whether the key works. A key belongs to at most one application, and an application holds one production key and one sandbox key — an application that already has a key of this type is listed but cannot be picked.</p>
         <div class="ok-form-group">
           <label for="ok-app-select">Application</label>
           <select id="ok-app-select" class="ok-form-input">

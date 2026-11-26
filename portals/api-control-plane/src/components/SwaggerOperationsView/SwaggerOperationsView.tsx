@@ -30,14 +30,30 @@ import { Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 
 import type { Operation } from '@/api/resources/restApis';
+import { useIsDarkScheme } from '@/hooks/useIsDarkScheme';
 import { useCan } from '@/permissions/useCan';
 
 type ChipColor = 'default' | 'error' | 'info' | 'primary' | 'secondary' | 'success' | 'warning';
 
+/**
+ * GET is blue, but not via the palette's `info`: under Choreo Labs `info` is
+ * white (dark) / midnight ink (light) — neutral, so GET read as uncoloured next
+ * to the other methods. Cobalt is the theme's own blue.
+ */
+const GET_TONE = { dark: '#6C8CFF', light: '#1F4FFF' } as const;
+const isGet = (method: string) => method.toUpperCase() === 'GET';
+
+/**
+ * PATCH is teal. `secondary` under Choreo Labs is midnight ink, which made PATCH
+ * read as an unrelated near-black next to the other methods.
+ */
+const PATCH_TONE = '#50E3C2';
+const isPatch = (method: string) => method.toUpperCase() === 'PATCH';
+
 const methodColor = (method: string): ChipColor => {
   switch (method.toUpperCase()) {
     case 'GET':
-      return 'info';
+      return 'default';
     case 'POST':
       return 'success';
     case 'PUT':
@@ -51,7 +67,9 @@ const methodColor = (method: string): ChipColor => {
   }
 };
 
-const methodTone = (theme: Theme, method: string) => {
+const methodTone = (theme: Theme, method: string, isDark: boolean) => {
+  if (isGet(method)) return isDark ? GET_TONE.dark : GET_TONE.light;
+  if (isPatch(method)) return PATCH_TONE;
   const color = methodColor(method);
   return color === 'default' ? theme.palette.text.primary : theme.palette[color].main;
 };
@@ -71,6 +89,7 @@ export function SwaggerOperationsView({
   showDelete = false,
 }: SwaggerOperationsViewProps) {
   const canUpdateRESTAPISpec = useCan('UpdateRESTAPISpec');
+  const isDark = useIsDarkScheme();
 
   if (operations.length === 0) {
     return (
@@ -92,7 +111,7 @@ export function SwaggerOperationsView({
           <Box
             key={`${method}-${path}-${index}`}
             sx={(theme) => {
-              const tone = methodTone(theme, method);
+              const tone = methodTone(theme, method, isDark);
               return {
                 alignItems: 'center',
                 bgcolor: alpha(tone, 0.08),
@@ -112,7 +131,16 @@ export function SwaggerOperationsView({
               color={methodColor(method)}
               label={method}
               size="small"
-              sx={{ borderRadius: 0.4, flexShrink: 0, fontWeight: 700, minWidth: 80 }}
+              sx={(theme) => ({
+                borderRadius: 0.4,
+                flexShrink: 0,
+                fontWeight: 700,
+                minWidth: 80,
+                ...((isGet(method) || isPatch(method)) && {
+                  bgcolor: methodTone(theme, method, isDark),
+                  color: '#FFFFFF',
+                }),
+              })}
             />
             <Typography sx={{ flexShrink: 0, fontSize: '0.95rem', fontWeight: 700 }}>
               {path}

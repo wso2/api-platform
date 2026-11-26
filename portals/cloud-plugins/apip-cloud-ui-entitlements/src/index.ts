@@ -25,12 +25,15 @@ export { getEntitlementSummary, resetEntitlementSummary } from './entitlementSto
 export { fetchEntitlementSummary } from './entitlementsApi';
 export { isReadOnly, toResourceLimits, PRODUCT } from './entitlementLimits';
 export { toUsagePanel } from './usagePanel';
-export type { UsageItem, UsagePanel, UsageSection } from './usagePanel';
+export type { UsageGroup, UsageItem, UsagePanel, UsageSection } from './usagePanel';
 export type { ResourceLimit, ResourceLimitSet } from './entitlementLimits';
 export type {
   EntitlementsHostPort,
   ResourceLimitsPort,
   TrialStatusHostPort,
 } from './hostPort';
-export type { BillingOrganization, TrialDetails } from './types';
+export type { BillingOrganization, BillingSubscription, TrialDetails } from './types';
+export { subscriptionsUrl } from './subscriptionsUrl';
+export { trialBadgeState } from './trialState';
+export type { TrialBadgeState } from './trialState';
 export type { Entitlement, EntitlementSummary } from './entitlementTypes';

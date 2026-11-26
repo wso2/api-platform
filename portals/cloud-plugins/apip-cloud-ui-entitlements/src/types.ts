@@ -28,9 +28,13 @@ export type TrialDetails = {
   trial_days?: number;
 };
 
+export type BillingSubscription = {
+  status?: string;
+  /** Start of the current billing period; with `trial_end`, tells a lapsed trial from a lapsed paid plan. */
+  current_period_start?: string;
+  trial?: TrialDetails | null;
+};
+
 export type BillingOrganization = {
-  subscription?: {
-    status?: string;
-    trial?: TrialDetails | null;
-  } | null;
+  subscription?: BillingSubscription | null;
 };

@@ -53,6 +53,16 @@ export type GatewayVersionEntry = {
   channel: 'STS' | 'LTS';
 };
 
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the spec's any-of list, `:manage` scopes
+ * included — and says whether the user may be offered it. Mirrors the host's
+ * `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -61,8 +71,31 @@ export type CloudHostPort = {
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /**
+   * Tells the host that APIs' gateways and deployments changed. Deploying writes
+   * through `apiFetch`, which the host's cache cannot see, so without this the host
+   * keeps showing what it read before (the Test page saying "not deployed"). Optional:
+   * a host that caches nothing omits it.
+   */
+  resources?: {
+    invalidate: (resource: 'apiDeployments') => void;
+  };
   /** Gateway releases from the host's config; the first `regular` entry is the latest. */
   gatewayVersions?: GatewayVersionEntry[];
   /** `host:port` a self-hosted gateway's controller dials; falls back to this page's own host. */
   gatewayControlPlaneHost?: string;
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
+  /**
+   * Reports one use of an API Platform console feature, by its taxonomy code
+   * (`apip.lifecycle.api-deploy-click`) and declared dimensions, so this page
+   * reports what the built-in page it replaces would. Optional: a host that
+   * reports no feature usage omits it, and nothing is reported.
+   */
+  trackFeature?: (code: string, dimensions?: Readonly<Record<string, string>>) => void;
 };

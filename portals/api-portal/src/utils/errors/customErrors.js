@@ -52,9 +52,26 @@ class NotFoundError extends Error {
  * `error instanceof Sequelize.ValidationError` -> `error instanceof ValidationError`.
  */
 class ValidationError extends Error {
-    constructor(message) {
+    /** `errors`, when given, lists each problem as `{ message }` so the response can name every one. */
+    constructor(message, errors) {
         super(message);
         this.name = 'ValidationError';
+        if (errors) {
+            this.errors = errors;
+        }
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+
+/**
+ * A request that clashes with existing data. `errors` lists each clash as `{ message }`
+ * so the response can name every one of them.
+ */
+class ConflictError extends Error {
+    constructor(errors) {
+        super('Conflict');
+        this.name = 'ConflictError';
+        this.errors = errors;
         Error.captureStackTrace(this, this.constructor);
     }
 }
@@ -63,4 +80,5 @@ module.exports = {
     CustomError,
     NotFoundError,
     ValidationError,
+    ConflictError,
 };

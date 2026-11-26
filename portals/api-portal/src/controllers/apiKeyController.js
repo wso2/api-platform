@@ -61,6 +61,18 @@ async function resolveApiIdOrRespond(orgId, apiHandle, res, req) {
     return apiId;
 }
 
+// Platform API's API key webhook does not accept WebSub APIs, so a key generated for one
+// would be returned to the user but never reach the gateway. Refuse it up front; listing
+// and revoking existing keys stay available.
+async function rejectIfWebSubOrRespond(orgId, apiHandle, res) {
+    const webSubId = await apiDao.getIdByType(orgId, apiHandle, constants.API_TYPE.WEBSUB);
+    if (webSubId) {
+        util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'API keys are not supported for WebSub APIs' }] });
+        return true;
+    }
+    return false;
+}
+
 // Returns undefined when no handle was given, null when the handle didn't resolve, or the uuid.
 async function resolveAppId(orgId, userId, appHandle) {
     if (!appHandle) return undefined;
@@ -121,6 +133,7 @@ async function generateApiKey(req, res) {
     try {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
+        if (await rejectIfWebSubOrRespond(orgId, apiHandle, res)) return;
         const appId = await resolveAppId(orgId, util.resolveActor(req), appIdResult.value);
         if (appIdResult.value && !appId) {
             return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Application not found' }] });
@@ -250,6 +263,7 @@ async function regenerateApiKey(req, res) {
     try {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
+        if (await rejectIfWebSubOrRespond(orgId, apiHandle, res)) return;
         const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res, req);
         if (!keyId) return;
         const result = await apiKeyService.regenerate({

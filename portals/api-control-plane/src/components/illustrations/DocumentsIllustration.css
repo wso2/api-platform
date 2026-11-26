@@ -1,0 +1,247 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+.api-docs-animation {
+  --t: 7s;
+  position: relative;
+  text-align: left;
+  overflow: hidden;
+  animation: dc-win var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.api-docs-animation .mono {
+  font-family: ui-monospace, monospace;
+}
+/* The empty-state outline, shown before the window fills in. */
+.api-docs-animation::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px dashed var(--docs-muted);
+  pointer-events: none;
+  animation: dc-empty var(--t) ease infinite;
+}
+
+/* Window chrome */
+.api-docs-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--docs-border);
+}
+.api-docs-bar i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--docs-track);
+}
+.api-docs-url {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--docs-muted);
+}
+
+/* Body */
+.api-docs-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: dc-body var(--t) ease infinite;
+}
+.api-docs-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--docs-text);
+}
+.api-docs-sub {
+  font-size: 11px;
+  color: var(--docs-muted);
+  margin-top: -6px;
+}
+.api-docs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.api-docs-row {
+  height: 44px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--docs-row);
+  border: 1px solid var(--docs-border);
+}
+.api-docs-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.api-docs-ln {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--docs-track);
+}
+.api-docs-ln.dim {
+  opacity: 0.6;
+}
+
+/* The slot a new document drops into */
+.api-docs-slot {
+  position: relative;
+  height: 56px;
+}
+.api-docs-slot-empty {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--docs-accent) 45%, transparent);
+  animation: dc-slot-empty var(--t) ease infinite;
+}
+.api-docs-card {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: 10px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--docs-accent-base) 70%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--docs-accent-base) 24%, transparent),
+    color-mix(in srgb, var(--docs-accent-base) 8%, transparent)
+  );
+  animation: dc-drop var(--t) cubic-bezier(0.2, 1.3, 0.4, 1) infinite;
+}
+.api-docs-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.api-docs-card-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--docs-text);
+}
+.api-docs-badge {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--docs-success);
+  background: color-mix(in srgb, var(--docs-success-base) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--docs-success-base) 40%, transparent);
+  animation: dc-badge var(--t) cubic-bezier(0.3, 1.6, 0.5, 1) infinite;
+}
+.api-docs-grow {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  transform-origin: 0 50%;
+}
+.api-docs-grow.l1 {
+  width: 80%;
+  background: color-mix(in srgb, var(--docs-accent) 50%, transparent);
+  animation: dc-line1 var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.api-docs-grow.l2 {
+  width: 55%;
+  background: color-mix(in srgb, var(--docs-accent) 30%, transparent);
+  animation: dc-line2 var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+/* Footer */
+.api-docs-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--docs-border);
+  font-size: 11px;
+  color: var(--docs-muted);
+  animation: dc-foot var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.api-docs-count {
+  margin-left: auto;
+  color: var(--docs-text);
+}
+
+@keyframes dc-empty {
+  0%, 10% { opacity: 1; }
+  18%, 86% { opacity: 0; }
+  94%, 100% { opacity: 1; }
+}
+@keyframes dc-win {
+  0%, 10% { border-color: transparent; box-shadow: none; }
+  18%, 86% { border-color: var(--docs-border); }
+  94%, 100% { border-color: transparent; box-shadow: none; }
+}
+@keyframes dc-body {
+  0%, 12% { opacity: 0; transform: translateY(6px); }
+  20%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: translateY(6px); }
+}
+@keyframes dc-slot-empty {
+  0%, 32% { opacity: 1; }
+  38%, 86% { opacity: 0; }
+  94%, 100% { opacity: 1; }
+}
+@keyframes dc-drop {
+  0%, 32% { opacity: 0; transform: translateY(-26px) scale(0.94); }
+  40%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: none; }
+}
+@keyframes dc-line1 {
+  0%, 42% { transform: scaleX(0); }
+  50%, 86% { transform: scaleX(1); }
+  94%, 100% { transform: scaleX(0); }
+}
+@keyframes dc-line2 {
+  0%, 46% { transform: scaleX(0); }
+  54%, 86% { transform: scaleX(1); }
+  94%, 100% { transform: scaleX(0); }
+}
+@keyframes dc-badge {
+  0%, 52% { opacity: 0; transform: scale(0.7); }
+  58%, 86% { opacity: 1; transform: scale(1); }
+  94%, 100% { opacity: 0; transform: scale(0.7); }
+}
+@keyframes dc-foot {
+  0%, 60% { opacity: 0; transform: translateY(6px); }
+  67%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: translateY(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-docs-animation,
+  .api-docs-animation * {
+    animation: none !important;
+  }
+  .api-docs-animation::after,
+  .api-docs-slot-empty {
+    opacity: 0;
+  }
+}

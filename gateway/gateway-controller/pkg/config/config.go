@@ -21,7 +21,10 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"math"
+	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,9 +35,13 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/common/configinterpolate"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/health"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 const (
@@ -213,6 +220,7 @@ type Controller struct {
 	AdminServer  AdminServerConfig  `koanf:"admin_server"`
 	Storage      StorageConfig      `koanf:"storage"`
 	Logging      LoggingConfig      `koanf:"logging"`
+	Health       HealthConfig       `koanf:"health"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	HTTPClient   HTTPClientConfig   `koanf:"http_client"`
 	PolicyServer PolicyServerConfig `koanf:"policy_server"`
@@ -321,9 +329,9 @@ type ServerConfig struct {
 	GatewayID                       string        `koanf:"gateway_id"`
 	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
 
-	// TLS starts a second, TLS-only listener on TLS.Port serving the same
-	// REST management API as the plaintext listener on APIPort. Off by
-	// default.
+	// TLS serves the REST management API over TLS on TLS.Port instead of
+	// plaintext on APIPort: when enabled, the plaintext listener is not
+	// started. Off by default.
 	TLS ServerTLSConfig `koanf:"tls"`
 
 	// XDSTLS switches the main xDS gRPC server (serving Envoy, on XDSPort)
@@ -331,6 +339,9 @@ type ServerConfig struct {
 	// second listener -- XDSPort itself starts speaking mTLS. Off by
 	// default; see XDSServerTLSConfig for why xDS has no server-only mode.
 	XDSTLS XDSServerTLSConfig `koanf:"xds_tls"`
+
+	// NetworkSecurity groups the gateway's outbound network controls.
+	NetworkSecurity NetworkSecurityConfig `koanf:"network_security"`
 
 	// ReadTimeout, ReadHeaderTimeout, WriteTimeout, and IdleTimeout bound the
 	// REST management API's http.Server (both the plaintext listener on
@@ -349,17 +360,17 @@ type ServerConfig struct {
 	MaxCertificateUploadBytes int64 `koanf:"max_certificate_upload_bytes"`
 }
 
-// ServerTLSConfig holds configuration for an additional TLS listener for the
-// REST management API. It is served alongside — not instead of — the
-// plaintext listener on ServerConfig.APIPort, so enabling it never breaks an
-// existing plaintext deployment. Same shape and naming conventions as
+// ServerTLSConfig holds configuration for the TLS listener of the REST
+// management API. When enabled, it replaces the plaintext listener on
+// ServerConfig.APIPort, so management traffic, which carries credentials, never
+// keeps flowing in plaintext once TLS is configured. Same shape and naming conventions as
 // policy-engine's AdminTLSConfig (gateway-runtime/policy-engine/internal/config) —
 // keep the two in sync if either changes, they are independent implementations
 // (different Go modules) of the same pattern.
 type ServerTLSConfig struct {
-	// Enabled starts the TLS listener on Port. Off by default: no
-	// certificate is provisioned by default, and the plaintext listener
-	// keeps working either way.
+	// Enabled starts the TLS listener on Port in place of the plaintext
+	// listener. Off by default, since no certificate is provisioned by
+	// default.
 	Enabled bool `koanf:"enabled"`
 
 	// Port is the port for the TLS REST API listener. Must differ from every
@@ -645,6 +656,17 @@ type RouterConfig struct {
 
 	// HTTPListener configuration
 	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
+
+	// Health configures the gateway's own readiness and liveness routes.
+	Health RouterHealthConfig `koanf:"health"`
+}
+
+// RouterHealthConfig configures the gateway's own readiness and liveness routes on the
+// traffic listeners.
+type RouterHealthConfig struct {
+	// AllowedClients are the peer addresses (IPs or CIDR ranges) Envoy lets reach the
+	// health routes. Empty, or "*" alone, means every client.
+	AllowedClients ClientList `koanf:"allowed_clients"`
 }
 
 // RouterUpstream holds upstream-side configuration (TLS and timeouts for Envoy upstream).
@@ -820,6 +842,9 @@ type HTTPListenerConfig struct {
 	DisablePathNormalization      bool        `koanf:"disable_path_normalization"`
 	ReturnRequestIDInResponse     bool        `koanf:"return_request_id_in_response"`    // Return x-request-id in responses
 	PathWithEscapedSlashesAction  string      `koanf:"path_with_escaped_slashes_action"` // Options: "KEEP_UNCHANGED", "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD"
+	// AllowPathCaseVariants turns off the 404 for a path that matches a route only when compared
+	// case-insensitively, letting such a request fall through to a broader route as before.
+	AllowPathCaseVariants bool `koanf:"allow_path_case_variants"`
 }
 
 // HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
@@ -862,6 +887,53 @@ type AccessLogsConfig struct {
 type LoggingConfig struct {
 	Level  string `koanf:"level"`  // "debug", "info", "warn", "error"
 	Format string `koanf:"format"` // "json" (default) or "text"
+}
+
+// HealthConfig holds health check configuration
+type HealthConfig struct {
+	CacheTTL time.Duration `koanf:"cache_ttl"` // How long an evaluated health result is reused
+	// AllowedClients are the peer addresses (IPs or CIDR ranges) answered by the admin
+	// health endpoints. Empty, or "*" alone, means every client.
+	AllowedClients ClientList `koanf:"allowed_clients"`
+	// Database holds the settings of the database check.
+	Database HealthDatabaseConfig `koanf:"database"`
+}
+
+// HealthDatabaseConfig holds the settings of the database health check. The check decides
+// from the outcomes of the controller's own database operations, and pings the database
+// itself only when there has been no database activity for IdlePeriod.
+type HealthDatabaseConfig struct {
+	CheckTimeout   time.Duration `koanf:"check_timeout"`   // Deadline for the check's own ping
+	StartupWait    time.Duration `koanf:"startup_wait"`    // How long startup waits for the database before exiting; rejected credentials end it at once
+	FailureWindow  time.Duration `koanf:"failure_window"`  // Sliding window of operation outcomes the check decides from
+	FailureRatio   float64       `koanf:"failure_ratio"`   // Share of failed operations in the window that marks the database down
+	MinAttempts    int           `koanf:"min_attempts"`    // Operations the window needs before the ratio decides
+	IdlePeriod     time.Duration `koanf:"idle_period"`     // Inactivity after which the check pings the database itself
+	PoolSaturation float64       `koanf:"pool_saturation"` // Share of the connection pool in use that counts as saturated
+	PoolWaitLimit  time.Duration `koanf:"pool_wait_limit"` // How long the pool may stay saturated before the check reports a warning
+}
+
+// ClientList is a list of client addresses. In configuration it is a TOML array, or a
+// single comma-separated string so that one environment variable can set the whole list.
+type ClientList []string
+
+// clientListType is the reflected type of ClientList, used by the decode hook.
+var clientListType = reflect.TypeOf(ClientList(nil))
+
+// stringToClientListHook decodes a comma-separated string into a ClientList, trimming
+// each entry and dropping empty ones, so an empty string decodes to an empty list. It
+// applies only when the target is a ClientList; every other key decodes as before.
+func stringToClientListHook(from, to reflect.Type, data any) (any, error) {
+	if to != clientListType || from.Kind() != reflect.String {
+		return data, nil
+	}
+	list := ClientList{}
+	for _, entry := range strings.Split(reflect.ValueOf(data).String(), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			list = append(list, entry)
+		}
+	}
+	return list, nil
 }
 
 // ControlPlaneConfig holds control plane connection configuration
@@ -908,11 +980,11 @@ type ControlPlaneConfig struct {
 // plane, platform API, and on-prem APIM all copy that one field today). Duplicating it here
 // would just create two settings that must always be kept in sync.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -986,13 +1058,13 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerifyAcknowledged bool `koanf:"insecure_skip_verify_acknowledged"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig. Off by
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible subset of httpclient.DestinationGuardConfig. Off by
 // default: this shared client's current callers (control plane, platform API, on-prem APIM)
 // all target a single fixed, operator-configured host, not a user/tenant-supplied URL — the
 // scenario ssrf-prevention.md targets — so there is nothing to guard against today. Exposed
 // for completeness and for any future caller of this shared client that fetches a
 // tenant-supplied URL.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	Enabled bool `koanf:"enabled"`
 	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (a
 	// backend that is normally private — a ClusterIP, a service-DNS name, localhost —
@@ -1078,13 +1150,21 @@ func LoadConfig(configPaths ...string) (*Config, error) {
 		return nil, err
 	}
 
-	// Unmarshal into Config struct with DecodeHook for duration strings
+	if err := checkHealthKeys(k); err != nil {
+		return nil, err
+	}
+
+	// Unmarshal into Config struct with DecodeHooks for duration strings and for
+	// comma-separated client lists
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
 			Result:           cfg,
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				stringToClientListHook,
+			),
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -1096,6 +1176,62 @@ func LoadConfig(configPaths ...string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// checkHealthKeys rejects health keys the controller would otherwise silently ignore: an
+// unknown (for example misspelled) key in the controller.health,
+// controller.health.database and router.health tables. A
+// misspelled allowed_clients would otherwise leave the health endpoints open to every
+// client. Only the controller's own health tables are inspected, because the gateway
+// configuration file is shared with other components.
+func checkHealthKeys(k *koanf.Koanf) error {
+	for _, table := range []struct {
+		path  string
+		known map[string]bool
+	}{
+		{"controller.health", koanfKeys(reflect.TypeOf(HealthConfig{}))},
+		{"controller.health.database", koanfKeys(reflect.TypeOf(HealthDatabaseConfig{}))},
+		{"router.health", koanfKeys(reflect.TypeOf(RouterHealthConfig{}))},
+	} {
+		if err := checkTableKeys(k, table.path, table.known); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkTableKeys rejects a key in the table at path that is not one of known. A missing
+// table is fine; a value set where the table belongs is not.
+func checkTableKeys(k *koanf.Koanf, path string, known map[string]bool) error {
+	if !k.Exists(path) {
+		return nil
+	}
+	table, ok := k.Get(path).(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("%s must be a table", path)
+	}
+	keys := make([]string, 0, len(table))
+	for key := range table {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !known[key] {
+			return fmt.Errorf("%s: unknown key %q", path, key)
+		}
+	}
+	return nil
+}
+
+// koanfKeys returns the koanf key names of a struct type's fields.
+func koanfKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
+			keys[tag] = true
+		}
+	}
+	return keys
 }
 
 // interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
@@ -1111,6 +1247,17 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
 	if err != nil {
 		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	deprecated, err := configcompat.MigrateDestinationGuard(expanded, "controller")
+	if err != nil {
+		return nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard",
+			slog.String("key", deprecated))
 	}
 
 	out := koanf.New(".")
@@ -1164,6 +1311,19 @@ func defaultConfig() *Config {
 	return &Config{
 		Controller: Controller{
 			Server: ServerConfig{
+				// Outbound access control for artifact URLs. On by default with
+				// private and in-cluster destinations reachable; only link-local
+				// (cloud metadata), unspecified and multicast addresses are refused.
+				NetworkSecurity: NetworkSecurityConfig{
+					AccessControl: AccessControlConfig{
+						Enabled:             true,
+						Mode:                netguard.ModeDeny,
+						Hostnames:           []string{},
+						DenyPrivateNetworks: false,
+						MaxRedirects:        5,
+						AllowedSchemes:      []string{"http", "https"},
+					},
+				},
 				APIPort:                         9090,
 				XDSPort:                         18000,
 				ShutdownTimeout:                 15 * time.Second,
@@ -1261,6 +1421,19 @@ func defaultConfig() *Config {
 				Level:  "info",
 				Format: "text",
 			},
+			Health: HealthConfig{
+				CacheTTL: 3 * time.Second,
+				Database: HealthDatabaseConfig{
+					CheckTimeout:   2 * time.Second,
+					StartupWait:    5 * time.Minute,
+					FailureWindow:  30 * time.Second,
+					FailureRatio:   0.5,
+					MinAttempts:    5,
+					IdlePeriod:     10 * time.Second,
+					PoolSaturation: 0.9,
+					PoolWaitLimit:  5 * time.Second,
+				},
+			},
 			Metrics: MetricsConfig{
 				Enabled: false,
 				Port:    9091,
@@ -1302,7 +1475,7 @@ func defaultConfig() *Config {
 				Proxy: HTTPClientProxyConfig{
 					Mode: "none",
 				},
-				SSRF: HTTPClientSSRFConfig{
+				DestinationGuard: HTTPClientDestinationGuardConfig{
 					Enabled: false,
 				},
 			},
@@ -1453,6 +1626,7 @@ func defaultConfig() *Config {
 				DisablePathNormalization:      false,                          // Path normalization enabled by default
 				ReturnRequestIDInResponse:     true,                           // x-request-id returned by default
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
+				AllowPathCaseVariants:         false,                          // Case variants of a route's path get a 404 by default
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -1931,6 +2105,18 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate the artifact-template env allow list; a malformed entry refuses
+	// startup rather than being silently ignored.
+	if _, err := c.ArtifactEnvAccessPolicy(); err != nil {
+		return err
+	}
+
+	// Validate network access control; a malformed hostname pattern or an allow
+	// mode with no hostnames refuses startup.
+	if _, _, err := c.ArtifactAccessControlPolicy(); err != nil {
+		return err
+	}
+
 	// Validate vhost configuration
 	if err := c.validateVHostsConfig(); err != nil {
 		return err
@@ -1951,6 +2137,11 @@ func (c *Config) Validate() error {
 
 	// Validate API key configuration
 	if err := c.validateAPIKeyConfig(); err != nil {
+		return err
+	}
+
+	// Validate health check configuration
+	if err := c.validateHealthConfig(); err != nil {
 		return err
 	}
 
@@ -2210,6 +2401,89 @@ func validateEcdhCurves(fieldPath, curves string) error {
 	return nil
 }
 
+// healthProbeTimeoutDefault is the default timeout of the probes that consume
+// the health endpoints.
+const healthProbeTimeoutDefault = 5 * time.Second
+
+// validateHealthConfig validates the health check configuration
+func (c *Config) validateHealthConfig() error {
+	h := &c.Controller.Health
+
+	if h.CacheTTL <= 0 {
+		return fmt.Errorf("controller.health.cache_ttl must be > 0, got: %s", h.CacheTTL)
+	}
+	if err := validateHealthDatabaseConfig(&h.Database, h.CacheTTL); err != nil {
+		return err
+	}
+	if _, err := health.ParseAllowedClients("controller.health", h.AllowedClients); err != nil {
+		return err
+	}
+	if _, err := health.ParseAllowedClients("router.health", c.Router.Health.AllowedClients); err != nil {
+		return err
+	}
+
+	// Warn rather than fail: a slower check is a legitimate choice, but a probe
+	// that gives up first reports the gateway unhealthy while the check is still running.
+	if h.Database.CheckTimeout >= healthProbeTimeoutDefault {
+		slog.Warn("controller.health.database.check_timeout is at or above the default 5s probe timeout; probes may give up before checks complete",
+			slog.Duration("check_timeout", h.Database.CheckTimeout))
+	}
+	return nil
+}
+
+// maxHealthFailureWindow bounds controller.health.database.failure_window. The window
+// keeps one bucket per second, so a very long window would allocate a large amount of
+// memory at startup.
+const maxHealthFailureWindow = time.Hour
+
+// validateHealthDatabaseConfig validates the database check settings. The window must
+// outlast the cached answer, and an idle instance must ping at least once per window.
+func validateHealthDatabaseConfig(d *HealthDatabaseConfig, cacheTTL time.Duration) error {
+	const prefix = "controller.health.database."
+	durations := []struct {
+		key   string
+		value time.Duration
+	}{
+		{"check_timeout", d.CheckTimeout},
+		{"startup_wait", d.StartupWait},
+		{"failure_window", d.FailureWindow},
+		{"idle_period", d.IdlePeriod},
+		{"pool_wait_limit", d.PoolWaitLimit},
+	}
+	for _, f := range durations {
+		if f.value <= 0 {
+			return fmt.Errorf("%s%s must be > 0, got: %s", prefix, f.key, f.value)
+		}
+	}
+	ratios := []struct {
+		key   string
+		value float64
+	}{
+		{"failure_ratio", d.FailureRatio},
+		{"pool_saturation", d.PoolSaturation},
+	}
+	for _, f := range ratios {
+		if math.IsNaN(f.value) || f.value <= 0 || f.value > 1 {
+			return fmt.Errorf("%s%s must be > 0 and <= 1, got: %g", prefix, f.key, f.value)
+		}
+	}
+	if d.MinAttempts < 1 {
+		return fmt.Errorf("%smin_attempts must be >= 1, got: %d", prefix, d.MinAttempts)
+	}
+	if d.FailureWindow > maxHealthFailureWindow {
+		return fmt.Errorf("%sfailure_window must be <= %s, got: %s", prefix, maxHealthFailureWindow, d.FailureWindow)
+	}
+	if d.FailureWindow < cacheTTL {
+		return fmt.Errorf("%sfailure_window must be >= controller.health.cache_ttl (%s), got: %s",
+			prefix, cacheTTL, d.FailureWindow)
+	}
+	if d.IdlePeriod > d.FailureWindow {
+		return fmt.Errorf("%sidle_period must be <= %sfailure_window (%s), got: %s",
+			prefix, prefix, d.FailureWindow, d.IdlePeriod)
+	}
+	return nil
+}
+
 // validateTimeoutConfig validates the upstream timeout configuration
 func (c *Config) validateTimeoutConfig() error {
 	timeouts := c.Router.Upstream.Timeouts
@@ -2271,7 +2545,147 @@ func (c *Config) validateTimeoutConfig() error {
 	return nil
 }
 
+// NetworkSecurityConfig groups outbound network controls.
+type NetworkSecurityConfig struct {
+	AccessControl AccessControlConfig `koanf:"access_control"`
+}
+
+// AccessControlConfig restricts the destinations an artifact may point the
+// gateway at: its upstream URLs, which the router dials, and the URL
+// parameters (`format: uri` or `x-wso2-url: true`) of the policies attached to
+// it, which the policy engine dials. The controller refuses a deployment that
+// breaks it and undeploys a stored artifact that breaks it after a restart.
+// URLs configured in this file (the control plane, the IdP, collectors,
+// policy system parameters) are never subject to it.
+type AccessControlConfig struct {
+	Enabled bool `koanf:"enabled"`
+	// Mode is "deny" (a host matching Hostnames is refused) or "allow" (only a
+	// host matching Hostnames is permitted).
+	Mode string `koanf:"mode"`
+	// Hostnames are RE2 regular expressions, each matched case-insensitively
+	// against the whole hostname of a destination (never its port or path).
+	Hostnames []string `koanf:"hostnames"`
+	// DenyPrivateNetworks also refuses private, loopback, carrier-grade NAT and
+	// unique-local addresses. Link-local (cloud metadata), unspecified and
+	// multicast addresses are refused regardless.
+	DenyPrivateNetworks bool     `koanf:"deny_private_networks"`
+	MaxRedirects        int      `koanf:"max_redirects"`
+	AllowedSchemes      []string `koanf:"allowed_schemes"`
+}
+
+// GuardConfig returns the shared netguard representation of a.
+func (a AccessControlConfig) GuardConfig() netguard.GuardConfig {
+	return netguard.GuardConfig{
+		Enabled:             a.Enabled,
+		Mode:                a.Mode,
+		Hostnames:           a.Hostnames,
+		DenyPrivateNetworks: a.DenyPrivateNetworks,
+		MaxRedirects:        a.MaxRedirects,
+		AllowedSchemes:      a.AllowedSchemes,
+	}
+}
+
+// ArtifactAccessControlPolicy builds the policy for
+// controller.server.network_security.access_control. enabled is false when
+// access control is off, in which case the policy is the zero Policy and must
+// not be applied.
+func (c *Config) ArtifactAccessControlPolicy() (policy netguard.Policy, enabled bool, err error) {
+	ac := c.Controller.Server.NetworkSecurity.AccessControl
+	policy, err = ac.GuardConfig().Build()
+	if err != nil {
+		return netguard.Policy{}, false, fmt.Errorf("controller.server.network_security.access_control: %w", err)
+	}
+	return policy, ac.Enabled, nil
+}
+
 // validatePolicyEngineConfig validates the policy engine configuration
+// ArtifactEnvAccessPolicy builds the policy that scopes which environment
+// variables {{ env "NAME" }} may read when rendering artifact specs, from
+// [policy_engine.env_access].allow_list. The section lives under policy_engine
+// because it governs what policy params can resolve to, but only the controller
+// reads it — rendering happens here, before config reaches the policy engine.
+//
+// When allow_list is not set (or is a blank string, e.g. from an unset
+// {{ env }} config token), every variable is readable, as in earlier releases.
+// When it is set, only the listed names are readable; an empty array permits
+// none. allow_list is a TOML array of names, or one comma-separated string.
+func (c *Config) ArtifactEnvAccessPolicy() (*funcs.EnvAccessPolicy, error) {
+	entries, configured, err := c.artifactEnvAllowList()
+	if err != nil {
+		return nil, err
+	}
+	if !configured {
+		return funcs.UnrestrictedEnvAccessPolicy(), nil
+	}
+	policy, err := funcs.NewEnvAccessPolicy(entries)
+	if err != nil {
+		return nil, fmt.Errorf("policy_engine.env_access.allow_list: %w", err)
+	}
+	return policy, nil
+}
+
+// InstallArtifactEnvAccessPolicy builds the {{ env }} access policy from this
+// configuration and installs it process-wide. Every binary that renders artifact
+// specs (gateway-controller, event-gateway controller) must call it at startup,
+// before anything renders: until a policy is installed every read is refused.
+func (c *Config) InstallArtifactEnvAccessPolicy(log *slog.Logger) error {
+	policy, err := c.ArtifactEnvAccessPolicy()
+	if err != nil {
+		return err
+	}
+	funcs.SetEnvAccessPolicy(policy)
+	if log == nil {
+		return nil
+	}
+	if policy.Unrestricted() {
+		log.Info("Artifact templates may read any environment variable; set policy_engine.env_access.allow_list to restrict them")
+		return nil
+	}
+	exactCount, prefixCount := policy.Counts()
+	log.Info("Artifact template environment variable access is restricted to an allow list",
+		slog.Int("exact_entries", exactCount),
+		slog.Int("prefix_entries", prefixCount))
+	return nil
+}
+
+// artifactEnvAllowList returns the configured allow list entries and whether an
+// allow list is configured at all.
+func (c *Config) artifactEnvAllowList() ([]string, bool, error) {
+	section, ok := c.PolicyEngine["env_access"]
+	if !ok || section == nil {
+		return nil, false, nil
+	}
+	sectionMap, ok := section.(map[string]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("policy_engine.env_access must be a table")
+	}
+	raw, ok := sectionMap["allow_list"]
+	if !ok || raw == nil {
+		return nil, false, nil
+	}
+	switch v := raw.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil, false, nil
+		}
+		return strings.Split(v, ","), true, nil
+	case []string:
+		return v, true, nil
+	case []interface{}:
+		entries := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false, fmt.Errorf("policy_engine.env_access.allow_list entries must be strings")
+			}
+			entries = append(entries, s)
+		}
+		return entries, true, nil
+	default:
+		return nil, false, fmt.Errorf("policy_engine.env_access.allow_list must be an array of strings")
+	}
+}
+
 func (c *Config) validatePolicyEngineConfig() error {
 	policyEngine := c.Router.PolicyEngine
 

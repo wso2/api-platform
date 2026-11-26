@@ -34,9 +34,10 @@ import (
 
 // caller is who is calling a tool.
 type caller struct {
-	org    string // the Platform API's organization UUID
-	user   string // the Platform API's internal user ID
-	scopes map[string]bool
+	org     string // the Platform API's organization UUID
+	user    string // the Platform API's internal user ID
+	subject string // the identity provider's subject, for feature usage only
+	scopes  map[string]bool
 }
 
 type callerKey struct{}
@@ -67,10 +68,12 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			apperror.WriteHTTP(w, apperror.Internal.New(), "")
 			return
 		}
+		subject, _ := middleware.GetActorIdentityFromRequest(r)
 		next.ServeHTTP(w, withCaller(r, caller{
-			org:    org,
-			user:   user,
-			scopes: toSet(middleware.ResolveEffectiveScopes(r, s.auth.Authorization.Mode)),
+			org:     org,
+			user:    user,
+			subject: subject,
+			scopes:  toSet(middleware.ResolveEffectiveScopes(r, s.auth.Authorization.Mode)),
 		}))
 	})
 }

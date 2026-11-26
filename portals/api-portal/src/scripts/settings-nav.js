@@ -24,7 +24,8 @@
   var panels   = document.querySelectorAll('.cfg-panel');
 
   function activate(id) {
-    if (!PANELS.includes(id)) id = 'cfg-organizations';
+    // A panel that isn't on the page opens Organization instead.
+    if (!PANELS.includes(id) || !document.getElementById(id)) id = 'cfg-organizations';
     // The shared API/MCP wizard lives inside #cfg-apis. Any sidebar navigation exits it
     // and restores the APIs list, so we never land on a panel with the wizard still open.
     var wizard = document.getElementById('cfg-apis-wizard');

@@ -807,6 +807,137 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateway-relay/invoke:
+    post:
+      summary: Send a test request to an API through a gateway
+      description: |
+        Sends one request to the REST or GraphQL API (`apiType`, `apiId`) as deployed on the
+        gateway (`gatewayId`), for the console's Test console, and returns the gateway's response
+        as data. The request goes to the gateway's endpoint plus the context of the API's
+        deployment there, only if the API is deployed there and the endpoint is on the control
+        plane's allow list (`gateway_relay.egress.allow_hosts`). A REST API's deployment sends its
+        main vhost as `Host` when it has one of its own; a GraphQL API is always a `POST` to its
+        context, on the gateway's default vhost. Redirects are not followed, and the caller's own
+        credentials never reach the gateway.
+
+        Any answer from the gateway is a `200` carrying its status, headers and body; an error
+        status means the request was not relayed. The gateway applies the API's own security to
+        the request, so reading the API is enough to send one: the caller needs the read or
+        manage scope of the API's own kind.
+      operationId: InvokeAPIOnGateway
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:graphql_api:read
+            - ap:rest_api:manage
+            - ap:graphql_api:manage
+      tags:
+        - REST APIs
+        - GraphQL APIs
+        - Gateways
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIInvokeRequest'
+      responses:
+        '200':
+          description: The gateway answered; its response is in `response`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIInvokeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Forbidden. The token lacks the read or manage scope of the API's kind, or the gateway's
+            endpoint is not on the control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`,
+            `GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_TARGET_NOT_ALLOWED
+                message: This gateway cannot be reached from the control plane.
+        '404':
+          description: |
+            Not Found. The API does not exist in the caller's organization (`REST_API_NOT_FOUND`,
+            `GRAPHQL_API_NOT_FOUND`), or it is not deployed to the gateway
+            (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`, `GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_GATEWAY_NOT_DEPLOYED
+                message: This REST API is not deployed to the selected gateway.
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: |
+            Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`,
+            `GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT`), or its endpoint is not an http or https
+            address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`,
+            `GRAPHQL_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_GATEWAY_NO_ENDPOINT
+                message: The selected gateway has no endpoint configured.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: |
+            Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`,
+            `GRAPHQL_API_INVOKE_UPSTREAM_UNREACHABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_UPSTREAM_UNREACHABLE
+                message: The gateway could not be reached.
+                trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+        '503':
+          description: |
+            Service Unavailable. Too many test requests are in flight on this replica
+            (`REST_API_INVOKE_BUSY`, `GRAPHQL_API_INVOKE_BUSY`); retry shortly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_BUSY
+                message: Too many test requests are in flight; try again shortly.
+                trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+        '504':
+          description: |
+            Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`,
+            `GRAPHQL_API_INVOKE_UPSTREAM_TIMEOUT`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_UPSTREAM_TIMEOUT
+                message: The gateway did not respond in time.
+                trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
   /rest-apis/{restApiId}/api-keys:
     post:
       summary: Create API key
@@ -854,7 +985,7 @@ paths:
                 value:
                   id: "production-key-01"
                   displayName: "Production API Key"
-                  apiKey: "sk_example_1234567890abcdef"
+                  apiKey: "sk_example_1234567890abcdef1234567890abcdef"
                   externalRefId: "ext-ref-12345"
                   expiresAt: "2026-12-31T23:59:59Z"
                   expiresIn:
@@ -1865,6 +1996,9 @@ paths:
         The content is pushed to the API Portal before anything is written locally, so a failed
         call leaves the draft intact and can simply be repeated.
 
+        The listing's content on the API Portal is replaced, so documents, a landing page or a
+        thumbnail that are not in the draft are removed from it.
+
         Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
       operationId: publishRestApiToApiPortal
       security:
@@ -1983,6 +2117,9 @@ paths:
         The content is pushed to the API Portal before anything is written locally, so a failed
         call leaves the draft intact and can simply be repeated.
 
+        The listing's content on the API Portal is replaced, so documents, a landing page or a
+        thumbnail that are not in the draft are removed from it.
+
         Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
       operationId: publishGraphQLApiToApiPortal
       security:
@@ -2100,6 +2237,9 @@ paths:
 
         The content is pushed to the API Portal before anything is written locally, so a failed
         call leaves the draft intact and can simply be repeated.
+
+        The listing's content on the API Portal is replaced, so documents, a landing page or a
+        thumbnail that are not in the draft are removed from it.
 
         Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
       operationId: publishMcpProxyToApiPortal
@@ -6295,7 +6435,6 @@ paths:
       operationId: fetchMCPProxyServerInfo
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:read
             - ap:mcp_proxy:manage
       tags:
         - MCP Proxies
@@ -9075,6 +9214,219 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /webhook-secrets:
+    post:
+      summary: Create a webhook secret
+      description: |
+        Creates an organization-level webhook secret (for example for an API portal) and
+        returns its first version. The plaintext `secret` is returned only in this response
+        and cannot be retrieved again.
+      operationId: createWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:create
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookSecretCreateRequest'
+      responses:
+        '201':
+          description: Webhook secret created.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretWithValue'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List webhook secrets
+      description: Returns metadata of the organization's webhook secrets. Secret values are never included.
+      operationId: listWebhookSecrets
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:read
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: List of webhook secrets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webhook-secrets/{secretId}:
+    parameters:
+      - name: secretId
+        in: path
+        required: true
+        description: The webhook secret id
+        schema:
+          type: string
+    get:
+      summary: Get a webhook secret
+      description: Returns the webhook secret with its retained versions (masked values only).
+      operationId: getWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:read
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      responses:
+        '200':
+          description: The webhook secret.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete a webhook secret
+      description: Deletes the webhook secret and all of its versions.
+      operationId: deleteWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:delete
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      responses:
+        '204':
+          description: Webhook secret deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webhook-secrets/{secretId}/rotate:
+    post:
+      summary: Rotate a webhook secret
+      description: |
+        Issues a new version of the secret. Every retained version stays valid. The plaintext
+        `secret` of the new version is returned only in this response. When the secret already
+        holds the maximum number of versions (3 by default) the request fails with 409 and a
+        version must be deleted first.
+      operationId: rotateWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:rotate
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      parameters:
+        - name: secretId
+          in: path
+          required: true
+          description: The webhook secret id
+          schema:
+            type: string
+      responses:
+        '201':
+          description: New version issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretWithValue'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. The maximum number of versions is reached; delete a version first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webhook-secrets/{secretId}/versions/{version}:
+    delete:
+      summary: Delete a webhook secret version
+      description: |
+        Deletes one version to free a slot for rotation. The last remaining version cannot be
+        deleted; delete the webhook secret instead.
+      operationId: deleteWebhookSecretVersion
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:delete
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      parameters:
+        - name: secretId
+          in: path
+          required: true
+          description: The webhook secret id
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          description: The version number
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '204':
+          description: Version deleted.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. The last remaining version cannot be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /secrets/{secretId}:
     get:
       summary: Get a secret by handle
@@ -9759,6 +10111,11 @@ components:
             ap:subscription_plan:pricing:read: Read the pricing of a subscription plan
             ap:thumbnail:manage: Create, update, and delete an API's thumbnail
             ap:thumbnail:read: Read an API's thumbnail
+            ap:webhook_secret:create: Create a webhook secret
+            ap:webhook_secret:delete: Delete a webhook secret or one of its versions
+            ap:webhook_secret:manage: Full access to webhook secrets
+            ap:webhook_secret:read: Read webhook secret metadata
+            ap:webhook_secret:rotate: Rotate a webhook secret
   schemas:
     APIKeyItem:
       type: object
@@ -10615,6 +10972,139 @@ components:
           description: Handle (URL-friendly slug) of the gateway to associate with the REST API
           example: prod-gateway-01
 
+    APIInvokeHeader:
+      type: object
+      description: One header or query parameter. A list keeps repeated names.
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          example: X-API-Key
+        value:
+          type: string
+          example: 3f2a9c
+
+    APIInvokeRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        The test request to send, to the API named by `apiType` and `apiId`. A GraphQL API takes
+        no `method` or `path`: its request is a `POST` to its context, and `body` is required.
+        Hop-by-hop headers, `Host`, `Content-Length`, `Expect`, `Cookie` and the forwarding
+        headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are refused; `Authorization` is
+        allowed, for the API under test.
+      required:
+        - apiType
+        - apiId
+        - gatewayId
+      properties:
+        apiType:
+          type: string
+          description: The API's type, which names the API with `apiId`, since a handle is unique only within its type
+          enum:
+            - rest-api
+            - graphql-api
+          example: rest-api
+        apiId:
+          type: string
+          description: Handle of the API to test
+          example: pizza-api
+        gatewayId:
+          type: string
+          description: Handle of a gateway the API is deployed to
+          example: prod-gateway-01
+        method:
+          type: string
+          description: |
+            REST APIs only. One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case;
+            `GET` when omitted.
+          example: POST
+        path:
+          type: string
+          description: |
+            REST APIs only. Path relative to the REST API's invoke URL, starting with `/`; `/` when
+            omitted. It may not leave the REST API's context, or carry a query or fragment.
+          example: /orders
+        query:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/APIInvokeHeader'
+        headers:
+          type: array
+          maxItems: 50
+          description: At most 50 headers, 16 KiB across all names and values
+          items:
+            $ref: '#/components/schemas/APIInvokeHeader'
+        body:
+          type: string
+          description: The request body, at most `gateway_relay.max_request_bytes` once decoded
+          example: '{"item":"pizza"}'
+        bodyEncoding:
+          $ref: '#/components/schemas/APIInvokeBodyEncoding'
+
+    APIInvokeBodyEncoding:
+      type: string
+      description: How `body` is written; `base64` carries binary data
+      enum:
+        - utf8
+        - base64
+      default: utf8
+
+    APIInvokeResponse:
+      type: object
+      required:
+        - outcome
+        - response
+      properties:
+        outcome:
+          type: string
+          enum:
+            - response
+          description: Always `response`
+        response:
+          $ref: '#/components/schemas/APIInvokeResult'
+
+    APIInvokeResult:
+      type: object
+      description: The gateway's response
+      required:
+        - status
+        - statusText
+        - headers
+        - body
+        - bodyEncoding
+        - truncated
+        - durationMs
+      properties:
+        status:
+          type: integer
+          description: The gateway's HTTP status
+          example: 201
+        statusText:
+          type: string
+          example: Created
+        headers:
+          type: array
+          description: Every response header, sorted, repeated names kept
+          items:
+            $ref: '#/components/schemas/APIInvokeHeader'
+        body:
+          type: string
+          description: The response body; base64 when it is not valid UTF-8
+        bodyEncoding:
+          $ref: '#/components/schemas/APIInvokeBodyEncoding'
+        truncated:
+          type: boolean
+          description: The body exceeded `gateway_relay.max_response_bytes` and was clipped
+        durationMs:
+          type: integer
+          format: int64
+          description: The gateway round trip, in milliseconds
+          example: 42
+
     RESTAPIGatewayListResponse:
       type: object
       required:
@@ -10760,6 +11250,10 @@ components:
           type: string
           description: Policy name
           example: "rate-limit-custom"
+        displayName:
+          type: string
+          description: Human-readable policy name, from the policy definition
+          example: "Custom Rate Limit"
         version:
           type: string
           description: Policy version
@@ -11383,7 +11877,8 @@ components:
           type: string
           description: |
             Free-form qualifier used when `type` is `Other`. Stored and returned
-            exactly as typed (no case conversion). Ignored for all other types.
+            exactly as typed (no case conversion). Must not start with a dot or
+            contain `..`, `/` or `\`. Ignored for all other types.
           example: FAQ
         displayName:
           type: string
@@ -11394,7 +11889,8 @@ components:
         fileName:
           type: string
           description: |
-            File name to associate with the content. Defaults to `{handle}.md`.
+            File name to associate with the content. Must end in `.md`, and must not start with a dot
+            or contain `..`. Defaults to `{handle}.md`.
           example: payment-webhook.md
 
     APIThumbnailRequest:
@@ -12010,10 +12506,12 @@ components:
         apiKey:
           type: string
           description: Optional. A pre-minted plain text API key to inject (used by external
-            platforms pushing a key to hybrid gateways). Omit it to have the server
-            generate one, the generated value is returned once in the response and
-            is never retrievable afterwards.
-          example: "sk_example_1234567890abcdef"
+            platforms pushing a key to hybrid gateways), 36 to 128 characters long. Omit it
+            to have the server generate one, the generated value is returned once in the
+            response and is never retrievable afterwards.
+          minLength: 36
+          maxLength: 128
+          example: "sk_example_1234567890abcdef1234567890abcdef"
         externalRefId:
           type: string
           description: Optional reference ID for tracing purposes (from external platforms)
@@ -12082,8 +12580,11 @@ components:
           example: "Production API Key (Updated)"
         apiKey:
           type: string
-          description: The new plain text API key value that will be hashed before storage
-          example: "sk_example_new1234567890abcdef"
+          description: The new plain text API key value that will be hashed before storage,
+            36 to 128 characters long
+          minLength: 36
+          maxLength: 128
+          example: "sk_example_new1234567890abcdef1234567890abcdef"
         externalRefId:
           type: string
           description: Optional reference ID for tracing purposes (from external platforms)
@@ -12671,7 +13172,11 @@ components:
           example: "my-app-handle"
         subscriptionToken:
           type: string
-          description: Opaque subscription token for API invocation via Subscription-Key header
+          description: |
+            Opaque subscription token for API invocation via the Subscription-Key header.
+            Returned when the subscription is created, and on a read (get, list, update)
+            only to the subscriber the subscription belongs to. A read by any other user
+            returns the subscription without this field.
         subscriptionPlanId:
           type: string
           description: Handle (slug) of the subscription plan
@@ -12999,7 +13504,9 @@ components:
             decryptable); the gateway does not hold the deployment, restore the secret and redeploy.
             Agent proxy deployments may also report AGENT_VALIDATION_FAILED,
             AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and
-            DEPLOYMENT_ID_MISMATCH.
+            DEPLOYMENT_ID_MISMATCH. UPSTREAM_URL_NOT_ALLOWED means the gateway's network access
+            control does not permit an upstream URL or a policy URL in the deployment; change the
+            URL, or the gateway's access control, and redeploy.
           pattern: '^[A-Z][A-Z0-9_]*$'
           maxLength: 50
         updatedAt:
@@ -15009,6 +15516,103 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SecretSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    WebhookSecretCreateRequest:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 40
+          example: portal-3f9a1c
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Developer portal webhook secret
+        type:
+          type: string
+          enum: [PORTAL]
+          default: PORTAL
+
+    WebhookSecretVersion:
+      type: object
+      description: One rotation version. Never includes the plaintext value.
+      properties:
+        version:
+          type: integer
+          example: 2
+        maskedSecret:
+          type: string
+          example: whsec_****9f2c
+        hash:
+          type: string
+          description: >-
+            Identifier of this version: the lowercase hex SHA3-256 of
+            `api-portal-webhook-secret-hash-v1:` followed by the secret. The API Portal sends the
+            same value as `secret_hash` in each delivery, and the receiver uses it with the
+            organization to find the secret.
+          example: 32413deb36859f80321545a85378e517fad68ae583f7c3f3a0c6e50a1c96f824
+        createdBy:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+
+    WebhookSecretInfo:
+      type: object
+      description: Webhook secret metadata with its retained versions.
+      properties:
+        id:
+          type: string
+          example: portal-3f9a1c
+        name:
+          type: string
+        type:
+          type: string
+          enum: [PORTAL]
+        createdBy:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSecretVersion'
+
+    WebhookSecretWithValue:
+      allOf:
+        - $ref: '#/components/schemas/WebhookSecretInfo'
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              description: Plaintext of the newly issued version. Returned once and never retrievable again.
+              example: whsec_0f3c9a...
+
+    WebhookSecretListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSecretInfo'
         pagination:
           $ref: '#/components/schemas/Pagination'
 

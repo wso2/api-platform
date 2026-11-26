@@ -340,10 +340,11 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 - **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key_file`, verified with the matching `public_key_file`. Used by the AI Workspace and API Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
-The paths that bypass authentication and scope enforcement — health/metrics probes, the login
-endpoint, and the internal routes authenticated by a gateway token instead of a user JWT — are not
-configurable: the list is a property of the product's own routing, and a wrong entry in it is an
-auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
+The paths that bypass authentication and scope enforcement — the health probes (`/health` for
+liveness and `/ready` for readiness, which answer every client unless `[platform_api.health] allowed_clients`
+narrows them), metrics probes, the login endpoint, and the internal routes authenticated by
+a gateway token instead of a user JWT — are not configurable: the list is a property of the
+product's own routing, and a wrong entry in it is an auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
 validated at startup. Use `auth.authorization.enabled` to control authorization enforcement.
 A config file still carrying `platform_api.auth.skip_paths` fails startup rather than having the
 key silently ignored.
@@ -472,8 +473,10 @@ kind under `kinds/`, every gateway version literal in `gwversion/versions.go`, a
 This covers the LTS gateway releases `1.0.0`, `1.1.0` and `1.2.0`, which use semver. STS releases
 are named after their release date (e.g. `2026.05.13`) and do not share the LTS version line, so
 they are not compared against LTS releases: a gateway reporting a date is treated as a current build
-and receives artifacts unchanged, as before. Per-channel handling is tracked in
-[#3681](https://github.com/wso2/api-platform/issues/3681).
+and receives artifacts unchanged, as before. The event gateway is a separate product on its own
+`0.x` line (`event-gateway/VERSION`) and reports that version through the same manifest field, so it
+is not compared either — a `0.x` is a different line, not an early `1.x`. Per-channel handling is
+tracked in [#3681](https://github.com/wso2/api-platform/issues/3681).
 
 | Gateway release | What changes for it |
 |---|---|
@@ -553,7 +556,8 @@ What the freeze covers, beyond the HTTP routes:
 - **Background jobs**: the deployment timeout job and the startup LLM-template seeding skip
   frozen organizations.
 - **API Portal webhook** (`/api/internal/v0.9/webhook/events`): events for a frozen
-  organization are refused with 503 so the portal can retry after maintenance.
+  organization are refused. Like every failed delivery, the refusal is the generic `401`
+  response, so it reveals nothing about the organization; the reason is logged internally.
 - **Requests without an organization** in the context pass the guard only on the auth skip
   paths (gateway token, webhook signature, login), where the handler applies the check itself
   once the organization is known; on any other route a write without an organization is

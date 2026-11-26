@@ -55,6 +55,7 @@ Resolution semantics:
 - When `--gateway` is given, the command uses that named gateway in the resolved platform.
 
 > **Note:** The `health` command also routes to the gateway-controller admin API. When a gateway was added with a separate `--admin-server`, that URL is used for `health`; otherwise the management `--server` URL is reused.
+> The admin server answers health requests from every client by default (`controller.health.allowed_clients`). If that list was narrowed, add the CLI host's address or network to it (for example with `APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS`) when the CLI runs on another host or reaches a container through a published port, or the command fails with status 403.
 
 ## Apply Command
 
@@ -678,7 +679,10 @@ ap gateway image build \
   [--no-cache] \
   [--platform <platform>] \
   [--offline] \
-  [--output-dir <output_dir>]
+  [--output-dir <output_dir>] \
+  [--netrc <file> | --git-credential <host>=<username>:<ENV_VAR> ...] \
+  [--go-env <KEY>[=<VALUE>] ...] \
+  [--fetch-timeout <duration>]
 ```
 
 Example:
@@ -687,7 +691,7 @@ Example:
 ap gateway image build
 ```
 
-For more information about customizing gateway policies during a build, refer to [this document](../customizing-gateway-policies.md).
+For more information about customizing gateway policies during a build, refer to [this document](../customizing-gateway-policies.md). For policies in private Go module repositories, see [Policies from Private Go Module Repositories](../customizing-gateway-policies.md#policies-from-private-go-module-repositories).
 
 ## Related Commands
 

@@ -18,10 +18,13 @@
 'use strict';
 
 /*
+ * [api_portal.monetization] disabled: off by default, on from the file or from its environment
+ * variable, and the refusal to start with a value that is not true or false.
  * [api_portal.billing.stripe] webhook_signature_tolerance_sec and [api_portal.billing.moesif]
  * max_parallel_prices: their defaults, an override, and the refusal to start with a value that is not
  * a whole number of at least 1. [api_portal.billing.moesif] collector_application_id and
- * management_key: set together or not at all, and not in multi-organization mode. Driven through a
+ * management_key: set together or not at all, and not in multi-organization mode; otherwise ignored
+ * with a warning while the portal starts. Driven through a
  * child process because the loader runs its startup checks at module load.
  */
 
@@ -34,6 +37,7 @@ const { spawnSync } = require('node:child_process');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 
+// The role mapping is named by its absolute path: the child runs outside the project (see boot).
 const BASE_CONFIG = `
 [api_portal.security]
 encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -42,6 +46,9 @@ session_secret = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba98765432
 [api_portal.organization]
 handle = "default"
 portal_id = "test-portal"
+
+[api_portal.auth.authorization]
+role_to_scope_mapping = ${JSON.stringify(path.join(PROJECT_ROOT, 'resources', 'role-to-scope-mapping.yaml'))}
 `;
 
 let tmpDir;
@@ -55,23 +62,27 @@ function fixture(name, contents) {
 
 const SETTINGS = 'SETTINGS ';
 
-// overlay is TOML laid over the base config, or undefined for the defaults. Resolves to the loaded
-// billing settings, or the exit status and error output when the portal refuses to start.
-function boot(overlay) {
+// overlay is TOML laid over the base config, or undefined for the defaults; variables are added to the
+// child's environment. Resolves to the loaded billing settings, or the exit status and error output
+// when the portal refuses to start.
+function boot(overlay, variables = {}) {
     const args = ['--config', fixture('base.toml', BASE_CONFIG)];
     if (overlay !== undefined) args.push('--config', fixture('overlay.toml', overlay));
     const runner = fixture('runner.js', `
         const { config } = require(${JSON.stringify(path.join(__dirname, 'configLoader.js'))});
         process.stdout.write(${JSON.stringify(SETTINGS)} + JSON.stringify({
+            monetizationDisabled: config.monetization.disabled,
             tolerance: config.billing.stripe.webhookSignatureToleranceSec,
             parallelPrices: config.billing.moesif.maxParallelPrices,
             moesifKeys: [config.billing.moesif.collectorApplicationId, config.billing.moesif.managementKey],
         }) + '\\n');
     `);
-    const env = { PATH: process.env.PATH, HOME: process.env.HOME };
+    const env = { PATH: process.env.PATH, HOME: process.env.HOME, ...variables };
     // Keeps the child's coverage in the parent run's report.
     if (process.env.NODE_V8_COVERAGE) env.NODE_V8_COVERAGE = process.env.NODE_V8_COVERAGE;
-    const result = spawnSync(process.execPath, [runner, ...args], { cwd: PROJECT_ROOT, encoding: 'utf8', env });
+    // Runs in the fixtures directory: the loader reads api-platform.env from the working directory,
+    // and a developer's copy in the project could set the values these tests check.
+    const result = spawnSync(process.execPath, [runner, ...args], { cwd: tmpDir, encoding: 'utf8', env });
     const line = result.stdout.split('\n').find((l) => l.startsWith(SETTINGS));
     return {
         status: result.status,
@@ -84,10 +95,30 @@ test.after(() => {
     if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-test('the defaults are a 300 second signature tolerance and 4 prices at a time', () => {
+test('the defaults are monetization on, a 300 second signature tolerance and 4 prices at a time', () => {
     const { status, settings } = boot();
     assert.equal(status, 0);
-    assert.deepEqual(settings, { tolerance: 300, parallelPrices: 4, moesifKeys: ['', ''] });
+    assert.deepEqual(settings, { monetizationDisabled: false, tolerance: 300, parallelPrices: 4, moesifKeys: ['', ''] });
+});
+
+test('monetization can be disabled', () => {
+    const { status, settings } = boot('[api_portal.monetization]\ndisabled = true\n');
+    assert.equal(status, 0);
+    assert.equal(settings.monetizationDisabled, true);
+});
+
+test('monetization.disabled can come from its environment variable', () => {
+    const overlay = `[api_portal.monetization]\ndisabled = '{{ env "APIP_AP_MONETIZATION_DISABLED" "false" }}'\n`;
+    assert.equal(boot(overlay).settings.monetizationDisabled, false);
+    assert.equal(boot(overlay, { APIP_AP_MONETIZATION_DISABLED: 'true' }).settings.monetizationDisabled, true);
+});
+
+test('a monetization.disabled that is not true or false stops the portal from starting', () => {
+    for (const value of ['"true"', '1', `'{{ env "APIP_AP_MONETIZATION_DISABLED" "yes" }}'`]) {
+        const { status, stderr } = boot(`[api_portal.monetization]\ndisabled = ${value}\n`);
+        assert.equal(status, 1, value);
+        assert.match(stderr, /\[FATAL\] monetization\.disabled must be true or false/, value);
+    }
 });
 
 test('each setting can be changed', () => {
@@ -99,7 +130,7 @@ webhook_signature_tolerance_sec = 600
 max_parallel_prices = 1
 `);
     assert.equal(status, 0);
-    assert.deepEqual(settings, { tolerance: 600, parallelPrices: 1, moesifKeys: ['', ''] });
+    assert.deepEqual(settings, { monetizationDisabled: false, tolerance: 600, parallelPrices: 1, moesifKeys: ['', ''] });
 });
 
 test('a value that is not a whole number of at least 1 stops the portal from starting', () => {
@@ -146,18 +177,25 @@ test('the Moesif keys set in config are loaded, trimmed', () => {
     assert.deepEqual(settings.moesifKeys, ['eyJhcHAiOiI2NDQ3OjEyMyJ9', 'moesif-key-0000']);
 });
 
-test('only one Moesif key set stops the portal from starting', () => {
+// Moesif keys set in config that can't be used are ignored with a warning naming why; the portal
+// starts without them.
+function assertStartsWithoutMoesifKeys(result, reason) {
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, reason);
+    assert.match(result.stderr, /The portal starts without the Moesif keys set in config\./);
+    assert.deepEqual(result.settings.moesifKeys, ['', '']);
+}
+
+test('only one Moesif key set is ignored and the portal starts', () => {
     for (const key of ['collector_application_id', 'management_key']) {
-        const { status, stderr } = boot(`[api_portal.billing.moesif]\n${key} = "moesif-0000"\n`);
-        assert.equal(status, 1, key);
-        assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id and billing\.moesif\.management_key must be set together/);
+        assertStartsWithoutMoesifKeys(boot(`[api_portal.billing.moesif]\n${key} = "moesif-0000"\n`),
+            /\[WARN\] billing\.moesif\.collector_application_id and billing\.moesif\.management_key must be set together/);
     }
 });
 
-test('a Moesif key that is not a string stops the portal from starting', () => {
-    const { status, stderr } = boot('[api_portal.billing.moesif]\nmanagement_key = 42\n');
-    assert.equal(status, 1);
-    assert.match(stderr, /\[FATAL\] billing\.moesif\.management_key must be a string/);
+test('a Moesif key that is not a string is ignored and the portal starts', () => {
+    assertStartsWithoutMoesifKeys(boot('[api_portal.billing.moesif]\nmanagement_key = 42\n'),
+        /\[WARN\] billing\.moesif\.management_key must be a string/);
 });
 
 // A management key shaped like Moesif's, naming its application in the `app` claim.
@@ -171,29 +209,31 @@ test('a management key for the collector id\'s Moesif application is loaded', ()
     assert.equal(status, 0);
 });
 
-test('a management key for another Moesif application stops the portal from starting', () => {
-    const { status, stderr } = boot(keysFor(segment({ app: '6447:123' }), managementKeyFor('6447:999')));
-    assert.equal(status, 1);
-    assert.match(stderr, /\[FATAL\] billing\.moesif\.management_key is for a different Moesif application than billing\.moesif\.collector_application_id/);
+test('a management key for another Moesif application is ignored and the portal starts', () => {
+    assertStartsWithoutMoesifKeys(boot(keysFor(segment({ app: '6447:123' }), managementKeyFor('6447:999'))),
+        /\[WARN\] billing\.moesif\.management_key is for a different Moesif application than billing\.moesif\.collector_application_id/);
 });
 
-test('a value that is not a Collector Application Id stops the portal from starting', () => {
-    const { status, stderr } = boot(keysFor('moesif-0000', 'moesif-key-0000'));
-    assert.equal(status, 1);
-    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
+test('a value that is not a Collector Application Id is ignored and the portal starts', () => {
+    assertStartsWithoutMoesifKeys(boot(keysFor('moesif-0000', 'moesif-key-0000')),
+        /\[WARN\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
 });
 
-test('a collector id whose application is not named as Moesif names one stops the portal from starting', () => {
+test('a collector id whose application is not named as Moesif names one is ignored and the portal starts', () => {
     // Otherwise the check that both keys are for one application would be skipped.
-    const { status, stderr } = boot(keysFor(segment({ app: 'not-an-application' }), managementKeyFor('6447:999')));
-    assert.equal(status, 1);
-    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
+    assertStartsWithoutMoesifKeys(boot(keysFor(segment({ app: 'not-an-application' }), managementKeyFor('6447:999'))),
+        /\[WARN\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
 });
 
-test('Moesif keys in config stop a multi-organization portal from starting', () => {
-    const { status, stderr } = boot(MULTI_ORGANIZATION + MOESIF_KEYS);
-    assert.equal(status, 1);
-    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id and billing\.moesif\.management_key are not allowed in multi-organization mode/);
+test('Moesif keys in config are ignored by a multi-organization portal, which starts', () => {
+    assertStartsWithoutMoesifKeys(boot(MULTI_ORGANIZATION + MOESIF_KEYS),
+        /\[WARN\] billing\.moesif\.collector_application_id and billing\.moesif\.management_key are not allowed in multi-organization mode/);
+});
+
+test('Moesif keys set in config are never printed', () => {
+    const managementKey = managementKeyFor('6447:999');
+    const { stderr } = boot(keysFor(segment({ app: '6447:123' }), managementKey));
+    assert.ok(!stderr.includes(managementKey) && !stderr.includes(segment({ app: '6447:123' })));
 });
 
 test('a multi-organization portal without Moesif keys in config starts', () => {

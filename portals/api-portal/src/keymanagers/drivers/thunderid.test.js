@@ -296,10 +296,21 @@ test('updateKey PUTs the new properties to the client URL', async () => {
 
     assert.equal(calls[0].method, 'PUT');
     assert.equal(calls[0].url, 'https://idp.example.com/c/abc123');
-    assert.deepEqual(JSON.parse(calls[0].data), { client_name: 'Renamed' });
+    assert.deepEqual(JSON.parse(calls[0].data),
+        { client_name: 'Renamed', client_id: 'abc123' },
+        'RFC 7592 §2.2 — ThunderID refuses a PUT whose body omits client_id');
     assert.equal(calls[0].headers.Authorization, 'Bearer rat');
     assert.deepEqual(key.properties, { client_name: 'Renamed' },
         'the request is authoritative for properties, not the echo');
+});
+
+test('updateKey ignores a client_id in the properties bag', async () => {
+    const { km, calls } = driver({ status: 200, data: { client_id: 'abc123' } });
+    await km.updateKey('abc123', { client_name: 'Renamed', client_id: 'someone-elses' },
+        { clientUri: 'https://idp.example.com/c/abc123', accessToken: 'rat' });
+
+    assert.equal(JSON.parse(calls[0].data).client_id, 'abc123',
+        'the id comes from the key being updated, so a caller cannot move a client onto another id');
 });
 
 test('deleteKey sends DELETE and accepts any of the three success statuses', async () => {
@@ -353,7 +364,7 @@ test('the upstream URL and body stay in detail, never in the public reason', asy
 });
 
 test('a transport failure is reported as unreachable, not as a rejection', async () => {
-    // DNS failure, refused connection, TLS mismatch, or the SSRF guard refusing
+    // DNS failure, refused connection, TLS mismatch, or the destination guard refusing
     // the resolved address at dial time all land here.
     const { km } = driver(new Error('getaddrinfo ENOTFOUND idp.example.com'));
     await assert.rejects(() => km.createKey({ client_name: 'x' }), (err) => {

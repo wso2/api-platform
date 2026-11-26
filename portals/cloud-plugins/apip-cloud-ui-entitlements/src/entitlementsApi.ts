@@ -18,18 +18,18 @@
 
 import { PRODUCT } from './entitlementLimits';
 import type { EntitlementSummary } from './entitlementTypes';
-import { proxyBase } from './runtimeConfig';
+import { entitlementBase } from './runtimeConfig';
 
 /**
- * Same-origin path to billing's Entitlement API: the `billing-entitlement`
- * route under the console's proxy, beside the host's
- * `<proxy base>/billing/organization`. The BFF (or the gateway) strips the
- * prefix and joins the rest onto the configured upstream base, so the real
- * billing URL never reaches the browser. Built per call, so it follows the
- * runtime config the page loaded.
+ * Same-origin path to billing's Entitlement API: by default the
+ * `billing-entitlement` route under the console's proxy, beside the host's
+ * `<proxy base>/billing/organization`, or the deployment's own
+ * `billingEntitlementBaseUrl`. The BFF (or the gateway) strips the prefix and
+ * joins the rest onto the configured upstream base, so the real billing URL
+ * never reaches the browser. Built per call, so it follows the runtime config
+ * the page loaded.
  */
-const summaryPath = (): string =>
-  `${proxyBase()}/billing-entitlement/summary?product=${PRODUCT}`;
+const summaryPath = (): string => `${entitlementBase()}/summary?product=${PRODUCT}`;
 
 /**
  * Read the organization's entitlement summary.

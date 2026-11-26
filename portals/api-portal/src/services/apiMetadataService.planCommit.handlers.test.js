@@ -39,7 +39,6 @@ const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const PLAN_SERVICE = path.join(__dirname, 'apiMetadataService.js');
 const DB_DRIVER = path.join(__dirname, '..', 'db', 'driver.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = 'org-uuid-1';
 const PORTAL = 'test-portal';
@@ -112,7 +111,7 @@ function results() {
     const seed = path.join(tmpDir, 'seed.js');
     fs.writeFileSync(seed, `
         const fs = require('fs');
-        const Database = require(${JSON.stringify(SQLITE)});
+        const Database = require('node:sqlite').DatabaseSync;
         const db = new Database(${JSON.stringify(dbFile)});
         db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
         db.prepare(\`INSERT INTO organizations

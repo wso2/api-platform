@@ -28,7 +28,7 @@ Feature: Suspending a paid subscription keeps its billing
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "paid-access-project" and store it as "projectHandle"
+    And I generate a unique resource name from "paid-access-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: An administrator can suspend a paid subscription, and resuming it keeps its billing
@@ -47,7 +47,7 @@ Feature: Suspending a paid subscription keeps its billing
     And I generate a unique resource name from "paid-suspend-app" and store it as "appHandle"
     And I create an application "${CTX:appHandle}" via the control plane in project "${CTX:projectHandle}"
     And I create a subscription for REST API "${CTX:apiHandle}" application "${CTX:appHandle}" plan "${CTX:planHandle}" via the control plane and store the subscription token as "subscriptionToken"
-    And I generate a unique value from "paid-suspend-key" and store it as "apiKeyValue"
+    And I generate a unique value from "paid-suspend-key-api-key-0123456789" and store it as "apiKeyValue"
     And I issue an API key "${CTX:apiKeyValue}" for REST API "${CTX:apiHandle}" via the control plane
     When I clear all headers
     And the API Portal sends the "subscription.billing_updated" event to the control plane with data:

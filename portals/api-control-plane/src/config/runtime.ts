@@ -41,7 +41,18 @@ export type GatewayVersionEntry = {
   channel: 'STS' | 'LTS';
 };
 
+/** The WSO2 Cloud platform switcher's config (`cloudShell` in the runtime config). */
+export type CloudShellConfig = {
+  platformUrls?: Record<string, string | undefined>;
+  /** Comma-separated platform ids shown as "Coming soon". */
+  comingSoonPlatforms?: string;
+};
+
 export type RuntimeConfig = {
+  /** The WSO2 Cloud console's origin; the switcher's Manage links point at it. */
+  cloudConsoleUrl: string;
+  /** Platform URLs for the switcher. Empty when the deployment sets none. */
+  cloudShell: CloudShellConfig;
   appBasePath: string;
   apiBaseUrl: string;
   /**
@@ -57,13 +68,6 @@ export type RuntimeConfig = {
    * per-deployment overrides applied (see `config/authContract.ts`).
    */
   authContract: AuthContract;
-  /**
-   * The Test console's relay, which sends a request to a deployed gateway and
-   * returns its answer. This portal's BFF serves it at
-   * /api/gateway-relay/invoke; set it wherever the deployment serves the relay,
-   * whatever the auth mode.
-   */
-  gatewayRelayUrl: string;
   /**
    * Per-deployment default locale (BCP 47, e.g. "en"). Falls through
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
@@ -88,6 +92,12 @@ export type RuntimeConfig = {
    * billing URL.
    */
   billingProxyEnabled: boolean;
+  /**
+   * Same-origin path of billing's user API, for a deployment that routes it
+   * apart from the console's proxy (e.g. "/_api/billing/api/v1"). Empty means
+   * `<platformApiBaseUrl>/billing`. Read only when `billingProxyEnabled` is set.
+   */
+  billingBaseUrl: string;
   /**
    * Region recorded on an organization this console registers. Only read when the
    * platform does not have the organization yet, which the provisioning flow
@@ -148,8 +158,21 @@ export type RuntimeConfig = {
    */
   apiDesignerVsCodeUrl: string;
   apiDesignerDocsUrl: string;
+  /** Footer "Documentation" link. */
+  documentationLink: string;
   privacyPolicyLink: string;
+  /** Footer "Cookie Policy" link. Empty hides it; only an `https://` URL is shown. */
+  cookiePolicyLink: string;
+  /**
+   * CookiePro domain script id and GTM container id, set by the cloud deployment. Read here only
+   * to tell whether the cookie banner is loaded, which decides the footer's "Cookie Settings" link;
+   * the cloud tracking plugin validates them and loads the scripts.
+   */
+  cookieProDomainScript: string;
+  gtmContainerId: string;
   projectApiBaseUrl: string;
+  /** Footer "Support" link. */
+  supportLink: string;
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
@@ -172,15 +195,32 @@ export type RuntimeConfig = {
   sanitizeHtmlDocsEnabled: boolean;
   sanitizeHtmlDocsAdditionalAllowedTags: string[];
   sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
+  /**
+   * Feature-usage tracking: UI actions published to Moesif from the browser
+   * (see `src/featureUsage`). Off by default, so an on-prem install reports
+   * nothing; it takes effect only together with `featureUsageCollectorPath`.
+   */
+  featureUsageTrackingEnabled: boolean;
+  /**
+   * Same-origin path of the gateway route that forwards actions to the Moesif
+   * collector, e.g. `/_api/api-management/feature-usage`. The route adds the
+   * Moesif Application ID inside the cluster, so the browser never holds it.
+   * Empty unless it is a plain absolute path: never another origin.
+   */
+  featureUsageCollectorPath: string;
 };
 
 type LegacyWindowConfig = Partial<{
+  cloudConsoleUrl: string;
+  cloudShell: CloudShellConfig;
   API_BASE_URL: string;
   API_PLATFORM_HOME_PAGE: string;
   AUTH_MODE: string;
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  BILLING_BASE_URL: string;
+  billingBaseUrl: string;
   DEFAULT_ORG_REGION: string;
   defaultOrgRegion: string;
   CLOUD_PROXY_ENABLED: string;
@@ -201,8 +241,11 @@ type LegacyWindowConfig = Partial<{
   MOESIF_WEB_URL: string;
   API_DESIGNER_VSCODE_URL: string;
   API_DESIGNER_DOCS_URL: string;
+  DOCUMENTATION_LINK: string;
   PRIVACY_POLICY_LINK: string;
+  COOKIE_POLICY_LINK: string;
   PROJECT_API_BASE_URL: string;
+  SUPPORT_LINK: string;
   TERMS_OF_USE_LINK: string;
   TOS_SERVICE_NAME: string;
   USERS_MANAGEMENT_API_URL: string;
@@ -221,13 +264,19 @@ type LegacyWindowConfig = Partial<{
   authLogoutUrl: string;
   authLogoutStyle: string;
   authClaimMappings: string | Record<string, unknown>;
-  gatewayRelayUrl: string;
+  authOrganizationsUrl: string;
+  authSwitchOrganizationUrls: string | string[];
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
   organizationApiUrl: string;
+  documentationLink: string;
   privacyPolicyLink: string;
+  cookiePolicyLink: string;
+  cookieProDomainScript: string;
+  gtmContainerId: string;
   projectApiBaseUrl: string;
+  supportLink: string;
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
@@ -236,6 +285,10 @@ type LegacyWindowConfig = Partial<{
   sanitizeHtmlDocsEnabled: boolean | string;
   sanitizeHtmlDocsAdditionalAllowedTags: string;
   sanitizeHtmlDocsAdditionalAllowedAttributes: string;
+  FEATURE_USAGE_TRACKING_ENABLED: string;
+  featureUsageTrackingEnabled: boolean | string;
+  FEATURE_USAGE_COLLECTOR_PATH: string;
+  featureUsageCollectorPath: string;
 }>;
 
 declare global {
@@ -249,6 +302,23 @@ const fromWindow = (): LegacyWindowConfig => ({
   ...(window.__RUNTIME_CONFIG__ ?? {}),
   ...(window.config ?? {}),
 });
+
+/**
+ * The formats the cloud tracking plugin accepts for the cookie banner's two ids
+ * (portals/cloud-plugins/apip-cloud-ui-tracking/src/config.ts keeps the same patterns). The footer's
+ * "Cookie Settings" link must agree with that plugin about whether the banner is loaded, so it
+ * applies the same checks rather than only testing for non-empty values.
+ */
+const COOKIE_PRO_DOMAIN_SCRIPT = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(-test)?$/i;
+const GTM_CONTAINER_ID = /^GTM-[A-Z0-9]{4,12}$/;
+
+/** Whether the cookie banner is loaded: both ids set and in the formats the tracking plugin accepts. */
+export const isCookieConsentConfigured = (config: {
+  cookieProDomainScript: string;
+  gtmContainerId: string;
+}): boolean =>
+  COOKIE_PRO_DOMAIN_SCRIPT.test(config.cookieProDomainScript) &&
+  GTM_CONTAINER_ID.test(config.gtmContainerId);
 
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
@@ -313,6 +383,17 @@ const readFeatureList = (value: unknown): string[] =>
 
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
 
+/**
+ * A same-origin absolute path (`/a/b`), without a trailing slash; anything else
+ * (another origin, a protocol-relative `//host`, a query or fragment) reads as
+ * empty, so a misconfiguration turns the feature off rather than sending
+ * elsewhere.
+ */
+const readSameOriginPath = (value: string | undefined): string => {
+  const path = (value ?? '').trim().replace(/\/+$/, '');
+  return /^\/(?!\/)[^?#\s\\]*$/.test(path) ? path : '';
+};
+
 const readSanitizeHtmlDocsEnabled = (value: boolean | string | undefined) =>
   String(value ?? '').trim().toLowerCase() !== 'false';
 
@@ -336,6 +417,20 @@ const readGatewayVersions = (value?: string): GatewayVersionEntry[] => {
   } catch {
     return [];
   }
+};
+
+// cloudShell arrives as a native object (window config is a JS literal), but
+// tolerate a JSON string; anything else yields an empty config.
+const readCloudShell = (value: unknown): CloudShellConfig => {
+  let v = value;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return {};
+    }
+  }
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as CloudShellConfig) : {};
 };
 
 // VITE_ override wins so a local platform-api can be targeted in dev even when the
@@ -362,6 +457,8 @@ const resolvedAuthMode = readAuthMode(
 );
 
 export const runtimeConfig: RuntimeConfig = {
+  cloudConsoleUrl: fromWindow().cloudConsoleUrl || import.meta.env.VITE_CLOUD_CONSOLE_URL || '',
+  cloudShell: readCloudShell(fromWindow().cloudShell),
   appBasePath: normalizeBasePath(
     fromWindow().appBasePath ||
       import.meta.env.VITE_APP_BASE_PATH ||
@@ -389,11 +486,11 @@ export const runtimeConfig: RuntimeConfig = {
     logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
     logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
     claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
+    organizationsUrl:
+      fromWindow().authOrganizationsUrl || import.meta.env.VITE_AUTH_ORGANIZATIONS_URL,
+    switchOrganizationUrls:
+      fromWindow().authSwitchOrganizationUrls || import.meta.env.VITE_AUTH_SWITCH_ORGANIZATION_URLS,
   }),
-  gatewayRelayUrl:
-    fromWindow().gatewayRelayUrl ||
-    import.meta.env.VITE_GATEWAY_RELAY_URL ||
-    '/api/gateway-relay/invoke',
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
     fromWindow().defaultLocale ||
@@ -423,6 +520,11 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().billingProxyEnabled ||
       import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
+  billingBaseUrl:
+    fromWindow().BILLING_BASE_URL ||
+    fromWindow().billingBaseUrl ||
+    import.meta.env.VITE_BILLING_BASE_URL ||
+    '',
   defaultOrgRegion:
     fromWindow().DEFAULT_ORG_REGION ||
     fromWindow().defaultOrgRegion ||
@@ -471,21 +573,38 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().API_DESIGNER_DOCS_URL ||
     import.meta.env.VITE_API_DESIGNER_DOCS_URL ||
     'https://wso2.com/api-platform/docs/tools/vscode-api-design/getting-started/',
+  documentationLink:
+    fromWindow().DOCUMENTATION_LINK ||
+    fromWindow().documentationLink ||
+    import.meta.env.VITE_DOCUMENTATION_LINK ||
+    'https://choreolabs.com/documentation/api-management/cloud/',
   privacyPolicyLink:
     fromWindow().PRIVACY_POLICY_LINK ||
     fromWindow().privacyPolicyLink ||
     import.meta.env.VITE_PRIVACY_POLICY_LINK ||
-    'https://wso2.com/api-platform/privacy-policy',
+    'https://choreolabs.com/privacy-policy',
+  cookiePolicyLink:
+    fromWindow().COOKIE_POLICY_LINK ||
+    fromWindow().cookiePolicyLink ||
+    import.meta.env.VITE_COOKIE_POLICY_LINK ||
+    '',
+  cookieProDomainScript: String(fromWindow().cookieProDomainScript ?? '').trim(),
+  gtmContainerId: String(fromWindow().gtmContainerId ?? '').trim(),
   projectApiBaseUrl:
     fromWindow().PROJECT_API_BASE_URL ||
     fromWindow().projectApiBaseUrl ||
     import.meta.env.VITE_PROJECT_API_BASE_URL ||
     '',
+  supportLink:
+    fromWindow().SUPPORT_LINK ||
+    fromWindow().supportLink ||
+    import.meta.env.VITE_SUPPORT_LINK ||
+    'https://choreolabs.com/subscription',
   termsOfUseLink:
     fromWindow().TERMS_OF_USE_LINK ||
     fromWindow().termsOfUseLink ||
     import.meta.env.VITE_TERMS_OF_USE_LINK ||
-    'https://wso2.com/api-platform/terms-of-use',
+    'https://choreolabs.com/cloud/terms-of-use/',
   toSServiceName:
     fromWindow().TOS_SERVICE_NAME ||
     fromWindow().toSServiceName ||
@@ -510,5 +629,15 @@ export const runtimeConfig: RuntimeConfig = {
   sanitizeHtmlDocsAdditionalAllowedAttributes: parseJsonRecordOfStringArrays(
     fromWindow().sanitizeHtmlDocsAdditionalAllowedAttributes ??
       import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_ATTRIBUTES,
+  ),
+  featureUsageTrackingEnabled: readBoolean(
+    fromWindow().FEATURE_USAGE_TRACKING_ENABLED ||
+      fromWindow().featureUsageTrackingEnabled ||
+      import.meta.env.VITE_FEATURE_USAGE_TRACKING_ENABLED,
+  ),
+  featureUsageCollectorPath: readSameOriginPath(
+    fromWindow().FEATURE_USAGE_COLLECTOR_PATH ||
+      fromWindow().featureUsageCollectorPath ||
+      import.meta.env.VITE_FEATURE_USAGE_COLLECTOR_PATH,
   ),
 };

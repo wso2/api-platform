@@ -29,7 +29,7 @@ Feature: Rejected control-plane pushes are retried on gateway-controller reconne
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "dp2cp-reconnect-project" and store it as "projectHandle"
+    And I generate a unique resource name from "dp2cp-reconnect-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: A push rejected by the control plane is recorded as failed and re-pushed on reconnect
@@ -37,7 +37,7 @@ Feature: Rejected control-plane pushes are retried on gateway-controller reconne
     And I generate a unique value from "dp2cp-reject-display" and store it as "mcpDisplayName"
     And I generate a unique API version from "dp2cp-reject" and store it as "mcpVersion"
     And I generate a unique API context from "/dp2cp-reject" and store it as "mcpContext"
-    And I generate a unique value from "dp2cp-missing-project" and store it as "missingProjectHandle"
+    And I generate a unique resource name from "dp2cp-missing-project" and store it as "missingProjectHandle"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
       | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:mcpName}                    |

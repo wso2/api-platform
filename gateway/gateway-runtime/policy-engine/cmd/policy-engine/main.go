@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/health"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pkg/cel"
@@ -195,6 +196,12 @@ func main() {
 		slog.ErrorContext(ctx, "Failed to build shared outbound HTTP client for policies", "error", err)
 		os.Exit(1)
 	}
+	if sharedHTTPClientCfg.TLS.InsecureSkipVerify {
+		slog.WarnContext(ctx, "policy_engine.http_client.tls.insecure_skip_verify is enabled: certificate verification is disabled for every outbound call made by every policy")
+	}
+	if sharedHTTPClientCfg.TLS.InsecureSkipHostnameVerify {
+		slog.WarnContext(ctx, "policy_engine.http_client.tls.insecure_skip_hostname_verify is enabled: server certificate names are not checked for any outbound call made by any policy")
+	}
 	sdkutils.SetSharedHTTPClient(sharedHTTPClient)
 	slog.InfoContext(ctx, "Shared outbound HTTP client built for policies")
 
@@ -286,9 +293,18 @@ func main() {
 	}
 
 	// Create and start ext_proc gRPC server
+	// The gateway's health routes reach the policy engine like API traffic and are
+	// answered by these checkers.
+	var pythonExecutorCheck health.CheckFunc
+	if pythonbridge.IsAvailable(cfg.PolicyEngine.PythonExecutor) {
+		pythonExecutorCheck = pythonbridge.NewHealthCheck(pythonbridge.GetStreamManager())
+	}
+	livenessChecker, readinessChecker := buildHealthCheckers(cfg, logger, healthProvider, xdsClient, pythonExecutorCheck)
+
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,
 		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults),
-		kernel.WithLLMOpenAIErrors(cfg.PolicyEngine.LLMErrors.EnableOpenAIFormat))
+		kernel.WithLLMOpenAIErrors(cfg.PolicyEngine.LLMErrors.EnableOpenAIFormat),
+		kernel.WithHealthRoutes(livenessChecker, readinessChecker))
 
 	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener
@@ -531,6 +547,8 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 		RequestTimeout:        cfg.PolicyEngine.XDS.RequestTimeout,
 		InitialReconnectDelay: cfg.PolicyEngine.XDS.InitialReconnectDelay,
 		MaxReconnectDelay:     cfg.PolicyEngine.XDS.MaxReconnectDelay,
+		KeepaliveTime:         cfg.PolicyEngine.XDS.KeepaliveTime,
+		KeepaliveTimeout:      cfg.PolicyEngine.XDS.KeepaliveTimeout,
 		TLSEnabled:            cfg.PolicyEngine.XDS.TLS.Enabled,
 		TLSCertPath:           cfg.PolicyEngine.XDS.TLS.CertPath,
 		TLSKeyPath:            cfg.PolicyEngine.XDS.TLS.KeyPath,

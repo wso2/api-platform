@@ -121,6 +121,12 @@ module.exports = {
             API_DEFINITION: 'Specification'
         }
     },
+    // Types the /assets endpoints may write or delete; API_DEFINITION and SCHEMA_DEFINITION are never content.
+    CONTENT_TYPES: {
+        FIXED: ['MARKETING', 'IMAGE'],
+        // Any category name, as an upload stores it from docs/<Folder>/; the match is exact, so no wildcards.
+        DOC_PATTERN: /^DOC_.+$/s,
+    },
     MIME_TYPES: {
         HTML: 'text/html',
         TEXT: 'text/plain',
@@ -262,7 +268,7 @@ module.exports = {
     FILE_NAME: {
         MAIN: 'main.hbs',
         PAGE: 'page.hbs',
-        API_MD_CONTENT_FILE_NAME: 'apiContent.md',
+        API_MD_CONTENT_FILE_NAME: 'api-content.md',
         API_HBS_CONTENT_FILE_NAME: 'api-content.hbs',
         API_DOC_MD: 'api-doc.md',
         API_DOC_HBS: 'api-doc.hbs',
@@ -368,6 +374,11 @@ module.exports = {
         OAUTH2_KEY_DELETE_ERROR: "Error while deleting OAuth2 key",
         OAUTH2_KEY_RETRIEVE_ERROR: "Error while retrieving OAuth2 key",
         OAUTH2_KEY_NOT_FOUND: "OAuth2 key not found",
+        // An application holds at most one key per key type. The sentence says what
+        // to do about it rather than only that it failed. The key type is left out
+        // on purpose: the picker already disables the choices that would land here,
+        // so by the time anyone reads this they are looking at a direct API call.
+        OAUTH2_KEY_ALREADY_ASSOCIATED: "A key is already associated with this application. Remove it to associate another.",
         APPLICATION_NOT_FOUND: "Application not found",
         OAUTH2_KEY_OPERATION_UNSUPPORTED: "The key manager does not support this operation",
         OAUTH2_KEY_TOKEN_ERROR: "Error while generating the access token",

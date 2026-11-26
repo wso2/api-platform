@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 @AIW-LLM
 Feature: Guardrails and rate limits on an LLM provider in the AI Workspace
-  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Guardrails" (AIW-PRV-014) and "Rate limiting" (AIW-PRV-017,
+  Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-features "Guardrails" (AIW-PRV-014) and "Rate limiting" (AIW-PRV-017,
   AIW-PRV-019), through the browser. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/policies.feature.
 

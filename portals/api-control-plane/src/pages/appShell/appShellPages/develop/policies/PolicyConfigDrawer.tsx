@@ -21,22 +21,15 @@ import { ChevronLeft, SlidersHorizontal, X } from '@wso2/oxygen-ui-icons-react';
 import { useMemo } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import {
-  usePolicyDefinition,
-  usePolicyVersions,
-  type PolicyDefinition,
-  type PolicySummary,
-} from '@/api/resources/policyHub';
 import type { Policy } from '@/api/resources/restApis';
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { ErrorState } from '@/components/StateViews';
 import { versionLabel } from '@/utils/versionLabel';
 import { usePolicyDisplayName } from './PolicyChip';
-import {
-  PolicyParameterEditor,
-  type ParameterValues,
-  type PolicyFormDefinition,
-} from './parameterEditor';
+import { PolicyParameterEditor, type ParameterValues } from './parameterEditor';
+import { usePolicyFormDefinition, type PolicyRef } from './usePolicyFormDefinition';
+
+export type { PolicyRef } from './usePolicyFormDefinition';
 
 const messages = defineMessages({
   title: {
@@ -103,30 +96,6 @@ const messages = defineMessages({
 /** Schema keywords that make fields appear without a top-level `properties`. */
 const RULE_KEYWORDS = ['anyOf', 'oneOf', 'allOf', 'if'] as const;
 
-/** The numeric major of "v1", "1" or "v1.2.3". */
-const majorOf = (version: string): string | undefined => version.match(/^v?(\d+)/i)?.[1];
-
-/** True for a version carrying only a major ("v1"): the hub needs "x.x" to serve a definition. */
-const isMajorOnly = (version: string): boolean => /^v?\d+$/i.test(version.trim());
-
-/** Orders dotted versions numerically, so "1.10" outranks "1.9". */
-const compareVersions = (a: string, b: string): number => {
-  const parts = (v: string) =>
-    v
-      .replace(/^v/i, '')
-      .split('.')
-      .map((n) => Number.parseInt(n, 10) || 0);
-  const [pa, pb] = [parts(a), parts(b)];
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-};
-
-/** Minimal reference needed to load a policy's definition. */
-export type PolicyRef = Pick<PolicySummary, 'name' | 'version' | 'displayName'>;
-
 /**
  * Configure a policy's parameters (form generated recursively from the policy's
  * JSON-Schema definition). In edit mode the form is pre-filled from
@@ -153,28 +122,11 @@ export function PolicyConfigDrawer({
   onConfirm: (policy: Policy) => void;
 }) {
   const intl = useIntl();
-  // A saved policy keeps only its major ("v1"), but the hub serves a definition by
-  // full "x.x" version, so a major-only reference is first resolved to the newest
-  // published version of that major.
-  const needsResolving = Boolean(policy && isMajorOnly(policy.version));
-  const versionsQuery = usePolicyVersions(policy?.name, open && needsResolving);
-  const resolvedVersion = useMemo(() => {
-    if (!policy) return undefined;
-    if (!needsResolving) return policy.version;
-    const major = majorOf(policy.version);
-    return (versionsQuery.data ?? [])
-      .filter((candidate) => majorOf(candidate.version) === major)
-      .map((candidate) => candidate.version)
-      .sort(compareVersions)
-      .pop();
-  }, [policy, needsResolving, versionsQuery.data]);
-  const versionUnresolved =
-    needsResolving &&
-    (Boolean(versionsQuery.error) || (versionsQuery.isSuccess && !resolvedVersion));
-
-  const definitionQuery = usePolicyDefinition(policy?.name, resolvedVersion, open && !!policy);
-
-  const definition: PolicyDefinition | undefined = definitionQuery.data;
+  const {
+    definition,
+    version: resolvedVersion,
+    isError: definitionError,
+  } = usePolicyFormDefinition(policy, open);
 
   // An attached policy only knows its handle, so the title takes the catalog's name.
   const catalogName = usePolicyDisplayName(policy?.name ?? '');
@@ -182,21 +134,6 @@ export function PolicyConfigDrawer({
     definition?.displayName ||
     (policy && catalogName !== policy.name ? catalogName : policy?.displayName) ||
     '';
-
-  // The editor keys its form on this object, so it must stay the same object
-  // until the policy itself changes.
-  const formDefinition = useMemo<PolicyFormDefinition | undefined>(
-    () =>
-      definition && {
-        name: definition.name,
-        version: definition.version,
-        displayName: definition.displayName,
-        description: definition.description,
-        parameters: definition.parameters,
-        systemParameters: definition.systemParameters,
-      },
-    [definition],
-  );
 
   // The editor re-seeds its form whenever this changes identity, which would
   // discard in-progress edits if a parent passed a fresh object on each render.
@@ -293,11 +230,11 @@ export function PolicyConfigDrawer({
         </Box>
 
         <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
-          {definitionQuery.error || versionUnresolved ? (
+          {definitionError ? (
             <Box sx={{ p: 3 }}>
               <ErrorState message={intl.formatMessage(messages.loadError)} />
             </Box>
-          ) : definitionQuery.isLoading || !formDefinition ? (
+          ) : !definition ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
               <CircularProgress size={24} />
             </Box>
@@ -313,7 +250,7 @@ export function PolicyConfigDrawer({
               key={`${policy?.name}@${policy?.version}`}
               onCancel={onBack ?? onClose}
               onSubmit={confirm}
-              policyDefinition={formDefinition}
+              policyDefinition={definition}
               readyLabel={intl.formatMessage(
                 mode === 'edit' ? messages.readyToSave : messages.readyToAttach,
               )}

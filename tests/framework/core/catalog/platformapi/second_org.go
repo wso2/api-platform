@@ -77,15 +77,25 @@ func secondOrganizationBearer(ctx context.Context, client *http.Client, base str
 // mintSecondOrganizationToken re-signs the administrator's claims, scopes and roles
 // included, for the second organization, with the key the control plane verifies against.
 func mintSecondOrganizationToken(adminToken string, now time.Time) (string, error) {
+	return reSignAdminToken(adminToken, now, jwt.MapClaims{
+		"organization": secondOrganizationClaim,
+		"org_handle":   SecondOrganizationHandle,
+		"org_name":     secondOrganizationName,
+		"sub":          SecondOrganizationUser,
+		"username":     SecondOrganizationUser,
+	})
+}
+
+// reSignAdminToken re-signs the administrator's claims with changes applied and a fresh hour of
+// validity, using the key the control plane verifies against.
+func reSignAdminToken(adminToken string, now time.Time, changes jwt.MapClaims) (string, error) {
 	claims := jwt.MapClaims{}
 	if _, _, err := jwt.NewParser().ParseUnverified(adminToken, claims); err != nil {
 		return "", fmt.Errorf("reading the administrator token: %w", err)
 	}
-	claims["organization"] = secondOrganizationClaim
-	claims["org_handle"] = SecondOrganizationHandle
-	claims["org_name"] = secondOrganizationName
-	claims["sub"] = SecondOrganizationUser
-	claims["username"] = SecondOrganizationUser
+	for name, value := range changes {
+		claims[name] = value
+	}
 	claims["iat"] = now.Unix()
 	claims["exp"] = now.Add(time.Hour).Unix()
 
@@ -95,7 +105,7 @@ func mintSecondOrganizationToken(adminToken string, now time.Time) (string, erro
 	}
 	signed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
 	if err != nil {
-		return "", fmt.Errorf("signing the second organization token: %w", err)
+		return "", fmt.Errorf("signing the token: %w", err)
 	}
 	return signed, nil
 }

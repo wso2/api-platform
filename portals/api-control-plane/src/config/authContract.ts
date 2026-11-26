@@ -30,7 +30,9 @@
  *   - an endpoint that says who is signed in;
  *   - a way to sign out;
  *   - optionally, an endpoint that only reads the session, to notice one that
- *     ended elsewhere.
+ *     ended elsewhere;
+ *   - optionally, endpoints that list the user's organizations and move the
+ *     session into one of them.
  *
  * `authMode` picks a preset for all of them, and each one can be overridden
  * from the runtime config. `basic` and `oidc` are this portal's BFF and are
@@ -103,6 +105,21 @@ export type AuthContract = {
   logoutUrl: string;
   logoutStyle: LogoutStyle;
   claimMappings: ClaimMappings;
+  /**
+   * Lists the organizations the signed-in user can switch to, as the ThunderID
+   * `GET /users/me/ous` answers: `{organizationUnits: [{id, handle, name}]}`.
+   * '' turns organization switching off.
+   */
+  organizationsUrl: string;
+  /**
+   * Move the sessions into an organization, called in order, each as the
+   * ThunderID SDK's backend-mode `ouSwitch`: `POST {url}?ouId=<id>` with
+   * `{"ouId": "<id>"}`, any 2xx on success (the gateway's `oauth2-org-switch`
+   * policy). The console's own session comes last; before it, any other
+   * session its APIs are called with (a parent console's, on the same host).
+   * Empty turns organization switching off.
+   */
+  switchOrganizationUrls: string[];
 };
 
 /** Raw values as they arrive from the runtime config or the build: strings, or absent. */
@@ -120,6 +137,9 @@ export type AuthContractOverrides = Partial<{
   logoutStyle: string;
   /** A JSON object, either as a string or already parsed. */
   claimMappings: string | Record<string, unknown>;
+  organizationsUrl: string;
+  /** A list, or a comma-separated string. */
+  switchOrganizationUrls: string | readonly string[];
 }>;
 
 export const DEFAULT_CLAIM_MAPPINGS: ClaimMappings = {
@@ -208,6 +228,12 @@ export const parseClaimMappings = (
   return out;
 };
 
+/** A list of URLs, given as an array or a comma-separated string; blanks are dropped. */
+export const parseUrlList = (value: string | readonly string[] | undefined): string[] => {
+  const items = typeof value === 'string' ? value.split(',') : (value ?? []);
+  return items.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean);
+};
+
 export const resolveAuthContract = (
   mode: AuthMode,
   overrides: AuthContractOverrides = {},
@@ -226,8 +252,15 @@ export const resolveAuthContract = (
     logoutUrl: nonEmpty(overrides.logoutUrl, BFF_ROUTES.logoutUrl),
     logoutStyle: oneOf(overrides.logoutStyle, ['post-json', 'navigate'], preset.logoutStyle),
     claimMappings: parseClaimMappings(overrides.claimMappings),
+    // No defaults: the BFF has no such endpoints, so switching is opt-in.
+    organizationsUrl: overrides.organizationsUrl?.trim() ?? '',
+    switchOrganizationUrls: parseUrlList(overrides.switchOrganizationUrls),
   };
 };
+
+/** Whether the deployment lets the console move its session between organizations. */
+export const supportsOrganizationSwitch = (contract: AuthContract) =>
+  contract.organizationsUrl !== '' && contract.switchOrganizationUrls.length > 0;
 
 /**
  * Turns a path inside the app (what the router knows, without the base path)

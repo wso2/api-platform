@@ -26,6 +26,7 @@ import {
 import { useCreateApiKey as useCreateGraphQLApiKey } from '@/api/resources/graphqlApis/apiKeys';
 import type { ApiError } from '@/api/core/errors';
 import { isTestKeyExpired, testApiKeyBody, toTestApiKey, type TestApiKey } from './testApiKey';
+import { useCan } from '@/permissions';
 
 /**
  * Obtains the test console's API key, creating one when necessary.
@@ -218,11 +219,13 @@ export const useTestApiKey = (
   enabled: boolean,
 ): UseTestApiKeyResult => {
   const { mutateAsync } = useCreateApiKey();
+  // Minting is an API-key create: without it the key would 401 on page load.
+  const canCreate = useCan('CreateAPIKey');
   const createKey = useCallback<CreateKeyRequest>(
     (apiId, body) => mutateAsync({ body, restApiId: apiId }),
     [mutateAsync],
   );
-  return useSessionTestApiKey('rest', restApiId, enabled, createKey);
+  return useSessionTestApiKey('rest', restApiId, enabled && canCreate, createKey);
 };
 
 /** `useTestApiKey` for a GraphQL API, minting through its own key endpoint. */
@@ -231,9 +234,10 @@ export const useGraphQLTestApiKey = (
   enabled: boolean,
 ): UseTestApiKeyResult => {
   const { mutateAsync } = useCreateGraphQLApiKey();
+  const canCreate = useCan('CreateGraphQLAPIKey');
   const createKey = useCallback<CreateKeyRequest>(
     (apiId, body) => mutateAsync({ body, graphqlApiId: apiId }),
     [mutateAsync],
   );
-  return useSessionTestApiKey('graphql', graphqlApiId, enabled, createKey);
+  return useSessionTestApiKey('graphql', graphqlApiId, enabled && canCreate, createKey);
 };

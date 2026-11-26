@@ -69,3 +69,35 @@ func TestValidateAPIKeyIssuerAndTargets(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateSuppliedAPIKey pins the length bounds on a caller-supplied key value, which
+// match the gateway's default api_key.min_key_length / max_key_length.
+func TestValidateSuppliedAPIKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{"weak short key", "aaaa", true},
+		{"one below minimum", strings.Repeat("k", apiKeyValueMinLength-1), true},
+		{"at minimum", strings.Repeat("k", apiKeyValueMinLength), false},
+		{"generated length", strings.Repeat("f", 64), false},
+		{"at maximum", strings.Repeat("k", apiKeyValueMaxLength), false},
+		{"over maximum", strings.Repeat("k", apiKeyValueMaxLength+1), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSuppliedAPIKey(tt.key)
+			if !tt.wantErr {
+				if err != nil {
+					t.Errorf("validateSuppliedAPIKey() = %v, want nil", err)
+				}
+				return
+			}
+			var appErr *apperror.Error
+			if !errors.As(err, &appErr) || appErr.HTTPStatus != http.StatusBadRequest {
+				t.Errorf("expected a 400 validation error, got %v", err)
+			}
+		})
+	}
+}

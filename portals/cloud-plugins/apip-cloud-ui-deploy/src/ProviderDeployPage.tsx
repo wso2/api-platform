@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import { Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import ProviderEnvironmentRow from './components/ProviderEnvironmentRow';
 import ProviderDeployDrawer from './components/ProviderDeployDrawer';
@@ -32,6 +32,14 @@ export type ProviderDeployPageProps = {
   builds: Build[];
   /** What the provider itself uses, which each gateway's fields start from. */
   upstream: ProviderUpstream;
+  /** Whether the user holds a scope that deploys; every Deploy is disabled otherwise. */
+  canDeploy: boolean;
+  /** Whether the user may store a new key for a gateway; the dialog's credential field is disabled otherwise. */
+  canStoreCredential: boolean;
+  /** Whether the user holds a scope that undeploys; every Stop is disabled otherwise. */
+  canUndeploy: boolean;
+  /** Whether the user holds a scope that deletes the provider's builds; every delete is disabled otherwise. */
+  canDeleteBuild: boolean;
   busy: boolean;
   onDeploy: (
     target: Environment,
@@ -60,12 +68,20 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
   environments,
   builds,
   upstream,
+  canDeploy,
+  canStoreCredential,
+  canUndeploy,
+  canDeleteBuild,
   busy,
   onDeploy,
   onStopGateway,
   onDeleteBuild,
 }) => {
   const [target, setTarget] = useState<Environment | null>(null);
+  // A dialog opened before the deploy scope was lost must not stay usable.
+  useEffect(() => {
+    if (!canDeploy) setTarget(null);
+  }, [canDeploy]);
   // Open the first environment initially so its gateway details are immediately visible.
   const [expandedEnvironments, setExpandedEnvironments] = useState<string[]>(() =>
     environments[0] ? [environments[0].name] : []
@@ -100,6 +116,7 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
           builds={builds}
           undeletableBuilds={undeletableBuildReasons(environments)}
           busy={busy}
+          canDeleteBuild={canDeleteBuild}
           onDeleteBuild={onDeleteBuild}
         />
 
@@ -159,6 +176,8 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
                     )
                   }
                   busy={busy}
+                  canDeploy={canDeploy}
+                  canStop={canUndeploy}
                   onDeployClick={() => setTarget(environment)}
                   onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
                 />
@@ -173,10 +192,11 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
         environment={openTarget}
         builds={builds}
         upstream={upstream}
+        canStoreCredential={canStoreCredential}
         submitting={busy}
         onClose={() => setTarget(null)}
         onConfirm={(gateways, buildId) => {
-          if (openTarget) onDeploy(openTarget, gateways, buildId);
+          if (openTarget && canDeploy) onDeploy(openTarget, gateways, buildId);
           setTarget(null);
         }}
       />

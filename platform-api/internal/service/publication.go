@@ -714,10 +714,8 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		s.undoPlanSync(ctx, portal, apiId, created)
 		return nil, false, portalPushError(err)
 	}
-	if content != nil {
-		if err := s.portalPublisher.PublishContent(ctx, portal, apiType, apiId, content); err != nil {
-			return nil, false, portalPushError(err)
-		}
+	if err := s.portalPublisher.PublishContent(ctx, portal, apiType, apiId, content); err != nil {
+		return nil, false, portalPushError(err)
 	}
 
 	pushedPlans := make([]model.PublicationSelection, 0, len(plans))

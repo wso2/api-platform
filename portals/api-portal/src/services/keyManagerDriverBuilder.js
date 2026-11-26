@@ -30,7 +30,7 @@
  * verified, how the portal presents its own credential.
  *
  * One thing the two paths do NOT share is the connection policy. A TOML entry
- * may relax the SSRF guard (allow_private_endpoints, insecure_skip_verify); a
+ * may relax the destination guard (allow_private_endpoints, insecure_skip_verify); a
  * database row cannot, because those are operator decisions and this row was
  * written through an authenticated API. An API-created key manager therefore
  * always gets the strict defaults, and pointing one at a private address fails —
@@ -77,6 +77,9 @@ const DB_CLIENT_POLICY = Object.freeze({
     insecureSkipVerify: provisioningPolicy.insecureSkipVerify === true,
     allowPrivateEndpoints: provisioningPolicy.allowPrivateEndpoints === true,
     allowHttpEndpoints: provisioningPolicy.allowHttpEndpoints === true,
+    // Created through the API, so [api_portal.server.network_security.access_control]
+    // applies as well (see keymanagers/core/httpClient.js resolvePolicy).
+    userSupplied: true,
 });
 
 function cacheKey(orgId, record, updatedAt) {

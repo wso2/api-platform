@@ -36,6 +36,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -57,6 +59,7 @@ import (
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 )
 
 func TestArtifactPath(t *testing.T) {
@@ -72,6 +75,7 @@ func TestArtifactPath(t *testing.T) {
 		{name: "proxy", kind: "LlmProxy", handle: "proxy-1", want: "/llm-proxies/proxy-1"},
 		{name: "mcp", kind: "Mcp", handle: "mcp-1", want: "/mcp-proxies/mcp-1"},
 		{name: "rest api", kind: "RestApi", handle: "api-1", want: "/rest-apis/api-1"},
+		{name: "graphql api", kind: "GraphQLApi", handle: "gql-1", want: "/graphql-apis/gql-1"},
 		{name: "gateway agent is an agent proxy", kind: "Agent", handle: "agent-1", want: "/agent-proxies/agent-1"},
 		{name: "control-plane kind is not a gateway kind", kind: "AgentProxy", handle: "x", wantErr: true},
 		{name: "unknown kind", kind: "WebSubApi", handle: "x", wantErr: true},
@@ -88,6 +92,23 @@ func TestArtifactPath(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestCreateDeployableRejectsAnUnknownKind(t *testing.T) {
+	err := (&Steps{}).createDeployable(context.Background(), "AgentProxy", "x", "p", "/x")
+	require.ErrorContains(t, err, `unknown deployable kind "AgentProxy"`)
+}
+
+func TestDeployableBase(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	_, ok := deployableBase(ctx, "proxy-1")
+	require.False(t, ok, "a proxy created without a base provider has none")
+	require.NoError(t, tcontext.Set(ctx, keyDeployableBase+"proxy-1", "proxy-1-base"))
+	provider, ok := deployableBase(ctx, "proxy-1")
+	require.True(t, ok)
+	require.Equal(t, "proxy-1-base", provider)
+	_, ok = deployableBase(ctx, "proxy-2")
+	require.False(t, ok, "the base provider belongs to its own proxy")
 }
 
 func TestDeploymentStatusMatches(t *testing.T) {
@@ -217,6 +238,65 @@ func TestActorCredentials(t *testing.T) {
 		_, err := actorCredentials(who)
 		require.ErrorContains(t, err, "unknown control-plane actor", who)
 	}
+}
+
+func TestMultipartFormUploadsFixturesAndSendsTextFields(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.NoError(t, tcontext.Set(ctx, "project", "proj-1"))
+	table := formTable(t, [][]string{
+		{"projectId", "${CTX:project}"},
+		{"file", "@spec:petstore-v1.yaml"},
+		{"spec", "@generated-spec:2048"},
+	})
+	body, contentType, err := multipartForm(ctx, table)
+	require.NoError(t, err)
+	_, params, err := mime.ParseMediaType(contentType)
+	require.NoError(t, err)
+	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{"proj-1"}, form.Value["projectId"])
+	want, err := specs.Fixture("petstore-v1.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "petstore-v1.yaml", form.File["file"][0].Filename)
+	require.Equal(t, int64(len(want)), form.File["file"][0].Size)
+	require.Equal(t, int64(2048), form.File["spec"][0].Size)
+}
+
+func TestMultipartFormRejectsBadRowsAndUnknownFixtures(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	for name, rows := range map[string][][]string{
+		"no rows":         nil,
+		"one cell":        {{"file"}},
+		"unknown fixture": {{"file", "@spec:missing.yaml"}},
+		"no byte count":   {{"file", "@generated-spec:big"}},
+	} {
+		_, _, err := multipartForm(ctx, formTable(t, rows))
+		require.Error(t, err, name)
+	}
+}
+
+// formTable builds a step table from rows of cell values.
+func formTable(t *testing.T, rows [][]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	var built []row
+	for _, values := range rows {
+		var cells []cell
+		for _, value := range values {
+			cells = append(cells, cell{value})
+		}
+		built = append(built, row{Cells: cells})
+	}
+	raw, err := json.Marshal(map[string]any{"rows": built})
+	require.NoError(t, err)
+	var table godog.Table
+	require.NoError(t, json.Unmarshal(raw, &table))
+	return &table
 }
 
 // trackingContext returns a runner context with a fresh cleanup registry installed.
@@ -399,6 +479,75 @@ func TestTrackControlPlaneResourceDeregistersDeletedPlatformResources(t *testing
 	require.Equal(t, []string{"b"}, pendingIDs(reg, platformRESTAPIKind))
 }
 
+func synced(uuid, version string) *httpx.Response {
+	return &httpx.Response{
+		StatusCode: http.StatusOK,
+		URL:        "https://cp:9243/api/v0.9/gateway-custom-policies/sync?gatewayId=it-gateway&policyName=p&policyVersion=" + version,
+		Body:       []byte(`{"uuid":"` + uuid + `","name":"p","version":"` + version + `"}`),
+	}
+}
+
+func TestTrackControlPlaneResourceRegistersSyncedCustomPolicies(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.0.0")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u10", "v1.0.0")))
+	require.ElementsMatch(t, []string{"u1/versions/v1.0.0", "u10/versions/v1.0.0"}, pendingIDs(reg, platformCustomPolicyKind))
+
+	// A higher minor version updates the record in place, so only its new version is deleted.
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.1.0")))
+	require.ElementsMatch(t, []string{"u1/versions/v1.1.0", "u10/versions/v1.0.0"}, pendingIDs(reg, platformCustomPolicyKind),
+		"a record whose uuid shares the prefix is kept")
+
+	// A refused sync, or a 200 from another path, records nothing.
+	refused := synced("u2", "v1.0.0")
+	refused.StatusCode = http.StatusConflict
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, refused))
+	other := synced("u3", "v1.0.0")
+	other.URL = "https://cp:9243/api/v0.9/gateway-custom-policies"
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, other))
+	require.Len(t, pendingIDs(reg, platformCustomPolicyKind), 2)
+
+	// Deleted after the APIs that may use it.
+	for _, api := range []cleanup.Kind{platformRESTAPIKind, platformGraphQLAPIKind, platformMCPKind, platformSecuredAPIKind} {
+		require.Less(t, api.Order, platformCustomPolicyKind.Order, api.Name)
+	}
+}
+
+func TestTrackControlPlaneResourceRequiresTheSyncedCustomPolicy(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	for _, body := range []string{``, `{`, `{}`, `{"uuid":"u1"}`, `{"version":"v1.0.0"}`, `{"uuid":" ","version":"v1.0.0"}`} {
+		resp := synced("u1", "v1.0.0")
+		resp.Body = []byte(body)
+		require.Error(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, resp), body)
+	}
+	require.Empty(t, reg.Pending())
+}
+
+func TestTrackControlPlaneResourceDeletesASyncedCustomPolicyItCannotRegister(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	err := (&Steps{}).trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.0.0"))
+	require.ErrorContains(t, err, "no registry")
+	require.ErrorContains(t, err, "compensating delete failed", "the delete is attempted, and its failure reported")
+}
+
+func TestTrackControlPlaneResourceDeregistersDeletedCustomPolicies(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.0.0")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u2", "v2.0.0")))
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusConflict, URL: "https://cp/api/v0.9/gateway-custom-policies/u1/versions/v1.0.0"}))
+	require.Len(t, pendingIDs(reg, platformCustomPolicyKind), 2, "a failed delete leaves the record in place")
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp:9243/api/v0.9/gateway-custom-policies/u1/versions/v1.0.0"}))
+	require.Equal(t, []string{"u2/versions/v2.0.0"}, pendingIDs(reg, platformCustomPolicyKind))
+}
+
 func TestIsDeploymentNotActive(t *testing.T) {
 	notActive := []byte(`{"code":"DEPLOYMENT_NOT_ACTIVE","message":"No active deployment"}`)
 	require.True(t, isDeploymentNotActive(&httpx.Response{StatusCode: http.StatusConflict, Body: notActive}))
@@ -521,6 +670,24 @@ func TestJSONFieldEquals(t *testing.T) {
 	require.False(t, jsonFieldEquals(&httpx.Response{StatusCode: http.StatusNotFound, Body: ok.Body}, "status", "DEPLOYED"))
 	require.False(t, jsonFieldEquals(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{`)}, "status", "DEPLOYED"))
 	require.False(t, jsonFieldEquals(nil, "status", "DEPLOYED"))
+}
+
+func TestJSONArrayHasItem(t *testing.T) {
+	ok := &httpx.Response{StatusCode: http.StatusOK, Body: []byte(
+		`{"policies":[{"name":"set-headers","isCustomPolicy":false},{"name":"it-custom-basic","isCustomPolicy":true}],"count":2}`)}
+	require.True(t, jsonArrayHasItem(ok, "policies", "name", "it-custom-basic"))
+	require.True(t, jsonArrayHasItem(ok, "policies", "isCustomPolicy", "true"))
+	require.False(t, jsonArrayHasItem(ok, "policies", "name", "it-custom"), "the value must match exactly")
+	require.False(t, jsonArrayHasItem(ok, "policies", "version", "v1.0.0"))
+	require.False(t, jsonArrayHasItem(ok, "missing", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(ok, "count", "name", "it-custom-basic"), "a field that is not an array")
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"policies":[]}`)},
+		"policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"policies":["it-custom-basic"]}`)},
+		"policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusNotFound, Body: ok.Body}, "policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{`)}, "policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(nil, "policies", "name", "it-custom-basic"))
 }
 
 func TestErrorCode(t *testing.T) {
@@ -1868,4 +2035,17 @@ func TestMintUserTokenValidatesItsInput(t *testing.T) {
 	_, err := tcontext.ResolveString(ctx, "token")
 	require.Error(t, err, "nothing is stored when minting fails")
 	require.Empty(t, requests())
+}
+
+// An LLM provider template is created and tracked like any other control-plane resource, and is
+// removed only after the providers that may have been created from it.
+func TestLLMProviderTemplatesAreTrackedAndRemovedAfterProviders(t *testing.T) {
+	require.Equal(t, platformLLMTemplateKind, platformCollectionKinds["llm-provider-templates"])
+	require.Greater(t, platformLLMTemplateKind.Order, platformProviderKind.Order)
+	require.Equal(t, "/llm-provider-templates", templateCollections["LLM provider template"])
+
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/llm-provider-templates/tpl")))
+	require.Equal(t, []string{"tpl"}, pendingIDs(reg, platformLLMTemplateKind))
 }

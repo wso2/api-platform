@@ -17,10 +17,15 @@
  */
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { defineMessages, useIntl } from 'react-intl';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 
 import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
+import { withAppBasePath } from '../config/authContract';
+import { runtimeConfig } from '../config/runtime';
+import { ErrorState, LoadingState } from '../components/StateViews';
 import { useAuth } from '../contexts/auth/AuthProvider';
+import { OrganizationSwitchError } from '../contexts/auth/authTypes';
 import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
 import {
   ConsoleScopeContext,
@@ -42,10 +47,38 @@ export {
   type ConsoleScope,
 } from './ConsoleScopeContext';
 
+/**
+ * Route state the organization picker reads: the organization the session was
+ * refused, so the picker never lands the user on it again.
+ */
+export type OrganizationPickerState = { rejectedOrganizations?: string[] };
+
+const messages = defineMessages({
+  switching: {
+    id: 'apiControlPlane.scope.ConsoleScopeProvider.switching',
+    defaultMessage: 'Switching organization',
+    description: 'Shown while the session moves into the organization the user opened.',
+  },
+  switchFailedTitle: {
+    id: 'apiControlPlane.scope.ConsoleScopeProvider.switchFailedTitle',
+    defaultMessage: 'Unable to switch organization',
+  },
+  switchFailedMessage: {
+    id: 'apiControlPlane.scope.ConsoleScopeProvider.switchFailedMessage',
+    defaultMessage: 'Refresh the page to try again.',
+  },
+});
+
 export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
+  const intl = useIntl();
   const routeParams = useParams<ConsoleRouteParams>();
   const location = useLocation();
-  const { exchangeOrgToken, isAuthenticated } = useAuth();
+  const { canSwitchOrganization, exchangeOrgToken, isAuthenticated, user } = useAuth();
+  const sessionOrgHandle = user?.org?.handle;
+  const [switchFailure, setSwitchFailure] = useState<{ orgHandle: string; error: unknown }>();
+  // The organization this tab last had the session in, and the one its switch in flight is moving it to.
+  const [settledOrgHandle, setSettledOrgHandle] = useState<string>();
+  const [switchingTo, setSwitchingTo] = useState<string>();
   const [tokenReadyOrgHandle, setTokenReadyOrgHandle] = useState<string>();
   const [orgTokenError, setOrgTokenError] = useState<Error>();
   const pathnameParams = useMemo(
@@ -89,7 +122,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    if (!params.orgHandle || !isAuthenticated) {
+    if (canSwitchOrganization || !params.orgHandle || !isAuthenticated) {
       setTokenReadyOrgHandle(undefined);
       setOrgTokenError(undefined);
       return () => {
@@ -116,10 +149,60 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, params.orgHandle]);
+  }, [canSwitchOrganization, isAuthenticated, params.orgHandle]);
 
-  const queryOrgHandle =
-    tokenReadyOrgHandle === params.orgHandle ? params.orgHandle : undefined;
+  // A failed switch is tried again only once the URL has named another organization.
+  const failedFor = useRef<string>(undefined);
+  useEffect(() => {
+    failedFor.current = undefined;
+  }, [params.orgHandle]);
+
+  // When the deployment switches organizations, the session is in one
+  // organization at a time: the URL's is ready once the session is in it, and
+  // until then the session is moved there. A session that left the URL's
+  // organization without this tab asking (another tab switched) is followed
+  // instead, so tabs never move it back and forth. While this tab's own switch
+  // is in flight, the page waits for it, wherever the URL goes meanwhile.
+  useEffect(() => {
+    const orgHandle = params.orgHandle;
+    if (!canSwitchOrganization || !isAuthenticated || !orgHandle) return undefined;
+    if (switchingTo) return undefined;
+    if (orgHandle === sessionOrgHandle) {
+      setSettledOrgHandle(orgHandle);
+      setSwitchFailure(undefined);
+      return undefined;
+    }
+    if (settledOrgHandle === orgHandle && sessionOrgHandle) {
+      window.location.replace(
+        withAppBasePath(routes.organizationHome(sessionOrgHandle), runtimeConfig.appBasePath),
+      );
+      return undefined;
+    }
+    if (failedFor.current === orgHandle) return undefined;
+    setSwitchFailure(undefined);
+    setSwitchingTo(orgHandle);
+    exchangeOrgTokenRef.current(orgHandle)
+      .then(
+        () => setSettledOrgHandle(orgHandle),
+        (error: unknown) => {
+          failedFor.current = orgHandle;
+          setSwitchFailure({ orgHandle, error });
+        },
+      )
+      .finally(() => setSwitchingTo(undefined));
+    return undefined;
+  }, [canSwitchOrganization, isAuthenticated, params.orgHandle, sessionOrgHandle, settledOrgHandle, switchingTo]);
+
+  const switchError =
+    switchFailure && switchFailure.orgHandle === params.orgHandle ? switchFailure.error : undefined;
+
+  const queryOrgHandle = canSwitchOrganization
+    ? params.orgHandle && params.orgHandle === sessionOrgHandle
+      ? params.orgHandle
+      : undefined
+    : tokenReadyOrgHandle === params.orgHandle
+      ? params.orgHandle
+      : undefined;
 
   const apiQuery = useRestApi(params.apiHandler, {orgId: queryOrgHandle });
   const graphqlApiQuery = useGraphQLApi(params.graphqlApiHandler, {orgId: queryOrgHandle });
@@ -132,6 +215,19 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       organizationsQuery.data?.list?.find((item) => item.id === params.orgHandle),
     [organizationsQuery.data?.list, params.orgHandle]
   );
+
+  // The Platform API lists an organization for a user once they have used it,
+  // so a list read before a switch can lack the one just switched to. Read it
+  // once more for that organization.
+  const refetchedFor = useRef<string | undefined>(undefined);
+  const { refetch: refetchOrganizations } = organizationsQuery;
+  const organizationsSettled = organizationsQuery.isSuccess && !organizationsQuery.isFetching;
+  useEffect(() => {
+    if (!canSwitchOrganization || !queryOrgHandle || organization || !organizationsSettled) return;
+    if (refetchedFor.current === queryOrgHandle) return;
+    refetchedFor.current = queryOrgHandle;
+    void refetchOrganizations();
+  }, [canSwitchOrganization, organization, organizationsSettled, queryOrgHandle, refetchOrganizations]);
 
   const project =
     projectQuery.data ||
@@ -161,7 +257,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       isGraphQLApiScope: Boolean(params.graphqlApiHandler),
       isLoading:
         organizationsQuery.isLoading ||
-        Boolean(params.orgHandle && !tokenReadyOrgHandle && !orgTokenError) ||
+        Boolean(params.orgHandle && !queryOrgHandle && !orgTokenError) ||
         projectsQuery.isLoading ||
         projectQuery.isLoading ||
         apiQuery.isLoading,
@@ -190,7 +286,6 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       projectsQuery.error,
       projectsQuery.isLoading,
       queryOrgHandle,
-      tokenReadyOrgHandle,
     ]
   );
 
@@ -201,8 +296,32 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   // which lands them on one they can actually reach. Waiting out `isFetching`
   // keeps a refetch after onboarding registers the org from bouncing the user
   // off it on stale data; a truncated list proves nothing, so it never redirects.
+  if (canSwitchOrganization && isAuthenticated && params.orgHandle) {
+    // Membership is the identity provider's to decide here: an organization the
+    // session can't move into is foreign, whatever the Platform API lists.
+    if (switchError instanceof OrganizationSwitchError && switchError.reason === 'forbidden') {
+      const refused = (location.state as OrganizationPickerState | null)?.rejectedOrganizations ?? [];
+      const state: OrganizationPickerState = { rejectedOrganizations: [...refused, params.orgHandle] };
+      return <Navigate to={routes.organizations} replace state={state} />;
+    }
+    if (switchError) {
+      return (
+        <ErrorState
+          title={intl.formatMessage(messages.switchFailedTitle)}
+          message={intl.formatMessage(messages.switchFailedMessage)}
+        />
+      );
+    }
+    // Nothing below may call the backend until the session is in this
+    // organization: it would act on the previous one.
+    if (!queryOrgHandle || switchingTo) {
+      return <LoadingState fullScreen label={intl.formatMessage(messages.switching)} />;
+    }
+  }
+
   const organizationList = organizationsQuery.data?.list;
   const isForeignOrganization =
+    !canSwitchOrganization &&
     Boolean(params.orgHandle) &&
     organizationsQuery.isSuccess &&
     !organizationsQuery.isFetching &&

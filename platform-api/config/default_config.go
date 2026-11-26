@@ -31,6 +31,20 @@ func defaultConfig() *Server {
 			Level:  "info",
 			Format: "text",
 		},
+		Health: Health{
+			CacheTTL:       3 * time.Second,
+			AllowedClients: ClientList{},
+			Database: HealthDatabase{
+				CheckTimeout:   2 * time.Second,
+				StartupWait:    5 * time.Minute,
+				FailureWindow:  30 * time.Second,
+				FailureRatio:   0.5,
+				MinAttempts:    5,
+				IdlePeriod:     10 * time.Second,
+				PoolSaturation: 0.9,
+				PoolWaitLimit:  5 * time.Second,
+			},
+		},
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
@@ -57,6 +71,7 @@ func defaultConfig() *Server {
 			// probes are internal gateway routes authenticated via gateway token instead.
 			SkipPaths: []string{
 				"/health",
+				"/ready",
 				"/metrics",
 				"/api/portal/v0.9/auth/login",
 				// Public: the caller has no token yet, and a public key is public.
@@ -162,12 +177,29 @@ func defaultConfig() *Server {
 				Write:      120 * time.Second,
 				Idle:       120 * time.Second,
 			},
+			// Outbound access control for tenant- and user-supplied URLs. On by
+			// default with the behaviour platform-api already had for them:
+			// private and in-cluster destinations stay reachable, and only
+			// link-local/metadata, unspecified and multicast addresses are refused.
+			NetworkSecurity: NetworkSecurity{
+				AccessControl: AccessControl{
+					Enabled:             true,
+					Mode:                "deny",
+					Hostnames:           []string{},
+					DenyPrivateNetworks: false,
+					MaxRedirects:        5,
+					AllowedSchemes:      []string{"http", "https"},
+				},
+			},
+			// The largest route limit is publication content (10 MiB).
+			MaxRequestBodyBytes: 10 << 20, // 10 MiB
 			WebSocket: WebSocket{
-				MaxConnections:     1000,
-				ConnectionTimeout:  30,
-				RateLimitPerMin:    1000,
-				MetricsLogEnabled:  true,
-				MetricsLogInterval: 10,
+				MaxConnections:           1000,
+				MaxConnectionsPerGateway: -1, // unlimited
+				ConnectionTimeout:        30,
+				RateLimitPerMin:          1000,
+				MetricsLogEnabled:        true,
+				MetricsLogInterval:       10,
 			},
 		},
 		Security: Security{
@@ -180,11 +212,14 @@ func defaultConfig() *Server {
 			CleanupInterval: 10 * time.Minute,
 			RetentionPeriod: 1 * time.Hour,
 		},
+		FeatureUsage: defaultFeatureUsage(),
 		Webhook: Webhook{
 			Enabled:            false,
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Api-Portal-Signature",
+
+			LegacySharedSecret: false,
 		},
 		HTTPClient: HTTPClientConfig{
 			Pooling: HTTPClientPoolingConfig{
@@ -216,7 +251,7 @@ func defaultConfig() *Server {
 			Proxy: HTTPClientProxyConfig{
 				Mode: "none",
 			},
-			SSRF: HTTPClientSSRFConfig{
+			DestinationGuard: HTTPClientDestinationGuardConfig{
 				Enabled:        true,
 				Preset:         "permit_private_block_metadata",
 				MaxRedirects:   5,
@@ -241,6 +276,18 @@ func defaultConfig() *Server {
 			MaxEntries:  512,
 			MaxBytes:    32 << 20, // 32 MiB — 512 entries cannot all be 1 MiB cards
 		},
+		// The allow list names only a gateway on this host, so a deployment that
+		// sets nothing reaches no other address.
+		GatewayRelay: GatewayRelay{
+			RequestTimeout:   30 * time.Second,
+			MaxRequestBytes:  2 << 20, // 2 MiB
+			MaxResponseBytes: 8 << 20, // 8 MiB
+			MaxConcurrent:    32,
+			MaxPending:       64,
+			Egress: GatewayRelayEgress{
+				AllowHosts: []string{"https://localhost:8443"},
+			},
+		},
 		// TEMP-READ-ONLY-MODE: remove with config/readonly.go. Off by default — the
 		// read-only (maintenance) mode is an explicit, operator-driven posture.
 		ReadOnly: ReadOnly{
@@ -250,6 +297,9 @@ func defaultConfig() *Server {
 		MCPServer: MCPServer{
 			Enabled:         false,
 			MaxRequestBytes: 1 << 20,
+		},
+		Organizations: Organizations{
+			CreateDefaultProject: true,
 		},
 	}
 }

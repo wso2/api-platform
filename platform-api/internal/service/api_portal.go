@@ -86,6 +86,17 @@ type APIPortalService struct {
 	authRegistry *APIPortalAuthRegistry
 	identity     *IdentityService
 	slogger      *slog.Logger
+	webhooks     portalSecretRemover // optional; nil leaves the portal's webhook secret alone
+}
+
+// portalSecretRemover is the part of WebhookSecretService that deleting a portal needs.
+type portalSecretRemover interface {
+	DeletePortalSecret(ctx context.Context, orgID, portalHandle string) error
+}
+
+// SetWebhookSecrets makes DeleteAPIPortal remove the portal's own webhook secret with it.
+func (s *APIPortalService) SetWebhookSecrets(w portalSecretRemover) {
+	s.webhooks = w
 }
 
 // NewAPIPortalService constructs an APIPortalService.
@@ -158,6 +169,23 @@ func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgI
 // Go-embedding callers can reach it. The status value is validated against
 // the platform-api constants set.
 func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error) {
+	return s.createAPIPortal(req, orgID, createdBy, status, uuid.New().String())
+}
+
+// CreateAPIPortalWithStatusAndID is CreateAPIPortalWithStatus with the row's UUID
+// chosen by the caller, for a caller that hands the same UUID to the portal it
+// provisions before the row exists (the cloud plugin uses it as the portal's
+// tenant id, so the two cannot drift). The id must be a UUID; a duplicate is
+// refused by the primary key. Not exposed via REST.
+func (s *APIPortalService) CreateAPIPortalWithStatusAndID(req *api.CreateApiPortalRequest, orgID, createdBy, status, id string) (*api.ApiPortalResponse, error) {
+	parsed, err := uuid.Parse(strings.TrimSpace(id))
+	if err != nil || parsed == uuid.Nil {
+		return nil, apperror.ValidationFailed.New("The portal id must be a UUID.")
+	}
+	return s.createAPIPortal(req, orgID, createdBy, status, parsed.String())
+}
+
+func (s *APIPortalService) createAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy, status, id string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
 	}
@@ -201,7 +229,7 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 
 	actor := strings.TrimSpace(createdBy)
 	portal := &model.APIPortal{
-		ID:              uuid.New().String(),
+		ID:              id,
 		OrganizationID:  orgID,
 		Handle:          strings.TrimSpace(req.Handle),
 		Name:            name,
@@ -488,6 +516,14 @@ func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
 	}
 	if err := s.portalRepo.Delete(portal.ID, orgID); err != nil {
 		return err
+	}
+	// After the record: a failed portal delete must not strip the secret from a portal that is
+	// still live. A secret left behind here belongs to no portal and is removed through the
+	// webhook secret API, so a failure is logged rather than failing a delete that took effect.
+	if s.webhooks != nil {
+		if err := s.webhooks.DeletePortalSecret(context.Background(), orgID, portal.Handle); err != nil && s.slogger != nil {
+			s.slogger.Error("Failed to delete webhook secret of deleted api portal", "orgId", orgID, "handle", portal.Handle, "error", err)
+		}
 	}
 	_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, strings.TrimSpace(actor))
 	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)

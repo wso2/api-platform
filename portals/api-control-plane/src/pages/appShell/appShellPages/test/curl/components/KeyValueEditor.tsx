@@ -32,6 +32,7 @@ import {
 import { ChevronDown, KeyRound, RefreshCw, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import { useTrackFeature } from '@/featureUsage';
 import { SecretValue } from '../../components/SecretValue';
 import type { KeyValueRow } from '../../utils/types';
 
@@ -127,6 +128,7 @@ export function KeyValueEditor({
   valuePlaceholder,
 }: KeyValueEditorProps) {
   const intl = useIntl();
+  const trackFeature = useTrackFeature();
   const headingId = useId();
 
   /** Stable ID for the trailing blank row, preserving focus while editing. */
@@ -263,7 +265,14 @@ export function KeyValueEditor({
                       <IconButton
                         aria-label={intl.formatMessage(messages.regenerate)}
                         disabled={regenerating}
-                        onClick={onRegenerateSecret}
+                        onClick={() => {
+                          // The cURL view is REST-only. Only this click counts,
+                          // not the key minted on page load.
+                          trackFeature('apip.security.test-api-key-generate-click', {
+                            artifact_kind: 'rest-api',
+                          });
+                          onRegenerateSecret();
+                        }}
                         size="small"
                       >
                         {regenerating ? <CircularProgress size={14} /> : <RefreshCw size={16} />}

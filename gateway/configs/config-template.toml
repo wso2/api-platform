@@ -73,11 +73,55 @@ maximum_protocol_version = "TLS1_3"
 ciphers = ""
 ecdh_curves = "X25519,P-256"
 
+[controller.server.network_security.access_control]
+# Restricts the destinations an artifact may point the gateway at: its upstream
+# URLs (spec.upstream, spec.upstreamDefinitions), which the router dials, and the
+# URL parameters of the policies attached to it, which the policy engine dials.
+# URLs set in this file -- the control plane, the IdP, collectors, policy system
+# parameters -- are never restricted by it.
+#
+# Enforced like policy_engine.env_access: a deployment through the management API
+# or from the control plane that breaks it is refused (400 / a failed deployment
+# with UPSTREAM_URL_NOT_ALLOWED), and after a change to this section and a restart,
+# a stored artifact that now breaks it is undeployed.
+#
+# mode                  "deny":  a host matching an entry in hostnames is refused.
+#                       "allow": only a host matching an entry is permitted
+#                                (hostnames must not be empty).
+# hostnames             RE2 regular expressions, matched case-insensitively against
+#                       the whole hostname (never the port or path), e.g.
+#                       ['api\.example\.com', '[a-z0-9-]+\.svc\.cluster\.local'].
+#                       A TOML array; at most 256 entries, each up to 255 characters.
+# deny_private_networks Also refuse private (RFC 1918), loopback, carrier-grade NAT
+#                       and unique-local addresses. In allow mode a listed host must
+#                       pass this check too. Link-local (cloud metadata), unspecified
+#                       and multicast addresses are always refused.
+# max_redirects         Redirect hops a policy follows; each hop is checked again.
+# allowed_schemes       "http" and/or "https".
+#
+# Limitation: the router keeps re-resolving upstream hostnames. Their addresses are
+# checked when an artifact is deployed and on every restart, not in between, and a
+# hostname the controller cannot resolve at deploy time is not refused.
+#
+# Enabled by default with no hostnames and deny_private_networks = false, which
+# refuses only the always-refused addresses above. On upgrade, a stored artifact
+# whose upstream or policy URL is one of them (for example the cloud metadata
+# address 169.254.169.254) is undeployed at the first start; set enabled = false
+# to keep the previous behaviour.
+enabled = true
+mode = "deny"
+hostnames = []
+deny_private_networks = false
+max_redirects = 5
+allowed_schemes = ["http", "https"]
+
 [controller.admin_server]
 # Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
-# Kept enabled by default because it also serves /health, used by Kubernetes
-# liveness/readiness probes; see admin_server.config_dump below to gate the
-# sensitive /config_dump route specifically.
+# Kept enabled by default because it also serves the health endpoints
+# (/api/admin/v1/health and /ready), which answer while the controller is still
+# starting; the management API serves the same answer at /api/management/v1/health
+# and /ready once startup has finished. See admin_server.config_dump below to gate
+# the sensitive /config_dump route specifically.
 enabled = true
 port = 9092
 allowed_ips = ["*"]
@@ -284,7 +328,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see pkg/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -296,11 +340,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[controller.http_client.ssrf]
-# Off by default: this shared client's current callers (control plane, platform API,
-# on-prem APIM) all target a single fixed, operator-configured host, not a user/tenant-
-# supplied URL — the scenario ssrf-prevention.md targets — so there is nothing to guard
-# against today. Exposed for completeness / any future caller that fetches a tenant-supplied
+[controller.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default: this shared client's current callers (control plane, platform
+# API, on-prem APIM) all target a single fixed, operator-configured host, not a user/
+# tenant-supplied URL, so there is nothing to guard against today. Exposed for completeness / any future caller that fetches a tenant-supplied
 # URL. When enabling, preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
@@ -336,6 +380,41 @@ issuer = "api-platform-devportal"
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
+
+# Health check behaviour. Every key is optional; the values shown are the defaults.
+# allowed_clients lists the clients (IP addresses or CIDR ranges) that the health
+# endpoints answer, on the admin server (/api/admin/v1/health and /ready) and on the
+# management API (/api/management/v1/health and /ready). The default, "*", allows every client. To restrict access, list
+# addresses or ranges, comma-separated in the environment variable (for example
+# "127.0.0.1,::1,10.0.0.0/8"); any other client then gets 403. Keep the addresses your
+# probes call from. The health endpoints are not covered by admin_server.allowed_ips or
+# by authentication, so with the default any client that reaches the admin or management
+# port can see whether the database is up and since when.
+[controller.health]
+allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
+# cache_ttl     = '{{ env "APIP_GW_CONTROLLER_HEALTH_CACHE_TTL" "3s" }}'    # how long an evaluated health result is reused
+
+# The database check decides from the outcomes of the controller's own database
+# operations, so it adds no database calls while traffic flows. When there are fewer than
+# min_attempts operations in the window, it pings the database itself, at most once per
+# idle_period. It fails when at least failure_ratio of the operations in the last
+# failure_window lost their connection (once min_attempts were made). When at least
+# pool_saturation of the connection pool has stayed in use, with callers waiting for a
+# connection, for pool_wait_limit, the check carries a "database connection pool
+# exhausted" warning but stays up: a full pool is load, not an outage. Every key is
+# optional; the values shown are the defaults. During startup_wait the cause is logged at WARN; a
+# rejected login, a PostgreSQL database that does not exist or an untrusted server
+# certificate ends startup at once instead of waiting. SQL Server reports a missing
+# database the same way as one still recovering after a restart, so startup waits.
+# [controller.health.database]
+# check_timeout   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for the check's own ping
+# startup_wait    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting
+# failure_window  = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # sliding window of operation outcomes (at most 1h)
+# failure_ratio   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that fails the check
+# min_attempts    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
+# idle_period     = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # with too few operations to decide, the check pings once per period
+# pool_saturation = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_SATURATION" "0.9" }}'  # share of the connection pool in use that counts as saturated
+# pool_wait_limit = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated before the warning
 
 [controller.metrics]
 enabled = false
@@ -485,6 +564,10 @@ return_request_id_in_response = true
 # How to handle escaped slashes ("%2F"/"%5C") in the request path. Options: "KEEP_UNCHANGED"
 # (default), "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD".
 path_with_escaped_slashes_action = "KEEP_UNCHANGED"
+# Route paths match case-sensitively, and a request whose path matches a route only when case is
+# ignored (e.g. "/Secure/data" for "/secure/data") gets a 404, so it cannot reach a broader route
+# without that route's policies. Set to true to let such requests fall through as before.
+allow_path_case_variants = false
 
 # HTTP Connection Manager (downstream) timeouts
 # A value of zero disables any of these timeout settings.
@@ -497,6 +580,16 @@ request_headers_timeout = "0s"
 stream_idle_timeout = "5m"
 # Idle timeout for the downstream connection
 idle_timeout = "1h"
+
+# The gateway's own readiness and liveness routes (/_gateway-health/ready and
+# /_gateway-health/healthy) on every traffic listener. allowed_clients lists the clients
+# (IP addresses or CIDR ranges) Envoy lets reach them, judged by the connection's peer
+# address. The default, "*", allows every client. To restrict access, list addresses or
+# ranges, comma-separated in the environment variable (for example
+# "127.0.0.1,::1,10.0.0.0/8"); any other client then gets 403. Keep the addresses your
+# probes and load balancers call from.
+[router.health]
+allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 
 [router.policy_engine]
 host = "policy-engine"
@@ -515,6 +608,19 @@ skip_verify = false
 # =============================================================================
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
+
+# Environment variables that {{ env "NAME" }} in API / LLM / MCP / agent artifact
+# specs (e.g. policy params, upstream URLs) may read. Rendering happens in the
+# gateway-controller, so this is read by the controller, not the policy engine.
+# When allow_list is not set, artifacts may read any environment variable (the
+# behaviour of earlier releases). When it is set, only the listed variables are
+# readable, and an artifact that references any other one fails to deploy with
+# a 400. Entries are exact names ("BACKEND_URL") or a prefix ending in "*"
+# ("BACKEND_*"); an empty list permits none. May also be given as one
+# comma-separated string, e.g. allow_list = '{{ env "ARTIFACT_ENV_ALLOW_LIST" "" }}'
+# (a blank value leaves access unrestricted).
+[policy_engine.env_access]
+# allow_list = ["BACKEND_URL", "BACKEND_*"]
 
 # handle_upstream_faults routes a failure the UPSTREAM or the ROUTER produced through
 # the fault flow instead of the ordinary response policies.
@@ -635,6 +741,12 @@ connect_timeout = "10s"
 request_timeout = "5s"
 initial_reconnect_delay = "1s"
 max_reconnect_delay = "60s"
+# HTTP/2 PING on the xDS connection so a connection that dies silently is
+# detected and reconnected instead of leaving the engine without config
+# updates. keepalive_time must be at least 5s (gateway-controller rejects
+# more frequent pings); gRPC raises values below 10s to 10s.
+keepalive_time = "30s"
+keepalive_timeout = "10s"
 
 [policy_engine.xds.tls]
 # Mutual TLS for this policy-engine's connection to gateway-controller's
@@ -693,6 +805,16 @@ path = ""
 level = "info"
 format = "text"
 
+# Health check behaviour. Every key is optional; the values shown are the defaults.
+# [policy_engine.health]
+# cache_ttl = "3s"        # how long an evaluated health result is reused
+#
+# [policy_engine.health.xds_connection]
+# grace = "5m"            # how long the controller link may be down before readiness fails
+#
+# [policy_engine.health.python_executor]
+# check_timeout = "2s"    # deadline for the Python executor check
+
 # Configures the single shared outbound *http.Client that the policy engine builds once at
 # startup and injects into every policy instance via PolicyMetadata.SharedHTTPClient (see
 # internal/config.HTTPClientConfig, which mirrors github.com/wso2/go-httpkit/httpclient.Config
@@ -739,6 +861,18 @@ cipher_suites = ""
 root_ca_file = ""
 client_cert_file = ""
 client_key_file = ""
+# Disables certificate chain and hostname verification for EVERY outbound call every policy
+# makes through this client. Off by default. Prefer root_ca_file to trust a specific private
+# CA; use this only in development and test environments. Policies' own skip-verify parameters
+# (skipTlsVerify, tlsSkipVerify, tlsInsecureSkipVerify) are ignored while this shared client is
+# in use, so this is the one place the setting is made.
+insecure_skip_verify = false
+# Skips only the check that a server's certificate names the host being dialed. The certificate
+# chain, validity dates and server-auth usage are still verified against root_ca_file (or the
+# system roots), so a certificate no trusted CA signed is still refused. Off by default; for a
+# private CA whose certificates do not carry the names policies dial. Rejected at startup if set
+# together with insecure_skip_verify, which already skips every check.
+insecure_skip_hostname_verify = false
 
 [policy_engine.http_client.proxy]
 # "none" (default) | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) | "url"
@@ -747,7 +881,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see internal/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -759,10 +893,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[policy_engine.http_client.ssrf]
-# Off by default. Enable (and pick a preset) when a policy's outbound target is derived
-# from tenant/request data rather than a single fixed, operator-configured backend — see
-# ssrf-prevention.md. preset must be "permit_private_block_metadata" or "public_only".
+[policy_engine.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default. Enable (and pick a preset) when a policy's outbound target is
+# derived from tenant/request data rather than a single fixed, operator-configured backend.
+# preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
 max_redirects = 0
@@ -1324,6 +1459,19 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 
 [policy_configurations.azure_llm_cost_v1]
 pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
+
+# A2A Agent Card URL rewriting.
+#
+# gateway_url is the externally reachable base URL of the gateway (scheme, host,
+# optional port, optional path prefix). When set, every interface URL a
+# passthrough Agent Card is rewritten to is built on it, ahead of the Agent's
+# vhost and the scheme and authority of the request. Leave it unset when the
+# gateway is the edge. Set it when the gateway sits behind a load balancer,
+# ingress or API front door whose public address differs from the one requests
+# arrive on. It must be an absolute http or https URL with no userinfo, query
+# string or fragment; an unusable value makes card rewriting fail closed.
+# [policy_configurations.a2a_v1]
+# gateway_url = "https://agents.example.com"
 
 # =============================================================================
 # GATEWAY SIGNING KEYS

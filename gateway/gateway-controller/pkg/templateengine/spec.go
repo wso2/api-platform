@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"text/template"
 
 	"github.com/wso2/api-platform/common/redact"
@@ -53,6 +54,29 @@ func (e *RenderError) Unwrap() error {
 	return e.Cause
 }
 
+// PostRenderCheck inspects a rendered artifact configuration (the same concrete
+// type RenderSpec was given, with every template resolved) and returns an error
+// to refuse it. kind is the stored artifact's kind, which can differ from the
+// rendered value's: an LLM artifact hydrated by the event listener or at startup
+// is rendered as its derived RestAPI.
+type PostRenderCheck func(kind string, rendered any) error
+
+var postRenderCheck atomic.Pointer[PostRenderCheck]
+
+// SetPostRenderCheck installs a check RenderSpec runs on every rendered
+// configuration before storing it, so every path that renders an artifact —
+// the management API, control-plane deployments, replica sync and startup
+// loading — enforces it. A refusal is returned as a *RenderError wrapping the
+// check's error. Passing nil removes the check. No check is installed by
+// default.
+func SetPostRenderCheck(check PostRenderCheck) {
+	if check == nil {
+		postRenderCheck.Store(nil)
+		return
+	}
+	postRenderCheck.Store(&check)
+}
+
 // RenderSpec renders template expressions in the spec of a StoredConfig.
 // It renders cfg.Configuration in place, leaving cfg.SourceConfiguration untouched (as stored in DB).
 // cfg.SensitiveValues is populated with tracked resolved secret values for redaction.
@@ -70,6 +94,12 @@ func RenderSpec(cfg *models.StoredConfig, secretResolver funcs.SecretResolver, l
 	renderResult, err := renderSpec(cfg.Configuration, secretResolver, logger)
 	if err != nil {
 		return &RenderError{Cause: fmt.Errorf("failed to render config %q (kind=%s): %w", cfg.Handle, cfg.Kind, err)}
+	}
+
+	if check := postRenderCheck.Load(); check != nil {
+		if err := (*check)(cfg.Kind, renderResult.Config); err != nil {
+			return &RenderError{Cause: fmt.Errorf("config %q (kind=%s) was refused: %w", cfg.Handle, cfg.Kind, err)}
+		}
 	}
 
 	cfg.Configuration = renderResult.Config

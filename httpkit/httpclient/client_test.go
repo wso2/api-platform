@@ -34,7 +34,7 @@ func TestDefaultConfig_NeverUnboundedPoolingOrTimeouts(t *testing.T) {
 	if cfg.Timeouts.MaxResponseBytes <= 0 {
 		t.Error("DefaultConfig: Timeouts.MaxResponseBytes must be positive")
 	}
-	if cfg.SSRF.Enabled {
+	if cfg.DestinationGuard.Enabled {
 		t.Error("DefaultConfig: SSRF must be disabled by default (opt-in)")
 	}
 }
@@ -76,15 +76,15 @@ func TestNew_InsecureSkipVerifyRejectsCustomVerifyCallback(t *testing.T) {
 	}
 }
 
-func TestNew_SSRFEnabledRequiresNonZeroPolicy(t *testing.T) {
+func TestNew_GuardEnabledRequiresNonZeroPolicy(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.SSRF.Enabled = true
+	cfg.DestinationGuard.Enabled = true
 	// Policy left zero-value.
 	if _, err := New(cfg); err == nil {
 		t.Fatal("expected New to reject SSRF.Enabled with a zero-value Policy")
 	}
 
-	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+	cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 	if _, err := New(cfg); err != nil {
 		t.Fatalf("expected New to accept SSRF.Enabled with a preset policy, got: %v", err)
 	}
@@ -92,8 +92,8 @@ func TestNew_SSRFEnabledRequiresNonZeroPolicy(t *testing.T) {
 
 func TestNew_ProxyPlusSSRFRequiresExplicitEgress(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 	cfg.Proxy.Mode = "environment"
 	// Egress left at ProxyEgressUnset.
 	if _, err := New(cfg); err == nil {

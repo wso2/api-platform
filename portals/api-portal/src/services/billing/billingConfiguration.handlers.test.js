@@ -37,7 +37,6 @@ const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const SERVICE = path.join(__dirname, 'billingConfigurationService.js');
 const WEBHOOK_SERVICE = path.join(__dirname, 'paymentWebhookService.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = '0b5c9a4e-1f2d-4c3b-9a8e-7d6f5e4c3b2a';
 const PORTAL = 'test-portal';
@@ -75,7 +74,7 @@ const { BillingProviderError } = require(${JSON.stringify(path.join(PROJECT_ROOT
 const stripeConnector = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/billing/connectors/moesif/payments/stripe/index.js'))});
 const moesifConnector = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/billing/connectors/moesif/index.js'))});
 const moesifClient = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/billing/connectors/moesif/client.js'))});
-const Database = require(${JSON.stringify(SQLITE)});
+const Database = require('node:sqlite').DatabaseSync;
 const out = {};
 
 // One test Stripe account per key prefix pair: rk_test_* keys share "acct_test", rk_live_* "acct_live".
@@ -268,10 +267,10 @@ function signed(secret, body, ageSec = 0) {
 
     const db = new Database(${JSON.stringify('DB_FILE')});
     const raw = db.prepare('SELECT * FROM billing_configurations').get();
-    out.storedText = Object.values(raw).map((v) => (Buffer.isBuffer(v) ? v.toString('utf8') : String(v))).join('|');
+    out.storedText = Object.values(raw).map((v) => (v instanceof Uint8Array ? Buffer.from(v).toString('utf8') : String(v))).join('|');
 
     // Each stored key is bound to its place: two keys swapped in the row no longer decrypt.
-    const storedSecrets = JSON.parse(raw.provider_secrets_enc.toString('utf8'));
+    const storedSecrets = JSON.parse(Buffer.from(raw.provider_secrets_enc).toString('utf8'));
     [storedSecrets.stripe.apiKey, storedSecrets.moesif.managementKey] = [storedSecrets.moesif.managementKey, storedSecrets.stripe.apiKey];
     db.prepare('UPDATE billing_configurations SET provider_secrets_enc = ?').run(Buffer.from(JSON.stringify(storedSecrets)));
     out.swappedSecrets = await configurationDao.getWithSecrets(orgId).then(() => 'read', (e) => e.message);
@@ -443,7 +442,7 @@ function results() {
     const seed = path.join(tmpDir, 'seed.js');
     fs.writeFileSync(seed, `
         const fs = require('fs');
-        const Database = require(${JSON.stringify(SQLITE)});
+        const Database = require('node:sqlite').DatabaseSync;
         const db = new Database(${JSON.stringify(dbFile)});
         db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
         db.prepare(\`INSERT INTO organizations

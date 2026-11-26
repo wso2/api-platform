@@ -16,7 +16,15 @@
  * under the License.
  */
 
-import { cloneElement, useMemo, useState, type FC, type ReactElement, type ReactNode } from 'react';
+import {
+  cloneElement,
+  useEffect,
+  useMemo,
+  useState,
+  type FC,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import {
   Avatar,
   Box,
@@ -46,23 +54,29 @@ import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from './util
 import NoGatewayState from './components/NoGatewayState';
 import type { AIWorkspaceHostPort } from './hostPort';
 import { hostingBlocked } from './utils/limits';
+import { NO_PERMISSION_TOOLTIP } from './permissions';
+import { GATEWAY_SETTINGS_OPEN, type GatewayAddEntryPoint } from './featureUsage';
 import type { Environment, Gateway, GatewayHosting } from './types';
 
 /**
- * Create button, disabled with the host's message when NO hosting kind has
- * room left. `gateways` is the generic verdict for exactly this case: the
+ * Create button, disabled with the no-permission tooltip when the user holds no
+ * scope that creates gateways, or with the host's message when NO hosting kind
+ * has room left. `gateways` is the generic verdict for exactly this case: the
  * button only opens the form, where each kind is gated on its own quota, so
  * blocking it because one kind is full would hide the kind that is not.
  *
  * The span is required: a disabled MUI button sets `pointer-events: none`, so
  * a Tooltip on it never fires.
  */
-const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> = ({
-  port,
-  onClick,
-}) => {
+const AddGatewayButton: FC<{
+  port: AIWorkspaceHostPort;
+  /** Whether the user holds a scope that creates gateways. */
+  canCreate: boolean;
+  onClick: () => void;
+}> = ({ port, canCreate, onClick }) => {
   const limits = port.resourceLimits;
-  const blocked = limits?.canCreate ? !limits.canCreate('gateways') : false;
+  const quotaFull = limits?.canCreate ? !limits.canCreate('gateways') : false;
+  const blocked = !canCreate || quotaFull;
   const button = (
     <Button
       variant="contained"
@@ -70,12 +84,12 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
       startIcon={<Plus size={20} />}
       disabled={blocked}
     >
-      Add Gateway
+      Add API Gateway
     </Button>
   );
   if (!blocked) return button;
   return (
-    <Tooltip title={limits?.limitMessage?.('gateways') ?? ''}>
+    <Tooltip title={!canCreate ? NO_PERMISSION_TOOLTIP : (limits?.limitMessage?.('gateways') ?? '')}>
       <span style={{ display: 'inline-flex' }}>{button}</span>
     </Tooltip>
   );
@@ -83,6 +97,7 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
 
 /**
  * Wraps a control that writes to an existing gateway, disabling it with the
+ * no-permission tooltip when the user lacks the scope it needs, or with the
  * host's explanation while the organization is read-only.
  *
  * Deliberately not `canCreate('gateways')`: that answers whether there is room
@@ -90,15 +105,29 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
  * exists — a full quota must still leave its gateways configurable. The span
  * is required for the same reason as above: a disabled MUI control sets
  * `pointer-events: none`, so a Tooltip on it never fires.
+ *
+ * `unavailable` disables it for a reason that belongs to the gateway rather
+ * than the user, such as one still being provisioned. A missing scope or a
+ * read-only organization outranks it: those last longer, so they are what the
+ * user needs to hear.
  */
 const WhenWritable: FC<{
   port: AIWorkspaceHostPort;
+  /** Whether the user holds the scope this control needs; `false` disables it. */
+  allowed?: boolean;
+  /** Why the gateway cannot take this action right now; set, it disables the control. */
+  unavailable?: string;
   children: ReactElement<{ disabled?: boolean }>;
-}> = ({ port, children }) => {
+}> = ({ port, allowed = true, unavailable, children }) => {
   const limits = port.resourceLimits;
-  if (!limits?.readOnly) return children;
+  const reason = !allowed
+    ? NO_PERMISSION_TOOLTIP
+    : limits?.readOnly
+      ? (limits.readOnlyMessage ?? '')
+      : (unavailable ?? null);
+  if (reason === null) return children;
   return (
-    <Tooltip title={limits.readOnlyMessage ?? ''}>
+    <Tooltip title={reason}>
       <span style={{ display: 'inline-flex' }}>
         {cloneElement(children, { disabled: true })}
       </span>
@@ -106,13 +135,30 @@ const WhenWritable: FC<{
   );
 };
 
+/** Tooltip for an action that waits until a gateway has finished provisioning. */
+const PROVISIONING_TOOLTIP = 'Available once the gateway finishes provisioning.';
+
+/** Why `gateway` cannot be edited or configured yet, or `undefined` when it can. */
+const provisioningReason = (gateway: Gateway): string | undefined =>
+  gateway.status === 'provisioning' ? PROVISIONING_TOOLTIP : undefined;
+
 export type GatewaysListProps = {
   gateways: Gateway[];
   environments: Environment[];
   /** Passed through to the configuration drawer, which calls platform-api itself. */
   port: AIWorkspaceHostPort;
-  /** Opens the Add Gateway form; `hosting` preselects its Hosting option. */
-  onAddClick: (hosting?: GatewayHosting) => void;
+  /** Whether the user holds a scope that creates gateways; Add Gateway is disabled otherwise. */
+  canCreate: boolean;
+  /** Whether the user holds a scope that updates gateways; every Edit is disabled otherwise. */
+  canUpdate: boolean;
+  /** Whether the user holds a scope that deletes gateways; every Delete is disabled otherwise. */
+  canDelete: boolean;
+  /** Whether the user may open a gateway's configuration; Configure is disabled otherwise. */
+  canReadConfiguration: boolean;
+  /** Whether the user may change a gateway's configuration; the drawer is read-only otherwise. */
+  canWriteConfiguration: boolean;
+  /** Opens the Add Gateway form: `entryPoint` says from where, for usage analytics; `hosting` preselects its Hosting option. */
+  onAddClick: (entryPoint: GatewayAddEntryPoint, hosting?: GatewayHosting) => void;
   onEditClick: (gatewayId: string) => void;
   /** A self-hosted gateway's row opens its overview (Quick Start, connection setup) there. */
   onViewClick: (gatewayId: string) => void;
@@ -166,6 +212,12 @@ const HostingTab: FC<{
       color: 'text.primary',
       border: 1,
       borderColor: selected ? 'primary.main' : 'divider',
+      // The panel below draws the shared bottom edge. An unselected tab leaves it
+      // to the panel's accent border, and the selected tab sits above its
+      // neighbour so the overlapping seam keeps the accent colour in both themes.
+      borderBottomColor: selected ? 'primary.main' : 'transparent',
+      position: 'relative',
+      zIndex: selected ? 1 : 0,
       borderRadius: '10px 10px 0 0',
       bgcolor: selected ? 'action.selected' : 'transparent',
     }}
@@ -353,6 +405,11 @@ const GatewaysList: FC<GatewaysListProps> = ({
   gateways,
   environments,
   port,
+  canCreate,
+  canUpdate,
+  canDelete,
+  canReadConfiguration,
+  canWriteConfiguration,
   onAddClick,
   onEditClick,
   onViewClick,
@@ -361,7 +418,16 @@ const GatewaysList: FC<GatewaysListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDelete) setDeleteTarget(null);
+  }, [canDelete]);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
+  // Likewise the configuration drawer: left open without read access it keeps
+  // polling a configuration the server now refuses, and shows the last one it got.
+  useEffect(() => {
+    if (!canReadConfiguration) setSettingsGateway(null);
+  }, [canReadConfiguration]);
 
   // Environments are keyed by name, so a gateway that points at an environment
   // missing from the list (deleted, or not yet loaded) still shows its raw
@@ -415,6 +481,12 @@ const GatewaysList: FC<GatewaysListProps> = ({
     // closing first left the row on screen with nothing to say a delete was even
     // running, and let a second gateway be deleted while the first was in flight.
     if (!deleteTarget || deleting) return;
+    // Rechecked here, not only on the row's button: the dialog can outlive the
+    // scope that opened it.
+    if (!canDelete) {
+      setDeleteTarget(null);
+      return;
+    }
     setDeleting(true);
     try {
       await onDelete(deleteTarget.id, deleteTarget.name);
@@ -424,9 +496,15 @@ const GatewaysList: FC<GatewaysListProps> = ({
     }
   };
 
+  // A gateway being deleted is on its way out: there is nothing left to edit,
+  // configure or delete again. One still being provisioned has no configuration
+  // to read or edit yet, so Edit and Configure wait for it; Delete does not, so a
+  // provisioning that never finishes can still be removed. Each action is also
+  // wrapped so its tooltip can say why it is disabled — a disabled button fires
+  // no events.
   const renderActions = (gateway: Gateway) => (
-    <>
-      <WhenWritable port={port}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+      <WhenWritable port={port} allowed={canUpdate} unavailable={provisioningReason(gateway)}>
         <IconButton
           size="small"
           onClick={() => onEditClick(gateway.id)}
@@ -437,10 +515,17 @@ const GatewaysList: FC<GatewaysListProps> = ({
         </IconButton>
       </WhenWritable>
       {gateway.hosting === 'managed' ? (
-        <WhenWritable port={port}>
+        <WhenWritable
+          port={port}
+          allowed={canReadConfiguration}
+          unavailable={provisioningReason(gateway)}
+        >
           <IconButton
             size="small"
-            onClick={() => setSettingsGateway(gateway)}
+            onClick={() => {
+              port.trackFeature?.(GATEWAY_SETTINGS_OPEN);
+              setSettingsGateway(gateway);
+            }}
             disabled={gateway.status === 'deleting'}
             aria-label={`Configure ${gateway.name}`}
           >
@@ -448,16 +533,22 @@ const GatewaysList: FC<GatewaysListProps> = ({
           </IconButton>
         </WhenWritable>
       ) : null}
-      <IconButton
-        size="small"
-        color="error"
-        onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
-        disabled={gateway.status === 'deleting'}
-        aria-label={`Delete ${gateway.name}`}
-      >
-        <Trash2 size={16} />
-      </IconButton>
-    </>
+      {/* Not `WhenWritable`: deletion stays available while the organization is
+          read-only, so a stuck gateway can still be removed; only the scope gates it. */}
+      <Tooltip title={canDelete ? '' : NO_PERMISSION_TOOLTIP}>
+        <span style={{ display: 'inline-flex' }}>
+          <IconButton
+            size="small"
+            color="error"
+            onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
+            disabled={gateway.status === 'deleting' || !canDelete}
+            aria-label={`Delete ${gateway.name}`}
+          >
+            <Trash2 size={16} />
+          </IconButton>
+        </span>
+      </Tooltip>
+    </div>
   );
 
   return (
@@ -466,13 +557,13 @@ const GatewaysList: FC<GatewaysListProps> = ({
         <Grid size={{ xs: 12 }}>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 2 }}>
             <PageTitle sx={{ minWidth: 0, flex: 1 }}>
-              <PageTitle.Header>Gateways</PageTitle.Header>
-              <PageTitle.SubHeader>Manage and monitor your gateway deployments.</PageTitle.SubHeader>
+              <PageTitle.Header>API Gateways</PageTitle.Header>
+              <PageTitle.SubHeader>Manage and monitor your API gateway deployments.</PageTitle.SubHeader>
             </PageTitle>
 
             <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
               {gateways.length > 0 ? (
-                <AddGatewayButton onClick={() => onAddClick()} port={port} />
+                <AddGatewayButton onClick={() => onAddClick('gateways-list')} port={port} canCreate={canCreate} />
               ) : null}
             </Stack>
           </Box>
@@ -480,15 +571,23 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
         {gateways.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <NoGatewayState onAdd={onAddClick} blocked={hostingBlocked(port)} />
+            {/* No create scope blocks both kinds; otherwise each kind answers for its own quota. */}
+            <NoGatewayState
+              onAdd={(hosting) => onAddClick('gateways-empty-state', hosting)}
+              blocked={
+                canCreate
+                  ? hostingBlocked(port)
+                  : { managed: NO_PERMISSION_TOOLTIP, 'self-hosted': NO_PERMISSION_TOOLTIP }
+              }
+            />
           </Grid>
         ) : (
           <Grid size={{ xs: 12 }}>
             <Box sx={{ display: 'flex', '& > button + button': { ml: '-1px' } }}>
               <HostingTab
                 icon={<Cloud size={20} />}
-                title="WSO2 managed gateways"
-                description="Hosted and operated by WSO2 in the cloud."
+                title="Cloud API gateways"
+                description="Hosted and operated by Choreo in the cloud."
                 active={managedSummary.active}
                 inactive={managedSummary.inactive}
                 selected={activeHosting === 'managed'}
@@ -496,8 +595,8 @@ const GatewaysList: FC<GatewaysListProps> = ({
               />
               <HostingTab
                 icon={<Server size={20} />}
-                title="Self-hosted gateways"
-                description="Running on your infrastructure, connected to this control plane."
+                title="Self-hosted API gateways"
+                description="Running on your own infrastructure."
                 active={selfHostedSummary.active}
                 inactive={selfHostedSummary.inactive}
                 selected={activeHosting === 'self-hosted'}
@@ -512,6 +611,8 @@ const GatewaysList: FC<GatewaysListProps> = ({
                 borderColor: 'primary.main',
                 borderRadius: '0 0 10px 10px',
                 mt: '-1px',
+                position: 'relative',
+                zIndex: 0,
               }}
             >
               <TextField
@@ -569,6 +670,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
         onClose={() => setSettingsGateway(null)}
         gateway={settingsGateway}
         port={port}
+        canWrite={canWriteConfiguration}
       />
     </PageContent>
   );

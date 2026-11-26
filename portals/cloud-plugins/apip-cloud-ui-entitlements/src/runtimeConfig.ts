@@ -22,8 +22,8 @@
  */
 
 type WindowConfig = Partial<{
-  APIP_ACP_BILLING_CONSOLE_URL: string;
-  billingConsoleUrl: string;
+  BILLING_ENTITLEMENT_BASE_URL: string;
+  billingEntitlementBaseUrl: string;
   PLATFORM_API_BASE_URL: string;
   platformApiBaseUrl: string;
 }>;
@@ -38,28 +38,6 @@ const fromWindow = (): WindowConfig => {
     ...(globalWindow.config ?? {}),
   };
 };
-
-/**
- * The organization's upgrade page in the billing console.
- *
- * `undefined` when either half is missing — a deployment with no billing
- * console (on-prem, standalone, or simply unconfigured), or before the
- * organization resolves. The banner then shows its message with no link, which
- * is the right answer: there is nowhere to send anyone.
- *
- * The `orgId` passed is this console's organization **handle**. That matches
- * what the AI Workspace plugin sends, whose `orgUuid` is likewise just the
- * platform-api organization id (`uuid: p.id`) rather than a distinct UUID.
- * Worth confirming against a real billing console before relying on the link.
- */
-export function upgradeUrl(organization: string | undefined): string | undefined {
-  const config = fromWindow();
-  const base = (config.APIP_ACP_BILLING_CONSOLE_URL ?? config.billingConsoleUrl ?? '')
-    .trim()
-    .replace(/\/$/, '');
-  if (!base || !organization) return undefined;
-  return `${base}/cloud/bijira/upgrade?orgId=${encodeURIComponent(organization)}`;
-}
 
 // Placeholder origin a candidate path is resolved against, to see whether the
 // URL parser keeps it on this origin.
@@ -95,4 +73,18 @@ export function proxyBase(): string {
     .trim()
     .replace(/\/+$/, '');
   return isSameOriginPath(base) ? base : '/proxy';
+}
+
+/**
+ * Same-origin path of billing's Entitlement API: `billingEntitlementBaseUrl`
+ * when the deployment routes it apart from the console's proxy (e.g.
+ * `/_api/entitlement/api/v1`), otherwise the `billing-entitlement` route under
+ * the proxy base. A value that is not a same-origin path is ignored.
+ */
+export function entitlementBase(): string {
+  const config = fromWindow();
+  const own = (config.BILLING_ENTITLEMENT_BASE_URL || config.billingEntitlementBaseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
+  return isSameOriginPath(own) ? own : `${proxyBase()}/billing-entitlement`;
 }

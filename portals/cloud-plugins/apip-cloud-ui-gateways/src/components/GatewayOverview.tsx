@@ -47,9 +47,16 @@ import {
   GatewaySetupStepsV1_2Plus,
   isGatewayV12OrAbove,
   RELEASE_PATH,
+  type SetupCommandStep,
 } from './GatewaySetupSteps';
 import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from '../utils/gateway';
-import type { GatewayVersionEntry } from '../hostPort';
+import {
+  GATEWAY_POLICIES_VIEW,
+  GATEWAY_SETUP_COMMAND_COPY,
+  GATEWAY_TOKEN_REGENERATE_CLICK,
+  INSTALL_METHOD_DIMENSION,
+} from '../featureUsage';
+import type { AIWorkspaceHostPort, GatewayVersionEntry } from '../hostPort';
 import type { Gateway } from '../types';
 
 export type GatewayOverviewProps = {
@@ -69,6 +76,17 @@ export type GatewayOverviewProps = {
   /** Revokes the gateway's existing registration tokens, then mints a new one. */
   onReconfigureRegistrationToken: (gatewayId: string) => Promise<string>;
   notify: (message: string, severity?: 'success' | 'info' | 'warning' | 'error') => void;
+  /**
+   * Whether the user may mint registration tokens. Without it the page neither
+   * mints the first token on opening nor offers Reconfigure. Defaults to allowed.
+   */
+  canManageTokens?: boolean;
+  /** Whether the user may edit the gateway; the Edit button is hidden otherwise. Defaults to allowed. */
+  canEdit?: boolean;
+  /** Content of the Policies tab; a placeholder is shown without it. */
+  renderPolicies?: (gatewayId: string) => ReactNode;
+  /** The host's feature-usage reporter, when it has one; see `AIWorkspaceHostPort.trackFeature`. */
+  trackFeature?: AIWorkspaceHostPort['trackFeature'];
 };
 
 const ACCENT = '#f7882f';
@@ -157,8 +175,23 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   onGenerateRegistrationToken,
   onReconfigureRegistrationToken,
   notify,
+  canManageTokens = true,
+  canEdit = true,
+  renderPolicies,
+  trackFeature,
 }) => {
   const [tab, setTab] = useState<'configurations' | 'policies'>('configurations');
+  // The Policies tab is reported once per visit, the first time it is opened, as on
+  // the built-in gateway page — and only when it shows the host's policies, not the
+  // placeholder.
+  const policiesReported = useRef(false);
+  const changeTab = (next: 'configurations' | 'policies') => {
+    if (next === 'policies' && renderPolicies && !policiesReported.current) {
+      policiesReported.current = true;
+      trackFeature?.(GATEWAY_POLICIES_VIEW);
+    }
+    setTab(next);
+  };
   const [installMethod, setInstallMethod] = useState<InstallMethod>('Quick Start');
   const [registrationToken, setRegistrationToken] = useState<string | null>(initialRegistrationToken ?? null);
   const [hasJustRegeneratedToken, setHasJustRegeneratedToken] = useState(false);
@@ -186,7 +219,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   // to revoke, so nothing to confirm. One that already has a token keeps the
   // Reconfigure prompt, since only the gateway running on it knows the value.
   useEffect(() => {
-    if (initialRegistrationToken || firstTokenCheckedRef.current) return;
+    if (initialRegistrationToken || !canManageTokens || firstTokenCheckedRef.current) return;
     firstTokenCheckedRef.current = true;
     // No cancellation on cleanup: the ref keeps a remount (StrictMode) from
     // starting a second check, so this one has to be the one that lands.
@@ -204,10 +237,11 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
         setIsRegeneratingToken(false);
       }
     })();
-  }, [gateway.id, initialRegistrationToken, onHasActiveRegistrationToken, onGenerateRegistrationToken, notify]);
+  }, [gateway.id, initialRegistrationToken, canManageTokens, onHasActiveRegistrationToken, onGenerateRegistrationToken, notify]);
 
   const handleReconfigureToken = async () => {
     setIsReconfigureConfirmOpen(false);
+    trackFeature?.(GATEWAY_TOKEN_REGENERATE_CLICK);
     setIsRegeneratingToken(true);
     try {
       const token = await onReconfigureRegistrationToken(gateway.id);
@@ -229,6 +263,13 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
 
   const requestReconfigure = () => setIsReconfigureConfirmOpen(true);
 
+  /** Reports a copied setup command as the step it belongs to, on the install path shown. */
+  const reportCopy = (step: SetupCommandStep | 'check-runtime') =>
+    trackFeature?.(GATEWAY_SETUP_COMMAND_COPY, {
+      install_method: INSTALL_METHOD_DIMENSION[installMethod],
+      setup_step: step,
+    });
+
   const setupStepsProps = {
     gatewayVersion: resolvedVersion,
     gatewayZipName,
@@ -237,8 +278,11 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
     controlPlaneHost,
     registrationToken,
     hasJustRegeneratedToken,
-    isRegeneratingToken,
+    // Reconfigure's button is disabled while this is set; it also covers a user
+    // who may not mint tokens.
+    isRegeneratingToken: isRegeneratingToken || !canManageTokens,
     onRegenerateToken: requestReconfigure,
+    onCommandCopied: (step: SetupCommandStep) => reportCopy(step),
   };
 
   const isActive = gateway.status === 'active';
@@ -318,37 +362,43 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
                 {gateway.description || `This is a ${gatewayTypeLabel(gateway.type)}`}
               </Typography>
             </Box>
-            <Button
-              variant="outlined"
-              startIcon={<Edit size={16} />}
-              onClick={() => onEditClick(gateway.id)}
-              sx={{
-                borderRadius: 999,
-                textTransform: 'none',
-                flexShrink: 0,
-                alignSelf: 'flex-start',
-              }}
-            >
-              Edit
-            </Button>
+            {canEdit && (
+              <Button
+                variant="outlined"
+                startIcon={<Edit size={16} />}
+                onClick={() => onEditClick(gateway.id)}
+                sx={{
+                  borderRadius: 999,
+                  textTransform: 'none',
+                  flexShrink: 0,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                Edit
+              </Button>
+            )}
           </Box>
         </CardContent>
       </Card>
 
       <Card sx={{ mt: 3 }}>
         <Box sx={{ px: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Tabs value={tab} onChange={(_event, value) => setTab(value)}>
+          <Tabs value={tab} onChange={(_event, value) => changeTab(value)}>
             <Tab label="Configurations" value="configurations" />
             <Tab label="Policies" value="policies" />
           </Tabs>
         </Box>
         <CardContent>
           {tab === 'policies' ? (
-            <Box sx={{ py: 4, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                Gateway policies aren&apos;t available here yet.
-              </Typography>
-            </Box>
+            renderPolicies ? (
+              renderPolicies(gateway.id)
+            ) : (
+              <Box sx={{ py: 4, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Gateway policies aren&apos;t available here yet.
+                </Typography>
+              </Box>
+            )
           ) : (
             <Grid container spacing={4} sx={{ width: '100%', m: 0 }}>
               <Grid size={{ xs: 12, md: 8 }}>
@@ -422,7 +472,11 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                         Ensure docker and docker compose commands are available.
                       </Typography>
-                      <CommandField value={RUNTIME_CHECK_COMMAND} copyLabel="Prerequisites command" />
+                      <CommandField
+                        value={RUNTIME_CHECK_COMMAND}
+                        copyLabel="Prerequisites command"
+                        onCopied={() => reportCopy('check-runtime')}
+                      />
                     </Box>
                   ) : null}
                 </PrerequisitesCard>
@@ -434,8 +488,9 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
                     controlPlaneHost={controlPlaneHost}
                     registrationToken={registrationToken}
                     hasJustRegeneratedToken={hasJustRegeneratedToken}
-                    isRegeneratingToken={isRegeneratingToken}
+                    isRegeneratingToken={isRegeneratingToken || !canManageTokens}
                     onRegenerateToken={requestReconfigure}
+                    onCommandCopied={reportCopy}
                   />
                 ) : isGatewayV12OrAbove(distVersion) ? (
                   <GatewaySetupStepsV1_2Plus {...setupStepsProps} />

@@ -322,6 +322,8 @@ func (s *APIServer) CreateAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentNotFound})
 		} else if storage.IsConflictError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyConflict})
+		} else if errors.Is(err, utils.ErrInvalidAPIKeyValue) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyCreateFailed})
 		}
@@ -449,6 +451,8 @@ func (s *APIServer) UpdateAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotFound})
 		} else if storage.IsConflictError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyConflict})
+		} else if errors.Is(err, utils.ErrInvalidAPIKeyValue) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyUpdateFailed})
 		}

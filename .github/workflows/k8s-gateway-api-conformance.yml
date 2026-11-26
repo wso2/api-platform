@@ -59,7 +59,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up QEMU
@@ -296,14 +296,16 @@ jobs:
             HEADLINE="🔥 *Gateway API Conformance Errored*"
           fi
 
-          # Appended only when the release check found a newer upstream version. 
+          # Appended only when the release check found a newer upstream version.
           UPSTREAM_LINE=""
           if [ -n "${UPSTREAM_LATEST}" ]; then
-            UPSTREAM_LINE="\n🔔 *(Alert):* Gateway-API ${UPSTREAM_LATEST} is now available — this suite is pinned to ${UPSTREAM_PINNED}."
+            printf -v UPSTREAM_LINE '\n🔔 *(Alert):* Gateway-API %s is now available — this suite is pinned to %s.' \
+              "${UPSTREAM_LATEST}" "${UPSTREAM_PINNED}"
           fi
 
-          # Create the final message payload
-          MESSAGE="${HEADLINE}\n*Repository:* ${REPO}\n*Ref:* ${REF_NAME}\n*Trigger:* ${EVENT}\n*Run:* ${RUN_URL}${UPSTREAM_LINE}"
+          # printf emits real newlines; jq --arg would escape a literal "\n" and Chat would show it verbatim.
+          printf -v MESSAGE '%s\n*Repository:* %s\n*Ref:* %s\n*Trigger:* %s\n*Run:* %s%s' \
+            "${HEADLINE}" "${REPO}" "${REF_NAME}" "${EVENT}" "${RUN_URL}" "${UPSTREAM_LINE}"
           PAYLOAD="$(jq -cn --arg text "${MESSAGE}" '{text: $text}')"
 
           echo "${PAYLOAD}" | curl --fail --silent --show-error \

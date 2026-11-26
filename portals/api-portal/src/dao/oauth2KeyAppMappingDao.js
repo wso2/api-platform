@@ -23,8 +23,14 @@
  * OAuth2 key belongs to.
  *
  * A key belongs to at most one application, so the key is the primary key here
- * and re-associating updates the row in place. An application holds any number
- * of keys.
+ * and re-associating updates the row in place. In the other direction an
+ * application holds at most one key per key type — one PRODUCTION and one
+ * SANDBOX. That second rule has no constraint behind it: `key_type` lives on
+ * `oauth2_consumer_keys`, not on this table, so a UNIQUE constraint cannot
+ * express it without denormalising the column, and this table has shipped.
+ * `associateExclusive` below is what enforces it: the check and the write run
+ * inside one transaction that first locks the application row, because a read
+ * followed by an unserialized write is a race, not a rule.
  *
  * This table carries no `org_uuid`. Both ends are already org-scoped by their own
  * rows, and the service resolves each of them through its own DAO — which applies
@@ -58,13 +64,64 @@ const UPSERT_SQL = db.buildUpsert(
 );
 
 /**
- * Attach a key to an application, moving it if it was attached to another one.
+ * Attach a key to an application, enforcing one key per key type.
  *
- * @returns {Promise<void>}
+ * The check and the write are one transaction that first locks the application
+ * row. Done as two unlocked statements, two requests associating a production
+ * key with the same application both pass the check and both write — the row
+ * lock is what makes them queue instead. The application row is the thing to
+ * lock because the invariant belongs to the application, not to either key.
+ *
+ * Locked per dialect, as `subscriptionPlanDao.deletePlan` already does it:
+ * PostgreSQL takes `FOR UPDATE`, SQL Server `UPDLOCK, ROWLOCK`, and SQLite needs
+ * neither — its adapter holds a process-wide lock for the whole BEGIN..COMMIT
+ * window, so transactions there are already serialized.
+ *
+ * Deliberately NOT scoped by creator. The rule is a property of the application
+ * — "this application has a production key" — not of whoever is looking.
+ * Filtering by `created_by` would let a second production key through whenever
+ * the incumbent belonged to someone else, which is the case the rule exists to
+ * catch.
+ *
+ * @returns {Promise<string|null>} the id of the key already occupying this
+ *          type's slot, or null when the association was made.
  */
-const associate = async (keyId, appId, actor) => {
-    await db.execute(UPSERT_SQL, [getPortalId(), keyId, appId, actor]);
-};
+const associateExclusive = async (keyId, appId, keyType, actor) => db.withTransaction(async (tx) => {
+    const dialect = db.getDialect();
+    const lockHint = dialect === 'mssql' ? ' WITH (UPDLOCK, ROWLOCK)' : '';
+    const forUpdate = dialect === 'postgres' ? ' FOR UPDATE' : '';
+    await tx.queryOne(
+        `SELECT uuid FROM applications${lockHint} WHERE portal_id = ? AND uuid = ?${forUpdate}`,
+        [getPortalId(), appId]
+    );
+
+    /*
+     * Already on this application: a no-op that succeeds, decided before the
+     * conflict check rather than after it. An application written before this
+     * rule existed can hold two keys of one type, and the check below would then
+     * refuse to re-associate either of them — the one case the API explicitly
+     * promises succeeds unchanged. Returning here also leaves the original
+     * `created_by`/`created_at` alone, which an upsert would overwrite for an
+     * association that did not change.
+     */
+    const current = await tx.queryOne(
+        `SELECT app_uuid FROM ${TABLE} WHERE portal_id = ? AND key_uuid = ?`,
+        [getPortalId(), keyId]
+    );
+    if (current && current.app_uuid === appId) return null;
+
+    const conflict = await tx.queryOne(
+        `SELECT m.key_uuid FROM ${TABLE} m
+           JOIN oauth2_consumer_keys k
+             ON k.portal_id = m.portal_id AND k.uuid = m.key_uuid
+          WHERE m.portal_id = ? AND m.app_uuid = ? AND k.key_type = ? AND m.key_uuid <> ?`,
+        [getPortalId(), appId, keyType, keyId]
+    );
+    if (conflict) return conflict.key_uuid;
+
+    await tx.execute(UPSERT_SQL, [getPortalId(), keyId, appId, actor]);
+    return null;
+});
 
 /**
  * Detach a key from whatever application it was on.
@@ -127,7 +184,7 @@ const listKeyIdsByApplication = async (appId) => {
 };
 
 module.exports = {
-    associate,
+    associateExclusive,
     dissociate,
     getByKey,
     getByKeys,

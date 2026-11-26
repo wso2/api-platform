@@ -57,19 +57,19 @@
      */
     var MODES = {
         register: {
-            title: 'Generate OAuth2 key',
-            submit: 'Generate key',
+            title: 'Register OAuth2 client',
+            submit: 'Register client',
             hint: function (km) {
                 return (km.displayName || km.id) + ' will create the application and show you its '
                     + 'client secret once. The secret is not stored.';
             },
         },
         provide: {
-            title: 'Add an existing key',
+            title: 'Import an existing client',
             // Shorter than the button that opened this modal: the title above
             // already says "existing", so repeating it here reads as a second
             // thing to decide rather than the same one.
-            submit: 'Add key',
+            submit: 'Import client',
             hint: function (km) {
                 return 'Create the application in ' + (km.displayName || km.id)
                     + ' first, then paste its client id below. No secret is issued here.';
@@ -811,8 +811,8 @@
     /**
      * Open the add modal for one creation mode.
      *
-     * The mode is chosen before the modal opens -- "Generate key" and "Add
-     * existing key" are separate buttons -- rather than inferred from which key
+     * The mode is chosen before the modal opens -- "Register OAuth2 client" and
+     * "Import OAuth2 client" are separate buttons -- rather than inferred from which key
      * manager is picked inside it. Two reasons. The developer's actual question is
      * "do I already have an application?", which is an action, not a key manager;
      * and the two forms are different shapes, not variants of one, so a dropdown
@@ -986,21 +986,40 @@
 
         var apps = applications();
         var sel = document.getElementById('ok-app-select');
+        var current = tr.getAttribute('data-application-id') || '';
+        var keyType = tr.getAttribute('data-key-type') || 'PRODUCTION';
         sel.textContent = '';
         // "None" is the first option and a real choice — picking it dissociates,
         // which is why this modal has no separate remove button.
         var none = el('option', null, '— None —');
         none.value = '';
         sel.appendChild(none);
+        var available = 0;
         apps.forEach(function (app) {
-            var opt = el('option', null, app.displayName || app.id);
+            // An application holds one key per key type, so an application that
+            // already has one of this key's type can't take this key. Disabled and
+            // labelled rather than hidden: the application still exists, and a
+            // picker that silently drops it looks like the list is wrong. The
+            // application this key is already on is never disabled — re-picking it
+            // is a no-op, not a conflict.
+            var taken = app.id !== current
+                && (app.takenTypes || []).indexOf(keyType) !== -1;
+            var label = app.displayName || app.id;
+            var opt = el('option', null, taken ? label + '  (already has a ' + keyType.toLowerCase() + ' key)' : label);
             opt.value = app.id;
+            opt.disabled = taken;
+            if (!taken) available += 1;
             sel.appendChild(opt);
         });
-        sel.value = tr.getAttribute('data-application-id') || '';
+        sel.value = current;
 
         if (!apps.length) {
             alertMsg('You have no applications yet. Create one first, then associate this key with it.', 'error');
+            return;
+        }
+        if (!available && !current) {
+            alertMsg('Every application already has an OAuth2 key associated with it. '
+                + 'Remove one of those associations, or create another application, to associate this key.', 'error');
             return;
         }
         show('ok-app-modal');

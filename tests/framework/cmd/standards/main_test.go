@@ -213,6 +213,75 @@ func TestCheckSuiteYAMLsRejectsFrameworkOnlyRunner(t *testing.T) {
 	require.Contains(t, issues[0], "framework-only runner")
 }
 
+func TestCheckSuiteYAMLsFollowsBlockFiles(t *testing.T) {
+	const frameworkRunner = "blocks:\n  - runners:\n      - name: framework-cleanup\n        tags: '@framework'\n        features: [features/framework.feature]\n"
+	const productRunner = "blocks:\n  - runners:\n      - name: api-deploy\n        features: [features/api_deploy.feature]\n"
+
+	// writeSuite writes a suite naming the given block files, and those files, into a new directory.
+	writeSuite := func(t *testing.T, blockFiles []string, files map[string]string) string {
+		t.Helper()
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "blocks"), 0o700))
+		for name, content := range files {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+		}
+		suite := "blockFiles:\n"
+		for _, name := range blockFiles {
+			suite += "  - " + name + "\n"
+		}
+		path := filepath.Join(dir, "suite.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(suite), 0o600))
+		return path
+	}
+
+	t.Run("a framework-only runner in a block file is reported with that file", func(t *testing.T) {
+		path := writeSuite(t, []string{"blocks/core.yaml"}, map[string]string{"blocks/core.yaml": frameworkRunner})
+		issues := checkSuiteYAMLs(path)
+		require.Len(t, issues, 1)
+		require.Contains(t, issues[0], filepath.Join("blocks", "core.yaml"))
+		require.Contains(t, issues[0], "framework-only runner")
+	})
+
+	t.Run("clean block files report nothing", func(t *testing.T) {
+		path := writeSuite(t, []string{"blocks/a.yaml", "blocks/b.yaml"},
+			map[string]string{"blocks/a.yaml": productRunner, "blocks/b.yaml": productRunner})
+		require.Empty(t, checkSuiteYAMLs(path))
+	})
+
+	t.Run("every block file is checked, not only the first", func(t *testing.T) {
+		path := writeSuite(t, []string{"blocks/a.yaml", "blocks/b.yaml"},
+			map[string]string{"blocks/a.yaml": productRunner, "blocks/b.yaml": frameworkRunner})
+		issues := checkSuiteYAMLs(path)
+		require.Len(t, issues, 1)
+		require.Contains(t, issues[0], filepath.Join("blocks", "b.yaml"))
+	})
+
+	t.Run("a missing block file is reported", func(t *testing.T) {
+		path := writeSuite(t, []string{"blocks/missing.yaml"}, nil)
+		issues := checkSuiteYAMLs(path)
+		require.Len(t, issues, 1)
+		require.Contains(t, issues[0], "read suite YAML")
+		require.Contains(t, issues[0], filepath.Join("blocks", "missing.yaml"))
+	})
+
+	t.Run("a malformed block file is reported", func(t *testing.T) {
+		path := writeSuite(t, []string{"blocks/bad.yaml"}, map[string]string{"blocks/bad.yaml": "blocks: [\n"})
+		issues := checkSuiteYAMLs(path)
+		require.Len(t, issues, 1)
+		require.Contains(t, issues[0], "parse suite YAML")
+		require.Contains(t, issues[0], filepath.Join("blocks", "bad.yaml"))
+	})
+
+	for _, entry := range []string{"/etc/blocks.yaml", "../blocks.yaml", "\"\""} {
+		t.Run("a block file path outside the suite directory is reported: "+entry, func(t *testing.T) {
+			path := writeSuite(t, []string{entry}, nil)
+			issues := checkSuiteYAMLs(path)
+			require.Len(t, issues, 1)
+			require.Contains(t, issues[0], "must be a path inside the suite file's directory")
+		})
+	}
+}
+
 func TestCheckCleanupRegistrationRequiresRegistrationOrDelegation(t *testing.T) {
 	root := t.TempDir()
 	source := `package steps

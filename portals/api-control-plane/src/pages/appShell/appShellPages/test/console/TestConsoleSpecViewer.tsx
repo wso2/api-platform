@@ -36,6 +36,8 @@ import SwaggerUI from 'swagger-ui-react';
 import '@/components/SwaggerSpecViewer/specViewerStyles';
 import './TestConsoleSpecViewer.css';
 
+import { useInvokeApiOnGateway } from '@/api/resources/gatewayRelay';
+import { useTrackFeature } from '@/featureUsage';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { TestCallMode } from '../utils/callMode';
 import { buildConsoleRequest } from '../utils/operationRequest';
@@ -170,7 +172,7 @@ export type TestConsoleSpecViewerProps = {
   restApiId: string;
   /** Which of the API's deployed gateways to send to. */
   gatewayId: string;
-  /** Organization handle, so the relay's lookup is scoped the same way the page is. */
+  /** Organization handle, so the invoke request is scoped the same way the page is. */
   orgHandle: string;
   /** Headers the console adds to every request, e.g. the test key. */
   extraHeaders?: KeyValueRow[];
@@ -230,15 +232,24 @@ export default function TestConsoleSpecViewer({
    * keeps only the first `plugins` value, so a captured gateway id would stay
    * pinned to whichever gateway was selected at mount.
    */
+  const { mutateAsync: invoke } = useInvokeApiOnGateway({ orgId: orgHandle });
+  const trackFeature = useTrackFeature();
+  const onExecuted: RelayContext['onExecuted'] = (mode, outcome) =>
+    trackFeature('apip.manage-apis.test-console-execute', {
+      api_type: 'rest-api',
+      call_mode: mode,
+      outcome,
+    });
   const relay = useRef<RelayContext>({
     baseUrl,
     gatewayId,
     intl,
+    invoke,
     mode: callMode,
-    orgHandle,
+    onExecuted,
     restApiId,
   });
-  relay.current = { baseUrl, gatewayId, intl, mode: callMode, orgHandle, restApiId };
+  relay.current = { baseUrl, gatewayId, intl, invoke, mode: callMode, onExecuted, restApiId };
 
   /**
    * Sends try-out requests through the BFF instead of straight at the gateway,

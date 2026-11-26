@@ -28,3 +28,15 @@ it('clears the selected type when Total is activated with the keyboard', async (
   await user.keyboard('{Enter}');
   expect(onTypeFilterChange).toHaveBeenCalledWith(null);
 });
+
+it('lists only the REST and GraphQL API types', () => {
+  render(
+    <IntlProvider locale="en">
+      <ProjectStatistics selectedType={null} onTypeFilterChange={vi.fn()} />
+    </IntlProvider>,
+  );
+  expect(screen.getByRole('button', { name: /REST/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /GraphQL/ })).toBeInTheDocument();
+  expect(screen.queryByText('Async / events')).not.toBeInTheDocument();
+  expect(screen.queryByText('gRPC')).not.toBeInTheDocument();
+});

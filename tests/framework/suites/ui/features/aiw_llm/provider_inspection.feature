@@ -18,7 +18,7 @@
 
 @AIW-LLM
 Feature: Finding and inspecting LLM providers in the AI Workspace
-  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "List", "Overview" and "Isolation" (AIW-PRV-007, AIW-PRV-008,
+  Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-features "List", "Overview" and "Isolation" (AIW-PRV-007, AIW-PRV-008,
   AIW-PRV-031), through the browser. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/inspect.feature.
 

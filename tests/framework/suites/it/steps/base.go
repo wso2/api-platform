@@ -68,7 +68,10 @@ type Base struct {
 	// separate from funnel because that client verifies peers as the Platform API; both
 	// publish into the same scenario response slot.
 	gatewayTLSFunnel *httpx.Funnel
-	featureRoot      string
+	// portalFunnel carries requests to the API Portal, which serves its own certificate. It
+	// publishes into the same scenario response slot as funnel.
+	portalFunnel *httpx.Funnel
+	featureRoot  string
 }
 
 // FeatureRoot returns the root directory containing suite feature assets.
@@ -142,10 +145,17 @@ func newSuite(
 	if len(featureRoot) > 0 {
 		root = featureRoot[0]
 	}
+	portalClient := httpx.NewClient(httpx.Options{
+		Timeout:         30 * time.Second,
+		MaxRetries:      3,
+		RetryDelay:      2 * time.Second,
+		TLSClientConfig: shared.APIPortalClientTLS(),
+	})
 	base := &Base{
 		topo:             topo,
 		funnel:           httpx.NewFunnel(client, 3, 2*time.Second),
 		gatewayTLSFunnel: httpx.NewFunnel(gatewayTLSClient, 3, 2*time.Second),
+		portalFunnel:     httpx.NewFunnel(portalClient, 3, 2*time.Second),
 		featureRoot:      root,
 	}
 	stepscommon.ConfigureExpansion()
@@ -187,8 +197,9 @@ func gatewayListenerTLSConfig(pem []byte) (*tls.Config, error) {
 // Register binds shared and product-specific Gherkin steps.
 func (s *Suite) Register(sc *godog.ScenarioContext) {
 	s.registerBaseSteps(sc)
+	s.registerHealthSteps(sc)
 	platformgateway.Register(sc, s.Base, s.topo, s.funnel)
-	trackPortalPlan := apiportal.Register(sc, s.topo, s.funnel.Client())
+	trackPortalPlan := apiportal.Register(sc, s.topo, s.funnel.Client(), s.featureRoot)
 	platformapi.Register(sc, s.topo, s.funnel, s.featureRoot, trackPortalPlan)
 	aiworkspacecli.Register(sc, s.topo, s.funnel, s.featureRoot)
 	apcli.Register(sc, s.topo, s.featureRoot)
@@ -226,6 +237,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response body should contain "([^"]*)"$`, b.responseContains)
 	sc.Step(`^the response body should not contain "([^"]*)"$`, b.responseNotContains)
 	sc.Step(`^the response body should match pattern "([^"]*)"$`, b.responseMatchesPattern)
+	sc.Step(`^the response should have arrived within (\d+(?:\.\d+)?) seconds$`, b.responseArrivedWithin)
 	sc.Step(`^the response should contain Prometheus metrics$`, b.responseContainsPrometheusMetrics)
 	sc.Step(`^the response should contain metric "([^"]*)"$`, b.responseContainsMetric)
 	sc.Step(`^the response header "([^"]*)" should be "([^"]*)"$`, b.responseHeaderEquals)
@@ -244,6 +256,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response should not contain echoed header "([^"]*)"$`, b.echoedHeaderAbsent)
 	sc.Step(`^the JSON response should have field "([^"]*)"$`, b.jsonFieldExists)
 	sc.Step(`^the JSON response field "([^"]*)" should not exist$`, b.jsonFieldAbsent)
+	sc.Step(`^the JSON response field "([^"]*)" should be null$`, b.jsonFieldIsNull)
 	sc.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, b.jsonFieldIsNumber)
 	sc.Step(`^the JSON response field "([^"]*)" should be (true|false)$`, b.jsonFieldIsBool)
 	sc.Step(`^the JSON response field "([^"]*)" should be "([^"]*)"$`, b.jsonFieldIs)
@@ -285,11 +298,15 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.generateUniqueValue)
 	sc.Step(`^I generate a unique API version from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueAPIVersion)
+	sc.Step(`^I generate a unique resource name of (\d+) characters from "([^"]*)" and store it as "([^"]*)"$`,
+		b.generateUniqueResourceNameOfLength)
 	sc.Step(`^I generate a unique resource name from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueResourceName)
 	sc.Step(`^I generate a unique API context from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueContext)
 	sc.Step(`^I generate a UUID and store it as "([^"]*)"$`, b.generateUUID)
+	sc.Step(`^I generate a string of (\d+) characters and store it as "([^"]*)"$`,
+		stepscommon.GenerateStringAndStore)
 	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
@@ -298,7 +315,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
 	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
 		b.sendUntilStatusAt)
-	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" and it never returns status (\d+)$`,
+	sc.Step(`^I send a "([^"]*)" request to (?:the (first|second) gateway )?"([^"]*)" and it never returns status (\d+)$`,
 		b.sendNeverStatusAt)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) with body:$`,
 		b.sendUntilStatusWithBody)
@@ -340,6 +357,24 @@ func (b *Base) responseClientError(ctx context.Context) error {
 	}
 	if resp.StatusCode < 400 || resp.StatusCode >= 500 {
 		return fmt.Errorf("expected a client error response, got %s", resp.Describe())
+	}
+	return nil
+}
+
+// responseArrivedWithin verifies that the published response, body included, took no longer
+// than the given number of seconds.
+func (b *Base) responseArrivedWithin(ctx context.Context, value string) error {
+	seconds, err := parseSeconds(value)
+	if err != nil {
+		return err
+	}
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	limit := time.Duration(seconds * float64(time.Second))
+	if resp.Elapsed > limit {
+		return fmt.Errorf("the response took %s, longer than %s: %s", resp.Elapsed, limit, resp.Describe())
 	}
 	return nil
 }
@@ -636,7 +671,10 @@ func (b *Base) sendNeverStatusAt(ctx context.Context, method, ordinalWord, path 
 	if err != nil {
 		return err
 	}
-	url, err := b.gatewayURLAt(ordinalWord, resolved)
+	url, err := b.gatewayURL(resolved)
+	if ordinalWord != "" {
+		url, err = b.gatewayURLAt(ordinalWord, resolved)
+	}
 	if err != nil {
 		return err
 	}
@@ -1035,6 +1073,26 @@ func (b *Base) jsonFieldAbsent(ctx context.Context, field string) error {
 	if v, ok := traverseJSON(data, field); ok {
 		return fmt.Errorf("expected field %q to be absent, but it is present with value %v (%s)",
 			field, v, resp.Describe())
+	}
+	return nil
+}
+
+// jsonFieldIsNull asserts the field is present and holds JSON null, which the text "null" does not.
+func (b *Base) jsonFieldIsNull(ctx context.Context, field string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(resp.Body, &doc); err != nil {
+		return fmt.Errorf("response is not a JSON object: %w (%s)", err, resp.Describe())
+	}
+	got, present := traverseJSON(doc, field)
+	if !present {
+		return fmt.Errorf("JSON field %q is absent from %s", field, resp.Describe())
+	}
+	if got != nil {
+		return fmt.Errorf("JSON field %q is %v (%T), want null", field, got, got)
 	}
 	return nil
 }
@@ -1992,6 +2050,37 @@ func (b *Base) generateUniqueAPIVersion(ctx context.Context, base, key string) e
 
 func (b *Base) generateUniqueResourceName(ctx context.Context, base, key string) error {
 	return stepscommon.GenerateResourceAndStore(ctx, base, key)
+}
+
+// generateUniqueResourceNameOfLength stores a unique DNS-style name padded to exactly length
+// characters, for boundary cases where the length is what is under test.
+func (b *Base) generateUniqueResourceNameOfLength(ctx context.Context, length int, base, key string) error {
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store generated value %q without runner context", key)
+	}
+	if err := stepscommon.GenerateResourceAndStore(ctx, base, key); err != nil {
+		return err
+	}
+	value, err := stepscommon.StoredValue(ctx, key)
+	if err != nil {
+		return err
+	}
+	padded, err := padToLength(value, length)
+	if err != nil {
+		return err
+	}
+	local.Set(strings.TrimSpace(key), padded)
+	return nil
+}
+
+// padToLength extends value with 'a' to exactly length characters. A value already longer is an
+// error rather than a truncation, which would lose its uniqueness.
+func padToLength(value string, length int) (string, error) {
+	if len(value) > length {
+		return "", fmt.Errorf("unique name %q is longer than the %d characters requested", value, length)
+	}
+	return value + strings.Repeat("a", length-len(value)), nil
 }
 
 func (b *Base) generateUniqueContext(ctx context.Context, base, key string) error {

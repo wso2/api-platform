@@ -40,9 +40,11 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ImportApiIllustration } from '@/components/illustrations/ImportApiIllustration';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
 import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
+import { apiCreationEntry, type ApiCreationEntryPoint } from '../create/entryPoint';
 import { matchesApiType, type ApiTypeFilter } from './apiTypeFilter';
 import { CanCreate } from '@/permissions/CanCreate';
 
@@ -147,10 +149,23 @@ export function ApiList({
   typeFilter = null,
   sidebar,
   onClearTypeFilter,
+  renderFirstRun,
+  onFirstRunChange,
+  renderLoading,
 }: {
   typeFilter?: ApiTypeFilter | null;
   sidebar?: ReactNode;
   onClearTypeFilter?: () => void;
+  /**
+   * Replaces the first-run prompt shown for a project with no APIs. Receives
+   * the action that opens API creation, so the replacement needs no routing of
+   * its own.
+   */
+  renderFirstRun?: (createApi: () => void) => ReactNode;
+  /** Told whether the first-run replacement is showing, so a page can drop what it replaces. */
+  onFirstRunChange?: (showing: boolean) => void;
+  /** Replaces the loader shown while the list loads, e.g. with a skeleton shaped like the page. */
+  renderLoading?: () => ReactNode;
 }) {
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
@@ -158,6 +173,7 @@ export function ApiList({
   const deleteRestApiMutation = useDeleteRestApi();
   const deleteGraphQLApiMutation = useDeleteGraphQLApi();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
 
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('list');
@@ -262,13 +278,27 @@ export function ApiList({
   // Show the create prompt only for an empty project, not an empty search.
   const isFirstRun = total === 0 && !isSearching;
 
+  // Not while loading (an unloaded list is not an empty one), and not while an
+  // error is shown in its place: neither displays the replacement.
+  const showingFirstRun = !isPending && !error && isFirstRun && renderFirstRun !== undefined;
   useEffect(() => {
-    if (page > lastPage) setPaging((current) => ({ ...current, [view]: { ...current[view], page: lastPage } }));
+    onFirstRunChange?.(showingFirstRun);
+  }, [onFirstRunChange, showingFirstRun]);
+  // Leaving takes the replacement with it, so a page that stays does not keep
+  // hiding what it replaced.
+  useEffect(() => () => onFirstRunChange?.(false), [onFirstRunChange]);
+
+  useEffect(() => {
+    if (page > lastPage)
+      setPaging((current) => ({ ...current, [view]: { ...current[view], page: lastPage } }));
   }, [page, lastPage, view]);
 
   const confirmDelete = () => {
     if (!toDelete?.id) return;
     const { apiType, displayName, id } = toDelete;
+    trackFeature('apip.manage-apis.api-delete-click', {
+      api_type: apiType === 'graphql' ? 'graphql-api' : 'rest-api',
+    });
     const onSettled = {
       onSuccess: () => {
         notify(intl.formatMessage(messages.deleteSucceeded, { name: displayName }), 'success');
@@ -291,13 +321,16 @@ export function ApiList({
         : routes.api(orgHandle, projectHandler, api.id ?? ''),
     );
   useEffect(preloadApiCreationWizard, []);
-  const createApi = () => navigate(routes.newApi(orgHandle, projectHandler));
+  const createApi = (entryPoint: Exclude<ApiCreationEntryPoint, 'direct'>) =>
+    navigate(routes.newApi(orgHandle, projectHandler), apiCreationEntry(entryPoint));
 
+  // The type panel sits beside the list only where the list keeps room for its columns: with
+  // the left navigation open, anything narrower than `xl` clips the table, so it drops below.
   const layoutSx = {
     display: 'grid',
     gridTemplateColumns: {
       xs: 'minmax(0, 1fr)',
-      lg: sidebar ? 'minmax(0, 1fr) 280px' : 'minmax(0, 1fr)',
+      xl: sidebar ? 'minmax(0, 1fr) 280px' : 'minmax(0, 1fr)',
     },
     gap: 4,
     alignItems: 'start',
@@ -307,7 +340,11 @@ export function ApiList({
   // route's org/project resolve, and in that window `isLoading` is already
   // false with no data, which would flash the "No APIs yet" empty state.
   if (isPending) {
-    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+    return renderLoading ? (
+      <>{renderLoading()}</>
+    ) : (
+      <LoadingState label={intl.formatMessage(messages.loading)} />
+    );
   }
   if (error) {
     // The sidebar (the type statistics and their filters) outlives a failed list.
@@ -321,7 +358,9 @@ export function ApiList({
 
   return (
     <>
-      {isFirstRun ? (
+      {isFirstRun && renderFirstRun ? (
+        renderFirstRun(() => createApi('api-list-empty-state'))
+      ) : isFirstRun ? (
         /*
           Same `restApis` verdict as the populated list's create button below:
           an empty project says nothing about the organization's quota, which
@@ -334,7 +373,7 @@ export function ApiList({
           component="restApis"
           description={intl.formatMessage(messages.emptyDescription)}
           illustration={<ImportApiIllustration />}
-          onAction={createApi}
+          onAction={() => createApi('api-list-empty-state')}
           title={intl.formatMessage(messages.emptyTitle)}
           operationId="CreateRESTAPI"
         />
@@ -373,7 +412,11 @@ export function ApiList({
                 </ToggleButton>
               </ToggleButtonGroup>
               <CanCreate component="restApis" denied="hide" do="CreateRESTAPI">
-                <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
+                <Button
+                  onClick={() => createApi('api-list')}
+                  startIcon={<Plus size={18} />}
+                  variant="contained"
+                >
                   <FormattedMessage {...messages.createApiButton} />
                 </Button>
               </CanCreate>

@@ -15,6 +15,21 @@
   </div>
 </div>
 
+<!-- Replace content modal -->
+<div class="cfg-modal-overlay" id="cfg-replace-content-modal" style="display:none;">
+  <div class="cfg-modal" role="dialog" aria-modal="true" aria-labelledby="cfg-replace-content-title">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-arrow-repeat"></i></span>
+      <h2 class="cfg-modal-title" id="cfg-replace-content-title">Replace all content?</h2>
+    </div>
+    <p class="cfg-modal-body">This replaces all documents, links, the landing page, its images and the thumbnail of <strong id="cfg-replace-content-api"></strong> with the content of <strong id="cfg-replace-content-zip"></strong>. Continue?</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-replace-content-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-replace-content-confirm">Replace content</button>
+    </div>
+  </div>
+</div>
+
 <!-- Deprecate API modal -->
 <div class="cfg-modal-overlay" id="cfg-deprecate-api-modal" style="display:none;">
   <div class="cfg-modal">
@@ -221,8 +236,9 @@
       <p class="cfg-field-hint">UUID linking this plan to an external billing or quota system.</p>
     </div>
     {{!-- Pricing is given only when a plan is created. settings-plans.js disables this fieldset when a
-          saved plan is edited, so its pricing shows read-only. --}}
-    <fieldset class="cfg-form-group cfg-fieldset" id="pol-pricing-fields" data-billing-ready="{{#if billingConfiguration}}true{{/if}}" style="margin-bottom:24px;padding-top:16px;border-top:1px solid #e5e9ef;">
+          saved plan is edited, so its pricing shows read-only. Hidden, not left out, when Settings hides
+          monetization: settings-plans.js binds to its fields at load. --}}
+    <fieldset class="cfg-form-group cfg-fieldset" id="pol-pricing-fields" data-billing-ready="{{#if billingConfiguration}}true{{/if}}" style="margin-bottom:24px;padding-top:16px;border-top:1px solid #e5e9ef;"{{#unless showMonetization}} hidden{{/unless}}>
       <label style="display:flex;align-items:center;gap:8px;margin:0;">
         <input type="checkbox" id="pol-paid" />
         <span>Paid plan</span>
@@ -359,6 +375,7 @@
   </div>
 </div>
 
+{{#if showMonetization}}
 {{> cfg-billing-form}}
 
 <!-- Remove Billing modal -->
@@ -470,6 +487,7 @@
     </div>
   </div>
 </div>
+{{/if}}
 
 <!-- Add / Edit Key Manager modal -->
 <div class="cfg-modal-overlay" id="cfg-km-modal" style="display:none;">

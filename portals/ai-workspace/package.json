@@ -30,8 +30,8 @@
     "@mui/x-data-grid": "8.27.1",
     "@mui/x-date-pickers": "8.27.0",
     "@mui/x-tree-view": "8.27.1",
-    "@wso2/oxygen-ui": "0.5.0",
-    "@wso2/oxygen-ui-icons-react": "0.5.0",
+    "@wso2/oxygen-ui": "0.27.0",
+    "@wso2/oxygen-ui-icons-react": "0.27.0",
     "date-fns": "4.1.0",
     "install": "0.13.0",
     "js-yaml": "4.3.0",
@@ -69,6 +69,9 @@
     "swagger-ui-react": {
       "js-yaml": "4.2.0"
     },
-    "tinypool": "2.2.0"
+    "tinypool": "2.2.0",
+    "monaco-editor": {
+      "dompurify": "3.4.17"
+    }
   }
 }

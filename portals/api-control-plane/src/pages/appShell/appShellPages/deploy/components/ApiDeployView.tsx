@@ -26,7 +26,7 @@ import type { Deployment } from '@/api/resources/restApis/deployments';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { GatewayDeployCard, type UseDeployMutationHook } from './GatewayDeployCard';
-import type { UseDeploymentMutationHook } from './GatewayDeploymentSelector';
+import type { DeployArtifactKind, UseDeploymentMutationHook } from './GatewayDeploymentSelector';
 
 // IDs keep the page they were written for, so existing translations carry over.
 const messages = defineMessages({
@@ -96,6 +96,8 @@ export type ApiDeployViewProps = {
   apiPending: boolean;
   /** The id the deploy mutations address the API by. */
   apiId: string;
+  /** The kind of API being deployed, for usage analytics. */
+  artifactKind: DeployArtifactKind;
   /** Title for the not-found state; defaults to the REST page's "API not found". */
   apiNotFoundTitle?: string;
   deployments: Deployment[];
@@ -119,6 +121,7 @@ export type ApiDeployViewProps = {
 export function ApiDeployView({
   api,
   apiId,
+  artifactKind,
   apiNotFoundTitle,
   apiPending,
   deployments,
@@ -232,6 +235,7 @@ export function ApiDeployView({
               filteredGateways.map((gateway) => (
                 <GatewayDeployCard
                   apiId={apiId}
+                  artifactKind={artifactKind}
                   deployments={deployments}
                   gateway={gateway}
                   isExpanded={expandedIds.has(gateway.id ?? '')}

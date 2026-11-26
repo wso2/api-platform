@@ -95,6 +95,18 @@ func TestGenerateUUIDAndStore(t *testing.T) {
 	require.ErrorContains(t, GenerateUUIDAndStore(commonContext(), " "), "empty key")
 }
 
+func TestGenerateStringAndStore(t *testing.T) {
+	ctx := commonContext()
+	require.NoError(t, GenerateStringAndStore(ctx, 70000, "padding"))
+	value, err := StoredValue(ctx, "padding")
+	require.NoError(t, err)
+	require.Len(t, value, 70000)
+	require.Equal(t, strings.Repeat("a", 70000), value)
+
+	require.ErrorContains(t, GenerateStringAndStore(ctx, -1, "padding"), "0 or more")
+	require.ErrorContains(t, GenerateStringAndStore(context.Background(), 1, "padding"), "runner context")
+}
+
 func TestGenerateAndStoreRejectsInvalidContext(t *testing.T) {
 	require.ErrorContains(t, GenerateAndStore(context.Background(), "api", "name"), "runner context")
 	require.ErrorContains(t, GenerateAndStore(commonContext(), "api", " "), "empty key")
@@ -307,6 +319,11 @@ func TestRenderCanonicalTemplateSupportsOptionalTypedFields(t *testing.T) {
 	require.Equal(t, "6s", resilience["timeout"])
 }
 
+func TestParentFirstFieldPathsAppliesParentsBeforeChildren(t *testing.T) {
+	require.Equal(t, []string{"a", "z", "a.b", "a.b.c"},
+		parentFirstFieldPaths(map[string]string{"a.b.c": "", "a.b": "", "z": "", "a": ""}))
+}
+
 func TestRenderCanonicalTemplateOmitsUnspecifiedOptionalFields(t *testing.T) {
 	table := templateTable(
 		"apiVersion", "gateway.api-platform.wso2.com/v1",
@@ -394,27 +411,34 @@ func TestAgentTemplateRendersNestedOverrides(t *testing.T) {
 		"a nested override sits beside the templated transports")
 }
 
+// TestCanonicalResourceTemplates keeps the template catalogue limited to the supported resource
+// kinds.
 func TestCanonicalResourceTemplates(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 
 	root := filepath.Join(filepath.Dir(source), "..", "..", "resources", "templates")
-	// Platform Gateway templates own the gateway resource envelope.
+	// Platform Gateway templates and the API Portal organization manifest own the
+	// apiVersion, kind, metadata and spec resource envelope.
 	gatewayKinds := map[string]string{
-		"agent.yaml":                 "Agent",
-		"graphql-api.yaml":           "GraphQLApi",
-		"llm-provider-template.yaml": "LlmProviderTemplate",
-		"llm-provider.yaml":          "LlmProvider",
-		"llm-proxy.yaml":             "LlmProxy",
-		"mcp.yaml":                   "Mcp",
-		"rest-api.yaml":              "RestApi",
-		"subscription.yaml":          "Subscription",
+		"agent.yaml":                   "Agent",
+		"api-portal-organization.yaml": "Organization",
+		"graphql-api.yaml":             "GraphQLApi",
+		"llm-provider-template.yaml":   "LlmProviderTemplate",
+		"llm-provider.yaml":            "LlmProvider",
+		"llm-proxy.yaml":               "LlmProxy",
+		"mcp.yaml":                     "Mcp",
+		"rest-api.yaml":                "RestApi",
+		"subscription.yaml":            "Subscription",
 	}
-	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
-	// Each names the payload block that identifies the resource.
+	// Control-plane and API Portal templates are publisher-API payloads, which carry no gateway
+	// envelope. Each names the payload block that identifies the resource.
 	controlPlaneBlocks := map[string]string{
-		"agent-proxy.yaml":     "a2a",
-		"llm-provider-cp.yaml": "upstream",
+		"agent-proxy.yaml":              "a2a",
+		"api-portal-api.yaml":           "endPoints",
+		"llm-provider-cp.yaml":          "upstream",
+		"llm-provider-template-cp.yaml": "metadata",
+		"rest-api-cp.yaml":              "upstream",
 	}
 	// Control-plane payloads without a protocol block name the fields every request carries.
 	controlPlaneFields := map[string][]string{
@@ -447,6 +471,10 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 				require.Equal(t, "a2a", document["protocol"], "template %q", name)
 			}
 			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				if envelope == blockName {
+					// The payload's own block, such as an LLM provider template's metadata.
+					continue
+				}
 				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
 			}
 			block, ok := document[blockName].(map[string]any)
@@ -543,6 +571,52 @@ func TestResourceTemplatePath(t *testing.T) {
 	require.NoError(t, os.Symlink(outside, link))
 	_, err = ResourceTemplatePath(root, "resources/templates/link.yaml")
 	require.ErrorContains(t, err, "escapes")
+}
+
+// TestYAMLToJSONKeepsTypedScalars ensures scalars keep the types YAML resolved.
+func TestYAMLToJSONKeepsTypedScalars(t *testing.T) {
+	got, err := YAMLToJSON([]byte("protocol: a2a\na2a:\n  protocolVersion: \"1.0\"\n  operationConfigs:\n    transports:\n      - protocolBinding: JSONRPC\nrewriteUrls: false\n"))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}},"rewriteUrls":false}`, string(got))
+
+	for _, document := range []string{"", "- a\n- b\n", "just a scalar\n", "a: [\n"} {
+		_, err := YAMLToJSON([]byte(document))
+		require.Error(t, err, document)
+	}
+}
+
+// TestRenderResourceTemplateJSON covers rendering a template to JSON and its failure cases.
+func TestRenderResourceTemplateJSON(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "resources", "templates")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "custom.yaml"),
+		[]byte("id: ${VALUE:id}\nversion: v1.0\nendPoints:\n  productionURL: https://a.invalid\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "list.yaml"), []byte("- ${VALUE:id}\n"), 0o600))
+	ctx := context.Background()
+
+	got, err := RenderResourceTemplateJSON(ctx, root, "resources/templates/custom.yaml",
+		templateTable("id", "api-1", "endPoints.sandboxURL", "https://b.invalid", "tags", `["one"]`))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"id":"api-1","version":"v1.0","tags":["one"],
+		"endPoints":{"productionURL":"https://a.invalid","sandboxURL":"https://b.invalid"}}`, string(got))
+
+	for name, tc := range map[string]struct {
+		root, template string
+		table          *godog.Table
+	}{
+		"missing value":    {root, "resources/templates/custom.yaml", templateTable("other", "x")},
+		"nil table":        {root, "resources/templates/custom.yaml", nil},
+		"missing template": {root, "resources/templates/absent.yaml", templateTable("id", "x")},
+		"not a mapping":    {root, "resources/templates/list.yaml", templateTable("id", "x")},
+		"empty root":       {"", "resources/templates/custom.yaml", templateTable("id", "x")},
+		"escaping path":    {root, "../custom.yaml", templateTable("id", "x")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := RenderResourceTemplateJSON(ctx, tc.root, tc.template, tc.table)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestResourceTemplatePathFallsBackToTheShippedTemplate(t *testing.T) {

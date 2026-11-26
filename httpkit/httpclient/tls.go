@@ -23,6 +23,15 @@ func buildTLSConfig(cfg TLSConfig) (*tls.Config, error) {
 		return nil, err
 	}
 
+	if cfg.InsecureSkipHostnameVerify {
+		if cfg.InsecureSkipVerify {
+			return nil, fmt.Errorf("httpclient: InsecureSkipHostnameVerify cannot be combined with InsecureSkipVerify, which already skips every certificate check")
+		}
+		if cfg.VerifyPeerCertificate != nil || cfg.VerifyConnection != nil {
+			return nil, fmt.Errorf("httpclient: InsecureSkipHostnameVerify cannot be combined with VerifyPeerCertificate/VerifyConnection")
+		}
+	}
+
 	curves, err := tlsconfig.ParseCurvePreferences(cfg.CurvePreferences)
 	if err != nil {
 		return nil, fmt.Errorf("httpclient: %w", err)
@@ -60,6 +69,13 @@ func buildTLSConfig(cfg TLSConfig) (*tls.Config, error) {
 		tlsCfg.RootCAs = pool
 	}
 
+	if cfg.InsecureSkipHostnameVerify {
+		// Go checks the chain and the hostname in one step, and InsecureSkipVerify turns off
+		// both. Turn it off here and put the chain check back, minus the hostname.
+		tlsCfg.InsecureSkipVerify = true
+		tlsCfg.VerifyConnection = verifyChainWithoutHostname(tlsCfg.RootCAs)
+	}
+
 	switch {
 	case cfg.GetClientCertificate != nil:
 		tlsCfg.GetClientCertificate = cfg.GetClientCertificate
@@ -75,6 +91,30 @@ func buildTLSConfig(cfg TLSConfig) (*tls.Config, error) {
 	}
 
 	return tlsCfg, nil
+}
+
+// verifyChainWithoutHostname returns a tls.Config.VerifyConnection callback that verifies the
+// server's certificate chain against roots (the system roots when roots is nil) for server
+// authentication, exactly as Go's own verification does, but without checking the certificate
+// against the host being dialed. It is the whole of the certificate check once
+// InsecureSkipVerify has switched Go's own check off, so it must refuse anything it cannot
+// verify, including a connection that presented no certificate.
+func verifyChainWithoutHostname(roots *x509.CertPool) func(tls.ConnectionState) error {
+	return func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 {
+			return fmt.Errorf("httpclient: the server presented no certificate")
+		}
+		intermediates := x509.NewCertPool()
+		for _, cert := range state.PeerCertificates[1:] {
+			intermediates.AddCert(cert)
+		}
+		_, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{
+			Roots:         roots,
+			Intermediates: intermediates,
+			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		})
+		return err
+	}
 }
 
 // buildProxyTLSConfig builds the *tls.Config used for the SEPARATE,

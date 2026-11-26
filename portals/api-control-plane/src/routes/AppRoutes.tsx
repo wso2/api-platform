@@ -24,6 +24,7 @@ import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-do
 
 import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { OrganizationLandingPage } from '@/pages/appShell/appShellPages/system/OrganizationLandingPage';
 import {
   NotFoundPage,
   OrganizationRedirectPage,
@@ -38,10 +39,10 @@ import {
   childRoutePath,
   extensionScopedPaths,
   hasRender,
+  isExtensionPermitted,
   isSidebarExtension,
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
-  PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneExtension,
   type ApiControlPlaneExtensionChild,
@@ -49,8 +50,10 @@ import {
 } from '@/extensions';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
+import { AppPageContent } from '@/components/AppPageContent';
 import { Hideable, useSlot } from '@/slots';
 import { ProtectedRoute } from './ProtectedRoute';
+import { usePermissions } from '@/permissions/PermissionContext';
 import { apiScopedPaths, projectScopedPaths, routes } from './paths';
 
 // Code-split the authenticated feature pages so they are not pulled into the
@@ -184,14 +187,14 @@ const GraphqlCompliancePage = lazy(() =>
   ),
 );
 const GraphqlObservabilityMetricsPage = lazy(() =>
-  import(
-    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityMetricsPage'
-  ).then((m) => ({ default: m.GraphqlObservabilityMetricsPage })),
+  import('../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityMetricsPage').then(
+    (m) => ({ default: m.GraphqlObservabilityMetricsPage }),
+  ),
 );
 const GraphqlObservabilityLogsPage = lazy(() =>
-  import(
-    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityLogsPage'
-  ).then((m) => ({ default: m.GraphqlObservabilityLogsPage })),
+  import('../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityLogsPage').then(
+    (m) => ({ default: m.GraphqlObservabilityLogsPage }),
+  ),
 );
 const AlertsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/AlertsPage').then((m) => ({
@@ -253,6 +256,20 @@ const SubscriptionPlansPage = lazy(() =>
     default: m.SubscriptionPlansPage,
   })),
 );
+const CreateServiceAccountPage = lazy(() =>
+  import('../pages/appShell/appShellPages/orgManage/serviceAccounts/CreateServiceAccountPage').then(
+    (m) => ({
+      default: m.CreateServiceAccountPage,
+    }),
+  ),
+);
+const ServiceAccountCreatedPage = lazy(() =>
+  import('../pages/appShell/appShellPages/orgManage/serviceAccounts/ServiceAccountCreatedPage').then(
+    (m) => ({
+      default: m.ServiceAccountCreatedPage,
+    }),
+  ),
+);
 const ServiceAccountsPage = lazy(() =>
   import('../pages/appShell/appShellPages/orgManage/serviceAccounts/ServiceAccountsPage').then(
     (m) => ({
@@ -275,6 +292,19 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
   paths.map((path) => <Route key={path} path={path} element={element} />);
 
 /**
+ * An extension's page, with the console footer under it. The page is its own
+ * `PageContent`, in a package that cannot import this portal's components, so the
+ * host wraps it in the common page container, without padding of its own.
+ */
+function ExtensionPage({ children }: { children: ReactNode }) {
+  return (
+    <AppPageContent fullWidth noPadding>
+      {children}
+    </AppPageContent>
+  );
+}
+
+/**
  * Resolves the real `CloudHostPort` and hands it to the extension's `render`.
  *
  * The port is read from context here, inside the router, rather than passed in
@@ -283,7 +313,7 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
  */
 function ExtensionRoute({ render }: { render: RenderableExtension['render'] }) {
   const port = usePort();
-  return <>{render(port)}</>;
+  return <ExtensionPage>{render(port)}</ExtensionPage>;
 }
 
 /** Strips a trailing `/*` descendant marker off an extension `routePath`. */
@@ -294,17 +324,22 @@ const withoutSplat = (routePath: string) => routePath.replace(/\/\*$/, '');
  * own: sends the reader to the first child visible in the current scope, so the
  * URL always names the page shown and the sidebar highlights it. The parent's
  * own path is recovered from the current URL (splat stripped, as in
- * `GatewaysRoute`), which keeps the scope-less aliases working.
+ * `GatewaysRoute`), which keeps the scope-less aliases working. A child whose
+ * `requiredScopes` the user lacks is skipped, as the sidebar skips it, so a
+ * direct visit never opens a page the sidebar hides.
  */
 function ExtensionParentRedirect({ pages }: { pages: readonly ApiControlPlaneExtensionChild[] }) {
   const scope = useConsoleScope();
+  const { hasScope } = usePermissions();
   const { hash, pathname, search } = useLocation();
   const splat = useParams()['*'] ?? '';
   const base = (splat ? pathname.slice(0, pathname.length - splat.length) : pathname).replace(
     /\/+$/,
     '',
   );
-  const first = pages.find((child) => child.isVisible?.(scope) ?? true);
+  const first = pages.find(
+    (child) => (child.isVisible?.(scope) ?? true) && isExtensionPermitted(child, hasScope),
+  );
   if (!first) return null;
   return (
     <Navigate replace to={{ hash, pathname: `${base}/${withoutSplat(first.routePath)}`, search }} />
@@ -349,7 +384,7 @@ function OverridablePage({
 }) {
   const port = usePort();
   const [override] = useSlot<ApiControlPlaneExtension>(slot).filter(hasRender);
-  if (override) return <>{override.render(port, artifactHandle)}</>;
+  if (override) return <ExtensionPage>{override.render(port, artifactHandle)}</ExtensionPage>;
   return <Hideable name={slot}>{children}</Hideable>;
 }
 
@@ -396,7 +431,7 @@ function GatewaysRoute() {
     // the list at a URL claiming to be a create or detail page.
     return (
       <Routes>
-        <Route index element={<>{override.render(port)}</>} />
+        <Route index element={<ExtensionPage>{override.render(port)}</ExtensionPage>} />
         <Route element={<Navigate replace to={indexPath} />} path="*" />
       </Routes>
     );
@@ -482,6 +517,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path="/" element={<OrganizationRedirectPage />} />
           <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
           <Route path={routes.organizationHome()} element={<OrganizationHomePage />} />
+          <Route path={routes.organizationLanding()} element={<OrganizationLandingPage />} />
           <Route path={routes.projects()} element={<ProjectListPage />} />
           <Route path={routes.newProject()} element={<ProjectCreatePage />} />
           <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />
@@ -600,9 +636,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(
             apiScopedPaths(routes.apiObservabilityLogs),
             <FeatureGate features={['observability', 'logs']}>
-              <OverridablePage slot={PAGE_API_OBSERVABILITY_LOGS_SLOT}>
-                <RuntimeLogsPage />
-              </OverridablePage>
+              <RuntimeLogsPage />
             </FeatureGate>,
           )}
           {scopedRoutes(apiScopedPaths(routes.apiPortals), <PortalsPage />)}
@@ -640,9 +674,31 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route
             path={routes.serviceAccounts()}
             element={
-              <AppPage>
-                <ServiceAccountsPage />
-              </AppPage>
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <ServiceAccountsPage />
+                </AppPage>
+              </FeatureGate>
+            }
+          />
+          <Route
+            path={routes.serviceAccountCreate()}
+            element={
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <CreateServiceAccountPage />
+                </AppPage>
+              </FeatureGate>
+            }
+          />
+          <Route
+            path={routes.serviceAccountCreated()}
+            element={
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <ServiceAccountCreatedPage />
+                </AppPage>
+              </FeatureGate>
             }
           />
           {extensionRoutes}

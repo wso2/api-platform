@@ -24,7 +24,7 @@ Feature: A gateway's connection reaches only its own organization's resources
 
   Background:
     Given the first gateway is running
-    And I generate a unique value from "tenant-conn-project" and store it as "projectHandle"
+    And I generate a unique resource name from "tenant-conn-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @TENANT-005

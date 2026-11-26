@@ -153,6 +153,8 @@ export const routes = {
   serverError: '/server-error',
   organizations: '/organizations',
   organizationHome: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/home`,
+  // Where a user first lands in an organization: sends them on to a project's home.
+  organizationLanding: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/landing`,
   projects: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/projects`,
   // `new` sits where a project handle would; `RESERVED_HANDLE_SEGMENTS` keeps it from
   // being read back as a project.
@@ -251,7 +253,8 @@ export const routes = {
   // Org-level portal registry lives in the cloud-plugin sidebar; this builder is
   // the well-known link the built-in Publish page uses for its "register a portal"
   // empty-state so the core does not encode the plugin's routePath literal.
-  managedApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/managed-api-portals`,
+  managedApiPortals: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/managed-api-portals`,
   // GraphQL API-level pages — see `graphqlApiPath` for why these live under a
   // distinct `graphql-apis` segment rather than joining the REST `api*` builders above.
   graphqlApi: (
@@ -349,6 +352,10 @@ export const routes = {
   subscriptionPlans: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/subscription-plans`,
   meters: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/meters`,
   serviceAccounts: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/service-accounts`,
+  serviceAccountCreate: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/service-accounts/create`,
+  serviceAccountCreated: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/service-accounts/created`,
 };
 
 export type ProjectPathBuilder = (orgHandle: string, projectHandler: ScopeHandle) => string;

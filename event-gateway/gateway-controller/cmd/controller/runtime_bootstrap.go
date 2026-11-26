@@ -121,6 +121,7 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 	transformer models.ConfigTransformer,
 	log *slog.Logger,
 	skipInvalidDeployments bool,
+	onEnvRefused func(*models.StoredConfig) error,
 ) (int, error) {
 	if runtimeStore == nil || transformer == nil {
 		return 0, nil
@@ -134,6 +135,12 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 
 		if secretResolver != nil {
 			if err := templateengine.RenderSpec(apiConfig, secretResolver, log); err != nil {
+				// Same as core: an artifact that reads an environment variable outside
+				// the env access allow list is undeployed; other artifacts keep loading.
+				if funcs.IsEnvAccessError(err) {
+					utils.UndeployEnvRefusedAtStartup(apiConfig, onEnvRefused, log)
+					continue
+				}
 				if log != nil {
 					if skipInvalidDeployments {
 						log.Warn("Template rendering failed during startup load, skipping",

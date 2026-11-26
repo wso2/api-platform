@@ -1628,6 +1628,23 @@ func TestObservabilityHelpers(t *testing.T) {
 	require.Equal(t, "fail", outcome(wrong))
 	require.ErrorContains(t, wrong, "does not show tls")
 
+	// A refused request's traffic log line has no operation path, only its API's context.
+	refused := `{"status":401,"correlationId":"c-1","api":{"context":"/actx-fail"},"operation":{"method":"GET"},"properties":{"authSubject":""}}`
+	empty := []logExpectation{{describe: "empty subject", shownIn: func(s string) bool { return strings.Contains(s, `"authSubject":""`) }}}
+	matched, err := observeLogLineWith("noise\n"+refused, `"context":"/actx-fail"`, "/actx-fail", empty)
+	require.NoError(t, err)
+	require.Equal(t, []string{`"correlationId":"c-1"`, "c-1"}, correlationIDField.FindStringSubmatch(matched))
+	_, err = observeLogLineWith(refused, `"context":"/other"`, "/other", empty)
+	require.Equal(t, "tolerated", outcome(err))
+	var notTable godog.Table
+	require.NoError(t, json.Unmarshal([]byte(`{"rows":[{"cells":[{"value":"not \"authSubject\":\"\""}]}]}`), &notTable))
+	notEmpty, err := accessLogExpectations(context.Background(), &notTable)
+	require.NoError(t, err)
+	_, err = observeLogLineWith(refused, `"context":"/actx-fail"`, "/actx-fail", notEmpty)
+	require.Equal(t, "fail", outcome(err))
+	_, err = observeLogLineWith(`{"api":{"context":"/actx"},"properties":{"authSubject":"alice"}}`, `"context":"/actx"`, "/actx", notEmpty)
+	require.NoError(t, err)
+
 	require.NoError(t, observeCounterGrowth("policy_executions_total", `{status="denied"}`, 1, 2, 1))
 	require.Equal(t, "tolerated", outcome(observeCounterGrowth("policy_executions_total", `{status="denied"}`, 1, 1, 1)))
 	fell := observeCounterGrowth("policy_executions_total", `{status="denied"}`, 4, 3, 1)
@@ -4159,6 +4176,21 @@ func TestResolveServiceURLAndStoreChoosesTheNetworkOfTheClient(t *testing.T) {
 	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "unknown", " host", "/mcp", "x"))
 }
 
+func TestMetadataFieldAwaitToleratesOnlyTheEarlierState(t *testing.T) {
+	var mapped analyticsEvent
+	require.NoError(t, json.Unmarshal([]byte(`{"metadata":{"applicationName":"app-a"}}`), &mapped))
+	unmapped := &analyticsEvent{}
+
+	require.NoError(t, metadataFieldAwait(&mapped, "applicationName", false, "app-a"))
+	require.True(t, retry.IsTransient(metadataFieldAwait(unmapped, "applicationName", false, "app-a")))
+	err := metadataFieldAwait(&mapped, "applicationName", false, "app-b")
+	require.ErrorContains(t, err, `"app-a", want "app-b"`)
+	require.False(t, retry.IsTransient(err), "another application's name is not an in-between state")
+
+	require.NoError(t, metadataFieldAwait(unmapped, "applicationName", true, ""))
+	require.True(t, retry.IsTransient(metadataFieldAwait(&mapped, "applicationName", true, "")))
+}
+
 func TestAnalyticsCompanyIDAssertions(t *testing.T) {
 	var paid analyticsEvent
 	require.NoError(t, json.Unmarshal([]byte(`{"company_id":"cus-1","metadata":{}}`), &paid))
@@ -4221,4 +4253,85 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	short, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	defer cancel()
 	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
+}
+
+func TestReplaceTOMLStringChangesOnlyTheKeyInItsSection(t *testing.T) {
+	content := "[router.vhosts.main]\ndefault = \"*.wso2.com\"\n\n[router.vhosts.sandbox]\ndefault = '*-sandbox.wso2.com'\n"
+	got, err := replaceTOMLString(content, "router.vhosts.main.default", "*.wso2.com", "*.example.org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[router.vhosts.main]\ndefault = \"*.example.org\"\n\n[router.vhosts.sandbox]\ndefault = '*-sandbox.wso2.com'\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	got, err = replaceTOMLString(content, "router.vhosts.sandbox.default", "*-sandbox.wso2.com", "*-sandbox.example.org")
+	if err != nil || got != "[router.vhosts.main]\ndefault = \"*.wso2.com\"\n\n[router.vhosts.sandbox]\ndefault = \"*-sandbox.example.org\"\n" {
+		t.Fatalf("single-quoted value: got %q, %v", got, err)
+	}
+}
+
+func TestReplaceTOMLStringRefusesWhatItCannotChangeExactly(t *testing.T) {
+	for name, tc := range map[string]struct{ content, key, from string }{
+		"missing key":     {"[router.vhosts.main]\nother = \"x\"\n", "router.vhosts.main.default", "x"},
+		"other section":   {"[router.vhosts.sandbox]\ndefault = \"x\"\n", "router.vhosts.main.default", "x"},
+		"different value": {"[router.vhosts.main]\ndefault = \"y\"\n", "router.vhosts.main.default", "x"},
+		"set twice":       {"[router.vhosts.main]\ndefault = \"x\"\ndefault = \"x\"\n", "router.vhosts.main.default", "x"},
+		"no section":      {"default = \"x\"\n", "default", "x"},
+	} {
+		if _, err := replaceTOMLString(tc.content, tc.key, tc.from, "z"); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestGatewayServiceStopRegistersNothingForAServiceItCannotStop(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(nil)
+	require.NoError(t, cleanup.Install(ctx, reg))
+	steps := &Steps{topo: &frameworkruntime.Topology{}}
+
+	require.ErrorContains(t, steps.stopService(ctx, "gateway-controller"), `no service or compose component named "gateway-controller"`)
+	require.Zero(t, reg.Count(), "a service that was never stopped needs no restart at cleanup")
+
+	require.NoError(t, reg.Register(cleanup.Resource{Kind: gatewayServiceStoppedKind, ID: "gateway-controller", Actor: "admin"}))
+	require.Error(t, steps.startService(ctx, "gateway-controller"))
+	require.Equal(t, 1, reg.Count(), "a service that failed to start is still restarted at cleanup")
+}
+
+func TestServiceLogMarkerHelpers(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("log-marker-runner"))
+	require.NoError(t, tcontext.Set(ctx, "apiContext", "/fault-skipped-1"))
+
+	marker, err := expandLogMarker(ctx, "route=POST|${CTX:apiContext}/check|* hint=")
+	require.NoError(t, err)
+	require.Equal(t, "route=POST|/fault-skipped-1/check|* hint=", marker)
+
+	_, err = expandLogMarker(ctx, "  ")
+	require.ErrorContains(t, err, "must not be empty")
+	_, err = expandLogMarker(ctx, "${CTX:missing}")
+	require.Error(t, err)
+
+	logs := "line one\nmsg=skipped route=POST|/a/check|* hint=x\nline three"
+	require.True(t, logsHaveMarker(logs, "route=POST|/a/check|* hint="))
+	require.False(t, logsHaveMarker(logs, "route=POST|/b/check|* hint="))
+	require.False(t, logsHaveMarker("", "x"))
+
+	require.True(t, logEventMatches(logs, "route=POST|/a", "hint=", true))
+	require.False(t, logEventMatches(logs, "route=POST|/a", "secret", true))
+	require.True(t, logEventMatches(logs, "route=POST|/a", "secret", false))
+	require.False(t, logEventMatches(logs, "route=POST|/a", "hint=", false))
+	require.False(t, logEventMatches(logs, "no such event", "secret", true))
+	require.False(t, logEventMatches(logs, "no such event", "secret", false),
+		"an absent event satisfies neither check")
+	events := "access /x/check 200\nrecord /x/check FAULT\nother FAULT"
+	require.True(t, logEventMatches(events, "/x/check", "FAULT", true), "any event with the marker may hold the text")
+	require.False(t, logEventMatches(events, "/x/check", "FAULT", false), "no event with the marker may hold the text")
+	require.False(t, logEventMatches(events, "/y/check", "FAULT", true))
+
+	long := strings.Repeat("a", 2500) + "tail"
+	described := serviceLog(long).Describe()
+	require.Len(t, described, 2000)
+	require.True(t, strings.HasSuffix(described, "tail"))
+	require.Equal(t, "short", serviceLog("short").Describe())
 }

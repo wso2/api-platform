@@ -1,10 +1,10 @@
 {
   "name": "api-portal-webapp",
-  "version": "1.1.0-m4-SNAPSHOT",
+  "version": "1.1.0-m6-SNAPSHOT",
   "description": "WSO2 API Platform API Portal",
   "main": "src/server.js",
   "scripts": {
-    "start": "npm rebuild better-sqlite3 --ignore-scripts=false && NODE_ENV=development nodemon src/server.js --config configs/config.toml",
+    "start": "NODE_ENV=development nodemon src/server.js --config configs/config.toml",
     "start:local": "APIP_AP_SERVER_HTTPS_ENABLED=false APIP_AP_AUTH_LOCAL_PLATFORM_API_URL=https://localhost:9243 APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY=true APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH=./resources/keys/jwt_public.pem APIP_AP_DATABASE_PATH=./api-portal.db npm run start",
     "debug": "nodemon --inspect src/server.js --config configs/config.toml",
     "test": "node --test 'src/**/*.test.js'",
@@ -33,10 +33,9 @@
   "dependencies": {
     "async-lock": "1.4.1",
     "axios": "1.20.0",
-    "better-sqlite3": "12.11.1",
     "dotenv": "17.4.2",
     "express": "5.3.0",
-    "express-handlebars": "9.0.1",
+    "express-handlebars": "9.0.5",
     "express-openapi-validator": "5.6.2",
     "express-session": "1.19.0",
     "express-validator": "7.3.2",
@@ -46,19 +45,22 @@
     "jose": "6.2.3",
     "js-yaml": "5.4.3",
     "marked": "18.0.6",
-    "minimatch": "10.2.6",
+    "minimatch": "11.0.8",
     "mssql": "12.7.0",
-    "multer": "2.4.0",
+    "multer": "2.5.0",
     "passport": "0.7.0",
     "passport-oauth2": "1.8.0",
     "pg": "8.22.0",
+    "re2js": "2.10.0",
     "smol-toml": "1.9.1",
     "unzipper": "0.12.5",
     "winston": "3.19.0",
     "winston-daily-rotate-file": "5.0.0"
   },
   "overrides": {
-    "handlebars": "$handlebars"
+    "handlebars": "$handlebars",
+    "@apidevtools/json-schema-ref-parser": "15.3.6",
+    "minimatch": "11.0.8"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

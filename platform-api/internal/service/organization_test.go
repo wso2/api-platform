@@ -26,6 +26,7 @@ import (
 
 	"database/sql"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -97,6 +98,44 @@ func TestOrganizationService_RegisterOrganization_RecordsMembership(t *testing.T
 	}
 	if count != 1 {
 		t.Fatalf("expected a membership row for the registering user, got count=%d", count)
+	}
+}
+
+// countDefaultProjects returns how many projects named "default" the organization has.
+func countDefaultProjects(t *testing.T, db *database.DB, orgID string) int {
+	t.Helper()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE organization_uuid = ? AND handle = 'default'`,
+		orgID).Scan(&count); err != nil {
+		t.Fatalf("failed to query projects: %v", err)
+	}
+	return count
+}
+
+func TestOrganizationService_RegisterOrganization_CreatesTheDefaultProject(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if _, err := svc.RegisterOrganization("org-default-1", "default-org", "Default Org", "us", "", ""); err != nil {
+		t.Fatalf("RegisterOrganization failed: %v", err)
+	}
+	if got := countDefaultProjects(t, db, "org-default-1"); got != 1 {
+		t.Fatalf("default projects = %d, want 1", got)
+	}
+}
+
+// With the setting off, a new organization has no default project.
+func TestOrganizationService_RegisterOrganization_SkipsTheDefaultProjectWhenOff(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+	svc.config = &config.Server{Organizations: config.Organizations{CreateDefaultProject: false}}
+
+	org, err := svc.RegisterOrganization("org-default-2", "no-default-org", "No Default Org", "us", "", "")
+	if err != nil || org == nil {
+		t.Fatalf("RegisterOrganization = %v, %v; want the organization", org, err)
+	}
+	if got := countDefaultProjects(t, db, "org-default-2"); got != 0 {
+		t.Fatalf("default projects = %d, want 0", got)
 	}
 }
 

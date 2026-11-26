@@ -33,7 +33,7 @@ helm install apip-operator ./operator-helm-chart --namespace gateway-operator-sy
 ```bash
 helm install apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system --create-namespace \
-  --set image.tag=0.10.1 \
+  --set image.tag=0.12.0 \
   --set gateway.controlPlaneHost=http://my-control-plane:3001
 ```
 
@@ -53,7 +53,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 | `replicaCount` | Number of operator replicas | `1` |
 | `watchNamespaces` | Namespaces to watch (cluster-wide if empty) | `[]` |
 | `image.repository` | Operator image repository | `ghcr.io/wso2/api-platform/gateway-operator` |
-| `image.tag` | Operator image tag | `0.10.1` |
+| `image.tag` | Operator image tag | `0.12.0` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `serviceAccount.create` | Create service account | `true` |
 | `serviceAccount.name` | Service account name | `controller-manager` |
@@ -66,7 +66,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 |-----------|-------------|---------|
 | `gateway.controlPlaneHost` | Control plane API endpoint | `http://platform-api:3001` |
 | `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://ghcr.io/wso2/api-platform/helm-charts/gateway` |
-| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.0` |
+| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `2026.11.19-r1` |
 | `gateway.helm.chartPath` | Local chart dir or `.tgz` path **inside the operator pod**; when non-empty, remote chart lookup (`chartName`/`chartVersion`) and registry auth are ignored | `""` |
 | `gateway.helm.valuesFilePath` | Path to gateway values file | `/config/gateway_values.yaml` |
 | `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
@@ -77,6 +77,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `gatewayApi.enabled` | Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute). Set `false` where gateways are deployed only through `APIGateway`: the operator then watches no Gateway API resources, gets no Gateway API RBAC, runs without the Gateway API CRDs, and caches only the gateway chart's own Services and Deployments (by their `app.kubernetes.io/component` label; with gateway chart 2026.11.26-r1 or earlier, do not override it in the gateway's `deployment.labels`). The upgrade fails while a Gateway of a managed class, or an HTTPRoute with this operator's finalizer, still exists. Independent of `installStandardCRDs` | `true` |
 | `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
 | `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
 | `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |
@@ -99,6 +100,9 @@ Component container image tags come from the gateway chart; do not hardcode them
 | `reconciliation.maxRetryAttempts` | Maximum retry attempts for gateway operations | `10` |
 | `reconciliation.initialBackoff` | Initial retry backoff (Go duration) | `1s` |
 | `reconciliation.maxBackoffDuration` | Maximum exponential backoff (Go duration) | `60s` |
+| `cache.syncTimeout` | How long each controller waits for the informer cache's initial list at startup before the operator fails and restarts (Go duration). Raise it on clusters with many gateways if the leader logs `timed out waiting for cache to be synced` | `2m` |
+| `cache.excludeHelmReleaseSecrets` | Keep Secrets labeled `owner=helm` (Helm release storage) out of the operator's cache. A reference to such a Secret resolves as not found | `true` |
+| `cache.excludeGatewayChartConfigMaps` | Keep ConfigMaps labeled `app.kubernetes.io/name=gateway` (rendered by the gateway chart) out of the operator's cache. A reference to such a ConfigMap resolves as not found | `true` |
 
 ### Logging Configuration
 
@@ -300,7 +304,7 @@ Debug mode runs the operator under the Delve debugger for remote debugging:
 debug:
   enabled: true
   port: 2345
-  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.10.1-debug"
+  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.12.0-debug"
 ```
 
 Connect your debugger to the debug port:

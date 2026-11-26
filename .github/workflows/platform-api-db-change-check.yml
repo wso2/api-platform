@@ -1,0 +1,69 @@
+name: Platform API DB Change Check
+
+# When a PR changes Platform API database scripts, the PR description must have
+# the "SaaS DB scripts updated" checkbox ticked. PRs that don't touch those
+# files pass without any action. `edited` re-runs the check when the author
+# ticks the box in the PR description.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  db-change-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require SaaS DB sync confirmation
+        uses: actions/github-script@v7
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        with:
+          script: |
+            const DB_SCRIPT_PATTERN = /^platform-api\/(internal\/database|plugins\/[^/]+\/schema)\/.*\.sql$/;
+            // The SaaS attestation must be ticked inside the "## Database changes" section of the PR description.
+            const SECTION = /^##\s+Database changes\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m;
+            const TICKED = /^\s*[-*]\s+\[[xX]\]\s+.*API Platform SaaS \(Bijira Cloud\)/m;
+            // GitHub's "list pull request files" API returns at most 3000 files.
+            const MAX_LISTED_FILES = 3000;
+            const isConfirmed = (body) => {
+              const section = SECTION.exec(body || '');
+              return !!section && TICKED.test(section[1]);
+            };
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+
+            if (files.length >= MAX_LISTED_FILES) {
+              core.setFailed(
+                `This PR changes ${MAX_LISTED_FILES}+ files, so the file list may be truncated and Platform API database ` +
+                'script changes cannot be ruled out. Split the PR, or have a maintainer verify the SaaS databases and override this check.'
+              );
+              return;
+            }
+
+            const changed = files
+              .flatMap(f => [f.filename, f.previous_filename])
+              .filter(Boolean)
+              .filter(name => DB_SCRIPT_PATTERN.test(name));
+
+            if (changed.length === 0) {
+              core.info('No Platform API database scripts changed. Nothing to confirm.');
+              return;
+            }
+
+            core.info(`Platform API database scripts changed:\n${[...new Set(changed)].join('\n')}`);
+
+            if (!isConfirmed(process.env.PR_BODY)) {
+              core.setFailed(
+                'This PR changes Platform API database scripts. Apply the same table, column, and index changes ' +
+                'to the API Platform SaaS (Bijira Cloud) databases in all environments and regions, ' +
+                'then tick the "Database changes" checkbox in the PR description.'
+              );
+            }

@@ -58,8 +58,13 @@ var driver = sync.OnceValues(func() (*playwright.Playwright, error) {
 })
 
 func installPlaywrightDriver() error {
+	// Headless runs use the block's container browser, so only headed mode needs one here.
+	opts := &playwright.RunOptions{SkipInstallBrowsers: true}
+	if browser.Headed() {
+		opts = &playwright.RunOptions{Browsers: []string{"chromium"}, NoInstallShell: true}
+	}
 	err := withTimeout(playwrightInstallTimeout, func() error {
-		return playwright.Install(&playwright.RunOptions{SkipInstallBrowsers: true})
+		return playwright.Install(opts)
 	})
 	if err != nil {
 		return fmt.Errorf("ui: installing the playwright driver: %w", err)
@@ -82,7 +87,8 @@ func withTimeout(d time.Duration, fn func() error) error {
 // browsers holds one remote-browser connection per BLOCK — each block runs its own browser
 // container, and scenarios isolate through contexts, not browser instances. Connections live
 // until the process exits; the containers they point at die at block teardown, which closes
-// them from the far side.
+// them from the far side. In headed mode it holds each block's local browser instead,
+// keyed by the block's proxy URL.
 var browsers = struct {
 	sync.Mutex
 	byWS map[string]playwright.Browser
@@ -90,6 +96,9 @@ var browsers = struct {
 
 // browserFor connects to this block's browser container, once.
 func (u *UI) browserFor() (playwright.Browser, error) {
+	if browser.Headed() {
+		return u.headedBrowserFor()
+	}
 	base, err := u.topo.URL("browser", "ws")
 	if err != nil {
 		return nil, err
@@ -124,6 +133,40 @@ func (u *UI) browserFor() (playwright.Browser, error) {
 	}
 	browsers.byWS[ws] = b
 	browsers.Unlock()
+	return b, nil
+}
+
+// headedBrowserFor launches a visible browser on the host for this block, once, browsing
+// through the proxy the block's browser component runs in headed mode (UI_HEADED).
+func (u *UI) headedBrowserFor() (playwright.Browser, error) {
+	proxy, err := u.topo.URL("browser", browser.ProxyEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	slowMo, err := browser.SlowMo()
+	if err != nil {
+		return nil, err
+	}
+	pw, err := driver()
+	if err != nil {
+		return nil, err
+	}
+
+	// Held across the launch, so blocks starting in parallel cannot each launch a duplicate.
+	browsers.Lock()
+	defer browsers.Unlock()
+	if b, ok := browsers.byWS[proxy]; ok && b.IsConnected() {
+		return b, nil
+	}
+	b, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(false),
+		SlowMo:   playwright.Float(slowMo),
+		Proxy:    &playwright.Proxy{Server: proxy},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ui: launching the headed browser through %s: %w", proxy, err)
+	}
+	browsers.byWS[proxy] = b
 	return b, nil
 }
 

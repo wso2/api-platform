@@ -39,7 +39,6 @@ const { spawnSync } = require('node:child_process');
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const SRC = path.join(PROJECT_ROOT, 'src');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = 'org-uuid-1';
 const PORTAL = 'test-portal';
@@ -80,7 +79,7 @@ const meterDao = require(src + '/dao/meterDao.js');
 const { BillingProviderError } = require(src + '/billing/http.js');
 const stripeConnector = require(src + '/billing/connectors/moesif/payments/stripe/index.js');
 const moesifConnector = require(src + '/billing/connectors/moesif/index.js');
-const Database = require(${JSON.stringify(SQLITE)});
+const Database = require('node:sqlite').DatabaseSync;
 const ORG = ${JSON.stringify(ORG)};
 const out = {};
 
@@ -492,7 +491,7 @@ function results() {
     const seed = path.join(tmpDir, 'seed.js');
     fs.writeFileSync(seed, `
         const fs = require('fs');
-        const Database = require(${JSON.stringify(SQLITE)});
+        const Database = require('node:sqlite').DatabaseSync;
         const db = new Database(${JSON.stringify(dbFile)});
         db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
         const ORG = ${JSON.stringify(ORG)}, P = ${JSON.stringify(PORTAL)};

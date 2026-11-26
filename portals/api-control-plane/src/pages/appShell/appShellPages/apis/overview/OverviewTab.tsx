@@ -52,7 +52,7 @@ export function OverviewTab({
     <Grid container spacing={2}>
       <Grid size={{ lg: 8, xs: 12 }}>
         <Stack spacing={2} marginTop={1}>
-          <ResourcesPanel api={api} />
+          <ResourcesPanel key={api.id} api={api} />
           <DocumentsPanel />
         </Stack>
       </Grid>

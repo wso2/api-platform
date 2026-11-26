@@ -29,19 +29,25 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AppPage } from '@/components/AppPage';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
+import { useInvokeApiOnGateway } from '@/api/resources/gatewayRelay';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
 import { isApiError } from '@/api/core/errors';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { useIsDarkScheme } from '@/hooks/useIsDarkScheme';
 import { useNow } from '@/hooks/useNow';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
+import { useCan } from '@/permissions';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 import { parseGraphQLSdl } from '../../apis/create/utils/graphqlSchema';
 import { GatewaySection } from '../../test/components/GatewaySection';
+import { CallModeSwitch } from '../../test/console/ExecuteModeSwitch';
+import { createGraphqlRelayFetch } from '../../test/console/utils/proxyTransport';
 import { TestKeySection } from '../../test/components/TestKeySection';
 import { apiKeyAuthOf } from '../../test/utils/apiKeyAuth';
+import { useTestCallMode } from '../../test/utils/callMode';
 import { deployedGateways as deployedGatewaysOf } from '../../test/utils/deployedGateways';
 import { gatewayOptionLabel } from '../../test/utils/gatewayOptionLabel';
 import {
@@ -82,7 +88,7 @@ const messages = defineMessages({
     defaultMessage:
       'Could not reach the gateway. Check that the API has a CORS policy allowing this console, and that your browser trusts the gateway’s certificate.',
     description:
-      'Shown when the browser request to the API\'s gateway fails with no HTTP response — the browser reports only "Failed to fetch". The console calls the gateway directly, so a missing CORS policy, an untrusted gateway certificate or an unreachable gateway all end up here.',
+      'Shown when the browser request to the API\'s gateway fails with no HTTP response — the browser reports only "Failed to fetch". Only in Direct mode, where the console calls the gateway itself, so a missing CORS policy, an untrusted gateway certificate or an unreachable gateway all end up here.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading',
@@ -221,6 +227,14 @@ function GraphqlTestConsolePageContent() {
   const selectedGateway =
     gateways.find((gateway) => gateway.id === selectedGatewayId) ?? gateways[0];
 
+  /** How GraphiQL sends a request; the REST console's stored choice, shared with it. */
+  const [storedCallMode, setCallMode] = useTestCallMode();
+  // The proxy mode relays through the control plane (an InvokeAPIOnGateway
+  // call); a caller who may not relay sends the request from the browser.
+  const canRelay = useCan('InvokeAPIOnGateway');
+  const callMode = canRelay ? storedCallMode : 'direct';
+  const { mutateAsync: invoke } = useInvokeApiOnGateway();
+
   /**
    * True when the API has no stored SDL (`404`). Unlike REST's missing
    * definition this does not block testing: GraphiQL falls back to
@@ -256,10 +270,10 @@ function GraphqlTestConsolePageContent() {
     selectedGateway && api
       ? buildInvokeUrl(gatewayEndpoint(selectedGateway), api.context, api.version)
       : '';
-  // The browser calls the gateway directly, so the API needs a CORS policy
+  // In direct mode the browser calls the gateway, so the API needs a CORS policy
   // that allows this console's origin (and the key header, when one is sent),
   // and the browser must trust the gateway's certificate. A query-parameter
-  // credential rides on the URL itself.
+  // credential rides on the URL itself, which the relay sends on as well.
   const invokeUrl = useMemo(() => {
     if (!endpointUrl || !credential || credentialIn !== 'query') return endpointUrl;
     try {
@@ -298,18 +312,63 @@ function GraphqlTestConsolePageContent() {
       },
     [notify, intl],
   );
+  const graphqlApiId = graphqlApiHandler ?? '';
+  const gatewayId = selectedGateway?.id ?? '';
+  /** What GraphiQL's fetcher calls: the relay, or the browser's own `fetch`. */
+  const transport = useMemo<typeof fetch>(
+    () =>
+      callMode === 'proxy'
+        ? createGraphqlRelayFetch({ endpointUrl, gatewayId, graphqlApiId, intl, invoke })
+        : guardedFetch,
+    [callMode, endpointUrl, gatewayId, graphqlApiId, guardedFetch, intl, invoke],
+  );
   // A header credential is a base header: GraphiQL's own Headers tab is
   // applied after it, so a value typed there still overrides the test key.
   const credentialHeaderName = credential && credentialIn === 'header' ? credential.name : '';
   const credentialHeaderValue = credential && credentialIn === 'header' ? credential.value : '';
+  const trackFeature = useTrackFeature();
   const fetcher: Fetcher = useMemo(() => {
-    const baseFetcher = createGraphiQLFetcher({
-      fetch: guardedFetch,
+    const options = {
       headers: credentialHeaderName ? { [credentialHeaderName]: credentialHeaderValue } : {},
       url: invokeUrl,
-    });
-    return (params, opts) => baseFetcher(withValidOperationName(params), opts);
-  }, [credentialHeaderName, credentialHeaderValue, guardedFetch, invokeUrl]);
+    };
+    const baseFetcher = createGraphiQLFetcher({ ...options, fetch: transport });
+    return (params, opts) => {
+      // GraphiQL fetches the schema through this fetcher too when it has none;
+      // that is not the user running an operation, so it is not counted.
+      if (params.operationName === 'IntrospectionQuery') {
+        return baseFetcher(withValidOperationName(params), opts);
+      }
+      // One fetch per run: its HTTP status decides the outcome, and no
+      // response at all (network, CORS or certificate failure) is a failure.
+      // An aborted run (the user stopped it) is not counted.
+      const reportingFetch: typeof fetch = async (...args) => {
+        let response: Response;
+        try {
+          response = await transport(...args);
+        } catch (error) {
+          if (!(error instanceof DOMException && error.name === 'AbortError')) {
+            trackFeature('apip.manage-apis.test-console-execute', {
+              api_type: 'graphql-api',
+              call_mode: callMode,
+              outcome: 'failure',
+            });
+          }
+          throw error;
+        }
+        trackFeature('apip.manage-apis.test-console-execute', {
+          api_type: 'graphql-api',
+          call_mode: callMode,
+          outcome: response.status < 400 ? 'success' : 'failure',
+        });
+        return response;
+      };
+      return createGraphiQLFetcher({ ...options, fetch: reportingFetch })(
+        withValidOperationName(params),
+        opts,
+      );
+    };
+  }, [callMode, credentialHeaderName, credentialHeaderValue, invokeUrl, trackFeature, transport]);
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
@@ -380,6 +439,11 @@ function GraphqlTestConsolePageContent() {
         <PageTitle.SubHeader>
           <FormattedMessage {...messages.subtitle} />
         </PageTitle.SubHeader>
+        {canRelay && (
+          <PageTitle.Actions>
+            <CallModeSwitch callMode={callMode} onChange={setCallMode} />
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
       <Stack spacing={2}>
@@ -393,6 +457,7 @@ function GraphqlTestConsolePageContent() {
           />
           {needsApiKey && (
             <TestKeySection
+              artifactKind="graphql-api"
               error={Boolean(testApiKey.error)}
               keyName={keyName}
               loading={testApiKey.isPending}

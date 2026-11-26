@@ -17,7 +17,7 @@
  */
 
 import { useState, type FC } from 'react';
-import { Box, Button, Card, CardContent, Collapse, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Card, CardContent, Collapse, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronUp, Clock, Eye } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
 import EndpointUrlDrawer from './EndpointUrlDrawer';
@@ -32,8 +32,12 @@ export type GatewayRowProps = {
   /** Used only to label the scope of this gateway's drawers, e.g. "Development · EU Gateway". */
   environmentName: string;
   busy: boolean;
-  /** Deploy actions are locked for this API (gateway-owned or not yet verified): Stop is disabled. */
-  locked?: boolean;
+  /**
+   * Why Stop is unavailable whatever the gateway's state — the API is
+   * gateway-owned or not yet verified, or the user lacks the scope — shown as
+   * the button's tooltip. Absent when stopping is allowed.
+   */
+  disabledReason?: string;
   /**
    * Whether this artifact's deployment has a backend URL of its own to show. An
    * LLM provider's upstream belongs to the provider rather than to the deployment,
@@ -49,7 +53,7 @@ const GatewayRow: FC<GatewayRowProps> = ({
   gateway,
   environmentName,
   busy,
-  locked = false,
+  disabledReason,
   showEndpointUrl = true,
   onStop,
 }) => {
@@ -67,7 +71,7 @@ const GatewayRow: FC<GatewayRowProps> = ({
   //
   // Nothing to stop while a deployment is still settling, or where there is none.
   const actionDisabled =
-    locked ||
+    Boolean(disabledReason) ||
     busy ||
     gateway.status === 'NOT_DEPLOYED' ||
     gateway.status === 'UNDEPLOYED' ||
@@ -145,15 +149,21 @@ const GatewayRow: FC<GatewayRowProps> = ({
               </>
             ) : null}
 
-            <Button
-              fullWidth
-              variant="outlined"
-              color="error"
-              disabled={actionDisabled}
-              onClick={onStop}
-            >
-              Stop deployment
-            </Button>
+            <Tooltip title={disabledReason ?? ''}>
+              {/* Wrapped: a disabled button fires no events, so the tooltip
+                  explaining why it is disabled would never open. */}
+              <span style={{ display: 'block' }}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  color="error"
+                  disabled={actionDisabled}
+                  onClick={onStop}
+                >
+                  Stop deployment
+                </Button>
+              </span>
+            </Tooltip>
           </Box>
         </Collapse>
       </CardContent>

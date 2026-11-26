@@ -191,6 +191,13 @@ func otherKindClaimsGateway(ctx context.Context, in legacyCleanupInput) (bool, e
 		return true, nil
 	}
 
+	// With the Gateway API controllers off the operator manages no Kubernetes
+	// Gateway, so none can claim this identity. Reading one here would also start a
+	// Gateway informer, which fails on a cluster without the Gateway API CRDs.
+	if !in.Config.GatewayAPI.Enabled {
+		return false, nil
+	}
+
 	var other gatewayv1.Gateway
 	if err := in.Client.Get(ctx, key, &other); err != nil {
 		if apierrors.IsNotFound(err) {

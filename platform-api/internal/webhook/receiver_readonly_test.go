@@ -55,6 +55,7 @@ func (f fakeOrgResolver) GetOrganizationByHandle(handle string) (*model.Organiza
 func newReadOnlyTestReceiver(t *testing.T) (*Receiver, config.Webhook) {
 	t.Helper()
 	cfg := config.Webhook{
+		LegacySharedSecret: true,
 		Enabled:            true,
 		Secret:             "read-only-test-secret",
 		SignatureTolerance: 5 * time.Minute,
@@ -83,19 +84,34 @@ func signedEventRequest(cfg config.Webhook, orgHandle string) *http.Request {
 func TestReceiver_ReadOnlyRejectsEventsForFrozenOrganization(t *testing.T) {
 	r, cfg := newReadOnlyTestReceiver(t)
 
+	// The rejection is returned, not written, so the route answers it like any other failed
+	// delivery (rejectUniformly); the route-level response is pinned in receiver_uniform_test.go.
 	rec := httptest.NewRecorder()
-	if err := r.ReceiveEvent(rec, signedEventRequest(cfg, "org-a")); err != nil {
-		t.Fatalf("a read-only rejection is written directly, not returned; got error %v", err)
+	err := r.ReceiveEvent(rec, signedEventRequest(cfg, "org-a"))
+	if !apperror.OrganizationReadOnly.Is(err) {
+		t.Fatalf("expected the read-only rejection, got %v", err)
 	}
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503 (body: %s)", rec.Code, rec.Body.String())
+	if rec.Body.Len() != 0 {
+		t.Errorf("nothing must be written before the route answers, got %q", rec.Body.String())
+	}
+}
+
+func TestReceiver_ReadOnlyRejectionIsTheUniformResponse(t *testing.T) {
+	r, cfg := newReadOnlyTestReceiver(t)
+	mux := http.NewServeMux()
+	r.RegisterRoutes(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, signedEventRequest(cfg, "org-a"))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (body: %s)", rec.Code, rec.Body.String())
 	}
 	var body apperror.ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode body %q: %v", rec.Body.String(), err)
 	}
-	if body.Code != apperror.CodeCommonOrganizationReadOnly {
-		t.Errorf("body.code = %q, want %q", body.Code, apperror.CodeCommonOrganizationReadOnly)
+	if body.Code != apperror.CodeCommonUnauthorized {
+		t.Errorf("body.code = %q, want %q", body.Code, apperror.CodeCommonUnauthorized)
 	}
 }
 
@@ -110,7 +126,7 @@ func TestReceiver_ReadOnlyLetsWritableOrganizationReachDispatch(t *testing.T) {
 	if !errors.As(err, &appErr) || appErr.Code != apperror.CodeCommonValidationFailed {
 		t.Fatalf("expected the unsupported-event validation error after passing the read-only check, got %v", err)
 	}
-	if rec.Code == http.StatusServiceUnavailable {
-		t.Fatal("writable organization must not be rejected with 503")
+	if apperror.OrganizationReadOnly.Is(err) {
+		t.Fatal("writable organization must not be rejected as read-only")
 	}
 }

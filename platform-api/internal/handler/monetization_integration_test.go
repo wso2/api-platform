@@ -55,6 +55,7 @@ import (
 
 // monetizationITWebhook is the API Portal webhook the test environment receives meter events on.
 var monetizationITWebhook = config.Webhook{
+	LegacySharedSecret: true,
 	Enabled:            true,
 	Secret:             "monetization-it-secret",
 	SignatureTolerance: 5 * time.Minute,

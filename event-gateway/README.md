@@ -42,7 +42,7 @@ Policies can be applied at two scopes:
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
 - [Postman](https://www.postman.com/downloads/) (optional, for manual testing)
-- [Go 1.26.10+](https://go.dev/dl/) (only if building from source)
+- [Go 1.26.11+](https://go.dev/dl/) (only if building from source)
 
 ## Quick Start
 
@@ -53,6 +53,11 @@ From the `event-gateway/` directory:
 ```bash
 cp .env.example .env
 # edit .env and set GATEWAY_REGISTRATION_TOKEN
+
+# Generates the HTTPS listener certificate/key at ./listener-certs, which this
+# stack's gateway-controller and event-gateway services both mount. Safe to
+# rerun; only regenerates with --force.
+./scripts/setup.sh
 
 docker compose up
 ```
@@ -607,10 +612,13 @@ The integration tests exercise the full stack (controller → event gateway → 
 
 ### Prerequisites
 
-Make sure all services are running:
+Generate the listener certificate (see Quick Start above) and make sure all services are
+running:
 
 ```bash
-cd event-gateway && docker compose up -d
+cd event-gateway
+./scripts/setup.sh
+docker compose up -d
 ```
 
 ### Run the Tests

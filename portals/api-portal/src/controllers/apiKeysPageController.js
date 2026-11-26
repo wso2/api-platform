@@ -16,12 +16,11 @@
  * under the License.
  */
  
-const { renderTemplateWithView, resolveActor } = require('../utils/util');
+const { renderTemplateWithView, resolveActor, apiImageUrl } = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
-const apiFileDao = require('../dao/apiFileDao');
 const applicationDao = require('../dao/applicationDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const apiKeyService = require('../services/apiKeyService');
@@ -53,28 +52,14 @@ const loadAPIApiKeys = async (req, res, next) => {
             const images = metaData.apiImageMetadata;
             if (images) {
                 for (const key in images) {
-                    images[key] = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}${images[key]}`;
+                    images[key] = apiImageUrl(orgId, metaData, images[key]);
                 }
             }
         } else {
             metaData = null;
         }
 
-        let apiDefinitionForNav = null;
-        if (metaData?.type !== constants.API_TYPE.GRAPHQL && metaData?.type !== constants.API_TYPE.MCP) {
-            try {
-                const apiFile = await apiFileDao.getDoc(constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                apiDefinitionForNav = apiFile?.file_content?.toString(constants.CHARSET_UTF8) || null;
-            } catch (definitionErr) {
-                logger.debug('Could not load API definition for API keys nav check', {
-                    orgId,
-                    apiId,
-                    error: definitionErr.message
-                });
-            }
-        }
-
-        const showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
+        const showApiKeysNav = apiUsesApiKeySecurity(metaData);
         if (!showApiKeysNav) {
             const err = new Error('API Keys not available for this API');
             err.status = 404;

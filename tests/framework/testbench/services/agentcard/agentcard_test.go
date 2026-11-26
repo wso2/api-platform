@@ -69,12 +69,13 @@ func TestServiceContract(t *testing.T) {
 func TestModes(t *testing.T) {
 	svc := newWithSlowDelay(20 * time.Millisecond)
 	tests := []struct {
-		name        string
-		path        string
-		headers     map[string]string
-		wantStatus  int
-		wantName    string
-		wantNonJSON bool
+		name         string
+		path         string
+		headers      map[string]string
+		wantStatus   int
+		wantName     string
+		wantNonJSON  bool
+		wantRedirect string
 	}{
 		{name: "ok", path: "/blk/s1/ok/.well-known/agent-card.json", wantStatus: http.StatusOK, wantName: "Card s1"},
 		{name: "custom card path", path: "/blk/s1/ok/cards/public.json", wantStatus: http.StatusOK, wantName: "Card s1"},
@@ -87,6 +88,8 @@ func TestModes(t *testing.T) {
 		{name: "malformed", path: "/blk/s1/malformed/.well-known/agent-card.json", wantStatus: http.StatusOK, wantNonJSON: true},
 		{name: "slow", path: "/blk/s1/slow/.well-known/agent-card.json", wantStatus: http.StatusOK, wantName: "Slow card s1"},
 		{name: "server error", path: "/blk/s1/status500/.well-known/agent-card.json", wantStatus: http.StatusInternalServerError},
+		{name: "redirect to metadata", path: "/blk/s1/redirect-metadata/.well-known/agent-card.json",
+			wantStatus: http.StatusFound, wantRedirect: MetadataCardURL},
 		{name: "unknown mode", path: "/blk/s1/teleport/.well-known/agent-card.json", wantStatus: http.StatusNotFound},
 		{name: "not a card path", path: "/blk/s1/ok/health", wantStatus: http.StatusNotFound},
 		{name: "missing mode", path: "/blk/s1/agent-card.json", wantStatus: http.StatusNotFound},
@@ -97,6 +100,10 @@ func TestModes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := serve(t, svc, http.MethodGet, tt.path, tt.headers)
 			require.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
+			if tt.wantRedirect != "" {
+				require.Equal(t, tt.wantRedirect, rec.Header().Get("Location"))
+				return
+			}
 			if tt.wantNonJSON {
 				var doc map[string]any
 				require.Error(t, json.Unmarshal(rec.Body.Bytes(), &doc))

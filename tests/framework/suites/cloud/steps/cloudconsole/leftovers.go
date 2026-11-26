@@ -24,7 +24,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,7 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
-	"github.com/wso2/api-platform/tests/framework/suites/cloud/finalizer"
+	"github.com/wso2/api-platform/tests/framework/suites/cloud/setup/finalizer"
 )
 
 // finalizerDeleteTimeout bounds how long the finalizer keeps trying to delete one resource.
@@ -49,20 +49,22 @@ const finalizerDeleteTimeout = 90 * time.Second
 const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
-// order: a gateway goes before the environment it runs in, and a project before the pipeline it
-// is bound to.
+// order: a secret goes after the REST APIs that reference it. Managed API Portals are not here: the
+// finalizer empties the portals the run published to and never deletes one, see portalSweeps.
 // idFields name the list-item fields that identify a resource in its own route. REST APIs are
 // listed per project, so projectScopedSweep reads them and runs ahead of these: each goes before
 // the gateway it is deployed to and the project it belongs to.
 var finalizerCollections = []struct {
 	collection string
 	idFields   []string
-	wait       bool
+	// budget bounds the collection's time; zero selects finalizerCollectionBudget.
+	budget time.Duration
 }{
-	{collection: "/managed-gateways", idFields: []string{"id"}},
-	{collection: "/projects", idFields: []string{"id"}},
-	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
-	{collection: environmentsCollection, idFields: []string{"name"}, wait: true},
+	{collection: secretsCollection, idFields: []string{"id", "handle"}},
+	{collection: selfHostedGatewaysPath, idFields: []string{"id"}},
+	{collection: managedGatewaysCollection, idFields: []string{"id"}},
+	// Each project is retried for finalizerDeleteTimeout, so the budget holds several of them.
+	{collection: "/projects", idFields: []string{"id"}, budget: projectDeleteTimeout},
 }
 
 // nameFields are the list-item fields a generated name can appear in.
@@ -112,11 +114,22 @@ func (f *Finalizer) observe(ctx context.Context, topo *frameworkruntime.Topology
 	if err != nil {
 		return err
 	}
-	f.finals.Track(generator.Suffix())
+	f.Watch(base, generator.Suffix())
+	return nil
+}
+
+// Watch records a platform and a name suffix whose resources Finalize must remove from it. It
+// lets a caller that runs no scenarios, such as the manual setup command, say what to look for.
+func (f *Finalizer) Watch(base, suffix string) {
+	f.finals.Track(suffix)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.bases[base] = struct{}{}
-	return nil
+}
+
+// Owns reports whether a name carries the suffix of one of this run's runners.
+func (f *Finalizer) Owns(name string) bool {
+	return f.finals.Owns([]string{name})
 }
 
 // Finalize deletes the run's leftovers from every platform the run talked to. It returns the
@@ -132,9 +145,9 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 	if !f.finals.Tracked() || len(bases) == 0 {
 		return nil, nil
 	}
-	token := strings.TrimSpace(os.Getenv(cloudConsoleAccessTokenEnv))
-	if token == "" {
-		return nil, fmt.Errorf("cloud run finalizer: environment variable %s is required to look for leftovers", cloudConsoleAccessTokenEnv)
+	token, err := consoleToken()
+	if err != nil {
+		return nil, fmt.Errorf("cloud run finalizer: looking for leftovers: %w", err)
 	}
 
 	var removed []string
@@ -152,14 +165,23 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 // cloudSweeps describes the organisation's collections to the framework's finalizer. owns reports
 // whether a resource's names belong to a tracked run.
 func cloudSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
-	sweeps := make([]finalizer.Collection, 0, len(finalizerCollections)+1)
+	sweeps := make([]finalizer.Collection, 0, len(finalizerCollections)+4)
+	// The listings go first: the platform removes a listing only through its API, which the sweeps
+	// below delete.
+	sweeps = append(sweeps, portalSweeps(client, base, token, owns)...)
 	for _, collection := range projectScopedCollections {
 		sweeps = append(sweeps, projectScopedSweep(client, base, token, owns, collection))
 	}
+	// A plan is deleted after the APIs that offer it.
+	sweeps = append(sweeps, subscriptionPlanSweep(client, base, token))
 	for _, entry := range finalizerCollections {
+		budget := entry.budget
+		if budget == 0 {
+			budget = finalizerCollectionBudget
+		}
 		sweeps = append(sweeps, finalizer.Collection{
 			Name:    entry.collection,
-			Timeout: finalizerCollectionBudget,
+			Timeout: budget,
 			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 				items, err := listCollection(ctx, client, base, token, entry.collection)
 				if errors.Is(err, errCollectionNotServed) {
@@ -167,10 +189,17 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 					slog.Default().Warn("the platform does not serve this collection; skipping it", "collection", entry.collection)
 					return nil, nil
 				}
-				return leftoversOf(items, entry.idFields), err
+				leftovers := leftoversOf(items, entry.idFields)
+				if entry.collection == managedGatewaysCollection {
+					defaultGatewayLast(leftovers)
+				}
+				return leftovers, err
 			},
 			Delete: func(ctx context.Context, id string) error {
-				return deleteLeftover(ctx, client, base, token, entry.collection, id, entry.wait)
+				if entry.collection == "/projects" {
+					return deleteProjectThroughCloudAPI(ctx, client, base, token, id, finalizerDeleteTimeout)
+				}
+				return deleteLeftover(ctx, client, base, token, entry.collection, id)
 			},
 		})
 	}
@@ -179,46 +208,235 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 
 // projectScopedCollections are the collections the platform lists only for one project: a list
 // request without projectId is refused with 400.
-var projectScopedCollections = []string{"/rest-apis"}
+var projectScopedCollections = []string{"/rest-apis", "/graphql-apis"}
 
 // projectScopedSweep describes a collection the platform lists per project, so it reads the
-// default project and every project a tracked run created.
+// projects the suite works in and every project a tracked run created. Only the entries named with
+// a tracked run's suffix are deleted, so an API the organisation owns stays.
 func projectScopedSweep(client *httpx.Client, base, token string, owns func(names []string) bool, collection string) finalizer.Collection {
 	return finalizer.Collection{
 		Name:    collection,
 		Timeout: finalizerCollectionBudget,
 		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
-			projects, err := listCollection(ctx, client, base, token, "/projects")
+			items, err := projectScopedItems(ctx, client, base, token, owns, collection)
+			return leftoversByID(items), err
+		},
+		Delete: func(ctx context.Context, id string) error {
+			return deleteLeftover(ctx, client, base, token, collection, id)
+		},
+	}
+}
+
+// projectScopedItems reads a collection the platform lists per project, for the projects the suite
+// works in and every project a tracked run created.
+// A failure part way returns the items already read with the error.
+func projectScopedItems(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool, collection string) ([]map[string]any, error) {
+	projects, err := listCollection(ctx, client, base, token, "/projects")
+	if errors.Is(err, errCollectionNotServed) {
+		return nil, nil
+	}
+	var errs []error
+	if err != nil {
+		errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
+	}
+	// The suite's projects are read only when the organisation lists them: a project it lacks
+	// is one the runners skipped, which the platform refuses to list. When the projects cannot be
+	// listed both are read.
+	var scopes []string
+	if err != nil {
+		// The list is not known, so both are read; the one the organisation lacks is refused.
+		scopes = slices.Clone(suiteProjects)
+	}
+	for _, project := range projects {
+		if id := firstString(project, []string{"id"}); slices.Contains(suiteProjects, id) {
+			scopes = append(scopes, id)
+		}
+	}
+	for _, project := range projects {
+		if id := firstString(project, []string{"id"}); id != "" && owns(namesOf(project)) && !slices.Contains(scopes, id) {
+			scopes = append(scopes, id)
+		}
+	}
+	var items []map[string]any
+	for _, project := range scopes {
+		listed, err := listCollectionQuery(ctx, client, base, token, collection, url.Values{"projectId": {project}})
+		if errors.Is(err, errCollectionNotServed) {
+			continue
+		}
+		items = append(items, listed...)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("project %s: %w", project, err))
+		}
+	}
+	return items, errors.Join(errs...)
+}
+
+// syntheticPlanPrefix starts the id of every subscription plan a scenario creates.
+const syntheticPlanPrefix = "syn-plan-"
+
+// subscriptionPlanSweep deletes the subscription plans scenarios created. A plan the organisation
+// owns does not carry the prefix, and a plan of another run does not carry this run's suffix, so
+// both stay.
+func subscriptionPlanSweep(client *httpx.Client, base, token string) finalizer.Collection {
+	return finalizer.Collection{
+		Name:    "/subscription-plans",
+		Timeout: finalizerCollectionBudget,
+		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+			items, err := listCollection(ctx, client, base, token, "/subscription-plans")
 			if errors.Is(err, errCollectionNotServed) {
 				return nil, nil
 			}
-			var errs []error
-			if err != nil {
-				errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
-			}
-			scopes := []string{defaultProjectID}
-			for _, project := range projects {
-				if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) {
-					scopes = append(scopes, id)
+			var created []map[string]any
+			for _, item := range items {
+				if strings.HasPrefix(firstString(item, []string{"id"}), syntheticPlanPrefix) {
+					created = append(created, item)
 				}
 			}
-			var leftovers []finalizer.Leftover
-			for _, project := range scopes {
-				items, err := listCollectionQuery(ctx, client, base, token, collection, url.Values{"projectId": {project}})
-				if errors.Is(err, errCollectionNotServed) {
-					continue
-				}
-				leftovers = append(leftovers, leftoversOf(items, []string{"id"})...)
-				if err != nil {
-					errs = append(errs, fmt.Errorf("project %s: %w", project, err))
-				}
-			}
-			return leftovers, errors.Join(errs...)
+			return leftoversOf(created, []string{"id"}), err
 		},
 		Delete: func(ctx context.Context, id string) error {
-			return deleteLeftover(ctx, client, base, token, collection, id, false)
+			return deleteLeftover(ctx, client, base, token, "/subscription-plans", id)
 		},
 	}
+}
+
+// publishedAPICollections are the API collections whose APIs a portal can list, by the API type
+// the publication routes use.
+var publishedAPICollections = []struct{ apiType, collection string }{
+	{"rest-api", "/rest-apis"},
+	{"graphql-api", "/graphql-apis"},
+}
+
+// portalSweeps empties the managed API Portals of what the run put in them, and never deletes a
+// portal: the starter's portal and every portal the organisation already had stay. It unpublishes
+// each API of the run from every active portal that lists it. The only portals it deletes are
+// those a scenario built for itself, which carry syntheticPortalPrefix.
+func portalSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
+	return []finalizer.Collection{
+		{
+			Name:    "portal-publications",
+			Timeout: finalizerCollectionBudget,
+			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+				return portalPublications(ctx, client, base, token, owns)
+			},
+			Delete: func(ctx context.Context, id string) error {
+				method, path, settled, err := unpublishRequest(id)
+				if err != nil {
+					return err
+				}
+				return retry.Await(ctx, retry.Options{Timeout: finalizerDeleteTimeout, Interval: 5 * time.Second},
+					func(ctx context.Context) (bool, error) {
+						resp, err := client.Do(ctx, httpx.Request{
+							Method:  method,
+							URL:     cloudAPIURL(base, path),
+							Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(token)},
+						}, 0, 0)
+						if err != nil {
+							return false, retry.Transient(err)
+						}
+						if !settled(resp) {
+							return false, retry.Transient(responseError(resp))
+						}
+						return true, nil
+					},
+					func(done bool) bool { return done },
+					"unpublishing "+id)
+			},
+		},
+		{
+			Name:    managedPortalsCollection,
+			Timeout: finalizerCollectionBudget,
+			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+				items, err := listCollection(ctx, client, base, token, managedPortalsCollection)
+				if errors.Is(err, errCollectionNotServed) {
+					return nil, nil
+				}
+				var built []map[string]any
+				for _, item := range items {
+					if id, _ := item["id"].(string); strings.HasPrefix(id, syntheticPortalPrefix) {
+						built = append(built, item)
+					}
+				}
+				return leftoversOf(built, []string{"id"}), err
+			},
+			Delete: func(ctx context.Context, id string) error {
+				return deleteLeftover(ctx, client, base, token, managedPortalsCollection, id)
+			},
+		},
+	}
+}
+
+// portalPublications lists, as publication ids, the listings the run's APIs hold in the active
+// portals. An API that no portal lists has no publication route to read, so it is not a leftover.
+func portalPublications(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool) ([]finalizer.Leftover, error) {
+	portals, err := listCollection(ctx, client, base, token, managedPortalsCollection)
+	if errors.Is(err, errCollectionNotServed) {
+		return nil, nil
+	}
+	var errs []error
+	if err != nil {
+		errs = append(errs, fmt.Errorf("listing the managed API Portals: %w", err))
+	}
+	var active []string
+	for _, portal := range portals {
+		if status, _ := portal["status"].(string); status == portalStatusActive {
+			if id := firstString(portal, []string{"id"}); id != "" {
+				active = append(active, id)
+			}
+		}
+	}
+	if len(active) == 0 {
+		return nil, errors.Join(errs...)
+	}
+	var leftovers []finalizer.Leftover
+	for _, kind := range publishedAPICollections {
+		items, err := projectScopedItems(ctx, client, base, token, owns, kind.collection)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("listing %s: %w", kind.collection, err))
+		}
+		for _, item := range items {
+			api := firstString(item, []string{"id"})
+			if api == "" || !owns(namesOf(item)) {
+				continue
+			}
+			for _, portal := range active {
+				target := publicationTarget{portal: portal, apiType: kind.apiType, api: api}
+				resp, err := client.Do(ctx, httpx.Request{
+					Method:  http.MethodGet,
+					URL:     cloudAPIURL(base, target.path("/publication")),
+					Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(token)},
+				}, 0, 0)
+				switch {
+				case err != nil:
+					errs = append(errs, fmt.Errorf("reading the publication %s: %w", target.id(), err))
+				case resp.StatusCode == http.StatusNotFound:
+				case resp.StatusCode == http.StatusOK:
+					leftovers = append(leftovers, finalizer.Leftover{ID: target.id(), Names: namesOf(item)})
+				default:
+					errs = append(errs, fmt.Errorf("reading the publication %s: %w", target.id(), responseError(resp)))
+				}
+			}
+		}
+	}
+	return leftovers, errors.Join(errs...)
+}
+
+// defaultGatewayLast moves a gateway the starter created behind every other gateway. The finalizer
+// of a run never deletes it, since a run tracks only the suffixes of its runners; it is deleted when
+// a person names the starter's suffix to the setup command. The platform refuses to delete an
+// environment's default gateway while other gateways of its kind remain, and allows the last one to
+// go.
+func defaultGatewayLast(leftovers []finalizer.Leftover) {
+	slices.SortStableFunc(leftovers, func(a, b finalizer.Leftover) int {
+		return boolRank(isStarterGateway(a.Names)) - boolRank(isStarterGateway(b.Names))
+	})
+}
+
+func boolRank(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 // leftoversOf turns list items into the finalizer's entries.
@@ -305,7 +523,7 @@ func getListPage(ctx context.Context, client *httpx.Client, target, token string
 			resp, err := client.Do(ctx, httpx.Request{
 				Method:  http.MethodGet,
 				URL:     target,
-				Headers: map[string]string{"Authorization": "Bearer " + token},
+				Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(token)},
 			}, 0, 0)
 			if err != nil {
 				return nil, retry.Transient(err)
@@ -337,11 +555,11 @@ func listPaging(resp *httpx.Response) *pageInfo {
 }
 
 // deleteLeftover deletes one resource, retrying a refusal for a while: a gateway that is still
-// being built or an environment that still holds one is refused until it settles.
-func deleteLeftover(ctx context.Context, client *httpx.Client, base, token, collection, id string, wait bool) error {
+// being built is refused until it settles.
+func deleteLeftover(ctx context.Context, client *httpx.Client, base, token, collection, id string) error {
 	return retry.Await(ctx, retry.Options{Timeout: finalizerDeleteTimeout, Interval: 5 * time.Second},
 		func(ctx context.Context) (bool, error) {
-			if err := deleteCloudResource(ctx, client, base, token, collection, id, wait); err != nil {
+			if err := deleteCloudResource(ctx, client, base, token, collection, id); err != nil {
 				return false, retry.Transient(err)
 			}
 			return true, nil
@@ -351,6 +569,17 @@ func deleteLeftover(ctx context.Context, client *httpx.Client, base, token, coll
 }
 
 // namesOf collects the values of an item a generated name can appear in.
+// leftoversByID describes items that are deleted by their id, judged by that id alone: another
+// name of an item, such as a display name, can carry a run's suffix without the run owning it.
+func leftoversByID(items []map[string]any) []finalizer.Leftover {
+	leftovers := make([]finalizer.Leftover, 0, len(items))
+	for _, item := range items {
+		id := firstString(item, []string{"id"})
+		leftovers = append(leftovers, finalizer.Leftover{ID: id, Names: []string{id}})
+	}
+	return leftovers
+}
+
 func namesOf(item map[string]any) []string {
 	names := make([]string, 0, len(nameFields))
 	for _, field := range nameFields {

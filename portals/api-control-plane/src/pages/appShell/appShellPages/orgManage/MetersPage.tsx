@@ -33,6 +33,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useDeleteMeter, useMeters, type Meter } from '@/api/resources/meters';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { MeterIllustration } from '@/components/illustrations/MeterIllustration';
 import { EmptyResults } from '@/components/common/EmptyResults';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -190,6 +191,7 @@ export function MetersPage() {
     query: debouncedSearch || undefined,
   });
   const deleteMutation = useDeleteMeter();
+  const trackFeature = useTrackFeature();
 
   const [dialogTarget, setDialogTarget] = useState<'create' | Meter | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Meter | null>(null);
@@ -217,6 +219,7 @@ export function MetersPage() {
   const confirmDelete = () => {
     if (!deleteTarget?.id) return;
     const { displayName, id } = deleteTarget;
+    trackFeature('apip.monetization.meter-delete-click', {});
     deleteMutation.mutate(
       { meterId: id },
       {

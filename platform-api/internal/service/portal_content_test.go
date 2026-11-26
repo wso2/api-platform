@@ -101,12 +101,12 @@ func TestBuildContentArchive(t *testing.T) {
 		}
 	})
 
-	t.Run("adds the landing page as content/web/apiContent.md", func(t *testing.T) {
+	t.Run("adds the landing page as content/web/api-content.md", func(t *testing.T) {
 		content, err := buildContentArchive(nil, nil, &model.PublicationContent{ContentType: "text/markdown", Content: []byte("# Loans")}, defaultPublicationArchiveMaxBytes)
 		if err != nil || content == nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
-		if files := readArchive(t, content.Archive); len(files) != 1 || files["content/web/apiContent.md"] != "# Loans" {
+		if files := readArchive(t, content.Archive); len(files) != 1 || files["content/web/api-content.md"] != "# Loans" {
 			t.Fatalf("unexpected archive layout: %v", files)
 		}
 	})
@@ -118,7 +118,7 @@ func TestBuildContentArchive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if files := readArchive(t, content.Archive); len(files) != 2 || files["content/web/api-icon.png"] == "" || files["content/web/apiContent.md"] == "" {
+		if files := readArchive(t, content.Archive); len(files) != 2 || files["content/web/api-icon.png"] == "" || files["content/web/api-content.md"] == "" {
 			t.Fatalf("unexpected archive layout: %v", files)
 		}
 	})
@@ -126,7 +126,7 @@ func TestBuildContentArchive(t *testing.T) {
 	t.Run("leaves out a blank landing page", func(t *testing.T) {
 		blank := &model.PublicationContent{ContentType: "text/markdown", Content: []byte(" \n\t")}
 		content, err := buildContentArchive(nil, nil, blank, defaultPublicationArchiveMaxBytes)
-		if err != nil || content != nil {
+		if err != nil || len(readArchive(t, content.Archive)) != 0 {
 			t.Fatalf("a blank landing page alone: got %v, %v", content, err)
 		}
 		content, err = buildContentArchive(
@@ -163,10 +163,13 @@ func TestBuildContentArchive(t *testing.T) {
 		}
 	})
 
-	t.Run("no documents means nothing to send", func(t *testing.T) {
+	t.Run("nothing selected sends an empty archive", func(t *testing.T) {
 		content, err := buildContentArchive(nil, nil, nil, defaultPublicationArchiveMaxBytes)
-		if err != nil || content != nil {
+		if err != nil || content == nil {
 			t.Fatalf("got %v, %v", content, err)
+		}
+		if files := readArchive(t, content.Archive); len(files) != 0 {
+			t.Fatalf("want no files, got %v", files)
 		}
 	})
 

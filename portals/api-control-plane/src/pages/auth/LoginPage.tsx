@@ -24,7 +24,6 @@ import {
   Button,
   Card,
   CardContent,
-  ColorSchemeImage,
   Divider,
   FormLabel,
   IconButton,
@@ -56,7 +55,7 @@ import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from
 import { defineMessages, FormattedMessage, type MessageDescriptor, useIntl } from 'react-intl';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { useBrandLogo } from '@/branding/BrandLogoProvider';
+import { BrandLockup } from '@/branding/BrandLockup';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
@@ -67,14 +66,14 @@ import { ServerErrorPage } from '../appShell/appShellPages/system/SystemPages';
 const messages = defineMessages({
   brandLockup: {
     id: 'apiControlPlane.pages.auth.LoginPage.brandLockup',
-    defaultMessage: '<brand>WSO2</brand> API Platform',
+    defaultMessage: '<brand>Choreo</brand> API Management',
     description:
-      'Compact brand lockup shown above the sign-in card on narrow screens. WSO2 is the company name and stays as-is; the brand tag only styles it.',
+      'Compact brand lockup shown above the sign-in card on narrow screens. Choreo is the brand name and stays as-is; the brand tag only styles it.',
   },
   brandName: {
     id: 'apiControlPlane.pages.auth.LoginPage.brandName',
-    defaultMessage: 'WSO2',
-    description: 'Company name in the brand lockup. Do not translate.',
+    defaultMessage: 'Choreo',
+    description: 'Brand name in the brand lockup. Do not translate.',
   },
   browserUnsupported: {
     id: 'apiControlPlane.pages.auth.LoginPage.browserUnsupported',
@@ -169,9 +168,9 @@ const messages = defineMessages({
   },
   productName: {
     id: 'apiControlPlane.pages.auth.LoginPage.productName',
-    defaultMessage: '<emphasis>API</emphasis> Platform',
+    defaultMessage: '<emphasis>API</emphasis> Management',
     description:
-      'Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight.',
+      'Product name under the Choreo wordmark. The emphasis tag marks the part set in the stronger weight.',
   },
   sessionExpired: {
     id: 'apiControlPlane.pages.auth.LoginPage.sessionExpired',
@@ -206,7 +205,7 @@ const messages = defineMessages({
   },
 });
 
-const BRAND_LOGO_HEIGHT = 56;
+const BRAND_LOGO_HEIGHT = 44;
 
 type LoginLocationState = {
   confirmationKey?: string;
@@ -288,7 +287,6 @@ const featureIconSx = (theme: Theme) =>
 
 export function LoginPage() {
   const auth = useAuth();
-  const brandLogo = useBrandLogo();
   const intl = useIntl();
 
   useDocumentTitle(intl.formatMessage(messages.title));
@@ -403,15 +401,7 @@ export function LoginPage() {
         }}
       >
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-          <ColorSchemeImage
-            alt={intl.formatMessage({
-              id: 'appShell.header.title',
-              defaultMessage: 'API Platform',
-            })}
-            height={BRAND_LOGO_HEIGHT}
-            src={brandLogo}
-            width="auto"
-          />
+          <BrandLockup height={BRAND_LOGO_HEIGHT} />
         </Stack>
 
         <Stack spacing={2.5} sx={{ maxWidth: 620 }}>

@@ -111,6 +111,9 @@ export function AppSidebar() {
           </Sidebar.Category>
         ))}
       </Sidebar.Nav>
+      <Sidebar.Footer>
+        <Sidebar.CollapseToggle />
+      </Sidebar.Footer>
     </Sidebar>
   );
 }

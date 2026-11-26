@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
@@ -85,6 +86,28 @@ func mapRenderError(w http.ResponseWriter, operation string, err error) bool {
 		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: secretErr.Error(),
+		})
+		return true
+	}
+	if upstreamguard.IsRefused(renderErr) {
+		// Fixed message plus the refused field only: never the URL, its host's
+		// addresses, or which rule refused it.
+		field := upstreamguard.RefusedFieldPath(renderErr)
+		detail := "This URL is not permitted."
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "An upstream or policy URL is not permitted by the gateway's network access control.",
+			Errors:  &[]api.ValidationError{{Field: &field, Message: &detail}},
+		})
+		return true
+	}
+	var envErr *funcs.EnvAccessError
+	if errors.As(renderErr, &envErr) {
+		// Fixed message only: renderErr.Cause carries the config handle and
+		// template text, and the requested variable name is not echoed back.
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: envErr.Error(),
 		})
 		return true
 	}

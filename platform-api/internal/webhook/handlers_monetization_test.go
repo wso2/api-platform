@@ -54,6 +54,7 @@ func (f *fakeMonetizationService) DeleteMeterFromWebhook(orgUUID, handle string,
 func newMonetizationTestReceiver(t *testing.T) (*Receiver, *fakeMonetizationService, config.Webhook) {
 	t.Helper()
 	cfg := config.Webhook{
+		LegacySharedSecret: true,
 		Enabled:            true,
 		Secret:             "monetization-test-secret",
 		SignatureTolerance: 5 * time.Minute,

@@ -19,6 +19,7 @@ package repository
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -76,6 +77,52 @@ func TestDeleteCustomPolicyIfUnusedPurgesOrphanUsages(t *testing.T) {
 	}
 	if len(usages) != 0 {
 		t.Fatalf("orphan usage row still present: %v", usages)
+	}
+}
+
+// TestUpdateCustomPolicyRefusesReplacedVersion covers two syncs racing on one
+// record: the update that names a version the record no longer holds changes
+// nothing and says so, instead of reporting success.
+func TestUpdateCustomPolicyRefusesReplacedVersion(t *testing.T) {
+	db, cleanup := setupTestDBWithoutForeignKeys(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-update-race"
+	createTestOrganizationAndProject(t, db, orgUUID, "project-update-race")
+
+	customPolicyRepo := NewCustomPolicyRepo(db)
+	if err := customPolicyRepo.InsertCustomPolicy(&model.CustomPolicy{
+		UUID:             "policy-update-race",
+		OrganizationUUID: orgUUID,
+		Name:             "custom-policy-update-race",
+		Version:          "v1.2.0",
+		PolicyDefinition: json.RawMessage(`{}`),
+	}); err != nil {
+		t.Fatalf("create custom policy: %v", err)
+	}
+
+	err := customPolicyRepo.UpdateCustomPolicy(&model.CustomPolicy{
+		OrganizationUUID: orgUUID,
+		Name:             "custom-policy-update-race",
+		Version:          "v1.3.0",
+	}, "v1.1.0")
+	if !errors.Is(err, ErrCustomPolicyVersionChanged) {
+		t.Fatalf("UpdateCustomPolicy() error = %v, want ErrCustomPolicyVersionChanged", err)
+	}
+	stored, err := customPolicyRepo.GetCustomPolicyByUUID(orgUUID, "policy-update-race")
+	if err != nil {
+		t.Fatalf("GetCustomPolicyByUUID() error = %v", err)
+	}
+	if stored == nil || stored.Version != "v1.2.0" {
+		t.Fatalf("stored policy = %+v, want it left at v1.2.0", stored)
+	}
+
+	if err := customPolicyRepo.UpdateCustomPolicy(&model.CustomPolicy{
+		OrganizationUUID: orgUUID,
+		Name:             "custom-policy-update-race",
+		Version:          "v1.3.0",
+	}, "v1.2.0"); err != nil {
+		t.Fatalf("UpdateCustomPolicy() from the held version error = %v, want nil", err)
 	}
 }
 

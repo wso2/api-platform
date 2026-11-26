@@ -21,8 +21,15 @@ const { Pool } = require('pg');
 const { buildDbSsl } = require('../dbSsl');
 const { isBinaryParam } = require('../paramTypes');
 
-/** PostgreSQL adapter (`pg`). Pool-backed; transactions check out a dedicated client. */
-function createPostgresAdapter(config) {
+/**
+ * PostgreSQL adapter (`pg`). Pool-backed; transactions check out a dedicated client.
+ *
+ * `hooks.onPoolError(err)` receives every error the pool raises about an idle client.
+ */
+// How long a pooled connection may sit silent before TCP keepalive probes it.
+const KEEP_ALIVE_INITIAL_DELAY_MS = 10000;
+
+function createPostgresAdapter(config, hooks = {}) {
     const poolConfig = {
         user: config.database.user,
         host: config.database.host,
@@ -33,6 +40,10 @@ function createPostgresAdapter(config) {
         min: config.database.minOpenConns,
         idleTimeoutMillis: config.database.poolIdleTimeoutMs,
         connectionTimeoutMillis: config.database.poolConnectionTimeoutMs,
+        // TCP keepalive on every pooled connection, so one the network has silently
+        // dropped is found and closed in about a minute instead of the OS default of hours.
+        keepAlive: true,
+        keepAliveInitialDelayMillis: KEEP_ALIVE_INITIAL_DELAY_MS,
     };
 
     // buildDbSsl() reads config.database.sslMode/sslRootCert and fails closed
@@ -44,6 +55,15 @@ function createPostgresAdapter(config) {
     }
 
     const pool = new Pool(poolConfig);
+
+    // An idle client whose connection drops (the database restarting, a proxy closing
+    // it) makes the pool emit 'error'. With no listener, that emit throws from inside
+    // the socket callback and becomes an uncaughtException, which exits the process
+    // (server.js). The pool has already discarded the broken client and replaces it on
+    // the next checkout, so the error is only reported to the hook, never rethrown.
+    pool.on('error', (err) => {
+        if (hooks.onPoolError) hooks.onPoolError(err);
+    });
 
     // `pg` auto-stringifies plain JS objects for us, but we JSON.stringify explicitly
     // here anyway so JSONB column behavior doesn't silently depend on that driver
@@ -102,7 +122,21 @@ function createPostgresAdapter(config) {
         }
     };
 
+    // The health check's SELECT 1, bounded on the connection itself. Without a query
+    // timeout, a ping on a connection that has silently died (a network black hole) or
+    // to a database that stopped answering would not settle for many minutes, and the
+    // driver allows only one ping in flight. On timeout the pool discards the connection.
+    handle.healthPing = ({ timeoutMs } = {}) =>
+        pool.query(timeoutMs > 0 ? { text: 'SELECT 1', query_timeout: timeoutMs } : 'SELECT 1');
+
     handle.close = async () => pool.end();
+
+    handle.poolStats = () => ({
+        max: pool.options.max,
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+    });
 
     return handle;
 }

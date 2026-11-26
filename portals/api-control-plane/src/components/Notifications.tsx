@@ -17,7 +17,7 @@
  */
 
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
-import { Alert, Snackbar } from '@wso2/oxygen-ui';
+import { Alert, Portal, Snackbar } from '@wso2/oxygen-ui';
 
 type NotificationSeverity = 'success' | 'info' | 'warning' | 'error';
 
@@ -44,16 +44,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   return (
     <NotificationContext.Provider value={value}>
       {children}
-      <Snackbar
-        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        autoHideDuration={5000}
-        open={!!notification}
-        onClose={() => setNotification(null)}
-      >
-        {notification ? (
-          <Alert severity={notification.severity}>{notification.message}</Alert>
-        ) : undefined}
-      </Snackbar>
+      {/* On <body>, added after any open drawer or dialog has aria-hidden its siblings,
+          so a toast raised from inside one still reaches screen readers. */}
+      <Portal>
+        <Snackbar
+          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          autoHideDuration={5000}
+          open={!!notification}
+          onClose={() => setNotification(null)}
+        >
+          {notification ? (
+            <Alert severity={notification.severity}>{notification.message}</Alert>
+          ) : undefined}
+        </Snackbar>
+      </Portal>
     </NotificationContext.Provider>
   );
 }

@@ -27,6 +27,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +39,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
@@ -602,6 +605,7 @@ type PolicyEngine struct {
 	XDS            XDSConfig            `koanf:"xds"`
 	FileConfig     FileConfigConfig     `koanf:"file_config"`
 	Logging        LoggingConfig        `koanf:"logging"`
+	Health         HealthConfig         `koanf:"health"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	FaultPolicies  FaultPoliciesConfig  `koanf:"fault_policies"`
 	// LLMErrors is [policy_engine.llm_errors].
@@ -623,6 +627,34 @@ type PolicyEngine struct {
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
+}
+
+// HealthConfig tunes the policy engine's health checks ([policy_engine.health]).
+// Settings that belong to one dependency live in that dependency's sub-table.
+type HealthConfig struct {
+	// CacheTTL is how long an evaluated health result is reused before the
+	// checks run again.
+	CacheTTL time.Duration `koanf:"cache_ttl"`
+	// XDSConnection tunes the xds_connection check.
+	XDSConnection HealthXDSConnectionConfig `koanf:"xds_connection"`
+	// PythonExecutor tunes the python_executor check.
+	PythonExecutor HealthPythonExecutorConfig `koanf:"python_executor"`
+}
+
+// HealthXDSConnectionConfig tunes the xds_connection check
+// ([policy_engine.health.xds_connection]).
+type HealthXDSConnectionConfig struct {
+	// Grace is how long the connection to the controller may be down before the
+	// runtime stops counting as ready. The last configuration keeps being served
+	// meanwhile, so a routine controller restart never takes runtimes out of service.
+	Grace time.Duration `koanf:"grace"`
+}
+
+// HealthPythonExecutorConfig tunes the python_executor check
+// ([policy_engine.health.python_executor]).
+type HealthPythonExecutorConfig struct {
+	// CheckTimeout is the deadline for each run of the check.
+	CheckTimeout time.Duration `koanf:"check_timeout"`
 }
 
 // FaultPoliciesConfig tunes which failures reach an API's fault policies
@@ -689,17 +721,17 @@ type BodyConfig struct {
 // context.WithTimeout, since http.Client.Do honors a request's context
 // deadline independent of the client-level Timeout.
 //
-// SSRF guarding is off by default (see HTTPClientSSRFConfig) since not every
+// The destination guard is off by default (see HTTPClientDestinationGuardConfig) since not every
 // policy dials a tenant/user-supplied URL. A policy whose outbound target
 // comes from request-derived or tenant-configured data — as opposed to a
 // fixed, operator-configured backend — should have its operator enable SSRF
 // guarding here; see ssrf-prevention.md.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -734,6 +766,17 @@ type HTTPClientTLSConfig struct {
 	RootCAFile       string `koanf:"root_ca_file"`      // PEM CA bundle; empty uses the system root pool
 	ClientCertFile   string `koanf:"client_cert_file"`  // mTLS to the origin; both cert and key must be set together
 	ClientKeyFile    string `koanf:"client_key_file"`
+	// InsecureSkipVerify disables certificate chain and hostname verification for EVERY
+	// outbound call every policy makes through this client. Off by default. Prefer
+	// root_ca_file to trust a specific private CA; this is for development and test
+	// environments.
+	InsecureSkipVerify bool `koanf:"insecure_skip_verify"`
+	// InsecureSkipHostnameVerify skips only the check that a server's certificate names the
+	// host being dialed. The certificate chain, validity dates and server-auth usage are
+	// still verified against root_ca_file (or the system roots). Off by default; it suits a
+	// private CA whose certificates do not carry the names the policies dial. Setting it
+	// together with insecure_skip_verify is rejected, since that already skips every check.
+	InsecureSkipHostnameVerify bool `koanf:"insecure_skip_hostname_verify"`
 }
 
 // HTTPClientProxyConfig mirrors the TOML-expressible subset of httpclient.ProxyConfig.
@@ -765,9 +808,9 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig. Off by
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible subset of httpclient.DestinationGuardConfig. Off by
 // default — see HTTPClientConfig's doc comment on when a policy's operator should enable it.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	Enabled bool `koanf:"enabled"`
 	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (a
 	// backend that is normally private — a ClusterIP, a service-DNS name, localhost —
@@ -1010,6 +1053,16 @@ type XDSConfig struct {
 	// MaxReconnectDelay is the maximum delay between reconnection attempts
 	MaxReconnectDelay time.Duration `koanf:"max_reconnect_delay"`
 
+	// KeepaliveTime is how long the connection to the xDS server may be idle
+	// before the client sends an HTTP/2 PING. Without it a connection that
+	// dies silently leaves the client blocked in Recv and it stops receiving
+	// config. Must be at least gateway-controller's keepalive MinTime (5s).
+	KeepaliveTime time.Duration `koanf:"keepalive_time"`
+
+	// KeepaliveTimeout is how long the client waits for the PING ack before
+	// closing the connection and reconnecting.
+	KeepaliveTimeout time.Duration `koanf:"keepalive_timeout"`
+
 	// TLS configuration
 	TLS XDSTLSConfig `koanf:"tls"`
 }
@@ -1141,6 +1194,12 @@ func Load(configPaths ...string) (*Config, error) {
 		return nil, err
 	}
 
+	// Unknown keys in the health tables would otherwise be silently ignored and leave
+	// the defaults in effect. Fail loudly instead.
+	if err := checkHealthKeys(k); err != nil {
+		return nil, err
+	}
+
 	// Unmarshal into pre-populated config struct with defaults
 	// Koanf will merge: fields from file/env overwrite defaults, unset fields keep defaults
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
@@ -1158,6 +1217,10 @@ func Load(configPaths ...string) (*Config, error) {
 	// Uses the interpolated instance so ${config} expressions resolve to the
 	// materialized values, not the literal {{ ... }} tokens.
 	cfg.PolicyEngine.RawConfig = k.Raw()
+	// A policy parameter may still reference the destination guard under its
+	// previous name (${config.policy_engine.http_client.ssrf...}); keep that path
+	// resolving to the migrated table. Raw() is a copy, so k is unaffected.
+	configcompat.AliasLegacyDestinationGuard(cfg.PolicyEngine.RawConfig, "policy_engine")
 
 	// Validate
 	if err := cfg.Validate(); err != nil {
@@ -1180,6 +1243,17 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
 	if err != nil {
 		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	deprecated, err := configcompat.MigrateDestinationGuard(expanded, "policy_engine")
+	if err != nil {
+		return nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard",
+			slog.String("key", deprecated))
 	}
 
 	out := koanf.New(".")
@@ -1334,6 +1408,8 @@ func defaultConfig() *Config {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 				TLS: XDSTLSConfig{
 					Enabled:    false,
 					EcdhCurves: "X25519MLKEM768,X25519,P-256",
@@ -1345,6 +1421,11 @@ func defaultConfig() *Config {
 			Logging: LoggingConfig{
 				Level:  "info",
 				Format: "text",
+			},
+			Health: HealthConfig{
+				CacheTTL:       3 * time.Second,
+				XDSConnection:  HealthXDSConnectionConfig{Grace: 5 * time.Minute},
+				PythonExecutor: HealthPythonExecutorConfig{CheckTimeout: 2 * time.Second},
 			},
 			PythonExecutor: PythonExecutorConfig{
 				Server: PythonExecutorServerConfig{
@@ -1377,7 +1458,7 @@ func defaultConfig() *Config {
 				Proxy: HTTPClientProxyConfig{
 					Mode: "none",
 				},
-				SSRF: HTTPClientSSRFConfig{
+				DestinationGuard: HTTPClientDestinationGuardConfig{
 					Enabled: false,
 				},
 			},
@@ -1655,6 +1736,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid logging.format: %s (must be json or text)", c.PolicyEngine.Logging.Format)
 	}
 
+	if err := c.validateHealthConfig(); err != nil {
+		return err
+	}
 	if err := c.validateCollectorConfig(); err != nil {
 		return err
 	}
@@ -1699,6 +1783,11 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// MinXDSKeepaliveTime is gateway-controller's xDS keepalive
+// EnforcementPolicy.MinTime. A client pinging more often than this is sent
+// GOAWAY "too_many_pings" and loses its connection.
+const MinXDSKeepaliveTime = 5 * time.Second
+
 // validateXDSConfig validates xDS configuration
 func (c *Config) validateXDSConfig() error {
 	if c.PolicyEngine.XDS.ConnectTimeout <= 0 {
@@ -1715,6 +1804,14 @@ func (c *Config) validateXDSConfig() error {
 
 	if c.PolicyEngine.XDS.MaxReconnectDelay <= 0 {
 		return fmt.Errorf("xds.max_reconnect_delay must be positive")
+	}
+
+	if c.PolicyEngine.XDS.KeepaliveTime < MinXDSKeepaliveTime {
+		return fmt.Errorf("xds.keepalive_time must be at least %s", MinXDSKeepaliveTime)
+	}
+
+	if c.PolicyEngine.XDS.KeepaliveTimeout <= 0 {
+		return fmt.Errorf("xds.keepalive_timeout must be positive")
 	}
 
 	if c.PolicyEngine.XDS.TLS.Enabled {
@@ -2103,6 +2200,85 @@ func (c *Config) validateAnalyticsConfig() error {
 				return fmt.Errorf("unknown publisher type in enabled_publishers: %s", publisherName)
 			}
 		}
+	}
+	return nil
+}
+
+// checkHealthKeys rejects an unknown key in the policy engine's health tables, which
+// would otherwise be silently ignored and leave the default in effect. It inspects only
+// the policy_engine subtree, since the gateway configuration file is shared with other
+// components.
+func checkHealthKeys(k *koanf.Koanf) error {
+	for _, table := range []struct {
+		path  string
+		known map[string]bool
+	}{
+		{"policy_engine.health", koanfKeys(reflect.TypeOf(HealthConfig{}))},
+		{"policy_engine.health.xds_connection", koanfKeys(reflect.TypeOf(HealthXDSConnectionConfig{}))},
+		{"policy_engine.health.python_executor", koanfKeys(reflect.TypeOf(HealthPythonExecutorConfig{}))},
+	} {
+		if err := checkTableKeys(k, table.path, table.known); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkTableKeys rejects a key in the table at path that is not one of known. A missing
+// table is fine; a value set where the table belongs is not.
+func checkTableKeys(k *koanf.Koanf, path string, known map[string]bool) error {
+	if !k.Exists(path) {
+		return nil
+	}
+	table, ok := k.Get(path).(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("%s must be a table", path)
+	}
+	keys := make([]string, 0, len(table))
+	for key := range table {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !known[key] {
+			return fmt.Errorf("%s: unknown key %q", path, key)
+		}
+	}
+	return nil
+}
+
+// koanfKeys returns the koanf key names of a struct type's fields.
+func koanfKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
+			keys[tag] = true
+		}
+	}
+	return keys
+}
+
+// defaultProbeTimeout is the probe timeout health checkers apply by default;
+// a check deadline at or above it can outlast the probe that asked for it.
+const defaultProbeTimeout = 5 * time.Second
+
+// validateHealthConfig validates the health section.
+func (c *Config) validateHealthConfig() error {
+	h := &c.PolicyEngine.Health
+
+	if h.CacheTTL <= 0 {
+		return fmt.Errorf("policy_engine.health.cache_ttl must be > 0")
+	}
+	if h.XDSConnection.Grace <= 0 {
+		return fmt.Errorf("policy_engine.health.xds_connection.grace must be > 0")
+	}
+	if h.PythonExecutor.CheckTimeout <= 0 {
+		return fmt.Errorf("policy_engine.health.python_executor.check_timeout must be > 0")
+	}
+	if h.PythonExecutor.CheckTimeout >= defaultProbeTimeout {
+		slog.Warn("policy_engine.health.python_executor.check_timeout is at or above the default 5s probe timeout; "+
+			"probes may give up before the python_executor check completes",
+			"check_timeout", h.PythonExecutor.CheckTimeout)
 	}
 	return nil
 }

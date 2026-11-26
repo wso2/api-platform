@@ -22,7 +22,14 @@
 <div id="application-oauth2-keys-config" style="display:none"
     data-org-id="{{orgId}}"
     data-app-id="{{applicationMetadata.id}}"
-    data-available-oauth2-keys="{{json availableOAuth2Keys}}">
+    data-available-oauth2-keys="{{json availableOAuth2Keys}}"
+    {{!-- Why the list above can be empty. Without this the picker cannot tell
+          "you own no keys" from "this application's slots are already taken",
+          and both came out as the first one. --}}
+    data-has-associated-keys="{{#if associatedOAuth2Keys.length}}true{{else}}false{{/if}}"
+    {{!-- How many of the caller's keys are parked on other applications. An empty
+          picker with one of these is a third case, and it needs its own answer. --}}
+    data-keys-elsewhere="{{oauth2KeysElsewhere}}">
 </div>
 
 <section class="section mb-6">
@@ -105,15 +112,19 @@
       <button type="button" class="ak-modal-close" id="associate-oauth2-key-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="ak-modal-body">
-      {{!-- A key belongs to at most one application, so choosing one here moves it
-            off whatever it was on. The picker says so rather than letting the move
-            be a surprise. --}}
+      {{!-- Everything offered here can be taken without detaching it from anywhere:
+            the list is unassociated keys only, in key types this application does
+            not already hold. Nothing here can be refused by the server, and nothing
+            here costs another application its key. The hint states the first rule
+            only; the key-type rule and where to find a key on another application
+            are both in the alert shown when the list comes back empty, which is
+            when someone is actually looking for them. --}}
       <div class="ak-form-group">
         <label for="associate-oauth2-key-select">Key</label>
         <select id="associate-oauth2-key-select" class="ak-form-input">
           <option value="">— Select a key —</option>
         </select>
-        <p class="ak-form-hint">Only your own keys are listed. A key already associated with another application will be moved to this one.</p>
+        <p class="ak-form-hint">Only keys that aren't associated with an app are listed.</p>
       </div>
     </div>
     <div class="ak-modal-footer">

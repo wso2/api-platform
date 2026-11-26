@@ -18,7 +18,7 @@
 
 import { type ReactNode, useRef, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { AcrylicOrangeTheme, OxygenUIThemeProvider } from '@wso2/oxygen-ui';
+import { OxygenTheme, OxygenUIThemeProvider } from '@wso2/oxygen-ui';
 import { BrowserRouter } from 'react-router-dom';
 
 import { createQueryClient } from './api/core/queryClient';
@@ -42,14 +42,14 @@ import { useIntl } from 'react-intl';
 
 /**
  * The themes `OxygenUIThemeProvider` can switch between — currently the one
- * library-defined `AcrylicOrangeTheme`.
+ * library-defined `OxygenTheme` (named `ChoreoLabsTheme` before Oxygen UI 0.24).
  *
  * Module scope, not an inline `themes={[...]}` literal on the provider below:
  * the provider keys a theme-resolving effect on this array's identity, so a
  * fresh literal each render would re-resolve the registry every time.
  */
 const themeRegistry = [
-  { key: 'acrylicOrange', label: 'Acrylic Orange', theme: AcrylicOrangeTheme },
+  { key: 'choreoLabs', label: 'Choreo Labs', theme: OxygenTheme },
 ];
 
 /** Selected on first load, before any stored preference takes over. */

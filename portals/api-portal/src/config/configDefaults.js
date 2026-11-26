@@ -67,6 +67,24 @@ const DEFAULTS = {
             // js-post-quantum-cryptography.md.
             ecdhCurves: 'X25519,P-256',
         },
+        // Outbound access control for destinations that come from tenant or user
+        // input: try-it targets, key managers created through the API, webhook
+        // subscriber URLs and the developer token proxy. Destinations configured in
+        // this file (IdP, Platform API, billing, [[key_manager]] entries) are never
+        // subject to it. See utils/destinationGuard.js.
+        networkSecurity: {
+            accessControl: {
+                enabled: true,
+                mode: 'deny',           // deny: listed hosts refused; allow: only listed hosts permitted
+                hostnames: [],          // RE2 patterns, matched against the whole hostname
+                // Tightens, never widens, each feature's own allow_private_endpoints.
+                denyPrivateNetworks: false,
+                // The portal follows no redirects on these calls; kept for parity
+                // with the other components' access_control sections.
+                maxRedirects: 0,
+                allowedSchemes: ['http', 'https'],
+            },
+        },
     },
     logging: {
         level: 'info',   // debug | info | warn | error
@@ -76,7 +94,7 @@ const DEFAULTS = {
     // Outbound HTTP(S) client settings for this portal's own server-side calls to
     // other services: Platform API login, IDP/key-manager token endpoints, and
     // webhook delivery. See src/config/httpClientOptions.js. The "Try It" proxy
-    // (tryout.* above/below) keeps its own SSRF-guarded client but layers this
+    // (tryout.* above/below) keeps its own destination-guarded client but layers this
     // same tls block on top — see tryoutProxyService.js.
     httpClient: {
         // Reuse TCP+TLS handshakes across requests to the same host instead of
@@ -109,10 +127,10 @@ const DEFAULTS = {
         name: 'api_portal',
         user: '',
         password: '',
-        // TLS: disable | verify-full. On SQL Server, verify-full maps to
+        // TLS: disable | require | verify-ca | verify-full (PostgreSQL). On SQL Server, verify-full maps to
         // encrypt + server-certificate verification (see db/adapters/mssqlAdapter.js).
         sslMode: 'disable',
-        sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-full
+        sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-ca / verify-full
         // Connection pool — PostgreSQL / MSSQL only. Same defaults both adapters
         // used before this was configurable.
         maxOpenConns: 50,  // matches platform-api's max_open_conns naming
@@ -120,6 +138,26 @@ const DEFAULTS = {
         poolIdleTimeoutMs: 10000,
         poolConnectionTimeoutMs: 30000,
         poolRequestTimeoutMs: 30000,  // MSSQL only — per-query execution timeout
+    },
+    // The /health and /ready endpoints (see src/health/). Durations use the Go
+    // notation ("3s", "500ms") the other components' health settings use; the
+    // loader adds a parsed millisecond twin (cacheTtlMs, checkTimeoutMs, ...) for
+    // each one.
+    health: {
+        cacheTtl: '3s',           // how long an evaluated result is reused
+        // Peer addresses (IP or CIDR) allowed to call the endpoints. Empty, or "*"
+        // alone, allows every client. A comma-separated string
+        // is accepted too, so one env var can carry the list.
+        allowedClients: [],
+        database: {
+            checkTimeout: '2s',   // bound on the check's own round trip
+            failureWindow: '30s', // how far back outcomes of real queries count
+            failureRatio: 0.5,    // failed share of attempts that means "down"
+            minAttempts: 5,       // attempts needed before the ratio decides
+            idlePeriod: '10s',    // with too few queries to decide, the check pings once per period
+            poolSaturation: 0.9,  // share of the pool in use, with callers waiting
+            poolWaitLimit: '5s',  // how long saturation may last before "down"
+        },
     },
     security: {
         encryptionKey: '',
@@ -371,6 +409,11 @@ const DEFAULTS = {
             // self-signed subscriber. Development only.
             tlsSkipVerify: false,
         },
+    },
+    // When true, Settings hides the Monetization section (Billing, Meters, Usage & Revenue) and the
+    // plan dialog's Paid plan option. Billing already set up keeps working.
+    monetization: {
+        disabled: false,
     },
     // Billing providers (Stripe, Moesif). The keys are entered in Settings › Billing, not here.
     billing: {

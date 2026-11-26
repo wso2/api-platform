@@ -3922,6 +3922,81 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /health:
+    get:
+      summary: Liveness check
+      description: |
+        Returns the health status of the gateway controller, including whether its
+        database is reachable. Each dependency is reported under `checks`; a failing
+        check carries only a generic reason. The answer comes from the same cached
+        evaluation as `/ready` and as the admin server's `/api/admin/v1/health`.
+        It is served on whichever management listener is active (the plaintext port,
+        or the TLS port when `controller.server.tls` is enabled). The listener opens
+        only once startup has finished, so the connection is refused until then; the
+        admin server's health endpoints answer during startup.
+        This endpoint is exempt from authentication so that health probes and load
+        balancers can reach it. Only clients in `controller.health.allowed_clients`
+        get an answer; any other client gets 403. It has no legacy unprefixed alias.
+      operationId: getManagementHealth
+      tags:
+        - System
+      security: []
+      responses:
+        "200":
+          description: Gateway controller is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "403":
+          description: The client is not in `controller.health.allowed_clients`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthForbiddenResponse"
+        "503":
+          description: Gateway controller is unhealthy; at least one check is down
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /ready:
+    get:
+      summary: Readiness check
+      description: |
+        Returns whether the gateway controller is ready to serve, with the same checks
+        and answer as `/health`; both paths, and the admin server's
+        `/api/admin/v1/health` and `/api/admin/v1/ready`, are served from one cached
+        evaluation. It is served on whichever management listener is active and
+        refuses connections until startup has finished.
+        This endpoint is exempt from authentication so that health probes and load
+        balancers can reach it. Only clients in `controller.health.allowed_clients`
+        get an answer; any other client gets 403. It has no legacy unprefixed alias.
+      operationId: getManagementReady
+      tags:
+        - System
+      security: []
+      responses:
+        "200":
+          description: Gateway controller is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "403":
+          description: The client is not in `controller.health.allowed_clients`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthForbiddenResponse"
+        "503":
+          description: Gateway controller is not ready; at least one check is down
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
 components:
   securitySchemes:
     basicAuth:
@@ -5971,9 +6046,10 @@ components:
         Mode-specific rules are enforced at deploy time, not by this schema: `managed`
         requires `content`; `passthrough` accepts neither `content` nor `signing`, because
         the gateway does not parse or sign a proxied card, and only `passthrough` accepts
-        `rewriteUrls`. When the public Agent Card is `managed`, it must additionally
+        `rewriteUrls`. When the public Agent Card is `managed`, it should additionally
         declare `capabilities.extendedAgentCard: true`, since that is what tells a client
-        the operation exists at all.
+        the operation exists at all. The declaration is recommended and is not enforced
+        at deploy time.
       required:
         - mode
       properties:
@@ -6010,9 +6086,11 @@ components:
         Defaults to true. A proxied card advertises the URLs the agent is reachable at,
         so forwarding it unchanged tells every client to bypass the gateway that was put
         in front of the agent — the default therefore points those URLs at the gateway.
-        Only the bindings the Agent's configured transports expose are rewritten; an
-        interface the gateway does not serve keeps the agent's own URL, and a client
-        selecting that binding reaches the agent directly. The gateway buffers the card
+        Every interface is rewritten: one whose binding the Agent's configured transports
+        do not expose has no gateway endpoint of its own, so it is given the endpoint of
+        the first configured transport rather than keeping the agent's own URL. The
+        gateway does not serve that binding, so a client selecting it is refused by the
+        gateway instead of reaching the agent directly. The gateway buffers the card
         response (up to 1 MiB) and drops the upstream `signatures` block, which no longer
         covers the returned bytes; it never signs a passthrough card, so a rewritten card
         is unsigned. Enabling it does not make the card's security declarations
@@ -7675,6 +7753,58 @@ components:
           createdAt: "2026-01-05T10:30:00Z"
           updatedAt: "2026-01-05T10:30:00Z"
 
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          description: Health status ("healthy" when every check is up, otherwise "unhealthy")
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the health check
+        checks:
+          type: object
+          description: Result of each dependency check, keyed by check name (for example `database`)
+          additionalProperties:
+            $ref: "#/components/schemas/HealthCheck"
+
+    HealthForbiddenResponse:
+      type: object
+      description: Answer to a client outside the allowed set; it carries no check detail
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [forbidden]
+      example:
+        status: forbidden
+
+    HealthCheck:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [up, down]
+          description: Whether the dependency is usable
+        error:
+          type: string
+          description: Generic reason the check is down; present only when down
+        since:
+          type: string
+          format: date-time
+          description: When the check started failing; present only when down
+        warning:
+          type: string
+          description: Generic note on a check that is up but under strain, such as an exhausted connection pool; present only while it applies, and never makes the check down
+
 tags:
   - name: Rest API Management
     description: CRUD operations for Rest APIs
@@ -7694,3 +7824,5 @@ tags:
     description: CRUD operations for LLM Proxy configurations
   - name: Secrets Management
     description: CRUD operations for Secrets
+  - name: System
+    description: Health and readiness of the gateway controller

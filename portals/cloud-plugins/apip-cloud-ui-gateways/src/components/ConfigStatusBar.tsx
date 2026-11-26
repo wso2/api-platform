@@ -21,6 +21,7 @@ import { Box, IconButton, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { describeStatus } from '../config/status';
 import type { ConfigStatus } from '../types';
+import { secondaryTextSx } from './styles';
 
 export type ConfigStatusBarProps = {
   status: ConfigStatus;
@@ -52,8 +53,10 @@ const ConfigStatusBar: FC<ConfigStatusBarProps> = ({
         // An empty title renders no tooltip, so an absent detail needs no branch.
         <Tooltip title={display.detail ?? ''}>
           <Typography
-            color={display.tone === 'error' ? 'error.main' : 'text.secondary'}
-            sx={{ flexShrink: 0 }}
+            sx={{
+              ...(display.tone === 'error' ? { color: 'error.main' } : secondaryTextSx),
+              flexShrink: 0,
+            }}
             variant="body2"
           >
             {display.text}

@@ -16,30 +16,41 @@
  * under the License.
  */
 
-import { HttpResponse, http } from 'msw';
 import { createIntl, createIntlCache } from 'react-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { server } from '@/test/server';
+import { ApiError, type ApiErrorKind } from '@/api/core/errors';
+import type { InvokeApiOnGatewayVariables } from '@/api/resources/gatewayRelay';
 import {
+  createGraphqlRelayFetch,
   createRelayFetch,
   encodeRequestBody,
   testConsoleRelayPlugin,
   toResponseLike,
+  type GraphqlRelayContext,
   type RelayContext,
 } from './proxyTransport';
 
-const INVOKE_URL = 'http://localhost:3000/api/gateway-relay/invoke';
-
 const intl = createIntl({ locale: 'en', messages: {} }, createIntlCache());
+
+/** What the transport asked to invoke, and how the invoke answers. */
+let sent: InvokeApiOnGatewayVariables | undefined;
+let answer: () => Promise<unknown>;
+
+/** Stands in for `useInvokeApiOnGateway`'s `mutateAsync`. */
+const invoke = async (variables: InvokeApiOnGatewayVariables) => {
+  sent = variables;
+  if (variables.signal?.aborted) throw new ApiError('Request was canceled', { kind: 'aborted' });
+  return answer();
+};
 
 const contextRef = (overrides: Partial<RelayContext> = {}) => ({
   current: {
     baseUrl: 'https://gw.example.com/pizza/v1',
     gatewayId: 'gw-prod',
     intl,
+    invoke,
     mode: 'proxy',
-    orgHandle: 'acme',
     restApiId: 'api-1',
     ...overrides,
   } as RelayContext,
@@ -69,26 +80,25 @@ const stubbedBlob = (size: number, contents = '') => {
   return { blob, read };
 };
 
-/** Captures the envelope the relay posted. */
-let sent: Record<string, unknown> | undefined;
+const respondWith = (payload: object) => {
+  answer = async () => payload;
+};
 
-const respondWith = (payload: object, status = 200) => {
-  server.use(
-    http.post(INVOKE_URL, async ({ request }) => {
-      sent = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json(payload, { status });
-    }),
-  );
+/** The invoke request was not relayed: an error response, or no response at all. */
+const failWith = (kind: ApiErrorKind, code?: string) => {
+  answer = async () => {
+    throw new ApiError('ignored', { kind, code, status: kind === 'http' ? 400 : undefined });
+  };
 };
 
 beforeEach(() => {
   sent = undefined;
+  respondWith(relayed());
 });
 
-describe('createRelayFetch — what reaches the BFF', () => {
-  it('sends the API and gateway identifiers rather than a URL', async () => {
-    // The browser naming a URL would make the BFF an open proxy; it names the
-    // API and gateway instead, and the BFF resolves the address itself.
+describe('createRelayFetch — what reaches the Platform API', () => {
+  it('names the API and gateway rather than a URL', async () => {
+    // A browser-supplied URL would make the Platform API an open proxy.
     respondWith(relayed());
 
     await createRelayFetch(contextRef())('ignored', {
@@ -97,17 +107,20 @@ describe('createRelayFetch — what reaches the BFF', () => {
       headers: { 'X-API-Key': 'test-key' },
     });
 
-    expect(sent).toMatchObject({
-      orgHandle: 'acme',
-      restApiId: 'api-1',
-      gatewayId: 'gw-prod',
-      method: 'GET',
-      path: '/order',
-      query: [{ name: 'size', value: 'L' }],
-      headers: [{ name: 'X-API-Key', value: 'test-key' }],
+    expect(sent).toEqual({
+      body: {
+        apiType: 'rest-api',
+        apiId: 'api-1',
+        gatewayId: 'gw-prod',
+        method: 'GET',
+        path: '/order',
+        query: [{ name: 'size', value: 'L' }],
+        headers: [{ name: 'X-API-Key', value: 'test-key' }],
+        body: '',
+        bodyEncoding: 'utf8',
+      },
+      signal: undefined,
     });
-    expect(sent).not.toHaveProperty('url');
-    expect(sent).not.toHaveProperty('baseUrl');
   });
 
   it('drops header entries swagger left unset', async () => {
@@ -121,7 +134,7 @@ describe('createRelayFetch — what reaches the BFF', () => {
       headers: { Accept: null, 'X-Real': 'kept' },
     });
 
-    expect(sent?.headers).toEqual([{ name: 'X-Real', value: 'kept' }]);
+    expect(sent?.body.headers).toEqual([{ name: 'X-Real', value: 'kept' }]);
   });
 
   it('replaces any Content-Type when it supplies a multipart boundary', async () => {
@@ -138,7 +151,7 @@ describe('createRelayFetch — what reaches the BFF', () => {
       body: form,
     });
 
-    const contentTypes = (sent?.headers as Array<{ name: string; value: string }>).filter(
+    const contentTypes = (sent?.body.headers ?? []).filter(
       (header) => header.name.toLowerCase() === 'content-type',
     );
     expect(contentTypes).toHaveLength(1);
@@ -146,8 +159,7 @@ describe('createRelayFetch — what reaches the BFF', () => {
   });
 
   it('refuses a request aimed at another origin', async () => {
-    // Not this API's request. Relaying it would point the BFF somewhere the
-    // console never offered.
+    // Not this API's request, so it is not relayed anywhere.
     respondWith(relayed());
 
     await expect(
@@ -183,7 +195,7 @@ describe('createRelayFetch — what reaches the BFF', () => {
       method: 'GET',
     });
 
-    expect(sent?.gatewayId).toBe('gw-staging');
+    expect(sent?.body.gatewayId).toBe('gw-staging');
   });
 });
 
@@ -217,17 +229,20 @@ describe('createRelayFetch — what comes back', () => {
 
   it('translates each relay failure into its own wording', async () => {
     for (const [code, expected] of [
-      ['TARGET_NOT_ALLOWED', /not configured to reach this gateway/i],
-      ['GATEWAY_NOT_DEPLOYED', /not deployed to the selected gateway/i],
-      ['API_NOT_FOUND', /API could not be found/i],
-      ['GATEWAY_NO_ENDPOINT', /no endpoint configured/i],
-      ['GATEWAY_UNSUPPORTED_SCHEME', /not an HTTP address/i],
-      ['UPSTREAM_TIMEOUT', /did not respond in time/i],
-      ['UPSTREAM_UNREACHABLE', /could not reach this gateway/i],
-      ['RELAY_BUSY', /too many test requests/i],
-      ['SESSION_EXPIRED', /session has expired/i],
+      ['REST_API_INVOKE_TARGET_NOT_ALLOWED', /not configured to reach this gateway/i],
+      ['REST_API_INVOKE_GATEWAY_NOT_DEPLOYED', /not deployed to the selected gateway/i],
+      ['REST_API_NOT_FOUND', /API could not be found/i],
+      ['REST_API_INVOKE_GATEWAY_NO_ENDPOINT', /no endpoint configured/i],
+      ['REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME', /not an HTTP address/i],
+      ['REST_API_INVOKE_UPSTREAM_TIMEOUT', /did not respond in time/i],
+      ['REST_API_INVOKE_UPSTREAM_UNREACHABLE', /could not reach this gateway/i],
+      ['REST_API_INVOKE_BUSY', /too many test requests/i],
+      ['REST_API_INVOKE_REQUEST_INVALID', /cannot be sent as written/i],
+      ['PAYLOAD_TOO_LARGE', /too large to send/i],
+      ['UNAUTHORIZED', /session has expired/i],
+      ['FORBIDDEN', /could not be sent/i],
     ] as const) {
-      respondWith({ status: 'error', code, message: 'ignored' }, 400);
+      failWith('http', code);
 
       await expect(
         createRelayFetch(contextRef())('ignored', {
@@ -238,10 +253,20 @@ describe('createRelayFetch — what comes back', () => {
     }
   });
 
+  it('reports a Platform API it could not reach as an unreachable gateway', async () => {
+    failWith('network');
+
+    await expect(
+      createRelayFetch(contextRef())('ignored', {
+        url: 'https://gw.example.com/pizza/v1/order',
+        method: 'GET',
+      }),
+    ).rejects.toThrow(/could not reach this gateway/i);
+  });
+
   it('does not relabel an abort as a failure', async () => {
     // An abort is the user navigating away; swagger has its own handling.
     const controller = new AbortController();
-    server.use(http.post(INVOKE_URL, () => HttpResponse.json(relayed())));
     controller.abort();
 
     await expect(
@@ -431,25 +456,76 @@ describe('testConsoleRelayPlugin', () => {
   });
 });
 
-describe('createRelayFetch — a reply that is not a relay envelope', () => {
-  it('reports a usable message when the body is not JSON at all', async () => {
-    // An intermediary answering 200 with an HTML error page in the BFF's
-    // place. `json()` would otherwise reject with an untranslated SyntaxError.
-    server.use(
-      http.post(
-        INVOKE_URL,
-        () => new HttpResponse('<html>gateway timeout</html>', { status: 200 }),
-      ),
-    );
-
-    await expect(
-      createRelayFetch(contextRef())('ignored', {
-        url: 'https://gw.example.com/pizza/v1/x',
-        method: 'GET',
-      }),
-    ).rejects.toThrow(/could not be sent/i);
+describe('testConsoleRelayPlugin — reporting each Execute', () => {
+  /*
+   * What swagger-ui really hands the wrapper: `oriAction` is the *bound*
+   * action, so calling it dispatches at once and returns the thunk's Promise,
+   * which resolves to nothing once `setResponse` has stored the result. The
+   * stored response is an Immutable map read with `get`.
+   */
+  const storedResponse = (fields: Record<string, unknown> | null) => ({
+    specSelectors: {
+      responseFor: vi.fn(() => (fields ? { get: (key: string) => fields[key] } : null)),
+    },
   });
 
+  const execute = async (
+    stored: Record<string, unknown> | null,
+    mode: 'proxy' | 'direct' = 'proxy',
+  ) => {
+    const onExecuted = vi.fn();
+    const system = storedResponse(stored);
+    const original = vi.fn(() => Promise.resolve(undefined));
+    const wrapped = testConsoleRelayPlugin(
+      contextRef({ mode, onExecuted }),
+    )().statePlugins.spec.wrapActions.executeRequest(original, system);
+
+    await wrapped({ pathName: '/order', method: 'get' });
+    // Let the report, chained after the dispatch, run.
+    await Promise.resolve();
+    return { onExecuted, system };
+  };
+
+  it('reports a success, under the mode the call was sent with', async () => {
+    const { onExecuted, system } = await execute({ status: 200 }, 'direct');
+
+    expect(system.specSelectors.responseFor).toHaveBeenCalledWith('/order', 'get');
+    expect(onExecuted.mock.calls).toEqual([['direct', 'success']]);
+  });
+
+  it('reports a gateway error status as a failure', async () => {
+    // swagger spreads the error response's fields, `status` among them, into what it stores.
+    const { onExecuted } = await execute({ error: true, status: 500 });
+
+    expect(onExecuted.mock.calls).toEqual([['proxy', 'failure']]);
+  });
+
+  it('reports a failure when nothing came back', async () => {
+    const { onExecuted } = await execute({ error: true, message: 'Failed to fetch' });
+
+    expect(onExecuted.mock.calls).toEqual([['proxy', 'failure']]);
+  });
+
+  it('does not report an aborted request', async () => {
+    const { onExecuted } = await execute({ error: true, name: 'AbortError' });
+
+    expect(onExecuted).not.toHaveBeenCalled();
+  });
+
+  it('returns what the dispatch returned, so swagger-ui keeps its own Promise', () => {
+    const dispatched = Promise.resolve(undefined);
+    const wrapped = testConsoleRelayPlugin(
+      contextRef(),
+    )().statePlugins.spec.wrapActions.executeRequest(
+      () => dispatched,
+      storedResponse({ status: 200 }),
+    );
+
+    expect(wrapped({ pathName: '/order', method: 'get' })).toBe(dispatched);
+  });
+});
+
+describe('createRelayFetch — a reply that is not a relay envelope', () => {
   it('reports a usable message when headers is not a list', async () => {
     // toResponseLike calls headers.forEach; without the shape check this
     // surfaced in the console as a raw TypeError.
@@ -475,5 +551,107 @@ describe('createRelayFetch — a reply that is not a relay envelope', () => {
     });
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('createGraphqlRelayFetch', () => {
+  const ENDPOINT = 'https://gw.example.com/countries/v1/graphql';
+  let graphqlSent: InvokeApiOnGatewayVariables | undefined;
+  const graphqlInvoke = async (variables: InvokeApiOnGatewayVariables) => {
+    graphqlSent = variables;
+    return answer() as ReturnType<GraphqlRelayContext['invoke']>;
+  };
+  const relayFetch = (overrides: Partial<GraphqlRelayContext> = {}) =>
+    createGraphqlRelayFetch({
+      endpointUrl: ENDPOINT,
+      gatewayId: 'gw-prod',
+      graphqlApiId: 'countries',
+      intl,
+      invoke: graphqlInvoke,
+      ...overrides,
+    });
+  const post = (url = ENDPOINT, init: RequestInit = {}) =>
+    relayFetch()(url, {
+      body: '{"query":"{ __typename }"}',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'k' },
+      method: 'POST',
+      ...init,
+    });
+
+  beforeEach(() => {
+    graphqlSent = undefined;
+  });
+
+  it('relays the POST GraphiQL built, with its query string, headers and body', async () => {
+    await post(`${ENDPOINT}?apikey=query-key`);
+
+    expect(graphqlSent?.body).toEqual({
+      apiType: 'graphql-api',
+      apiId: 'countries',
+      gatewayId: 'gw-prod',
+      query: [{ name: 'apikey', value: 'query-key' }],
+      headers: [
+        { name: 'content-type', value: 'application/json' },
+        { name: 'x-api-key', value: 'k' },
+      ],
+      body: '{"query":"{ __typename }"}',
+    });
+  });
+
+  it('answers with a real Response carrying the gateway’s status, headers and body', async () => {
+    respondWith(relayed({ status: 400, statusText: 'Bad Request', body: '{"errors":[]}' }));
+
+    const response = await post();
+
+    expect(response).toBeInstanceOf(Response);
+    expect(response.status).toBe(400);
+    expect(response.statusText).toBe('Bad Request');
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(await response.json()).toEqual({ errors: [] });
+  });
+
+  it('decodes a base64 body, and builds a bodiless status without one', async () => {
+    respondWith(relayed({ body: btoa('{"data":{}}'), bodyEncoding: 'base64' }));
+    expect(await (await post()).text()).toBe('{"data":{}}');
+
+    respondWith(relayed({ status: 204, statusText: 'No Content', body: '' }));
+    expect((await post()).status).toBe(204);
+  });
+
+  it.each([
+    ['another origin', 'https://evil.example.com/countries/v1/graphql', {}],
+    ['another path', 'https://gw.example.com/admin', {}],
+    ['a GET', ENDPOINT, { method: 'GET' }],
+    ['a body that is not text', ENDPOINT, { body: new Blob(['{}']) }],
+  ])('refuses %s, and relays nothing', async (_name, url, init) => {
+    await expect(post(url, init)).rejects.toThrow(/cannot be sent as written/);
+    expect(graphqlSent).toBeUndefined();
+  });
+
+  it('asks for a gateway before relaying anything', async () => {
+    await expect(
+      relayFetch({ gatewayId: '' })(ENDPOINT, { method: 'POST', body: '{}' }),
+    ).rejects.toThrow(/Select a deployed gateway/);
+    expect(graphqlSent).toBeUndefined();
+  });
+
+  it('says why a request was not relayed', async () => {
+    failWith('http', 'GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED');
+    await expect(post()).rejects.toThrow(/not deployed to the selected gateway/);
+
+    failWith('network');
+    await expect(post()).rejects.toThrow(/could not reach this gateway/);
+  });
+
+  it('reports a cancelled request as an AbortError', async () => {
+    failWith('aborted');
+
+    await expect(post()).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('refuses a reply that is not a relay envelope', async () => {
+    respondWith({ hello: 'proxy page' });
+
+    await expect(post()).rejects.toThrow(/could not be sent/);
   });
 });

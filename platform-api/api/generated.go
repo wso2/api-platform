@@ -121,6 +121,57 @@ func (e A2ATransportProtocolBinding) Valid() bool {
 	}
 }
 
+// Defines values for APIInvokeBodyEncoding.
+const (
+	Base64 APIInvokeBodyEncoding = "base64"
+	Utf8   APIInvokeBodyEncoding = "utf8"
+)
+
+// Valid indicates whether the value is a known member of the APIInvokeBodyEncoding enum.
+func (e APIInvokeBodyEncoding) Valid() bool {
+	switch e {
+	case Base64:
+		return true
+	case Utf8:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for APIInvokeRequestApiType.
+const (
+	APIInvokeRequestApiTypeGraphqlApi APIInvokeRequestApiType = "graphql-api"
+	APIInvokeRequestApiTypeRestApi    APIInvokeRequestApiType = "rest-api"
+)
+
+// Valid indicates whether the value is a known member of the APIInvokeRequestApiType enum.
+func (e APIInvokeRequestApiType) Valid() bool {
+	switch e {
+	case APIInvokeRequestApiTypeGraphqlApi:
+		return true
+	case APIInvokeRequestApiTypeRestApi:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for APIInvokeResponseOutcome.
+const (
+	Response APIInvokeResponseOutcome = "response"
+)
+
+// Valid indicates whether the value is a known member of the APIInvokeResponseOutcome enum.
+func (e APIInvokeResponseOutcome) Valid() bool {
+	switch e {
+	case Response:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for APIKeyItemStatus.
 const (
 	APIKeyItemStatusActive  APIKeyItemStatus = "active"
@@ -2526,7 +2577,8 @@ type APIDocumentMetadata struct {
 type APIDocumentRequest struct {
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// FileName File name to associate with the content. Defaults to `{handle}.md`.
+	// FileName File name to associate with the content. Must end in `.md`, and must not start with a dot
+	// or contain `..`. Defaults to `{handle}.md`.
 	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
 
 	// Id URL-safe document handle. On create: optional, server-generated from
@@ -2538,12 +2590,93 @@ type APIDocumentRequest struct {
 	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
 
 	// OtherTypeName Free-form qualifier used when `type` is `Other`. Stored and returned
-	// exactly as typed (no case conversion). Ignored for all other types.
+	// exactly as typed (no case conversion). Must not start with a dot or
+	// contain `..`, `/` or `\`. Ignored for all other types.
 	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
 
 	// Type Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
 	// `PublicForum`, `Other`. Custom types are accepted and stored as-is.
 	Type string `json:"type" yaml:"type"`
+}
+
+// APIInvokeBodyEncoding How `body` is written; `base64` carries binary data
+type APIInvokeBodyEncoding string
+
+// APIInvokeHeader One header or query parameter. A list keeps repeated names.
+type APIInvokeHeader struct {
+	Name  string `json:"name" yaml:"name"`
+	Value string `json:"value" yaml:"value"`
+}
+
+// APIInvokeRequest The test request to send, to the API named by `apiType` and `apiId`. A GraphQL API takes
+// no `method` or `path`: its request is a `POST` to its context, and `body` is required.
+// Hop-by-hop headers, `Host`, `Content-Length`, `Expect`, `Cookie` and the forwarding
+// headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are refused; `Authorization` is
+// allowed, for the API under test.
+type APIInvokeRequest struct {
+	// ApiId Handle of the API to test
+	ApiId string `json:"apiId" yaml:"apiId"`
+
+	// ApiType The API's type, which names the API with `apiId`, since a handle is unique only within its type
+	ApiType APIInvokeRequestApiType `json:"apiType" yaml:"apiType"`
+
+	// Body The request body, at most `gateway_relay.max_request_bytes` once decoded
+	Body *string `json:"body,omitempty" yaml:"body,omitempty"`
+
+	// BodyEncoding How `body` is written; `base64` carries binary data
+	BodyEncoding *APIInvokeBodyEncoding `json:"bodyEncoding,omitempty" yaml:"bodyEncoding,omitempty"`
+
+	// GatewayId Handle of a gateway the API is deployed to
+	GatewayId string `json:"gatewayId" yaml:"gatewayId"`
+
+	// Headers At most 50 headers, 16 KiB across all names and values
+	Headers *[]APIInvokeHeader `json:"headers,omitempty" yaml:"headers,omitempty"`
+
+	// Method REST APIs only. One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case;
+	// `GET` when omitted.
+	Method *string `json:"method,omitempty" yaml:"method,omitempty"`
+
+	// Path REST APIs only. Path relative to the REST API's invoke URL, starting with `/`; `/` when
+	// omitted. It may not leave the REST API's context, or carry a query or fragment.
+	Path  *string            `json:"path,omitempty" yaml:"path,omitempty"`
+	Query *[]APIInvokeHeader `json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// APIInvokeRequestApiType The API's type, which names the API with `apiId`, since a handle is unique only within its type
+type APIInvokeRequestApiType string
+
+// APIInvokeResponse defines model for APIInvokeResponse.
+type APIInvokeResponse struct {
+	// Outcome Always `response`
+	Outcome APIInvokeResponseOutcome `json:"outcome" yaml:"outcome"`
+
+	// Response The gateway's response
+	Response APIInvokeResult `json:"response" yaml:"response"`
+}
+
+// APIInvokeResponseOutcome Always `response`
+type APIInvokeResponseOutcome string
+
+// APIInvokeResult The gateway's response
+type APIInvokeResult struct {
+	// Body The response body; base64 when it is not valid UTF-8
+	Body string `json:"body" yaml:"body"`
+
+	// BodyEncoding How `body` is written; `base64` carries binary data
+	BodyEncoding APIInvokeBodyEncoding `json:"bodyEncoding" yaml:"bodyEncoding"`
+
+	// DurationMs The gateway round trip, in milliseconds
+	DurationMs int64 `json:"durationMs" yaml:"durationMs"`
+
+	// Headers Every response header, sorted, repeated names kept
+	Headers []APIInvokeHeader `json:"headers" yaml:"headers"`
+
+	// Status The gateway's HTTP status
+	Status     int    `json:"status" yaml:"status"`
+	StatusText string `json:"statusText" yaml:"statusText"`
+
+	// Truncated The body exceeded `gateway_relay.max_response_bytes` and was clipped
+	Truncated bool `json:"truncated" yaml:"truncated"`
 }
 
 // APIKeyItem defines model for APIKeyItem.
@@ -2960,7 +3093,7 @@ type CostRateLimitDimension struct {
 
 // CreateAPIKeyRequest defines model for CreateAPIKeyRequest.
 type CreateAPIKeyRequest struct {
-	// ApiKey Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
+	// ApiKey Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways), 36 to 128 characters long. Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
 	ApiKey *string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
 
 	// DisplayName Human-readable name for the API key
@@ -3420,6 +3553,9 @@ type CustomPolicyResponse struct {
 	// Description Human-readable description of the policy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable policy name, from the policy definition
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
 	// Name Policy name
 	Name string `json:"name" yaml:"name"`
 
@@ -3520,7 +3656,7 @@ type DeploymentResponse struct {
 	// - ARCHIVED: Historical deployment, can be rolled back
 	Status DeploymentResponseStatus `json:"status" yaml:"status"`
 
-	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment and a referenced secret could not be resolved (missing, deprecated or not decryptable); the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH.
+	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment and a referenced secret could not be resolved (missing, deprecated or not decryptable); the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. UPSTREAM_URL_NOT_ALLOWED means the gateway's network access control does not permit an upstream URL or a policy URL in the deployment; change the URL, or the gateway's access control, and redeploy.
 	StatusReason *string `json:"statusReason,omitempty" yaml:"statusReason,omitempty"`
 
 	// UpdatedAt Timestamp when the deployment status last changed (null for ARCHIVED deployments)
@@ -5875,7 +6011,10 @@ type Subscription struct {
 	// SubscriptionPlanName Subscription plan display name (e.g. Bronze, Gold)
 	SubscriptionPlanName *string `json:"subscriptionPlanName,omitempty" yaml:"subscriptionPlanName,omitempty"`
 
-	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
+	// SubscriptionToken Opaque subscription token for API invocation via the Subscription-Key header.
+	// Returned when the subscription is created, and on a read (get, list, update)
+	// only to the subscriber the subscription belongs to. A read by any other user
+	// returns the subscription without this field.
 	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
@@ -6115,7 +6254,7 @@ type TokenRotationResponse struct {
 
 // UpdateAPIKeyRequest defines model for UpdateAPIKeyRequest.
 type UpdateAPIKeyRequest struct {
-	// ApiKey The new plain text API key value that will be hashed before storage
+	// ApiKey The new plain text API key value that will be hashed before storage, 36 to 128 characters long
 	ApiKey string `json:"apiKey" yaml:"apiKey"`
 
 	// DisplayName Human-readable name for the API key
@@ -7343,6 +7482,9 @@ type AddApplicationAPIKeysJSONRequestBody = AddApplicationAPIKeysRequest
 
 // AddApplicationAssociationsJSONRequestBody defines body for AddApplicationAssociations for application/json ContentType.
 type AddApplicationAssociationsJSONRequestBody = AddApplicationAssociationsRequest
+
+// InvokeAPIOnGatewayJSONRequestBody defines body for InvokeAPIOnGateway for application/json ContentType.
+type InvokeAPIOnGatewayJSONRequestBody = APIInvokeRequest
 
 // CreateGatewayJSONRequestBody defines body for CreateGateway for application/json ContentType.
 type CreateGatewayJSONRequestBody = CreateGatewayRequest

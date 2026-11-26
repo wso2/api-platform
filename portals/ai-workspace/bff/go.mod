@@ -1,6 +1,6 @@
 module ai-workspace-bff
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
@@ -19,7 +19,9 @@ require (
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 )
 
 replace github.com/wso2/api-platform/common => ../../../common

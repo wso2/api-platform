@@ -70,25 +70,31 @@ var (
 	platformProjectKind          = cleanup.Kind{Name: "platform-api-project", Order: 100}
 	platformGraphQLAPIKind       = cleanup.Kind{Name: "platform-api-graphql-api", Order: 55}
 	platformServiceAccountKind   = cleanup.Kind{Name: "platform-api-service-account", Order: 62}
+	platformWebhookSecretKind    = cleanup.Kind{Name: "platform-api-webhook-secret", Order: 94}
+	// An LLM provider template outlives the providers created from it, so it is removed after
+	// them (platformProviderKind, 84).
+	platformLLMTemplateKind = cleanup.Kind{Name: "platform-api-llm-provider-template", Order: 86}
 )
 
 // platformCollectionKinds maps a top-level control-plane collection to the cleanup kind of a
 // resource the request funnel sees created in it. Resources nested under one of these, such
 // as API keys, subscriptions and builds, are removed with their parent.
 var platformCollectionKinds = map[string]cleanup.Kind{
-	"projects":           platformProjectKind,
-	"rest-apis":          platformRESTAPIKind,
-	"graphql-apis":       platformGraphQLAPIKind,
-	"mcp-proxies":        platformMCPKind,
-	"llm-providers":      platformProviderKind,
-	"llm-proxies":        platformProxyKind,
-	"gateways":           platformGatewayKind,
-	"subscription-plans": platformSubscriptionPlanKind,
-	"meters":             platformMeterKind,
-	"applications":       platformApplicationKind,
-	"secrets":            platformSecretKind,
-	"api-portals":        platformAPIPortalKind,
-	"service-accounts":   platformServiceAccountKind,
+	"projects":               platformProjectKind,
+	"rest-apis":              platformRESTAPIKind,
+	"graphql-apis":           platformGraphQLAPIKind,
+	"mcp-proxies":            platformMCPKind,
+	"llm-providers":          platformProviderKind,
+	"llm-proxies":            platformProxyKind,
+	"gateways":               platformGatewayKind,
+	"subscription-plans":     platformSubscriptionPlanKind,
+	"meters":                 platformMeterKind,
+	"applications":           platformApplicationKind,
+	"secrets":                platformSecretKind,
+	"api-portals":            platformAPIPortalKind,
+	"service-accounts":       platformServiceAccountKind,
+	"webhook-secrets":        platformWebhookSecretKind,
+	"llm-provider-templates": platformLLMTemplateKind,
 }
 
 // platformResourcePattern parses a control-plane resource path: a top-level resource, or one
@@ -125,8 +131,12 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createRestAPIPlain)
 	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and API key authentication$`,
 		s.createRestAPIKeyAuth)
+	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and a sandbox upstream$`,
+		s.createRestAPISandbox)
 	sc.Step(`^I create a GraphQL API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
 		s.createGraphQLAPI)
+	sc.Step(`^I create a deployable "([^"]*)" "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
+		s.createDeployable)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane$`, s.deployArtifact)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployArtifactAndStore)
@@ -774,8 +784,21 @@ func (s *Steps) createRestAPIKeyAuth(ctx context.Context, id, projectHandle, api
 		{"name": "api-key-auth", "version": "v1", "params": map[string]any{"key": apiKeyHeader, "in": "header"}},
 	}
 	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{
-		"url": "http://testbench:3000",
+		"main": map[string]any{"url": "http://testbench:3000"},
 	}, policies)
+}
+
+// createRestAPISandbox creates a REST API with main and sandbox upstreams and one GET /whoami
+// operation: testbench answers it with path /whoami on main, and with environment sandbox and
+// path /sandbox/whoami on the sandbox upstream.
+func (s *Steps) createRestAPISandbox(ctx context.Context, id, projectHandle, apiContext string) error {
+	operations := []map[string]any{
+		{"request": map[string]any{"method": "GET", "path": "/whoami"}},
+	}
+	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{
+		"main":    map[string]any{"url": "http://testbench:3000"},
+		"sandbox": map[string]any{"url": "http://testbench:3000/sandbox"},
+	}, nil)
 }
 
 // createRestAPIWithSecret creates a REST API via platform-api with the given upstream block
@@ -784,12 +807,13 @@ func (s *Steps) createRestAPIKeyAuth(ctx context.Context, id, projectHandle, api
 func (s *Steps) createRestAPIWithSecret(
 	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstreamMain map[string]any,
 ) error {
-	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, upstreamMain, nil)
+	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{"main": upstreamMain}, nil)
 }
 
-// createRestAPI is createRestAPIWithSecret with optional API-level policies.
+// createRestAPI is createRestAPIWithSecret with optional API-level policies, taking the whole
+// upstream block (main, and sandbox when the API has one).
 func (s *Steps) createRestAPI(
-	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstreamMain map[string]any,
+	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstream map[string]any,
 	policies []map[string]any,
 ) error {
 	resolvedID, err := stepscommon.Expand(ctx, id)
@@ -814,7 +838,7 @@ func (s *Steps) createRestAPI(
 		"context":     resolvedContext,
 		"version":     "v1",
 		"projectId":   resolvedProject,
-		"upstream":    map[string]any{"main": upstreamMain},
+		"upstream":    upstream,
 	}
 	if operations != nil {
 		payload["operations"] = operations
@@ -962,6 +986,12 @@ func (s *Steps) deployArtifactToGateway(ctx context.Context, kind, handle, base,
 	collection, ok := deployPaths[resolvedKind]
 	if !ok {
 		return "", fmt.Errorf("unknown artifact kind %q for control-plane deployment", resolvedKind)
+	}
+	// A proxy routes through its provider, so the provider goes to the same gateway first.
+	if provider, ok := deployableBase(ctx, resolvedHandle); ok && resolvedKind == "LlmProxy" {
+		if _, err := s.deployArtifactToGateway(ctx, "LlmProvider", provider, base, bearer, gatewayID); err != nil {
+			return "", fmt.Errorf("deploying the base provider of LLM proxy %q: %w", resolvedHandle, err)
+		}
 	}
 
 	if resolvedKind == "RestApi" {

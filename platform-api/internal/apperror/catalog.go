@@ -68,6 +68,12 @@ var (
 	// *receive*.
 	UnsupportedMediaType = def(CodeCommonUnsupportedMediaType, http.StatusUnsupportedMediaType,
 		"This operation accepts application/json only.")
+	// DestinationNotAllowed is the 400 for a tenant- or user-supplied URL that
+	// server.network_security.access_control refuses. Every operation that takes
+	// such a URL already declares 400. It never says which rule refused the URL or
+	// what the host resolved to; that goes to the log only.
+	DestinationNotAllowed = def(CodeCommonDestinationNotAllowed, http.StatusBadRequest,
+		"The URL's destination is not permitted.")
 )
 
 // REST API entries.
@@ -79,6 +85,25 @@ var (
 	RESTAPIDeploymentValidationFailed = def(CodeRESTAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
 	RESTAPIAPIKeyNotFound             = def(CodeRESTAPIAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	RESTAPIAPIKeyForbidden            = def(CodeRESTAPIAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
+
+	// Invoking a REST API through a gateway. The messages never name the
+	// resolved address or which check refused a request; that goes to the log.
+	RESTAPIInvokeGatewayNotDeployed = def(CodeRESTAPIInvokeGatewayNotDeployed, http.StatusNotFound,
+		"This REST API is not deployed to the selected gateway.")
+	RESTAPIInvokeGatewayNoEndpoint = def(CodeRESTAPIInvokeGatewayNoEndpoint, http.StatusUnprocessableEntity,
+		"The selected gateway has no endpoint configured.")
+	RESTAPIInvokeGatewayUnsupportedScheme = def(CodeRESTAPIInvokeGatewayUnsupportedScheme, http.StatusUnprocessableEntity,
+		"The selected gateway's endpoint is not an http or https address.")
+	RESTAPIInvokeTargetNotAllowed = def(CodeRESTAPIInvokeTargetNotAllowed, http.StatusForbidden,
+		"This gateway cannot be reached from the control plane.")
+	RESTAPIInvokeRequestInvalid = def(CodeRESTAPIInvokeRequestInvalid, http.StatusBadRequest,
+		"This request cannot be sent as written.")
+	RESTAPIInvokeBusy = def(CodeRESTAPIInvokeBusy, http.StatusServiceUnavailable,
+		"Too many test requests are in flight; try again shortly.")
+	RESTAPIInvokeUpstreamTimeout = def(CodeRESTAPIInvokeUpstreamTimeout, http.StatusGatewayTimeout,
+		"The gateway did not respond in time.")
+	RESTAPIInvokeUpstreamUnreachable = def(CodeRESTAPIInvokeUpstreamUnreachable, http.StatusBadGateway,
+		"The gateway could not be reached.")
 )
 
 // LLM provider / proxy entries.
@@ -226,6 +251,14 @@ var (
 	SecretInUse    = def(CodeSecretInUse, http.StatusConflict, "The secret is in use and cannot be deleted.")
 )
 
+// Webhook secret entries.
+var (
+	WebhookSecretNotFound     = def(CodeWebhookSecretNotFound, http.StatusNotFound, "The specified webhook secret could not be found.")
+	WebhookSecretExists       = def(CodeWebhookSecretExists, http.StatusConflict, "A webhook secret with this id already exists.")
+	WebhookSecretVersionLimit = def(CodeWebhookSecretVersionLimit, http.StatusConflict, "The maximum number of secret versions is reached. Delete a version before rotating.")
+	WebhookSecretLastVersion  = def(CodeWebhookSecretLastVersion, http.StatusConflict, "The last remaining secret version cannot be deleted. Delete the webhook secret instead.")
+)
+
 // Service account entries.
 var (
 	ServiceAccountNotFound = def(CodeServiceAccountNotFound, http.StatusNotFound, "The specified service account could not be found.")
@@ -273,6 +306,24 @@ var (
 	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "%s")
 	GraphQLAPISchemaResolveFailed        = def(CodeGraphQLAPISchemaResolveFailed, http.StatusUnprocessableEntity, "The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.")
 	GraphQLAPIDeploymentValidationFailed = def(CodeGraphQLAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
+
+	// Invoking a GraphQL API through a gateway, as RESTAPIInvoke* do for a REST API.
+	GraphQLAPIInvokeGatewayNotDeployed = def(CodeGraphQLAPIInvokeGatewayNotDeployed, http.StatusNotFound,
+		"This GraphQL API is not deployed to the selected gateway.")
+	GraphQLAPIInvokeGatewayNoEndpoint = def(CodeGraphQLAPIInvokeGatewayNoEndpoint, http.StatusUnprocessableEntity,
+		"The selected gateway has no endpoint configured.")
+	GraphQLAPIInvokeGatewayUnsupportedScheme = def(CodeGraphQLAPIInvokeGatewayUnsupportedScheme, http.StatusUnprocessableEntity,
+		"The selected gateway's endpoint is not an http or https address.")
+	GraphQLAPIInvokeTargetNotAllowed = def(CodeGraphQLAPIInvokeTargetNotAllowed, http.StatusForbidden,
+		"This gateway cannot be reached from the control plane.")
+	GraphQLAPIInvokeRequestInvalid = def(CodeGraphQLAPIInvokeRequestInvalid, http.StatusBadRequest,
+		"This request cannot be sent as written.")
+	GraphQLAPIInvokeBusy = def(CodeGraphQLAPIInvokeBusy, http.StatusServiceUnavailable,
+		"Too many test requests are in flight; try again shortly.")
+	GraphQLAPIInvokeUpstreamTimeout = def(CodeGraphQLAPIInvokeUpstreamTimeout, http.StatusGatewayTimeout,
+		"The gateway did not respond in time.")
+	GraphQLAPIInvokeUpstreamUnreachable = def(CodeGraphQLAPIInvokeUpstreamUnreachable, http.StatusBadGateway,
+		"The gateway could not be reached.")
 )
 
 // HMAC secret entries. The 32-character minimum is a fixed, publicly

@@ -18,6 +18,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
+import { useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
@@ -56,10 +57,7 @@ const nightly = aServiceAccount({
   roles: ['ap_service_account', 'ap_deployer'],
   status: 'disabled',
 });
-const roles = [
-  aRole(),
-  aRole({ name: 'ap_deployer', scopes: ['ap:rest_api:deployment:manage'] }),
-];
+const roles = [aRole(), aRole({ name: 'ap_deployer', scopes: ['ap:rest_api:deployment:manage'] })];
 const credentialsFor = (account = ciDeployer) => ({
   clientId: account.clientId,
   clientSecret: SECRET,
@@ -71,14 +69,23 @@ let requests: Recorder;
 /** True once neither React Query cache holds the secret any more. */
 const secretGone = (queryClient: QueryClient) =>
   !JSON.stringify([
-    queryClient.getQueryCache().getAll().map((query) => query.state.data),
-    queryClient.getMutationCache().getAll().map((mutation) => [mutation.state.data, mutation.state.variables]),
+    queryClient
+      .getQueryCache()
+      .getAll()
+      .map((query) => query.state.data),
+    queryClient
+      .getMutationCache()
+      .getAll()
+      .map((mutation) => [mutation.state.data, mutation.state.variables]),
   ]).includes(SECRET);
+
+const LocationProbe = () => <output data-testid="location">{useLocation().pathname}</output>;
 
 function renderPage(options: Parameters<typeof renderWithProviders>[1] = {}) {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <ServiceAccountsPage />
+      <LocationProbe />
     </ApiScopeProvider>,
     { route: `/organizations/${ORG}/service-accounts`, scope: makeConsoleScope(), ...options },
   );
@@ -135,7 +142,9 @@ describe('ServiceAccountsPage', () => {
     expect(within(row).queryByText('sa_acme_nightly_aa11bb')).not.toBeInTheDocument();
 
     await user.hover(within(row).getByRole('button', { name: 'Copy client ID of Nightly report' }));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Copy client ID: sa_acme_nightly_aa11bb');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Copy client ID: sa_acme_nightly_aa11bb',
+    );
   });
 
   it('opens the edit view from the name, with a header and the credentials', async () => {
@@ -169,7 +178,9 @@ describe('ServiceAccountsPage', () => {
       permissionMode: 'enforce',
     });
 
-    expect(await screen.findByText('Service accounts are managed by administrators')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Service accounts are managed by administrators'),
+    ).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(requests.count()).toBe(0);
   });
@@ -184,116 +195,53 @@ describe('ServiceAccountsPage', () => {
     expect(await screen.findByText('Service accounts are turned off')).toBeInTheDocument();
   });
 
-  it('creates an account and shows the secret once, in a dialog Escape cannot close', async () => {
-    useAccounts([]);
-    server.use(accepts('post', '/service-accounts', credentialsFor(), { record: requests }));
-    const { user, queryClient } = renderPage();
+  it(
+    'sends a cleared description as empty',
+    async () => {
+      const account = aServiceAccount();
+      useAccounts([account]);
+      server.use(
+        accepts('put', '/service-accounts/ci-deployer', account, { record: requests }),
+        resource('/service-accounts/ci-deployer', account),
+      );
+      const { user } = renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'New service account' }));
-    const form = await screen.findByRole('dialog');
-    await user.type(within(form).getByLabelText(/Display name/), 'CI deployer');
-    // The server makes the ID from the name, so there is nothing to type.
-    expect(within(form).queryByLabelText(/^ID/)).not.toBeInTheDocument();
-    expect(within(form).queryByRole('button', { name: 'Edit ID' })).not.toBeInTheDocument();
-    await user.type(within(form).getByLabelText(/Description/), 'Deploys APIs');
-    // The default role is already selected.
-    expect(await within(form).findByText('ap_service_account')).toBeInTheDocument();
-    await user.click(within(form).getByRole('button', { name: 'Create' }));
+      await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+      await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+      const form = await screen.findByRole('dialog');
+      await user.clear(within(form).getByLabelText(/Description/));
+      await user.click(within(form).getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(requests.calls.some((call) => call.method === 'POST')).toBe(true));
-    const post = requests.calls.find((call) => call.method === 'POST')!;
-    expect(JSON.parse(post.body)).toEqual({
-      description: 'Deploys APIs',
-      displayName: 'CI deployer',
-      roles: ['ap_service_account'],
-    });
+      await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
+      expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
+        description: '',
+      });
+    },
+    FORM_TIMEOUT,
+  );
 
-    expect(await screen.findByText('Copy the secret now')).toBeInTheDocument();
-    expect(screen.getByLabelText('Client secret')).toHaveValue(SECRET);
-    // The curl example never carries the secret itself.
-    expect(document.body.textContent).not.toContain(SECRET);
-
-    await user.keyboard('{Escape}');
-    expect(screen.getByText('Copy the secret now')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Done' }));
-    await waitFor(() => expect(screen.queryByText('Copy the secret now')).not.toBeInTheDocument());
-    await waitFor(() => expect(secretGone(queryClient)).toBe(true));
-  }, FORM_TIMEOUT);
-
-  it('needs only a name and a role', async () => {
-    useAccounts([]);
-    server.use(accepts('post', '/service-accounts', credentialsFor(), { record: requests }));
+  it('opens the create page from the header button', async () => {
+    useAccounts();
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'New service account' }));
-    const form = await screen.findByRole('dialog');
-    const create = within(form).getByRole('button', { name: 'Create' });
-    expect(create).toBeDisabled();
-    await user.type(within(form).getByLabelText(/Display name/), `Release ${'x'.repeat(50)}`);
-    // The default role is preselected, so a name is enough.
-    await waitFor(() => expect(create).toBeEnabled());
-    await user.type(within(form).getByLabelText(/Display name/), 'y');
 
-    // The default role can be removed, which leaves no role.
-    await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
-    await user.click(await screen.findByRole('option', { name: /ap_service_account/ }));
-    await user.keyboard('{Escape}');
-    expect(create).toBeDisabled();
-    await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
-    await user.click(await screen.findByRole('option', { name: /ap_deployer/ }));
-    await user.keyboard('{Escape}');
-    expect(create).toBeEnabled();
-    await user.click(create);
-
-    await waitFor(() => expect(requests.calls.some((call) => call.method === 'POST')).toBe(true));
-    // No description sent.
-    expect(JSON.parse(requests.calls.find((call) => call.method === 'POST')!.body)).toEqual({
-      displayName: `Release ${'x'.repeat(50)}y`,
-      roles: ['ap_deployer'],
-    });
-  }, FORM_TIMEOUT);
-
-  it('sends a cleared description as empty', async () => {
-    const account = aServiceAccount();
-    useAccounts([account]);
-    server.use(
-      accepts('put', '/service-accounts/ci-deployer', account, { record: requests }),
-      resource('/service-accounts/ci-deployer', account),
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      `/organizations/${ORG}/service-accounts/create`,
     );
-    const { user } = renderPage();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 
-    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
-    const form = await screen.findByRole('dialog');
-    await user.clear(within(form).getByLabelText(/Description/));
-    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
-
-    await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
-    expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
-      description: '',
-    });
-  }, FORM_TIMEOUT);
-
-  it('keeps the dialog open and shows the error when the create is refused', async () => {
+  it('opens the create page from the empty state', async () => {
     useAccounts([]);
-    server.use(
-      failure('post', '/service-accounts', 409, 'SERVICE_ACCOUNT_EXISTS', {
-        message: 'Name clash, try again.',
-      }),
-    );
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'New service account' }));
-    const form = await screen.findByRole('dialog');
-    await user.type(within(form).getByLabelText(/Display name/), 'CI deployer');
-    await user.type(within(form).getByLabelText(/Description/), 'deploys');
-    await waitFor(() => expect(within(form).getByRole('button', { name: 'Create' })).toBeEnabled());
-    await user.click(within(form).getByRole('button', { name: 'Create' }));
 
-    expect(await screen.findByText('Name clash, try again.')).toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-  }, FORM_TIMEOUT);
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      `/organizations/${ORG}/service-accounts/create`,
+    );
+  });
 
   it('regenerates the secret after a warning, then shows the new one', async () => {
     useAccounts();
@@ -308,7 +256,9 @@ describe('ServiceAccountsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
     await user.click(screen.getByRole('menuitem', { name: 'Regenerate secret' }));
     const confirm = screen.getByRole('dialog');
-    expect(within(confirm).getByText(/stops working immediately, with no overlap/)).toBeInTheDocument();
+    expect(
+      within(confirm).getByText(/stops working immediately, with no overlap/),
+    ).toBeInTheDocument();
     await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
 
     expect(await screen.findByText('Copy the secret now')).toBeInTheDocument();
@@ -322,9 +272,11 @@ describe('ServiceAccountsPage', () => {
 
   it('disables an account after confirmation, sending only the status', async () => {
     useAccounts();
-    server.use(accepts('put', '/service-accounts/ci-deployer', aServiceAccount({ status: 'disabled' }), {
-      record: requests,
-    }));
+    server.use(
+      accepts('put', '/service-accounts/ci-deployer', aServiceAccount({ status: 'disabled' }), {
+        record: requests,
+      }),
+    );
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
@@ -357,7 +309,12 @@ describe('ServiceAccountsPage', () => {
     server.use(
       resource(
         '/service-accounts/token',
-        { access_token: 'eyJ.test.token', expires_in: 900, scope: 'ap:rest_api:read ap:gateway:read', token_type: 'Bearer' },
+        {
+          access_token: 'eyJ.test.token',
+          expires_in: 900,
+          scope: 'ap:rest_api:read ap:gateway:read',
+          token_type: 'Bearer',
+        },
         { method: 'post', record: requests },
       ),
     );
@@ -388,7 +345,9 @@ describe('ServiceAccountsPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Get token' }));
 
     expect(
-      await within(dialog).findByText('Could not get a token. Check the secret, and that the account is enabled.'),
+      await within(dialog).findByText(
+        'Could not get a token. Check the secret, and that the account is enabled.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -420,7 +379,9 @@ describe('ServiceAccountsPage', () => {
   it('disables from the edit view with the switch, after a warning', async () => {
     useAccounts();
     server.use(
-      accepts('put', '/service-accounts/ci-deployer', aServiceAccount({ status: 'disabled' }), { record: requests }),
+      accepts('put', '/service-accounts/ci-deployer', aServiceAccount({ status: 'disabled' }), {
+        record: requests,
+      }),
       resource('/service-accounts/ci-deployer', aServiceAccount()),
     );
     const { user } = renderPage();
@@ -433,32 +394,42 @@ describe('ServiceAccountsPage', () => {
     await user.click(within(form).getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
-    expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({ status: 'disabled' });
+    expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
+      status: 'disabled',
+    });
   });
 
-  it('regenerates from the edit view without losing unsaved edits', async () => {
-    useAccounts();
-    server.use(
-      resource('/service-accounts/ci-deployer', aServiceAccount()),
-      accepts('post', '/service-accounts/ci-deployer/regenerate-secret', credentialsFor(), { status: 200 }),
-    );
-    const { user } = renderPage();
+  it(
+    'regenerates from the edit view without losing unsaved edits',
+    async () => {
+      useAccounts();
+      server.use(
+        resource('/service-accounts/ci-deployer', aServiceAccount()),
+        accepts('post', '/service-accounts/ci-deployer/regenerate-secret', credentialsFor(), {
+          status: 200,
+        }),
+      );
+      const { user } = renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
-    const form = await screen.findByRole('dialog');
-    await user.clear(within(form).getByLabelText(/Description/));
-    await user.type(within(form).getByLabelText(/Description/), 'new description');
-    await user.click(within(form).getByRole('button', { name: 'Regenerate' }));
+      await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
+      const form = await screen.findByRole('dialog');
+      await user.clear(within(form).getByLabelText(/Description/));
+      await user.type(within(form).getByLabelText(/Description/), 'new description');
+      await user.click(within(form).getByRole('button', { name: 'Regenerate' }));
 
-    // The confirmation opens over the form, which stays mounted behind it.
-    const confirm = (await screen.findByText(/stops working immediately, with no overlap/)).closest<HTMLElement>(
-      '[role="dialog"]',
-    )!;
-    await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
-    await user.click(await screen.findByRole('button', { name: 'Done' }));
-    await waitFor(() => expect(screen.queryByText('Copy the secret now')).not.toBeInTheDocument());
-    expect(screen.getByLabelText(/Description/)).toHaveValue('new description');
-  }, FORM_TIMEOUT);
+      // The confirmation opens over the form, which stays mounted behind it.
+      const confirm = (
+        await screen.findByText(/stops working immediately, with no overlap/)
+      ).closest<HTMLElement>('[role="dialog"]')!;
+      await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
+      await user.click(await screen.findByRole('button', { name: 'Done' }));
+      await waitFor(() =>
+        expect(screen.queryByText('Copy the secret now')).not.toBeInTheDocument(),
+      );
+      expect(screen.getByLabelText(/Description/)).toHaveValue('new description');
+    },
+    FORM_TIMEOUT,
+  );
 
   it('offers a reload when someone else changed the account first', async () => {
     useAccounts();
@@ -477,7 +448,9 @@ describe('ServiceAccountsPage', () => {
 
     expect(await within(form).findByText(/Someone else changed this account/)).toBeInTheDocument();
     await user.click(within(form).getByRole('button', { name: 'Reload' }));
-    await waitFor(() => expect(within(form).queryByText(/Someone else changed/)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(form).queryByText(/Someone else changed/)).not.toBeInTheDocument(),
+    );
     // What the admin typed is kept.
     expect(within(form).getByLabelText(/Description/)).toHaveValue('new description');
   });
@@ -511,7 +484,9 @@ describe('ServiceAccountsPage', () => {
     expect(within(form).getByLabelText(/Description/)).toHaveValue('new description');
 
     // Saving again sends only the admin's own edit, not a stale status or name.
-    server.use(accepts('put', '/service-accounts/ci-deployer', aServiceAccount(), { record: requests }));
+    server.use(
+      accepts('put', '/service-accounts/ci-deployer', aServiceAccount(), { record: requests }),
+    );
     await user.click(within(form).getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
@@ -530,7 +505,9 @@ describe('ServiceAccountsPage', () => {
     await user.type(within(dialog).getByLabelText(/Client secret/), SECRET);
     await user.click(within(dialog).getByRole('button', { name: 'Get token' }));
 
-    expect(await within(dialog).findByText(/roles do not grant the requested scopes/)).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText(/roles do not grant the requested scopes/),
+    ).toBeInTheDocument();
   });
 
   it('does not blame the secret for a server error', async () => {
@@ -544,13 +521,19 @@ describe('ServiceAccountsPage', () => {
     await user.type(within(dialog).getByLabelText(/Client secret/), SECRET);
     await user.click(within(dialog).getByRole('button', { name: 'Get token' }));
 
-    expect(await within(dialog).findByText('Could not get a token. Try again in a moment.')).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText('Could not get a token. Try again in a moment.'),
+    ).toBeInTheDocument();
     expect(within(dialog).queryByText(/Check the secret/)).not.toBeInTheDocument();
   });
 
   it('sends the search to the server and starts again from the first page', async () => {
     const many = Array.from({ length: 25 }, (_, index) =>
-      aServiceAccount({ clientId: `sa_acme_bot-${index}`, displayName: `Bot ${index}`, id: `bot-${index}` }),
+      aServiceAccount({
+        clientId: `sa_acme_bot-${index}`,
+        displayName: `Bot ${index}`,
+        id: `bot-${index}`,
+      }),
     );
     server.use(
       collection('/service-accounts', many, {
@@ -574,7 +557,11 @@ describe('ServiceAccountsPage', () => {
 
   it('steps back a page when the last row on the last page is deleted', async () => {
     const many = Array.from({ length: 21 }, (_, index) =>
-      aServiceAccount({ clientId: `sa_acme_bot-${index}`, displayName: `Bot ${index}`, id: `bot-${index}` }),
+      aServiceAccount({
+        clientId: `sa_acme_bot-${index}`,
+        displayName: `Bot ${index}`,
+        id: `bot-${index}`,
+      }),
     );
     let current = many;
     server.use(
@@ -584,7 +571,11 @@ describe('ServiceAccountsPage', () => {
         const offset = Number(params.get('offset') ?? 0);
         const limit = Number(params.get('limit') ?? 20);
         return HttpResponse.json(
-          listEnvelope(current.slice(offset, offset + limit), { limit, offset, total: current.length }) as never,
+          listEnvelope(current.slice(offset, offset + limit), {
+            limit,
+            offset,
+            total: current.length,
+          }) as never,
         );
       }),
       http.delete(apiUrl('/service-accounts/bot-20'), () => {
@@ -607,7 +598,12 @@ describe('ServiceAccountsPage', () => {
 
   it('builds the edit form from a fresh read, not the cached list row', async () => {
     useAccounts();
-    server.use(resource('/service-accounts/ci-deployer', aServiceAccount({ description: 'changed-by-someone-else' })));
+    server.use(
+      resource(
+        '/service-accounts/ci-deployer',
+        aServiceAccount({ description: 'changed-by-someone-else' }),
+      ),
+    );
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
@@ -620,7 +616,10 @@ describe('ServiceAccountsPage', () => {
 
 describe('ServiceAccountsPage when something fails', () => {
   const serverError = () =>
-    HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'boom', status: 'error' }, { status: 500 });
+    HttpResponse.json(
+      { code: 'INTERNAL_ERROR', message: 'boom', status: 'error' },
+      { status: 500 },
+    );
 
   it('will not ask for a token until the roles have loaded', async () => {
     server.use(
@@ -636,41 +635,6 @@ describe('ServiceAccountsPage when something fails', () => {
 
     expect(await within(dialog).findByText(/Could not load the roles/)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Get token' })).toBeDisabled();
-  });
-
-  it('keeps a new secret on screen when the list fails to reload behind it', async () => {
-    let lists = 0;
-    server.use(
-      http.get(apiUrl('/service-accounts'), () =>
-        ++lists === 1 ? HttpResponse.json(listEnvelope([])) : serverError(),
-      ),
-      collection('/roles', roles),
-      accepts('post', '/service-accounts', credentialsFor()),
-    );
-    const { user } = renderPage();
-
-    await user.click(await screen.findByRole('button', { name: 'New service account' }));
-    const form = await screen.findByRole('dialog');
-    await user.type(within(form).getByLabelText(/Display name/), 'CI deployer');
-    expect(await within(form).findByText('ap_service_account')).toBeInTheDocument();
-    await user.click(within(form).getByRole('button', { name: 'Create' }));
-
-    expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
-    expect(screen.getByText('Copy the secret now')).toBeInTheDocument();
-    expect(screen.getByLabelText('Client secret')).toHaveValue(SECRET);
-  }, FORM_TIMEOUT);
-
-  it('measures the name in bytes, as the server does', async () => {
-    useAccounts([]);
-    const { user } = renderPage();
-
-    await user.click(await screen.findByRole('button', { name: 'New service account' }));
-    const form = await screen.findByRole('dialog');
-    await user.click(within(form).getByLabelText(/Display name/));
-    // 100 characters, 300 bytes.
-    await user.paste('界'.repeat(100));
-
-    expect(await within(form).findByText(/Too long: the limit is 255 bytes/)).toBeInTheDocument();
   });
 
   it('keeps the conflict when the reload fails, so a stale form cannot be saved', async () => {
@@ -699,51 +663,70 @@ describe('ServiceAccountsPage when something fails', () => {
     expect(within(form).getByText(/Someone else changed this account/)).toBeInTheDocument();
   });
 
-  it('keeps an issued token on screen when the list fails to reload behind it', async () => {
-    useAccounts();
-    server.use(
-      resource(
-        '/service-accounts/token',
-        { access_token: 'eyJ.test.token', expires_in: 900, scope: 'ap:rest_api:read', token_type: 'Bearer' },
-        { method: 'post' },
-      ),
-    );
-    const { user } = renderPage();
+  it(
+    'keeps an issued token on screen when the list fails to reload behind it',
+    async () => {
+      useAccounts();
+      server.use(
+        resource(
+          '/service-accounts/token',
+          {
+            access_token: 'eyJ.test.token',
+            expires_in: 900,
+            scope: 'ap:rest_api:read',
+            token_type: 'Bearer',
+          },
+          { method: 'post' },
+        ),
+      );
+      const { user } = renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Get token' }));
-    const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByLabelText(/Client secret/), SECRET);
-    // A token exchange refreshes the list; from here on that read fails.
-    server.use(failure('get', '/service-accounts', 500, 'INTERNAL_ERROR'));
-    await user.click(within(dialog).getByRole('button', { name: 'Get token' }));
+      await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+      await user.click(screen.getByRole('menuitem', { name: 'Get token' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/Client secret/), SECRET);
+      // A token exchange refreshes the list; from here on that read fails.
+      server.use(failure('get', '/service-accounts', 500, 'INTERNAL_ERROR'));
+      await user.click(within(dialog).getByRole('button', { name: 'Get token' }));
 
-    expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
-    expect(screen.getByLabelText('Access token')).toHaveValue('eyJ.test.token');
-  }, FORM_TIMEOUT);
+      expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
+      expect(screen.getByLabelText('Access token')).toHaveValue('eyJ.test.token');
+    },
+    FORM_TIMEOUT,
+  );
 
-  it('keeps unsaved edits when the list fails to reload after a regenerate', async () => {
-    useAccounts();
-    server.use(
-      resource('/service-accounts/ci-deployer', aServiceAccount()),
-      accepts('post', '/service-accounts/ci-deployer/regenerate-secret', credentialsFor(), { status: 200 }),
-    );
-    const { user } = renderPage();
+  it(
+    'keeps unsaved edits when the list fails to reload after a regenerate',
+    async () => {
+      useAccounts();
+      server.use(
+        resource('/service-accounts/ci-deployer', aServiceAccount()),
+        accepts('post', '/service-accounts/ci-deployer/regenerate-secret', credentialsFor(), {
+          status: 200,
+        }),
+      );
+      const { user } = renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
-    const form = await screen.findByRole('dialog');
-    await user.clear(within(form).getByLabelText(/Description/));
-    await user.type(within(form).getByLabelText(/Description/), 'new description');
-    server.use(failure('get', '/service-accounts', 500, 'INTERNAL_ERROR'));
-    await user.click(within(form).getByRole('button', { name: 'Regenerate' }));
-    const confirm = (await screen.findByText(/stops working immediately/)).closest<HTMLElement>('[role="dialog"]')!;
-    await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
-    expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
-    await user.click(await screen.findByRole('button', { name: 'Done' }));
+      await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
+      const form = await screen.findByRole('dialog');
+      await user.clear(within(form).getByLabelText(/Description/));
+      await user.type(within(form).getByLabelText(/Description/), 'new description');
+      server.use(failure('get', '/service-accounts', 500, 'INTERNAL_ERROR'));
+      await user.click(within(form).getByRole('button', { name: 'Regenerate' }));
+      const confirm = (await screen.findByText(/stops working immediately/)).closest<HTMLElement>(
+        '[role="dialog"]',
+      )!;
+      await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
+      expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: 'Done' }));
 
-    await waitFor(() => expect(screen.queryByText('Copy the secret now')).not.toBeInTheDocument());
-    expect(screen.getByLabelText(/Description/)).toHaveValue('new description');
-  }, FORM_TIMEOUT);
+      await waitFor(() =>
+        expect(screen.queryByText('Copy the secret now')).not.toBeInTheDocument(),
+      );
+      expect(screen.getByLabelText(/Description/)).toHaveValue('new description');
+    },
+    FORM_TIMEOUT,
+  );
 
   it('asks for the ID it shows, and cannot be dismissed while a regenerate runs', async () => {
     useAccounts();
@@ -765,7 +748,9 @@ describe('ServiceAccountsPage when something fails', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
     await user.click(screen.getByRole('menuitem', { name: 'Regenerate secret' }));
-    const confirm = (await screen.findByText(/stops working immediately/)).closest<HTMLElement>('[role="dialog"]')!;
+    const confirm = (await screen.findByText(/stops working immediately/)).closest<HTMLElement>(
+      '[role="dialog"]',
+    )!;
     await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
     await user.keyboard('{Escape}');
     answer();

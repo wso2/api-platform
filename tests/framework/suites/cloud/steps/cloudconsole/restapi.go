@@ -37,27 +37,67 @@ import (
 const (
 	defaultAPIOperations = `[{"name":"getPost","request":{"method":"GET","path":"/posts/1"}}]`
 	newVersionAPILabel   = "new API version"
+
+	// backendEnv overrides the backend the synthetic REST APIs call.
+	backendEnv = "CLOUD_IT_BACKEND_URL"
+	// defaultBackend is the testbench backend service, which answers any path with the request it received.
+	defaultBackend = "https://development-wso2cloud.gateway.dev.cloud.wso2.com/apip-testbench-mocks/backend"
 )
 
-// apiRef names the scenario-state keys that describe one synthetic REST API, so a step can act on
-// the API created first or on a second version of it.
+// apiRef names the scenario-state keys that describe one synthetic API, so a step can act on the
+// REST API created first, on a second version of it, or on a GraphQL API.
 type apiRef struct {
 	id         string
 	deployment string
 	definition string
+	// kind is the artifact kind the project deployment routes are told; empty means a REST API.
+	kind string
+	// collection is the platform route that reads the API and its deployments.
+	collection string
+	// builds lists the builds the scenario saw for the API, oldest first, and buildsOwner the API
+	// they belong to. Both are empty for an API whose builds are not followed.
+	builds      string
+	buildsOwner string
 }
 
 var (
-	primaryAPI = apiRef{id: keyAPIID, deployment: keyDeploymentID, definition: keyAPIDefinition}
-	versionAPI = apiRef{id: keyVersionAPIID, deployment: keyVersionDeploymentID, definition: keyVersionAPIDefinition}
+	primaryAPI = apiRef{
+		id: keyAPIID, deployment: keyDeploymentID, definition: keyAPIDefinition,
+		collection: restAPIsCollection, builds: keyBuildIDs, buildsOwner: keyBuildsOwner,
+	}
+	versionAPI = apiRef{
+		id: keyVersionAPIID, deployment: keyVersionDeploymentID, definition: keyVersionAPIDefinition,
+		collection: restAPIsCollection,
+	}
+	graphQLAPI = apiRef{
+		id: keyGraphQLAPIID, deployment: keyGraphQLDeploymentID, definition: keyGraphQLDefinition,
+		kind: kindGraphQLAPI, collection: graphQLAPIsCollection,
+		builds: keyGraphQLBuildIDs, buildsOwner: keyGraphQLBuildsOwner,
+	}
 )
 
 // apiRefFor resolves the label used in step text to the state keys it refers to.
 func apiRefFor(label string) apiRef {
-	if label == newVersionAPILabel {
+	switch label {
+	case newVersionAPILabel:
 		return versionAPI
+	case graphQLAPILabel:
+		return graphQLAPI
+	default:
+		return primaryAPI
 	}
-	return primaryAPI
+}
+
+// withKind adds the artifact kind to a project deployment route; a REST API needs none.
+func withKind(path, kind string) string {
+	if kind == "" {
+		return path
+	}
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "kind=" + url.QueryEscape(kind)
 }
 
 // apiOverrideKeys lists the definition fields a values table may replace; the first three are
@@ -124,11 +164,15 @@ func newAPIDefinition(ctx context.Context, id, projectID string, overrides map[s
 	if err := json.Unmarshal([]byte(defaultAPIOperations), &operations); err != nil {
 		return nil, err
 	}
+	backend, err := testbenchURL(backendEnv, defaultBackend)
+	if err != nil {
+		return nil, err
+	}
 	definition := map[string]any{
 		"id": id, "displayName": "Synthetic " + id,
 		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
 		"context":     "/" + id + "/v1", "version": "1.0.0", "projectId": projectID,
-		"upstream":   map[string]any{"main": map[string]string{"url": "https://jsonplaceholder.typicode.com"}},
+		"upstream":   map[string]any{"main": map[string]string{"url": backend}},
 		"security":   map[string]bool{"enabled": false},
 		"operations": operations,
 	}
@@ -329,85 +373,94 @@ func (s *Steps) redeployAPI(ctx context.Context) error {
 	return s.deployAPIAs(ctx, primaryAPI)
 }
 
-// deployAPIAs deploys the current definition of the API a ref points at to the active gateway and
-// keeps the id of the deployment the platform created for it.
+// deployAPIAs deploys the current definition of the API a ref points at to the active gateway,
+// keeps the id of the deployment the platform created for it, and adds the build it rendered to
+// the builds the scenario follows for the API.
 func (s *Steps) deployAPIAs(ctx context.Context, ref apiRef) error {
-	apiID, err := requiredValue(ctx, ref.id)
+	deployed, err := s.deployRefToActiveGateway(ctx, ref, "")
 	if err != nil {
 		return err
+	}
+	if ref.builds == "" || deployed.build == "" {
+		return nil
+	}
+	return appendBuild(ctx, ref, deployed.build)
+}
+
+// deployRefToActiveGateway deploys the API a ref points at to the active gateway, naming a build
+// when one is given, and keeps the id of the deployment created on that gateway.
+func (s *Steps) deployRefToActiveGateway(ctx context.Context, ref apiRef, buildID string) (deployment, error) {
+	apiID, err := requiredValue(ctx, ref.id)
+	if err != nil {
+		return deployment{}, err
 	}
 	gatewayID, err := requiredValue(ctx, keyGatewayID)
 	if err != nil {
-		return err
+		return deployment{}, err
 	}
 	environment, err := requiredValue(ctx, keyGatewayEnv)
 	if err != nil {
-		return fmt.Errorf("the active gateway does not report its environment: %w", err)
+		return deployment{}, fmt.Errorf("the active gateway does not report its environment: %w", err)
 	}
-	deploymentID, err := s.deployToGateway(ctx, apiID, environment, gatewayID)
+	deployed, err := s.deployArtifact(ctx, ref.kind, apiID, environment, gatewayID, buildID)
 	if err != nil {
-		return fmt.Errorf("deploying APIP REST API: %w", err)
+		return deployment{}, fmt.Errorf("deploying APIP API %s: %w", apiID, err)
 	}
-	return tcontext.Set(ctx, ref.deployment, deploymentID)
+	return deployed, tcontext.Set(ctx, ref.deployment, deployed.id)
 }
 
-// deployToGateway deploys the current definition of an API to one gateway of an environment
-// through the API's project and returns the id of the deployment created on that gateway. The
-// platform renders a build of the definition as it is now when no build is named.
+// deployment is what a deployment request created on one gateway: the deployment and the build
+// it runs.
+type deployment struct {
+	id    string
+	build string
+}
+
+// deployToGateway deploys the current definition of a REST API to one gateway of an environment
+// through the API's project and returns the id of the deployment created on that gateway.
 func (s *Steps) deployToGateway(ctx context.Context, apiID, environment, gatewayID string) (string, error) {
+	deployed, err := s.deployArtifact(ctx, "", apiID, environment, gatewayID, "")
+	return deployed.id, err
+}
+
+// deployArtifact deploys an API of a kind to one gateway of an environment through the API's
+// project. The platform renders a build of the definition as it is now when no build is named.
+func (s *Steps) deployArtifact(ctx context.Context, kind, apiID, environment, gatewayID, buildID string) (deployment, error) {
 	projectID, err := requiredValue(ctx, keyProjectID)
 	if err != nil {
-		return "", err
+		return deployment{}, err
+	}
+	body := map[string]any{"environment": environment, "gateways": []map[string]string{{"gatewayId": gatewayID}}}
+	if buildID != "" {
+		body["buildId"] = buildID
 	}
 	resp, err := s.doAuthenticated(ctx, http.MethodPost,
-		"/projects/"+url.PathEscape(projectID)+"/apis/"+url.PathEscape(apiID)+"/deployments",
-		map[string]any{"environment": environment, "gateways": []map[string]string{{"gatewayId": gatewayID}}})
+		withKind("/projects/"+url.PathEscape(projectID)+"/apis/"+url.PathEscape(apiID)+"/deployments", kind), body)
 	if err != nil {
-		return "", err
+		return deployment{}, err
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return "", responseError(resp)
+		return deployment{}, responseError(resp)
 	}
 	items, err := listItems(resp)
 	if err != nil {
-		return "", fmt.Errorf("decoding the deployment response: %w", err)
+		return deployment{}, fmt.Errorf("decoding the deployment response: %w", err)
 	}
 	for _, item := range items {
 		if item["gatewayId"] != gatewayID {
 			continue
 		}
-		if deploymentID, _ := item["deploymentId"].(string); deploymentID != "" {
-			return deploymentID, nil
+		if id, _ := item["deploymentId"].(string); id != "" {
+			build, _ := item["buildId"].(string)
+			return deployment{id: id, build: build}, nil
 		}
 	}
-	return "", fmt.Errorf("the deployment response lists no deployment on gateway %q", gatewayID)
+	return deployment{}, fmt.Errorf("the deployment response lists no deployment on gateway %q", gatewayID)
 }
 
-func (s *Steps) undeployAPI(ctx context.Context) error {
-	apiID, err := requiredValue(ctx, primaryAPI.id)
-	if err != nil {
-		return err
-	}
-	deploymentID, err := requiredValue(ctx, primaryAPI.deployment)
-	if err != nil {
-		return err
-	}
-	gatewayID, err := requiredValue(ctx, keyGatewayID)
-	if err != nil {
-		return err
-	}
-	environment, err := requiredValue(ctx, keyGatewayEnv)
-	if err != nil {
-		return fmt.Errorf("the active gateway does not report its environment: %w", err)
-	}
-	projectID, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost,
-		"/projects/"+url.PathEscape(projectID)+"/apis/"+url.PathEscape(apiID)+
-			"/deployments/"+url.PathEscape(deploymentID)+"/undeploy?environment="+url.QueryEscape(environment)+
-			"&gatewayId="+url.QueryEscape(gatewayID), nil)
+// undeployAPI stops the deployment of the labelled API on the active gateway.
+func (s *Steps) undeployAPI(ctx context.Context, label string) error {
+	resp, err := s.sendUndeploy(ctx, apiRefFor(label), "")
 	if err != nil {
 		return err
 	}
@@ -415,6 +468,42 @@ func (s *Steps) undeployAPI(ctx context.Context) error {
 		return responseError(resp)
 	}
 	return nil
+}
+
+// tryUndeployAPI asks to stop the synthetic REST API's deployment on the active gateway, naming
+// the given environment or else the gateway's own, and leaves the answer for the scenario.
+func (s *Steps) tryUndeployAPI(ctx context.Context, environment string) error {
+	expanded, err := expandCloudValue(ctx, environment)
+	if err != nil {
+		return err
+	}
+	_, err = s.sendUndeploy(ctx, primaryAPI, strings.TrimSpace(expanded))
+	return err
+}
+
+// sendUndeploy sends the undeploy of the deployment a ref points at on the active gateway through
+// the API's project, in the active gateway's environment unless another is given.
+func (s *Steps) sendUndeploy(ctx context.Context, ref apiRef, environment string) (*httpx.Response, error) {
+	deploymentID, err := requiredValue(ctx, ref.deployment)
+	if err != nil {
+		return nil, err
+	}
+	gatewayID, err := requiredValue(ctx, keyGatewayID)
+	if err != nil {
+		return nil, err
+	}
+	if environment == "" {
+		if environment, err = requiredValue(ctx, keyGatewayEnv); err != nil {
+			return nil, fmt.Errorf("the active gateway does not report its environment: %w", err)
+		}
+	}
+	scope, err := refScopePath(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return s.doAuthenticated(ctx, http.MethodPost, withKind(
+		scope+"/deployments/"+url.PathEscape(deploymentID)+"/undeploy?environment="+url.QueryEscape(environment)+
+			"&gatewayId="+url.QueryEscape(gatewayID), ref.kind), nil)
 }
 
 // deploymentRecord reads the record of the deployment a ref points at; it is nil when the list
@@ -433,7 +522,7 @@ func (s *Steps) deploymentRecord(ctx context.Context, ref apiRef) (map[string]an
 		return nil, err
 	}
 	resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet,
-		"/rest-apis/"+url.PathEscape(apiID)+"/deployments?gatewayId="+url.QueryEscape(gatewayID), nil)
+		ref.collection+"/"+url.PathEscape(apiID)+"/deployments?gatewayId="+url.QueryEscape(gatewayID), nil)
 	if err != nil {
 		return nil, retry.Transient(err)
 	}
@@ -469,10 +558,10 @@ func (s *Steps) waitDeployment(ctx context.Context, label, status string) error 
 		func(ctx context.Context) (string, error) { return s.deploymentStatus(ctx, ref) },
 		func(got string) bool { return got == status })
 	if err != nil {
-		return fmt.Errorf("waiting for APIP REST API deployment to be %s: %w", status, err)
+		return fmt.Errorf("waiting for the %s deployment to be %s: %w", label, status, err)
 	}
 	if last != status {
-		return fmt.Errorf("APIP REST API deployment never reached %s; last status %q", status, last)
+		return fmt.Errorf("the %s deployment never reached %s; last status %q", label, status, last)
 	}
 	return nil
 }
@@ -537,6 +626,32 @@ func (s *Steps) keepServingUntilDeployed(ctx context.Context, method, target str
 	return nil
 }
 
+// keepReturningFor sends a data-plane request for the whole window and fails on the first answer
+// that is not the expected status, proving the gateway keeps answering it that way over time.
+func (s *Steps) keepReturningFor(ctx context.Context, method, target string, want, seconds int) error {
+	if seconds < 1 {
+		return fmt.Errorf("a window of %d seconds is too short to observe", seconds)
+	}
+	request, err := s.prepareDataPlaneRequest(ctx, httpx.Request{Method: method, URL: target})
+	if err != nil {
+		return err
+	}
+	// A probe that gets no answer is not the expected status, so it fails the window too.
+	noRetry := retry.Options{Retryable: func(error) bool { return false }}
+	last, err := retry.Never(ctx, noRetry, time.Duration(seconds)*time.Second,
+		func(ctx context.Context) (*httpx.Response, error) {
+			return s.funnel.Send(ctx, request)
+		},
+		func(response *httpx.Response) bool { return response.StatusCode != want })
+	if err != nil {
+		if last != nil {
+			return fmt.Errorf("%s %s did not keep returning %d: %w (last %s)", request.Method, request.URL, want, err, last.Describe())
+		}
+		return fmt.Errorf("%s %s did not keep returning %d: %w", request.Method, request.URL, want, err)
+	}
+	return nil
+}
+
 // createAPIKey issues an API key for the synthetic REST API and keeps its value in scenario state
 // only; the response is not published so the key never reaches a step's response slot.
 func (s *Steps) createAPIKey(ctx context.Context) error {
@@ -559,15 +674,54 @@ func (s *Steps) createAPIKey(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIKey, key)
 }
 
-// sendWithAPIKeyUntilStatus invokes a data-plane URL with the stored API key in the named header.
-func (s *Steps) sendWithAPIKeyUntilStatus(ctx context.Context, method, target, header string, want int) error {
-	key, err := requiredValue(ctx, keyAPIKey)
+// credentialKeys maps each credential a gateway step can send to its scenario-state key.
+var credentialKeys = map[string]string{
+	"API key":                              keyAPIKey,
+	"previous API key":                     keyPreviousAPIKey,
+	"subscription token":                   keyConsumerSubscriptionToken,
+	"previous subscription token":          keyPreviousSubscriptionToken,
+	"access token":                         keyAccessToken,
+	"access token with a forged signature": keyAccessToken,
+}
+
+// sendWithCredentialUntilStatus invokes a data-plane URL with a stored credential in the named
+// header. An access token is sent as a bearer token.
+func (s *Steps) sendWithCredentialUntilStatus(ctx context.Context, method, target, header, which string, want int) error {
+	stateKey, ok := credentialKeys[which]
+	if !ok {
+		return fmt.Errorf("unsupported credential %q", which)
+	}
+	key, err := requiredValue(ctx, stateKey)
 	if err != nil {
 		return err
 	}
+	if stateKey == keyAccessToken {
+		if which == "access token with a forged signature" {
+			if key, err = forgeSignature(key); err != nil {
+				return err
+			}
+		}
+		key = "Bearer " + key
+	}
 	header = strings.TrimSpace(header)
 	if header == "" {
-		return fmt.Errorf("sending request: API key header name is required")
+		return fmt.Errorf("sending request: header name is required")
 	}
 	return s.sendUntilStatusWith(ctx, method, target, want, map[string]string{header: key})
+}
+
+// forgeSignature returns the JWT with its signature changed.
+func forgeSignature(token string) (string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[2] == "" {
+		return "", fmt.Errorf("the access token is not a signed JWT")
+	}
+	signature := []byte(parts[2])
+	if signature[0] == 'A' {
+		signature[0] = 'B'
+	} else {
+		signature[0] = 'A'
+	}
+	parts[2] = string(signature)
+	return strings.Join(parts, "."), nil
 }

@@ -29,7 +29,18 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 )
+
+// allowTemplateEnv permits {{ env }} to read the given names for the duration
+// of the test; artifact templates are deny-all by default.
+func allowTemplateEnv(t *testing.T, names ...string) {
+	t.Helper()
+	policy, err := funcs.NewEnvAccessPolicy(names)
+	require.NoError(t, err)
+	prev := funcs.SetEnvAccessPolicy(policy)
+	t.Cleanup(func() { funcs.SetEnvAccessPolicy(prev) })
+}
 
 const dedicatedHostnameMainMessage = "this gateway requires every mtls-auth API to have its own hostname " +
 	"(an exact name or a leading *.); set vhosts.main"
@@ -154,6 +165,7 @@ func TestUpdateRestAPI_MtlsRequiresDedicatedHostname(t *testing.T) {
 // The refusal follows the rendered vhost, not the template as written.
 func TestRestAPI_MtlsRequiresDedicatedHostname_TemplatedVhost(t *testing.T) {
 	const templated = `{{ env "MTLS_DEDICATED_HOSTNAME_TEST_HOST" }}`
+	allowTemplateEnv(t, "MTLS_DEDICATED_HOSTNAME_TEST_HOST")
 
 	t.Run("create rendering to an IP address is refused", func(t *testing.T) {
 		t.Setenv("MTLS_DEDICATED_HOSTNAME_TEST_HOST", "10.0.0.5")
@@ -257,6 +269,7 @@ func TestUpdateRestAPI_MTLSHostnameNotScopedWarning(t *testing.T) {
 // not the template as written.
 func TestUpdateRestAPI_MTLSHostnameNotScopedWarning_TemplatedVhost(t *testing.T) {
 	const templated = `{{ env "MTLS_HOSTNAME_TEST_HOST" }}`
+	allowTemplateEnv(t, "MTLS_HOSTNAME_TEST_HOST")
 
 	t.Run("renders to its own hostname", func(t *testing.T) {
 		t.Setenv("MTLS_HOSTNAME_TEST_HOST", "pay.example.com")

@@ -22,6 +22,30 @@
  */
 export type ManagedPortalStatus = 'pending' | 'active' | 'failed' | 'deleting';
 
+/** A change to an existing portal that the backend runs in the background. */
+export type ManagedPortalChangeOp = 'loginEnvironment' | 'selfSignup' | 'rotateKey';
+
+/** The background change running while the portal is pending. */
+export interface ManagedPortalChange {
+  op: ManagedPortalChangeOp;
+  /** The environment the sign-in moves to, for a loginEnvironment change. */
+  loginEnvironment?: string;
+  /** The sign-up setting being applied, for a selfSignup change. */
+  selfSignup?: boolean;
+}
+
+/**
+ * The last background change, when it failed. `op` is absent for a change
+ * kind this UI does not know; the failure still counts.
+ */
+export interface ManagedPortalChangeError extends Omit<ManagedPortalChange, 'op'> {
+  op?: ManagedPortalChangeOp;
+  /** What failed and what state the portal was left in, for the user. */
+  message: string;
+  /** ISO timestamp of the failure. */
+  at?: string;
+}
+
 export interface ManagedPortal {
   /** Portal id; equal to `handle` in the current backend. */
   id: string;
@@ -43,6 +67,10 @@ export interface ManagedPortal {
    * still show a working Visit button.
    */
   status?: ManagedPortalStatus;
+  /** The change running in the background; set only while status is `pending`. Absent while the portal is being created. */
+  change?: ManagedPortalChange;
+  /** The last background change, when it failed. On list rows, only for pending and failed portals. */
+  lastChangeError?: ManagedPortalChangeError;
   /** ISO timestamp of the last row change. */
   updatedAt?: string;
 }

@@ -48,6 +48,9 @@ const svcPlatformAPI = "platform-api"
 
 const envWebhookSecret = "APIP_CP_WEBHOOK_SECRET"
 
+// envHealthAllowedClients sets the clients the health endpoints answer.
+const envHealthAllowedClients = "APIP_CP_HEALTH_ALLOWED_CLIENTS"
+
 var webhookSecretState struct {
 	sync.Once
 	value string
@@ -58,7 +61,12 @@ const platformAPIBootAttempts = 3
 
 // PlatformAPI returns the Platform API component definition.
 func PlatformAPI() *components.Definition {
-	generated := map[string][]byte{"certs/api-portal-ca.pem": shared.APIPortalTLS().CertPEM}
+	generated := map[string][]byte{
+		"certs/api-portal-ca.pem": shared.APIPortalTLS().CertPEM,
+		// The testbench specs service's certificate, for a block that imports OpenAPI documents
+		// over HTTPS (overlays/platform-api-openapi-import.toml).
+		"certs/specs-ca.pem": shared.SpecsTLS().CertPEM,
+	}
 	for name, content := range shared.ControlPlaneCrypto() {
 		generated[name] = content
 	}
@@ -67,6 +75,7 @@ func PlatformAPI() *components.Definition {
 		env[key] = value
 	}
 	env[envWebhookSecret] = WebhookSecret()
+	env[envHealthAllowedClients] = shared.HealthAllowedClients
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
 	}
@@ -146,6 +155,8 @@ func adminEnvironment() map[string]string {
 	publisherHash := passwordHash("APIP_CP_PUBLISHER_PASSWORD_HASH", publisher.Password, "publisher")
 	narrow := actor.Narrow()
 	narrowHash := passwordHash("APIP_CP_NARROW_PASSWORD_HASH", narrow.Password, "narrow")
+	viewer := actor.Viewer()
+	viewerHash := passwordHash("APIP_CP_VIEWER_PASSWORD_HASH", viewer.Password, "viewer")
 	return map[string]string{
 		"APIP_CP_ADMIN_USERNAME":          admin.Username,
 		"APIP_CP_ADMIN_PASSWORD_HASH":     adminHash,
@@ -155,6 +166,8 @@ func adminEnvironment() map[string]string {
 		"APIP_CP_PUBLISHER_PASSWORD_HASH": publisherHash,
 		"APIP_CP_NARROW_USERNAME":         narrow.Username,
 		"APIP_CP_NARROW_PASSWORD_HASH":    narrowHash,
+		"APIP_CP_VIEWER_USERNAME":         viewer.Username,
+		"APIP_CP_VIEWER_PASSWORD_HASH":    viewerHash,
 	}
 }
 
@@ -299,11 +312,17 @@ func provisionGatewayRegistration(
 		return nil, fmt.Errorf("the control plane returned an empty gateway token")
 	}
 
+	return GatewayControlPlaneEnv(minted.Token), nil
+}
+
+// GatewayControlPlaneEnv is the environment that connects a gateway to the block's control
+// plane with a registration token.
+func GatewayControlPlaneEnv(token string) map[string]string {
 	return map[string]string{
 		"APIP_GW_CONTROLLER_CONTROLPLANE_HOST":                 svcPlatformAPI + ":9243",
-		"APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN":                minted.Token,
+		"APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN":                token,
 		"APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY": "true",
-	}, nil
+	}
 }
 
 // ControlPlaneLogin exchanges credentials for a control-plane bearer token.

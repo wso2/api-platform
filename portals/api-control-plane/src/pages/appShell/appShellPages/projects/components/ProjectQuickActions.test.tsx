@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { routes } from '@/routes/paths';
 import { renderWithProviders } from '@/test/utils';
+import { apiCreationEntry } from '../../apis/create/entryPoint';
 import { ProjectQuickActions } from './ProjectQuickActions';
 
 const navigate = vi.hoisted(() => vi.fn());
@@ -45,11 +46,14 @@ describe('ProjectQuickActions', () => {
     expect(preload).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the new-API flow for the project', async () => {
+  it('opens the new-API flow for the project, saying where it was opened from', async () => {
     renderWithProviders(<ProjectQuickActions orgHandle="acme" projectId="p1" />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Import an OpenAPI definition' }));
 
-    expect(navigate).toHaveBeenCalledWith(routes.newApi('acme', 'p1'));
+    expect(navigate).toHaveBeenCalledWith(
+      routes.newApi('acme', 'p1'),
+      apiCreationEntry('project-quick-actions'),
+    );
   });
 });

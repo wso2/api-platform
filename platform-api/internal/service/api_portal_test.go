@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -854,6 +855,51 @@ func TestAPIPortalService_DeleteAPIPortal_HappyPath(t *testing.T) {
 	}
 }
 
+type fakePortalSecretRemover struct {
+	err    error
+	called [2]string
+}
+
+func (f *fakePortalSecretRemover) DeletePortalSecret(_ context.Context, orgID, handle string) error {
+	f.called = [2]string{orgID, handle}
+	return f.err
+}
+
+func TestAPIPortalService_DeleteAPIPortal_RemovesWebhookSecret(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1"}}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	secrets := &fakePortalSecretRemover{}
+	svc.SetWebhookSecrets(secrets)
+	if err := svc.DeleteAPIPortal("acme", "org-1", "actor"); err != nil {
+		t.Fatalf("DeleteAPIPortal: %v", err)
+	}
+	if secrets.called != [2]string{"org-1", "acme"} {
+		t.Errorf("DeletePortalSecret called with %+v", secrets.called)
+	}
+}
+
+func TestAPIPortalService_DeleteAPIPortal_PortalFailureKeepsSecret(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1"}, deleteErr: errors.New("db down")}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	secrets := &fakePortalSecretRemover{}
+	svc.SetWebhookSecrets(secrets)
+	if err := svc.DeleteAPIPortal("acme", "org-1", "actor"); err == nil {
+		t.Fatal("want the portal delete error")
+	}
+	if secrets.called != ([2]string{}) {
+		t.Errorf("a live portal must keep its secret, DeletePortalSecret called with %+v", secrets.called)
+	}
+}
+
+func TestAPIPortalService_DeleteAPIPortal_SecretFailureDoesNotFailADeletedPortal(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1"}}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc.SetWebhookSecrets(&fakePortalSecretRemover{err: errors.New("db down")})
+	if err := svc.DeleteAPIPortal("acme", "org-1", "actor"); err != nil {
+		t.Fatalf("the portal is gone, the delete must succeed: %v", err)
+	}
+}
+
 func TestAPIPortalService_DeleteAPIPortal_NotFound(t *testing.T) {
 	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
 	err := svc.DeleteAPIPortal("ghost", "org-1", "actor")
@@ -966,6 +1012,57 @@ func TestAPIPortalService_CreateAPIPortalWithStatus_HonoursCallerStatus(t *testi
 	}
 	if got := portalRepo.createCapturedInput; got == nil || got.Status != constants.APIPortalStatusPending {
 		t.Errorf("caller-supplied status must land on the persisted row; got %+v", got)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatusAndID_UsesCallerID(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+	const id = "5b0c3f0e-7a51-4d7b-9c43-2f1e8a6d4b10"
+	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+	if _, err := svc.CreateAPIPortalWithStatusAndID(req, "org-1", "tester", constants.APIPortalStatusPending, " "+strings.ToUpper(id)+" "); err != nil {
+		t.Fatalf("CreateAPIPortalWithStatusAndID: %v", err)
+	}
+	got := portalRepo.createCapturedInput
+	if got == nil || got.ID != id || got.Status != constants.APIPortalStatusPending {
+		t.Errorf("the caller's id (canonical form) and status must land on the row; got %+v", got)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatus_GeneratesID(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+	if _, err := svc.CreateAPIPortalWithStatus(req, "org-1", "tester", constants.APIPortalStatusPending); err != nil {
+		t.Fatalf("CreateAPIPortalWithStatus: %v", err)
+	}
+	got := portalRepo.createCapturedInput
+	if got == nil {
+		t.Fatal("no row was created")
+	}
+	if _, err := uuid.Parse(got.ID); err != nil {
+		t.Errorf("a create without an id must still generate a UUID; got %q", got.ID)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatusAndID_RejectsNonUUID(t *testing.T) {
+	for _, id := range []string{"", "acme", "00000000-0000-0000-0000-000000000000"} {
+		portalRepo := &mockAPIPortalRepository{}
+		orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+		svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+		req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+		_, err := svc.CreateAPIPortalWithStatusAndID(req, "org-1", "tester", constants.APIPortalStatusPending, id)
+		if !apperror.ValidationFailed.Is(err) {
+			t.Errorf("id %q: want ValidationFailed, got %T %v", id, err, err)
+		}
+		if portalRepo.createCapturedInput != nil {
+			t.Errorf("id %q: no row may be written", id)
+		}
 	}
 }
 

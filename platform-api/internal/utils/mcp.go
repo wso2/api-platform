@@ -560,6 +560,9 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		if refused := DestinationNotAllowedError(err); refused != nil {
+			return "", "", nil, refused
+		}
 		return "", "", nil, fmt.Errorf("failed to reach MCP server for initialize: %w", err)
 	}
 	defer resp.Body.Close()
@@ -768,6 +771,9 @@ func postJSONRPC(url string, req any, headers mcpRequestHeaders) ([]byte, error)
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		if refused := DestinationNotAllowedError(err); refused != nil {
+			return nil, refused
+		}
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()

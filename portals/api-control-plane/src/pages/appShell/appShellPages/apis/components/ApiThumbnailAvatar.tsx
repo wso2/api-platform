@@ -62,6 +62,7 @@ export function ApiThumbnailAvatar({
   return (
     <Avatar
       alt={displayName ?? ''}
+      color="primary"
       imgProps={{ style: { objectFit: 'contain' } }}
       src={url}
       sx={(theme) => ({
@@ -71,14 +72,14 @@ export function ApiThumbnailAvatar({
               border: hairline(theme),
               borderColor: 'divider',
             }
-          : { bgcolor: 'primary.light' }),
-        color: 'primary.contrastText',
+          : // `light` is always circular; keep the rounded-square shape.
+            { borderRadius: '25%' }),
         flexShrink: 0,
         fontSize: fontSize ?? Math.round(size / 2.5),
         height: size,
         width: size,
       })}
-      variant="rounded"
+      variant={url ? 'rounded' : 'light'}
     >
       {fallback}
     </Avatar>

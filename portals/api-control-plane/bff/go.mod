@@ -1,6 +1,6 @@
 module api-control-plane-bff
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.4.0
@@ -9,7 +9,6 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
 	github.com/stretchr/testify v1.11.1
-	github.com/wso2/api-platform/httpkit v0.0.0-local
 	gopkg.in/yaml.v3 v3.0.1
 )
 

@@ -44,7 +44,7 @@ Base URLs:
 
 ### [API Content](api-content.md)
 
-- [Upload API content](api-content.md#upload-api-content)
+- [Add API content](api-content.md#add-api-content)
 - [Replace API content](api-content.md#replace-api-content)
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
@@ -59,7 +59,7 @@ Base URLs:
 
 ### [MCP Server Content](mcp-server-content.md)
 
-- [Upload MCP server content](mcp-server-content.md#upload-mcp-server-content)
+- [Add MCP server content](mcp-server-content.md#add-mcp-server-content)
 - [Replace MCP server content](mcp-server-content.md#replace-mcp-server-content)
 - [Get an MCP server content file](mcp-server-content.md#get-an-mcp-server-content-file)
 - [Delete MCP server content files](mcp-server-content.md#delete-mcp-server-content-files)

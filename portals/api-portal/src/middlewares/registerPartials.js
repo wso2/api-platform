@@ -28,6 +28,7 @@ const constants = require('../utils/constants');
 const orgContext = require('../utils/orgContext');
 const apiMetadataService = require('../services/apiMetadataService');
 const util = require('../utils/util');
+const { renderedPartial, templateOf } = require('../utils/handlebarsUtils');
 const { validationResult } = require('express-validator');
 const logger = require('../config/logger');
 const hbs = exphbs.create({});
@@ -165,8 +166,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   // values of filePrefix work correctly.
   const base = (...parts) => path.resolve(process.cwd(), filePrefix, ...parts);
 
-  const filePath = req.originalUrl.split(baseURL).pop();
-
   await registerPartialsFromFile(baseURL, base("partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "home", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-landing", "partials"), req);
@@ -176,10 +175,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   await registerPartialsFromFile(baseURL, base("pages", "mcp-landing", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "detail", "partials"), req);
-
-  if (fs.existsSync(base("pages", filePath, "partials"))) {
-    await registerPartialsFromFile(baseURL, base("pages", filePath, "partials"), req);
-  }
 }
 
 const registerPartialsFromAPI = async (req, orgId) => {
@@ -226,9 +221,7 @@ async function registerAPILandingContent(req, orgId, partialObject) {
     //replace image urls
     let images = metaData.apiImageMetadata;
     for (const key in images) {
-      let apiImageUrl = `${req.protocol}://${req.get('host')}${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`
-      const modifiedApiImageURL = apiImageUrl + images[key]
-      images[key] = modifiedApiImageURL;
+      images[key] = `${req.protocol}://${req.get('host')}${util.apiImageUrl(orgId, metaData, images[key])}`;
     }
   }
   //if hbs content available for API, render the hbs page
@@ -236,11 +229,13 @@ async function registerAPILandingContent(req, orgId, partialObject) {
   if (additionalAPIContentResponse !== null) {
     let additionalAPIContent = additionalAPIContentResponse.file_content.toString("utf8");
     partialObject[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME] = additionalAPIContent ? additionalAPIContent : "";
-    hbs.handlebars.partials[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME] = hbs.handlebars.compile(
-      partialObject[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME])({
+    // Register the rendered HTML as the partial.
+    const contentTemplate = partialObject[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME];
+    hbs.handlebars.partials[constants.FILE_NAME.API_CONTENT_PARTIAL_NAME] = renderedPartial(
+      hbs.handlebars.compile(contentTemplate)({
         apiContent: markdownHtml,
         apiMetadata: metaData
-      });
+      }), contentTemplate);
   }
 
 }
@@ -254,7 +249,7 @@ async function registerDocsPageContent(req, orgId, partialObject) {
   if (docContentResponse !== null) {
     const markdownContent = docContentResponse.file_content.toString("utf8");
     markdownHtml = markdownContent ? markdown.parse(markdownContent) : "";
-    partialObject[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME];
+    partialObject[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = templateOf(hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME]);
   }
   const apiMetadata = await apiDao.get(orgId, apiId);
   let apiType = apiMetadata[0].type;
@@ -266,11 +261,17 @@ async function registerDocsPageContent(req, orgId, partialObject) {
     baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName + "/api/" + apiHandle;
   }
 
-  hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = hbs.handlebars.compile(
-    partialObject[constants.FILE_NAME.API_DOC_PARTIAL_NAME])({
+  // No document of that name: leave the api-doc partial as it was registered from file.
+  const docTemplate = partialObject[constants.FILE_NAME.API_DOC_PARTIAL_NAME];
+  if (typeof docTemplate !== 'string') {
+    return;
+  }
+  // Register the rendered HTML as the partial.
+  hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = renderedPartial(
+    hbs.handlebars.compile(docTemplate)({
       baseUrl: baseUrl,
       apiMD: markdownHtml
-    });
+    }), docTemplate);
 }
 
 async function registerPartialsFromFile(baseURL, dir, req) {

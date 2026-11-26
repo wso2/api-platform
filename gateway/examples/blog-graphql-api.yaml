@@ -24,7 +24,7 @@
 # exactly one `POST <context>` route regardless of what the caller sends.
 # This example exists to make that explicit: it's identical in shape to
 # countries-graphql-api.yaml, but the traffic sent against it (see
-# tests/framework/suites/it/features/graphql_deploy.feature) is a mutation payload rather
+# tests/framework/suites/it/features/gateway/graphql/deploy.feature) is a mutation payload rather
 # than a query, proving the gateway treats them exactly alike.
 #
 # Targets `sample-backend` from gateway/docker-compose.yaml, the same

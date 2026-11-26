@@ -19,10 +19,13 @@
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { runtimeConfig } from '@/config/runtime';
+import { makeAuthState } from '@/test/mockAuthState';
+import { aCustomPolicy, collection, failure, recorder } from '@/test/msw';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { AvailablePoliciesPanel } from './AvailablePoliciesPanel';
 
 // The hub is a different origin from the page, so jsdom enforces CORS on the reply.
@@ -95,7 +98,9 @@ afterEach(() => {
 describe('AvailablePoliciesPanel', () => {
   it('shows placeholder cards while loading, then the policies, with no paging buttons', async () => {
     serveCatalog([]);
-    const { container } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { container } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
 
     expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
     expect(await screen.findByText('Policy 01')).toBeInTheDocument();
@@ -107,7 +112,7 @@ describe('AvailablePoliciesPanel', () => {
   it('loads the next page when the end of the list scrolls into view', async () => {
     const requests: URLSearchParams[] = [];
     serveCatalog(requests);
-    renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    renderWithProviders(<AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />);
 
     await screen.findByText('Policy 20');
     expect(screen.queryByText('Policy 21')).not.toBeInTheDocument();
@@ -121,7 +126,9 @@ describe('AvailablePoliciesPanel', () => {
   it('asks the hub to search the whole catalog once typing settles', async () => {
     const requests: URLSearchParams[] = [];
     serveCatalog(requests);
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
     await screen.findByText('Policy 01');
 
     await user.type(screen.getByPlaceholderText('Search policies'), 'jwt');
@@ -153,7 +160,9 @@ describe('AvailablePoliciesPanel', () => {
         );
       }),
     );
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
     await screen.findByText('Policy 20');
 
     observerCallbacks.at(-1)?.([{ isIntersecting: true }]);
@@ -183,10 +192,101 @@ describe('AvailablePoliciesPanel', () => {
             );
       }),
     );
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
 
     await user.click(await screen.findByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByText('Policy 01')).toBeInTheDocument();
+  });
+});
+
+describe('AvailablePoliciesPanel — custom policies', () => {
+  const hmacSigner = aCustomPolicy({
+    description: 'Signs requests with an HMAC.',
+    displayName: 'HMAC Signer',
+    name: 'hmac-signer',
+    uuid: 'hmac-signer-uuid',
+    version: 'v1.2.0',
+  });
+  const requestTagger = aCustomPolicy({
+    name: 'request-tagger',
+    uuid: 'request-tagger-uuid',
+    version: 'v1.0.0',
+  });
+
+  const renderInOrg = (
+    onSelect = vi.fn(),
+    options: Parameters<typeof renderWithProviders>[1] = {},
+  ) =>
+    renderWithProviders(
+      <ApiScopeProvider orgId="acme-org">
+        <AvailablePoliciesPanel artifactKind="rest-api" onSelect={onSelect} />
+      </ApiScopeProvider>,
+      options,
+    );
+
+  it('lists the organization’s custom policies first, marked Custom, and attaches them', async () => {
+    serveCatalog([]);
+    server.use(collection('/gateway-custom-policies', [hmacSigner, requestTagger]));
+    const onSelect = vi.fn();
+    const { user } = renderInOrg(onSelect);
+
+    const card = (await screen.findByText('HMAC Signer')).closest('.MuiCard-root') as HTMLElement;
+    expect(within(card).getByText('Custom')).toBeInTheDocument();
+    expect(within(card).getByText('v1.2.0')).toBeInTheDocument();
+    // A policy without a display name is listed by its name.
+    expect(screen.getByText('request-tagger')).toBeInTheDocument();
+    const names = (await screen.findAllByText(/^(HMAC Signer|request-tagger|Policy \d+)$/)).map(
+      (node) => node.textContent,
+    );
+    expect(names.slice(0, 2)).toEqual(['HMAC Signer', 'request-tagger']);
+
+    await user.click(card);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'hmac-signer', version: 'v1.2.0' }),
+    );
+  });
+
+  it('filters custom policies by the search, on name, display name and description', async () => {
+    serveCatalog([]);
+    server.use(collection('/gateway-custom-policies', [hmacSigner, requestTagger]));
+    const { user } = renderInOrg();
+    await screen.findByText('HMAC Signer');
+
+    await user.type(screen.getByPlaceholderText('Search policies'), 'HMAC Signer');
+
+    await waitFor(() => expect(screen.queryByText('request-tagger')).not.toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    expect(screen.getByText('HMAC Signer')).toBeInTheDocument();
+  });
+
+  it('still lists the hub’s policies when custom policies cannot be loaded', async () => {
+    serveCatalog([]);
+    server.use(failure('get', '/gateway-custom-policies', 500, 'INTERNAL_ERROR'));
+    renderInOrg();
+
+    expect(
+      await screen.findByText('Unable to load the organization’s custom policies.'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Policy 01')).toBeInTheDocument();
+  });
+
+  it('does not read custom policies without permission to', async () => {
+    const reads = recorder();
+    serveCatalog([]);
+    server.use(collection('/gateway-custom-policies', [hmacSigner], { record: reads }));
+    renderInOrg(vi.fn(), {
+      authState: makeAuthState({
+        user: { email: 'publisher@example.com', name: 'Publisher', scopes: ['ap:rest_api:update'] },
+      }),
+      permissionMode: 'enforce',
+    });
+
+    await screen.findByText('Policy 01');
+    expect(screen.queryByText('HMAC Signer')).not.toBeInTheDocument();
+    expect(reads.count()).toBe(0);
   });
 });

@@ -18,7 +18,7 @@
 'use strict';
 
 /*
- * The HTTP client the billing providers share: the portal's SSRF-guarded client (the one key
+ * The HTTP client the billing providers share: the portal's destination-guarded client (the one key
  * managers use), bounded by [api_portal.billing.client], and an error type that carries what a
  * provider said without ever carrying the key that was sent.
  */

@@ -134,7 +134,7 @@ export const NO_RESOURCE_LIMITS: ResourceLimitsPort = {
  * the host owns the keys, so the cache layout can change without touching a
  * plugin.
  */
-export type InvalidatableResource = 'gateways' | 'apiPortals';
+export type InvalidatableResource = 'gateways' | 'apiPortals' | 'apiDeployments';
 
 /**
  * How an extension reports that it changed data the host also caches. The
@@ -145,6 +145,25 @@ export type InvalidatableResource = 'gateways' | 'apiPortals';
 export type ResourcesPort = {
   /** Drop every cached list, detail and child of `resource` for this org. */
   invalidate: (resource: InvalidatableResource) => void;
+};
+
+/**
+ * The signed-in user's permissions as an extension reads them. One question:
+ * may this user be offered an operation that accepts any of `scopes`? `scopes`
+ * is the operation's accepted list exactly as the cloud plugin's OpenAPI spec
+ * declares it — the action scope and the broader `:manage` scopes beside it —
+ * which is how platform-api's `ScopeEnforcer` admits a call, so an extension
+ * passes the whole list and never reasons about inheritance itself.
+ *
+ * Answered the way this console answers its own pages (`usePermissions`'
+ * `hasScope`: allowed while the session loads, and in permissive mode when the
+ * token carries no scope claim), so a cloud control and a built-in one disable
+ * under the same conditions. Not a security boundary: the Platform API decides
+ * whether a call happens; this decides whether a control looks clickable, and a
+ * refused call must still be handled.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
 };
 
 export type CloudHostPort = {
@@ -162,8 +181,18 @@ export type CloudHostPort = {
   gatewayControlPlaneHost?: string;
   resourceLimits: ResourceLimitsPort;
   resources: ResourcesPort;
+  permissions: PermissionsPort;
   /** The signed-in user, from the session the host already holds. */
   user?: { name?: string; email?: string };
+  /**
+   * Reports one use of a console feature from the API Platform taxonomy, as a
+   * built-in page would: `code` is its feature code
+   * (`apip.lifecycle.api-deploy-click`), `dimensions` its declared dimensions.
+   * Sent with the console's own batches, attributed to the signed-in user and
+   * organization. An unknown code, dimension or value is dropped; nothing is
+   * sent when the deployment has feature-usage tracking off. Never throws.
+   */
+  trackFeature: (code: string, dimensions?: Readonly<Record<string, string>>) => void;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

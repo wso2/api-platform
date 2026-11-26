@@ -7,9 +7,10 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -33,30 +34,42 @@ import {
 } from "@wso2/oxygen-ui";
 import {
   ExternalLink,
+  PanelTop,
   Pencil,
   Plus,
   Search,
   Trash2,
 } from "@wso2/oxygen-ui-icons-react";
 
+import { PORTAL_DELETE_CLICK, PORTAL_OPEN, type PortalAddEntryPoint } from "./featureUsage";
 import { useManagedPortalList } from "./hooks";
+import { NO_PERMISSION_TOOLTIP } from "./permissions";
 import type { ManagedPortal } from "./types";
-import { PortalIllustration } from "./PortalIllustration";
+import { changeFailed, describeChange, isBeingChanged } from "./utils/change";
+import { PortalPublishAnimation } from "./PortalPublishAnimation";
 import { usePortalFeature } from "./portContext";
 import UnexpectedErrorState from "./components/UnexpectedErrorState";
 
-const devportalLogo = new URL("./images/devportal-logo.png", import.meta.url)
-  .href;
-
 /**
- * Create button, disabled with the host's message when the portal quota is
- * full. The span is required: a disabled MUI button sets `pointer-events:
+ * Create button, disabled with the no-permission tooltip when the user holds no
+ * scope that creates portals, or with the host's message when the portal quota
+ * is full. The span is required: a disabled MUI button sets `pointer-events:
  * none`, so a Tooltip on it never fires.
  */
-function AddPortalButton({ label, onClick }: { label: string; onClick: () => void }) {
+function AddPortalButton({
+  label,
+  canCreate,
+  onClick,
+}: {
+  label: string;
+  /** Whether the user holds a scope that creates portals. */
+  canCreate: boolean;
+  onClick: () => void;
+}) {
   const { host } = usePortalFeature();
   const limits = host.resourceLimits;
-  const blocked = limits?.canCreate ? !limits.canCreate("portals") : false;
+  const quotaFull = limits?.canCreate ? !limits.canCreate("portals") : false;
+  const blocked = !canCreate || quotaFull;
   const button = (
     <Button
       variant="contained"
@@ -69,15 +82,21 @@ function AddPortalButton({ label, onClick }: { label: string; onClick: () => voi
   );
   if (!blocked) return button;
   return (
-    <Tooltip title={limits?.limitMessage?.("portals") ?? ""}>
+    <Tooltip title={!canCreate ? NO_PERMISSION_TOOLTIP : (limits?.limitMessage?.("portals") ?? "")}>
       <span style={{ display: "inline-flex" }}>{button}</span>
     </Tooltip>
   );
 }
 
 export type ManagedPortalsListProps = {
-  /** Switches parent to the create view; create is a full page, not a modal. */
-  onCreate: () => void;
+  /** Whether the user holds a scope that creates portals; Add/Create Portal is disabled otherwise. */
+  canCreate: boolean;
+  /** Whether the user holds a scope that updates portals; every Edit is disabled otherwise. */
+  canUpdate: boolean;
+  /** Whether the user holds a scope that deletes portals; every Delete is disabled otherwise. */
+  canDelete: boolean;
+  /** Switches parent to the create view; create is a full page, not a modal. `entryPoint` says from where, for usage analytics. */
+  onCreate: (entryPoint: PortalAddEntryPoint) => void;
   /** Switches parent to the edit view for the given portal; edit is a full page, not a modal. */
   onEdit: (portal: ManagedPortal) => void;
 };
@@ -102,6 +121,9 @@ function shortRelative(iso: string | null | undefined): string {
 }
 
 export default function ManagedPortalsList({
+  canCreate,
+  canUpdate,
+  canDelete,
   onCreate,
   onEdit,
 }: ManagedPortalsListProps) {
@@ -115,6 +137,10 @@ export default function ManagedPortalsList({
   const { portals, isLoading, error, refetch, remove } = useManagedPortalList();
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDelete) setDeleteTarget(null);
+  }, [canDelete]);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -132,6 +158,13 @@ export default function ManagedPortalsList({
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || deleting) return;
+    // Rechecked here, not only on the card's button: the dialog can outlive the
+    // scope that opened it.
+    if (!canDelete) {
+      setDeleteTarget(null);
+      return;
+    }
+    host.trackFeature?.(PORTAL_DELETE_CLICK);
     setDeleting(true);
     try {
       await remove(deleteTarget.id);
@@ -186,7 +219,7 @@ export default function ManagedPortalsList({
               sx={{ ml: "auto", flexShrink: 0 }}
             >
               {portals.length > 0 ? (
-                <AddPortalButton label="Add Portal" onClick={onCreate} />
+                <AddPortalButton label="Add Portal" canCreate={canCreate} onClick={() => onCreate("portals-list")} />
               ) : null}
             </Stack>
           </Box>
@@ -226,7 +259,7 @@ export default function ManagedPortalsList({
                 alignItems="center"
                 sx={{ maxWidth: 440, textAlign: "center" }}
               >
-                <PortalIllustration />
+                <PortalPublishAnimation />
                 <Typography variant="h5" sx={{ fontWeight: 700, pt: 2 }}>
                   Create your first portal
                 </Typography>
@@ -235,7 +268,7 @@ export default function ManagedPortalsList({
                   and get started with your services.
                 </Typography>
                 <Box sx={{ pt: 2 }}>
-                  <AddPortalButton label="Create Portal" onClick={onCreate} />
+                  <AddPortalButton label="Create Portal" canCreate={canCreate} onClick={() => onCreate("portals-empty-state")} />
                 </Box>
               </Stack>
             </Box>
@@ -284,6 +317,11 @@ export default function ManagedPortalsList({
                     const canVisit = status === "active" && Boolean(portal.url);
                     const isPending = status === "pending";
                     const isDeleting = status === "deleting";
+                    // A pending portal with a change already exists; one without is being created.
+                    const isChanging = isBeingChanged(portal);
+                    // A failed change is repeated from the edit form, so the portal stays editable.
+                    const isChangeFailed = changeFailed(portal);
+                    const canEdit = status === "active" || isChangeFailed;
                     return (
                       <Card
                         key={portal.id}
@@ -309,32 +347,22 @@ export default function ManagedPortalsList({
                               flex: 1,
                             }}
                           >
-                            <Box
-                              sx={{
+                            {/* Tinted rounded square with a primary-coloured icon, like the API fallback tile. */}
+                            <Avatar
+                              sx={(theme) => ({
                                 width: { xs: 64, sm: 72 },
                                 height: { xs: 64, sm: 72 },
                                 flexShrink: 0,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
+                                borderRadius: "25%",
+                                color: "primary.main",
+                                bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 14%, transparent)`,
                                 border: 1,
-                                borderColor: "divider",
-                                borderRadius: 1,
-                                bgcolor: "action.hover",
+                                borderColor: `color-mix(in srgb, ${theme.palette.primary.main} 35%, transparent)`,
                                 opacity: isPending || isDeleting ? 0.4 : 1,
-                              }}
+                              })}
                             >
-                              <Box
-                                component="img"
-                                src={devportalLogo}
-                                alt=""
-                                sx={{
-                                  width: "75%",
-                                  height: "75%",
-                                  objectFit: "contain",
-                                }}
-                              />
-                            </Box>
+                              <PanelTop size={32} />
+                            </Avatar>
                             <Stack
                               spacing={0.5}
                               sx={{ flex: 1, minWidth: 0, pt: 0.5 }}
@@ -360,18 +388,29 @@ export default function ManagedPortalsList({
                               >
                                 {portal.description || ""}
                               </Typography>
+                              {isChangeFailed && portal.lastChangeError && (
+                                <Typography variant="caption" color="error">
+                                  {portal.lastChangeError.message}
+                                </Typography>
+                              )}
                             </Stack>
                             <Tooltip
                               title={
-                                isPending
-                                  ? "Editing is available once provisioning completes."
-                                  : isDeleting
-                                    ? "The portal is being deleted."
-                                    : status === "failed"
-                                    ? "Editing is disabled while the portal is in a failed state. Delete and re-create."
-                                    : readOnly
-                                      ? (host.resourceLimits?.readOnlyMessage ?? "")
-                                      : "Edit portal"
+                                !canUpdate
+                                  ? NO_PERMISSION_TOOLTIP
+                                  : isPending
+                                    ? isChanging
+                                      ? "Editing is available once the update completes."
+                                      : "Editing is available once provisioning completes."
+                                    : isDeleting
+                                      ? "The portal is being deleted."
+                                      : isChangeFailed
+                                        ? "Edit portal to repeat the change"
+                                      : status === "failed"
+                                        ? "Editing is disabled while the portal is in a failed state. Delete and re-create."
+                                        : readOnly
+                                          ? (host.resourceLimits?.readOnlyMessage ?? "")
+                                          : "Edit portal"
                               }
                               arrow
                             >
@@ -380,7 +419,7 @@ export default function ManagedPortalsList({
                                   size="small"
                                   aria-label={`Edit ${portal.name}`}
                                   onClick={() => onEdit(portal)}
-                                  disabled={status !== "active" || readOnly}
+                                  disabled={!canEdit || readOnly || !canUpdate}
                                 >
                                   <Pencil size={16} />
                                 </IconButton>
@@ -445,6 +484,7 @@ export default function ManagedPortalsList({
                                 variant="contained"
                                 component="a"
                                 href={portal.url}
+                                onClick={() => host.trackFeature?.(PORTAL_OPEN)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 startIcon={<ExternalLink size={16} />}
@@ -465,23 +505,37 @@ export default function ManagedPortalsList({
                                 }
                               >
                                 {isPending
-                                  ? "Creating portal..."
+                                  ? isChanging
+                                    ? describeChange(portal.change)
+                                    : "Creating portal..."
                                   : isDeleting
                                     ? "Deleting portal..."
+                                    : isChangeFailed
+                                    ? "Update failed"
                                     : status === "failed"
                                     ? "Creation failed"
                                     : "Portal unavailable"}
                               </Button>
                             )}
                             {/* Keep deletion available so pending or failed portals can be recovered. */}
-                            <Tooltip title={isDeleting ? "The portal is being deleted." : "Delete portal"} arrow>
-                              <span>
+                            <Tooltip
+                              title={
+                                !canDelete
+                                  ? NO_PERMISSION_TOOLTIP
+                                  : isDeleting
+                                    ? "The portal is being deleted."
+                                    : "Delete portal"
+                              }
+                              arrow
+                            >
+                              {/* Wrapped: a disabled button fires no events, so the tooltip would never open. */}
+                              <span style={{ display: "inline-flex", flexShrink: 0 }}>
                                 <IconButton
                                   size="small"
                                   color="error"
                                   aria-label={`Delete ${portal.name}`}
                                   onClick={() => setDeleteTarget(portal)}
-                                  disabled={isDeleting}
+                                  disabled={isDeleting || !canDelete}
                                   sx={{
                                     width: 36,
                                     height: 36,

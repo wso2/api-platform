@@ -48,8 +48,13 @@ const isSameOriginPath = (path: string): boolean => {
  * behind a gateway). Anything else, an absolute URL straight to a Platform API
  * or no value at all, has no billing route of its own, so billing stays on the
  * BFF's default `/proxy`.
+ *
+ * A deployment that routes billing apart from the proxy names its path in
+ * `billingBaseUrl`, which wins when it is a same-origin path.
  */
 const billingBase = (): string => {
+  const own = runtimeConfig.billingBaseUrl.trim().replace(/\/+$/, '');
+  if (isSameOriginPath(own)) return own;
   const base = runtimeConfig.platformApiBaseUrl.replace(/\/+$/, '');
   return `${isSameOriginPath(base) ? base : '/proxy'}/billing`;
 };

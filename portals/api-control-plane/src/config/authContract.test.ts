@@ -24,8 +24,10 @@ import {
   buildLoginUrl,
   parseCheckSessionInterval,
   parseClaimMappings,
+  parseUrlList,
   readAuthMode,
   resolveAuthContract,
+  supportsOrganizationSwitch,
   withAppBasePath,
 } from './authContract';
 
@@ -38,6 +40,9 @@ const BFF_ENDPOINTS = {
   // The BFF has no read-only session endpoint: no polling.
   checkSessionUrl: '',
   checkSessionInterval: DEFAULT_CHECK_SESSION_INTERVAL,
+  // Nor organization switching.
+  organizationsUrl: '',
+  switchOrganizationUrls: [],
 };
 
 describe('readAuthMode', () => {
@@ -214,5 +219,23 @@ describe('buildLoginUrl', () => {
     });
 
     expect(buildLoginUrl(contract, '/x')).toBe('/oauth2/start?provider=idp&rd=%2Fx');
+  });
+});
+
+describe('organization switching', () => {
+  it.each([
+    ['a comma-separated string', ' /a/switch , /b/switch ,', ['/a/switch', '/b/switch']],
+    ['an array', ['/a/switch', ' ', '/b/switch'], ['/a/switch', '/b/switch']],
+    ['nothing', undefined, []],
+  ])('reads the switch URLs from %s', (_case, value, expected) => {
+    expect(parseUrlList(value)).toEqual(expected);
+  });
+
+  it.each([
+    ['both settings', { organizationsUrl: '/ous', switchOrganizationUrls: '/switch' }, true],
+    ['only the list', { organizationsUrl: '/ous' }, false],
+    ['only the switch', { switchOrganizationUrls: '/switch' }, false],
+  ])('is on with %s: %s', (_case, overrides, expected) => {
+    expect(supportsOrganizationSwitch(resolveAuthContract('external', overrides))).toBe(expected);
   });
 });

@@ -46,12 +46,14 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	rbacconfigv3 "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	grpc_accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/grpc/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
+	rbacv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	tlsinspectorv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/listener/tls_inspector/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
@@ -68,6 +70,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/health"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"google.golang.org/protobuf/proto"
@@ -787,23 +790,27 @@ func buildGatewayInternalSinkCluster() *cluster.Cluster {
 
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
-// buildGatewayHealthRoutes builds the gateway's own readiness/liveness
-// direct-response routes (constants.GatewayReadyPath, constants.GatewayHealthyPath).
-// They are exact-path matches under a reserved namespace (constants.
-// GatewayHealthPathPrefix) that API/LLMProvider/LLMProxy path validation must
-// reject, bypass the policy-engine ext_proc filter like the "no-api-found"
-// catch-all, and return a static, sterile body — no internal state is ever
-// disclosed through them.
-func buildGatewayHealthRoutes() ([]*route.Route, error) {
-	disabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
-		Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
-	})
+// buildGatewayHealthRoutes builds the gateway's own readiness/liveness routes
+// (constants.GatewayReadyPath, constants.GatewayHealthyPath). They are exact-path
+// matches under a reserved namespace (constants.GatewayHealthPathPrefix) that
+// API/LLMProvider/LLMProxy path validation must reject.
+//
+// Health requests go through the policy-engine ext_proc filter, the same path API
+// traffic takes, and the policy engine answers them with its health result. A policy
+// engine that is down or not answering therefore fails the probe, since the filter
+// fails closed. The static, sterile direct response is reached only when a policy
+// engine that predates this handling passes a health request through.
+//
+// Unless allowedClients is "*", both routes carry per-route RBAC config that admits only
+// the allowed clients. The RBAC filter runs before ext_proc, so a refused request gets
+// Envoy's 403 without reaching the policy engine, whatever its version.
+func buildGatewayHealthRoutes(allowedClients config.ClientList) ([]*route.Route, error) {
+	clientsRBAC, err := buildHealthClientsRBAC(allowedClients)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for gateway health routes: %w", err)
+		return nil, err
 	}
-
 	newHealthRoute := func(name, path, body string) *route.Route {
-		return &route.Route{
+		r := &route.Route{
 			Name: name,
 			Match: &route.RouteMatch{
 				PathSpecifier: &route.RouteMatch_Path{Path: path},
@@ -824,9 +831,6 @@ func buildGatewayHealthRoutes() ([]*route.Route, error) {
 					},
 				},
 			},
-			TypedPerFilterConfig: map[string]*anypb.Any{
-				constants.ExtProcFilterName: disabledAny,
-			},
 			// Health probes fire every few seconds per pod (k8s readiness/liveness). Sampling
 			// them produces pure noise in the trace backend, so force the route's effective
 			// sampling to zero — overall_sampling is the final upper bound Envoy applies after
@@ -839,12 +843,64 @@ func buildGatewayHealthRoutes() ([]*route.Route, error) {
 				},
 			},
 		}
+		if clientsRBAC != nil {
+			r.TypedPerFilterConfig = map[string]*anypb.Any{constants.RBACFilterName: clientsRBAC}
+		}
+		return r
 	}
 
 	return []*route.Route{
-		newHealthRoute("gateway-ready", constants.GatewayReadyPath, `{"status":"ready"}`),
-		newHealthRoute("gateway-healthy", constants.GatewayHealthyPath, `{"status":"healthy"}`),
+		newHealthRoute(constants.GatewayReadyRouteName, constants.GatewayReadyPath, `{"status":"ready"}`),
+		newHealthRoute(constants.GatewayHealthyRouteName, constants.GatewayHealthyPath, `{"status":"healthy"}`),
 	}, nil
+}
+
+// buildHealthClientsRBAC returns the per-route RBAC config that admits only the allowed
+// clients to the gateway health routes, or nil when every client is allowed ("*").
+// Clients are matched on direct_remote_ip, the peer address of the connection, which no
+// forwarding header can change.
+func buildHealthClientsRBAC(allowedClients config.ClientList) (*anypb.Any, error) {
+	allowed, err := health.ParseAllowedClients("router.health", allowedClients)
+	if err != nil {
+		return nil, err
+	}
+	if allowed == nil {
+		return nil, nil
+	}
+	prefixes := allowed.Prefixes()
+	ids := make([]*rbacconfigv3.Principal, 0, len(prefixes))
+	for _, p := range prefixes {
+		ids = append(ids, &rbacconfigv3.Principal{
+			Identifier: &rbacconfigv3.Principal_DirectRemoteIp{
+				DirectRemoteIp: &core.CidrRange{
+					AddressPrefix: p.Addr().String(),
+					PrefixLen:     wrapperspb.UInt32(uint32(p.Bits())),
+				},
+			},
+		})
+	}
+	perRoute := &rbacv3.RBACPerRoute{
+		Rbac: &rbacv3.RBAC{
+			Rules: &rbacconfigv3.RBAC{
+				Action: rbacconfigv3.RBAC_ALLOW,
+				Policies: map[string]*rbacconfigv3.Policy{
+					constants.GatewayHealthClientsPolicyName: {
+						Permissions: []*rbacconfigv3.Permission{
+							{Rule: &rbacconfigv3.Permission_Any{Any: true}},
+						},
+						Principals: []*rbacconfigv3.Principal{
+							{Identifier: &rbacconfigv3.Principal_OrIds{OrIds: &rbacconfigv3.Principal_Set{Ids: ids}}},
+						},
+					},
+				},
+			},
+		},
+	}
+	rbacAny, err := anypb.New(perRoute)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create health route RBAC config: %w", err)
+	}
+	return rbacAny, nil
 }
 
 func (t *Translator) TranslateConfigs(
@@ -974,7 +1030,7 @@ func (t *Translator) TranslateConfigs(
 	// Built once, after every API/LLMProvider/LLMProxy config above has
 	// contributed its routes to allRoutes, and reused for every vhost below —
 	// this is the single registration point for the gateway's own health routes.
-	gatewayHealthRoutes, err := buildGatewayHealthRoutes()
+	gatewayHealthRoutes, err := buildGatewayHealthRoutes(t.routerConfig.Health.AllowedClients)
 	if err != nil {
 		return nil, err
 	}
@@ -990,6 +1046,13 @@ func (t *Translator) TranslateConfigs(
 	// Create a virtual host for each vhost
 	var virtualHosts []*route.VirtualHost
 	for vhost, routes := range vhostMap {
+		if !t.routerConfig.HTTPListener.AllowPathCaseVariants {
+			routes, err = appendCaseVariantGuards(routes)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		// Sort routes by priority (highest priority first) before adding to vhost
 		routes = SortRoutesByPriority(routes)
 
@@ -1004,42 +1067,15 @@ func (t *Translator) TranslateConfigs(
 		routes = append(append([]*route.Route{}, gatewayHealthRoutes...), routes...)
 
 		// Append the catch-all 404 route as the last route for each vhost (lowest priority).
-		extProcDisabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
-			Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
+		notFound, err := buildNotFoundRoute("no-api-found", &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{
+				Prefix: "/",
+			},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for catch-all route: %w", err)
+			return nil, err
 		}
-		routes = append(routes, &route.Route{
-			Name: "no-api-found",
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: "/",
-				},
-			},
-			Action: &route.Route_DirectResponse{
-				DirectResponse: &route.DirectResponseAction{
-					Status: 404,
-					Body: &core.DataSource{
-						Specifier: &core.DataSource_InlineString{
-							// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
-							InlineString: `{"error":"Not Found"}`,
-						},
-					},
-				},
-			},
-			ResponseHeadersToAdd: []*core.HeaderValueOption{
-				{
-					Header: &core.HeaderValue{
-						Key:   "content-type",
-						Value: "application/json",
-					},
-				},
-			},
-			TypedPerFilterConfig: map[string]*anypb.Any{
-				constants.ExtProcFilterName: extProcDisabledAny,
-			},
-		})
+		routes = append(routes, notFound)
 		virtualHost := &route.VirtualHost{
 			Name:    vhost,
 			Domains: t.getVHostDomains(vhost),
@@ -1507,6 +1543,15 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 
 	// Build HTTP filters chain
 	httpFilters := make([]*hcm.HttpFilter, 0)
+
+	// RBAC runs first, with no rules: only routes that enable it per route (the
+	// gateway health routes) are restricted, and a request it refuses never
+	// reaches the policy engine.
+	rbacFilter, err := createRBACFilter()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create rbac filter: %w", err)
+	}
+	httpFilters = append(httpFilters, rbacFilter)
 
 	// Add ext_proc filter for policy engine
 	extProcFilter, err := t.createExtProcFilter()
@@ -3756,6 +3801,19 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: luaAny,
 		},
+	}, nil
+}
+
+// createRBACFilter returns the RBAC HTTP filter with no rules. It enforces nothing on its
+// own; a route that needs access control enables it with per-route config.
+func createRBACFilter() (*hcm.HttpFilter, error) {
+	rbacAny, err := anypb.New(&rbacv3.RBAC{})
+	if err != nil {
+		return nil, err
+	}
+	return &hcm.HttpFilter{
+		Name:       constants.RBACFilterName,
+		ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: rbacAny},
 	}, nil
 }
 

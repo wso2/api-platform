@@ -19,12 +19,14 @@ package cloudconsole
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,27 +48,28 @@ func (s *Steps) obtainToken(ctx context.Context) error {
 	return nil
 }
 
-// defaultProjectID is the project every organization is given at onboarding, and
-// the one the REST API scenarios deploy into.
-const defaultProjectID = "default"
-
-// findDefaultProject asks for the project by id rather than scanning the list.
+// findTestProject finds the project the scenario's feature file works in, asking for it by id
+// rather than scanning the list.
 //
 // /projects is paginated and answers with 20 of them by default, so on an
-// organization with more projects than that the default is simply on a later
+// organization with more projects than that the project is simply on a later
 // page. Scanning the first page reported it missing and sent the reader looking
 // for a broken organization: one real organization held 213 projects, with the
 // default among them the whole time.
-func (s *Steps) findDefaultProject(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+defaultProjectID, nil)
+func (s *Steps) findTestProject(ctx context.Context) error {
+	project, err := requiredValue(ctx, keyScenarioProject)
+	if err != nil {
+		return fmt.Errorf("the scenario's project is not known: %w", err)
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
 	if err != nil {
 		return err
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return tcontext.Set(ctx, keyProjectID, defaultProjectID)
+		return tcontext.Set(ctx, keyProjectID, project)
 	case http.StatusNotFound:
-		return fmt.Errorf("the organization has no %q project", defaultProjectID)
+		return fmt.Errorf("the organization has no %q project", project)
 	default:
 		return responseError(resp)
 	}
@@ -78,8 +81,9 @@ func (s *Steps) findDefaultProject(ctx context.Context) error {
 // reading the generic endpoint would skip it.
 //
 // Only a regular gateway that the platform accepts a deployment to is chosen: one whose
-// environment is in the deployment pipeline of the project the scenario found, that no suite run
-// created for itself, and, when CLOUD_GATEWAY_ID names one, only that gateway.
+// environment is an entry environment of the deployment pipeline of the project the scenario
+// found, that no suite run created for itself, and, when CLOUD_GATEWAY_ID names one, only that
+// gateway, whatever its name looks like.
 func (s *Steps) findActiveGateway(ctx context.Context) error {
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways?functionalityType="+url.QueryEscape(regularGatewayKind), nil)
 	if err != nil {
@@ -92,16 +96,13 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
-	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway}
-	if pin := strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)); pin != "" {
-		filters = append(filters, pinnedGateway(pin))
-	}
+	filters := gatewayFilters(strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)))
 	if projectID, resolveErr := tcontext.ResolveString(ctx, keyProjectID); resolveErr == nil && strings.TrimSpace(projectID) != "" {
-		environments, err := s.pipelineEnvironments(ctx)
+		paths, err := s.pipelinePaths(ctx)
 		if err != nil {
 			return fmt.Errorf("reading the environments of the project's deployment pipeline: %w", err)
 		}
-		filters = append(filters, inPipelineEnvironments(environments))
+		filters = append(filters, inEntryEnvironments(paths))
 	}
 	choice, err := s.chooseActiveGateway(ctx, items, "APIP gateway", filters...)
 	if err != nil {
@@ -135,7 +136,13 @@ const regularGatewayKind = "regular"
 
 // syntheticGatewayName is the display name a suite run gives the managed gateways it creates:
 // "sgw" and the run's suffix and counter.
-var syntheticGatewayName = regexp.MustCompile(`^sgw-[a-z2-7]{8}-\d+$`)
+// A name cut to the length limit of a handle keeps its tail, so the prefix may be cut short and the
+// name may be padded with letters.
+var syntheticGatewayName = regexp.MustCompile(`^(?:s|sg|sgw|g|gw|w)?-?[a-z2-7]{8}-\d+x*$`)
+
+// syntheticEnvironmentName is the name earlier suite runs gave the environments they created, which
+// an organization may still hold.
+var syntheticEnvironmentName = regexp.MustCompile(`^(?:e|syn-env)-[a-z2-7]{8}-\d+$`)
 
 // regularGatewaysOnly rejects a gateway that is not of the regular kind. A listing that does not
 // say what kind a gateway is leaves it to the platform's own filter.
@@ -157,6 +164,38 @@ func notSyntheticGateway(item map[string]any) string {
 	return ""
 }
 
+// notInSyntheticEnvironment rejects a gateway of an environment that an earlier suite run created
+// for its own scenario, whose gateways are not the shared one the scenarios deploy to.
+func notInSyntheticEnvironment(item map[string]any) string {
+	environment, _ := item["environment"].(string)
+	if syntheticEnvironmentName.MatchString(strings.ToLower(strings.TrimSpace(environment))) {
+		return "an environment of a suite run"
+	}
+	return ""
+}
+
+// gatewayFilters returns the filters that choose a gateway to deploy to. A gateway a suite run
+// created for its scenarios is never chosen, as its description says. A gateway the operator names
+// through CLOUD_GATEWAY_ID is otherwise their explicit choice, so it is taken as named: the names
+// that mark a suite run's own gateways and environments can look like an operator's, and only an
+// unpinned run has to tell them apart by name.
+func gatewayFilters(pin string) []gatewayFilter {
+	filters := []gatewayFilter{regularGatewaysOnly, notScenarioGateway}
+	if pin != "" {
+		return append(filters, pinnedGateway(pin))
+	}
+	return append(filters, notSyntheticGateway, notInSyntheticEnvironment)
+}
+
+// notScenarioGateway rejects a gateway a suite run created for one of its scenarios, which that run
+// deletes when the scenario or runner ends.
+func notScenarioGateway(item map[string]any) string {
+	if description, _ := item["description"].(string); strings.HasPrefix(description, scenarioGatewayDescription) {
+		return "a scenario gateway of a suite run"
+	}
+	return ""
+}
+
 // pinnedGateway rejects every gateway but the one a run was told to use.
 func pinnedGateway(id string) gatewayFilter {
 	return func(item map[string]any) string {
@@ -167,14 +206,19 @@ func pinnedGateway(id string) gatewayFilter {
 	}
 }
 
-// inPipelineEnvironments rejects a gateway whose environment is not one the project's deployment
-// pipeline reaches, because the platform refuses a deployment to it.
-func inPipelineEnvironments(environments map[string]bool) gatewayFilter {
+// inEntryEnvironments rejects a gateway whose environment is not an entry environment of the
+// project's deployment pipeline, because the platform refuses a deployment to it: an environment
+// outside the pipeline is never deployed to, and a promotion target only through a promotion.
+func inEntryEnvironments(paths []promotionPath) gatewayFilter {
+	environments, entries := environmentsOf(paths), entryEnvironmentsOf(paths)
 	return func(item map[string]any) string {
 		environment, _ := item["environment"].(string)
 		environment = strings.TrimSpace(environment)
-		if !environments[environment] {
+		switch {
+		case !environments[environment]:
 			return fmt.Sprintf("environment %q is not in the project's deployment pipeline", environment)
+		case !entries[environment]:
+			return fmt.Sprintf("environment %q is a promotion target of the project's deployment pipeline", environment)
 		}
 		return ""
 	}
@@ -213,7 +257,10 @@ func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any,
 			skipped = append(skipped, id+": no endpoints")
 			continue
 		}
-		endpoint, ok := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+		endpoint, ok, err := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+		if err != nil {
+			return gatewayChoice{}, err
+		}
 		if !ok {
 			skipped = append(skipped, id+": no endpoint passed the data-plane host check")
 			continue
@@ -283,19 +330,100 @@ func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {
 	if err != nil {
 		return err
 	}
-	var body map[string]any
+	var body struct {
+		Path string `json:"path"`
+	}
 	if err := json.Unmarshal(response.Body, &body); err != nil {
 		return fmt.Errorf("decoding the synthetic REST API response: %w (%s)", err, response.Describe())
 	}
-	if body["id"] != float64(post) {
+	if !strings.HasSuffix(body.Path, fmt.Sprintf("/posts/%d", post)) {
 		return fmt.Errorf("expected the synthetic REST API response to contain post %d, got %s", post, response.Describe())
 	}
 	return nil
 }
 
-var approvedCloudDataPlaneHost = regexp.MustCompile(
-	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
+// cloudDataPlaneDomainsEnv lists comma-separated gateway domains; a gateway host is then
+// <label>.<domain>. Unset, it must be <label>.gateway[.<label>...].wso2.com.
+const cloudDataPlaneDomainsEnv = "CLOUD_IT_DATA_PLANE_DOMAINS"
+
+// errCloudDataPlaneDomains marks an invalid CLOUD_IT_DATA_PLANE_DOMAINS value.
+var errCloudDataPlaneDomains = errors.New("invalid " + cloudDataPlaneDomainsEnv)
+
+const dnsLabelPattern = `[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?`
+
+var defaultCloudDataPlaneHost = regexp.MustCompile(
+	`^` + dnsLabelPattern + `\.gateway(?:\.` + dnsLabelPattern + `)*\.wso2\.com$`,
 )
+
+// validCloudDataPlaneDomain needs two labels or more, so a bare TLD is refused.
+var validCloudDataPlaneDomain = regexp.MustCompile(`^` + dnsLabelPattern + `(?:\.` + dnsLabelPattern + `)+$`)
+
+// approvedCloudDataPlaneHost returns the pattern a gateway host must match.
+func approvedCloudDataPlaneHost() (*regexp.Regexp, error) {
+	raw := strings.TrimSpace(os.Getenv(cloudDataPlaneDomainsEnv))
+	if raw == "" {
+		return defaultCloudDataPlaneHost, nil
+	}
+	var domains []string
+	for _, domain := range strings.Split(raw, ",") {
+		domain = strings.ToLower(strings.TrimSpace(domain))
+		if domain == "" {
+			continue
+		}
+		if !validCloudDataPlaneDomain.MatchString(domain) {
+			return nil, fmt.Errorf("%w: %q is not a domain of two labels or more", errCloudDataPlaneDomains, domain)
+		}
+		domains = append(domains, regexp.QuoteMeta(domain))
+	}
+	if len(domains) == 0 {
+		return nil, fmt.Errorf("%w: no domain", errCloudDataPlaneDomains)
+	}
+	return regexp.Compile(`^` + dnsLabelPattern + `\.(?:` + strings.Join(domains, "|") + `)$`)
+}
+
+// cloudLocalDataPlaneEnv, when set to a true value, also approves gateway URLs on a .localhost
+// host over http or https and any port: the data plane of a cloud that runs on the developer's
+// machine. It is off by default, and no other destination is widened.
+const cloudLocalDataPlaneEnv = "CLOUD_IT_LOCAL_DATA_PLANE"
+
+// cloudLocalDataPlanePortEnv names the port the local data plane serves plain http on. The platform
+// reports a gateway as https://<host> with no port, which on a developer's machine reaches nothing, so
+// an approved local URL that carries no port is called on this one over http instead.
+const cloudLocalDataPlanePortEnv = "CLOUD_IT_LOCAL_DATA_PLANE_PORT"
+
+var approvedLocalDataPlaneHost = regexp.MustCompile(
+	`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$`,
+)
+
+func localDataPlaneEnabled() bool {
+	enabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(cloudLocalDataPlaneEnv)))
+	return err == nil && enabled
+}
+
+// approvedLocalDataPlaneTarget reports whether target is an http(s) URL on a named .localhost
+// host with no credentials. IP literals never match.
+func approvedLocalDataPlaneTarget(parsed *url.URL) bool {
+	if parsed.User != nil || parsed.Host == "" {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return approvedLocalDataPlaneHost.MatchString(strings.ToLower(parsed.Hostname()))
+}
+
+// localDataPlaneTarget sends an approved local URL that names no port to the local data plane's http
+// port, when CLOUD_IT_LOCAL_DATA_PLANE_PORT holds one. Any other URL is returned as it came.
+func localDataPlaneTarget(parsed *url.URL, target string) string {
+	port, err := strconv.Atoi(strings.TrimSpace(os.Getenv(cloudLocalDataPlanePortEnv)))
+	if err != nil || port < 1 || port > 65535 || parsed.Port() != "" {
+		return target
+	}
+	rewritten := *parsed
+	rewritten.Scheme = "http"
+	rewritten.Host = net.JoinHostPort(parsed.Hostname(), strconv.Itoa(port))
+	return rewritten.String()
+}
 
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
 	if s != nil && s.dataPlaneURLResolver != nil {
@@ -304,25 +432,37 @@ func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string,
 	return resolveCloudDataPlaneURL(ctx, target)
 }
 
-func firstApprovedDataPlaneEndpoint(ctx context.Context, s *Steps, endpoints []any) (string, bool) {
+// firstApprovedDataPlaneEndpoint skips rejected endpoints; an invalid domains setting is returned.
+func firstApprovedDataPlaneEndpoint(ctx context.Context, s *Steps, endpoints []any) (string, bool, error) {
 	for _, rawEndpoint := range endpoints {
 		endpoint, ok := rawEndpoint.(string)
 		if !ok || strings.TrimSpace(endpoint) == "" {
 			continue
 		}
 		endpoint, err := s.resolveDataPlaneURL(ctx, strings.TrimSpace(endpoint))
+		if errors.Is(err, errCloudDataPlaneDomains) {
+			return "", false, err
+		}
 		if err != nil {
 			continue
 		}
-		return strings.TrimRight(endpoint, "/"), true
+		return strings.TrimRight(endpoint, "/"), true, nil
 	}
-	return "", false
+	return "", false, nil
 }
 
-func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) {
+func resolveCloudDataPlaneURL(ctx context.Context, target string) (string, error) {
 	parsed, err := url.Parse(target)
 	if err != nil {
 		return "", fmt.Errorf("invalid cloud data-plane URL %q: %w", target, err)
+	}
+	// The runtime of a gateway this runner started on this machine is plain http on a loopback
+	// address; only the exact origin it was started on is let through, while it runs.
+	if isLocalGatewayTarget(ctx, parsed) {
+		return target, nil
+	}
+	if localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed) {
+		return localDataPlaneTarget(parsed, target), nil
 	}
 	if parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 		return "", fmt.Errorf("cloud data-plane target must be an approved HTTPS URL, got %q", target)
@@ -334,7 +474,11 @@ func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) 
 	if parsed.Port() != "" && parsed.Port() != "443" {
 		return "", fmt.Errorf("cloud data-plane target has an unapproved port %q", target)
 	}
-	if !approvedCloudDataPlaneHost.MatchString(host) {
+	approvedHost, err := approvedCloudDataPlaneHost()
+	if err != nil {
+		return "", err
+	}
+	if !approvedHost.MatchString(host) {
 		return "", fmt.Errorf("cloud data-plane target has an unapproved destination %q", target)
 	}
 	return target, nil
@@ -448,270 +592,95 @@ func (s *Steps) getProject(ctx context.Context) error {
 	return err
 }
 
-func (s *Steps) deleteProject(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodDelete, "/projects/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return responseError(resp)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		deregister(ctx, cleanup.KindProject, id)
-	}
-	return nil
-}
-
-func (s *Steps) verifyProjectDeleted(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	if err := s.awaitNotFound(ctx, "/projects/"+url.PathEscape(id), "project "+id); err != nil {
-		return err
-	}
-	deregister(ctx, cleanup.KindProject, id)
-	return nil
-}
-
-func (s *Steps) createEnvironment(ctx context.Context) error {
-	if err := generateResourceAndStore(ctx, "syn-env", keyEnvironmentName); err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindEnvironment, ID: id, Actor: resourceActor, Description: "environment " + id,
-	}); err != nil {
-		return fmt.Errorf("registering environment %q for cleanup: %w", id, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/environments", map[string]any{
-		"name": id, "isProduction": false,
-	})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
-	}
-	createdID, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("creating APIP environment: %w", err)
-	}
-	if createdID != id {
-		deregister(ctx, cleanup.KindEnvironment, id)
-		if registerErr := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindEnvironment, ID: createdID, Actor: resourceActor, Description: "environment " + createdID,
-		}); registerErr != nil {
-			return fmt.Errorf("registering environment %q for cleanup: %w", createdID, registerErr)
-		}
-		return fmt.Errorf("created APIP environment id = %q, want %q", createdID, id)
-	}
-	return nil
-}
-
-func (s *Steps) duplicateEnvironment(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/environments", map[string]any{
-		"name": id, "isProduction": false,
-	})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusConflict {
-		return responseError(resp)
-	}
-	return nil
-}
-
-func (s *Steps) deleteEnvironment(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	return s.deleteEnvironmentUntilGone(ctx, id)
-}
-
-func (s *Steps) verifyEnvironmentDeleted(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	if err := s.awaitEnvironmentNotFound(ctx, id); err != nil {
-		return err
-	}
-	deregister(ctx, cleanup.KindEnvironment, id)
-	return nil
-}
-
-func (s *Steps) deleteEnvironmentUntilGone(ctx context.Context, id string) error {
-	err := s.awaitEnvironmentNotFound(ctx, id)
-	if err != nil {
-		return err
-	}
-	deregister(ctx, cleanup.KindEnvironment, id)
-	return nil
-}
-
-func (s *Steps) awaitEnvironmentNotFound(ctx context.Context, id string) error {
-	return retry.Await(ctx, retry.Options{Timeout: 2 * time.Minute, Interval: 3 * time.Second},
-		func(ctx context.Context) (*httpx.Response, error) {
-			return s.doAuthenticatedRaw(ctx, http.MethodDelete, "/environments/"+url.PathEscape(id), nil)
-		}, func(resp *httpx.Response) bool {
-			return resp != nil && resp.StatusCode == http.StatusNotFound
-		}, "waiting for APIP environment "+id+" deletion")
-}
-
 func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	items, err := s.listEnvironments(ctx)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
-	}
-	items, err := listItems(resp)
+	name, err := usableEnvironment(items, hostsSuiteGateways(ctx, s.rawDo))
 	if err != nil {
-		return fmt.Errorf("decoding APIP environments: %w", err)
+		return err
 	}
+	return tcontext.Set(ctx, keyEnvironmentName, name)
+}
+
+// selectOtherGatewayEnvironment selects a listed non-production environment other than the active
+// gateway's, for a gateway the runner creates beside the one it creates there. An environment a
+// suite run once created for itself is passed over.
+func (s *Steps) selectOtherGatewayEnvironment(ctx context.Context) error {
+	active, err := requiredValue(ctx, keyGatewayEnv)
+	if err != nil {
+		return fmt.Errorf("the active gateway does not report its environment: %w", err)
+	}
+	items, err := s.listEnvironments(ctx)
+	if err != nil {
+		return err
+	}
+	name, err := otherEnvironment(items, active, hostsSuiteGateways(ctx, s.rawDo))
+	if err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, keyEnvironmentName, name)
+}
+
+// listEnvironments reads every page of the environments the platform lists for the organisation,
+// as the starter does, so both see the same list.
+func (s *Steps) listEnvironments(ctx context.Context) ([]map[string]any, error) {
+	token, err := bearerToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	if err != nil {
+		return nil, err
+	}
+	items, err := listCollection(ctx, s.client, base, token, "/environments")
+	if errors.Is(err, errCollectionNotServed) {
+		return nil, errors.New("the platform does not serve APIP environments")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("listing APIP environments: %w", err)
+	}
+	return items, nil
+}
+
+// usableEnvironment returns the name of the first listed environment the suite may select (the
+// default one or one named with the suite's prefix) and that fits reports as allowing the suite's
+// gateway names.
+func usableEnvironment(items []map[string]any, fits func(string) bool) (string, error) {
 	for _, item := range items {
 		name, ok := item["name"].(string)
-		if ok && strings.TrimSpace(name) != "" {
-			return tcontext.Set(ctx, keyEnvironmentName, name)
+		if ok && ownedEnvironment(name) && fits(name) {
+			return name, nil
 		}
 	}
-	return fmt.Errorf("APIP environment list contains no usable environment")
+	return "", fmt.Errorf("APIP environment list contains no environment named %q or starting with %q that allows a gateway handle of %d characters",
+		defaultEnvironmentName, testResourcePrefix, minGatewayHandleBudget)
 }
 
-func (s *Steps) createManagedGateway(ctx context.Context) error {
-	environment, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	_, err = s.createManagedGatewayIn(ctx, environment)
-	return err
-}
-
-// createManagedGatewayIn creates a uniquely named managed gateway in an environment, registers it
-// for cleanup before the request, and keeps its id as the scenario's managed gateway. The platform
-// registers a gateway as "<environment>-<handle>" within 40 characters, so a name too long for the
-// environment is sent with a handle cut to fit.
-func (s *Steps) createManagedGatewayIn(ctx context.Context, environment string) (string, error) {
-	// "sgw", not "syn-gateway": a managed gateway's handle is bounded by the
-	// release label the control plane renders from it, which spends the
-	// environment name twice and leaves 15 characters in a "development"
-	// environment. Unique() adds 11 ("-<suffix8>-<n>"), so the base has to fit in
-	// the rest. A longer base is accepted at create time and then fails to apply,
-	// leaving a gateway that never becomes ready.
-	if err := generateResourceAndStore(ctx, "sgw", keyManagedGatewayID); err != nil {
-		return "", err
-	}
-	name, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return "", err
-	}
-	request := map[string]string{"displayName": name, "environment": environment}
-	handle := name
-	if budget := gatewayHandleBudget(environment); len(name) > budget {
-		handle = handleOfLength(name, budget)
-		request["handle"] = handle
-	}
-	// The managed-gateway API normally derives its registration id from the
-	// environment and handle. Keep that deterministic fallback registered so
-	// cleanup can still attempt deletion if a successful create has no decodable body.
-	cleanupID := environment + "-" + handle
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindGateway, ID: cleanupID, Actor: resourceActor, Description: "managed gateway " + cleanupID,
-	}); err != nil {
-		return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", request)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return "", responseError(resp)
-	}
-	id, err := stringField(resp, "id")
-	if err != nil {
-		return "", fmt.Errorf("creating APIP managed gateway: %w", err)
-	}
-	if id != cleanupID {
-		deregister(ctx, cleanup.KindGateway, cleanupID)
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
-		}); err != nil {
-			return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
+// otherEnvironment returns the first listed non-production environment besides the active one that
+// the suite may select (the default one or one named with the suite's prefix), that fits reports as
+// allowing the suite's gateway names and that no suite run created for itself.
+func otherEnvironment(items []map[string]any, active string, fits func(string) bool) (string, error) {
+	for _, item := range items {
+		name, _ := item["name"].(string)
+		name = strings.TrimSpace(name)
+		if !ownedEnvironment(name) || name == active || item["isProduction"] == true ||
+			syntheticEnvironmentName.MatchString(strings.ToLower(name)) || !fits(name) {
+			continue
 		}
+		return name, nil
 	}
-	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
-		return "", err
-	}
-	return id, tcontext.Set(ctx, keyManagedGatewayID, id)
+	return "", fmt.Errorf("the organization has no non-production environment named %q or starting with %q besides %q that allows a gateway handle of %d characters, to create a second gateway in",
+		defaultEnvironmentName, testResourcePrefix, active, minGatewayHandleBudget)
 }
 
-func (s *Steps) getManagedGateway(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
+// rawDo sends a JSON request as the scenario's user without publishing the answer.
+func (s *Steps) rawDo(ctx context.Context, method, path string, body []byte) (*httpx.Response, error) {
+	if body == nil {
+		return s.doAuthenticatedRaw(ctx, method, path, nil)
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
-	}
-	got, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("retrieving APIP managed gateway: %w", err)
-	}
-	if got != id {
-		return fmt.Errorf("retrieved APIP gateway id = %q, want %q", got, id)
-	}
-	return nil
-}
-
-func (s *Steps) deleteManagedGateway(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodDelete, "/managed-gateways/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return responseError(resp)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		deregister(ctx, cleanup.KindGateway, id)
-	}
-	return tcontext.Set(ctx, keyGatewayDeleteStatus, fmt.Sprint(resp.StatusCode))
-}
-
-func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
-		if status := optionalValue(ctx, keyGatewayDeleteStatus); status != "" {
-			return fmt.Errorf("%w (the delete was answered %s)", err, status)
-		}
-		return err
-	}
-	deregister(ctx, cleanup.KindGateway, id)
-	return nil
+	return s.doAuthenticatedRaw(ctx, method, path, json.RawMessage(body))
 }
 
 func (s *Steps) awaitNotFound(ctx context.Context, path, what string) error {

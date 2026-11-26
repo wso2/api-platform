@@ -25,7 +25,7 @@ Feature: An organization cannot deploy to another organization's gateway
   Background:
     Given the first gateway is running
     And the second gateway is running
-    And I generate a unique value from "tenant-deploy-project" and store it as "projectHandle"
+    And I generate a unique resource name from "tenant-deploy-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @TENANT-004
