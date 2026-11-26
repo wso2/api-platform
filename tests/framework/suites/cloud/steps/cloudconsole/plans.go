@@ -216,28 +216,37 @@ func (s *Steps) assertPlanHasNoPricing(ctx context.Context) error {
 	return nil
 }
 
-// assertPlanCreator checks that the published plan names the console user as its creator: the
-// platform shows the creator's display name, which it takes from the token's name claim, or the
-// user's id (sub) when the token has no name.
+// consoleUserDisplayName is how the platform shows the console user as a resource's creator: the
+// display name it takes from the token's name claim, or the user's id (sub) when the token has no
+// name.
+func consoleUserDisplayName(ctx context.Context) (string, error) {
+	token, err := bearerToken(ctx)
+	if err != nil {
+		return "", err
+	}
+	_, claims, err := decodeJWT(token)
+	if err != nil {
+		return "", err
+	}
+	name, _ := claims["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		name, _ = claims["sub"].(string)
+	}
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("the console token carries neither a name nor a sub claim")
+	}
+	return name, nil
+}
+
+// assertPlanCreator checks that the published plan names the console user as its creator.
 func (s *Steps) assertPlanCreator(ctx context.Context) error {
 	plan, response, err := publishedPlan(ctx)
 	if err != nil {
 		return err
 	}
-	token, err := bearerToken(ctx)
+	want, err := consoleUserDisplayName(ctx)
 	if err != nil {
 		return err
-	}
-	_, claims, err := decodeJWT(token)
-	if err != nil {
-		return err
-	}
-	want, _ := claims["name"].(string)
-	if strings.TrimSpace(want) == "" {
-		want, _ = claims["sub"].(string)
-	}
-	if strings.TrimSpace(want) == "" {
-		return fmt.Errorf("the console token carries neither a name nor a sub claim")
 	}
 	if plan.CreatedBy != want {
 		return fmt.Errorf("expected the plan's creator to be the console user %q: %s", want, response.Describe())

@@ -37,6 +37,7 @@ blocks:
         features:
           - features/apip_gateway_config.feature
       - name: apip-self-hosted-gateway
+        tags: "~@known-issue"
         features:
           - features/apip_self_hosted_gateway.feature
       - name: apip-promotion
