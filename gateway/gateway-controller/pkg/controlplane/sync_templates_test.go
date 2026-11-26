@@ -23,6 +23,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -129,6 +130,7 @@ type templateControlPlane struct {
 	mu             sync.Mutex
 	providerYAML   string
 	templates      map[string]string // handle -> YAML served for it
+	secrets        map[string]string // secret handle -> value served for it
 	batch          []byte
 	templateFetchs []string
 }
@@ -182,8 +184,20 @@ func newTemplateEventsHarness(t *testing.T) (*agentEventsHarness, *templateContr
 	llmService.SetControlPlanePusher(pusher, true)
 	h.client.llmDeploymentService = llmService
 
-	cp := &templateControlPlane{templates: map[string]string{}}
+	cp := &templateControlPlane{templates: map[string]string{}, secrets: map[string]string{}}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/internal/v1/secrets/", func(w http.ResponseWriter, r *http.Request) {
+		handle := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/internal/v1/secrets/"), "/value")
+		cp.mu.Lock()
+		value, ok := cp.secrets[handle]
+		cp.mu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": value})
+	})
 	mux.HandleFunc("/api/internal/v1/llm-providers/", func(w http.ResponseWriter, r *http.Request) {
 		cp.mu.Lock()
 		body := cp.providerYAML
@@ -474,4 +488,44 @@ func TestProviderSync_SharedTemplateFetchedOncePerBatch(t *testing.T) {
 		_, err := h.db.GetConfig(id)
 		assert.NoError(t, err, "provider %s deployed", id)
 	}
+}
+
+func TestProviderDeploy_TemplateSecretRefsSyncedBeforeApply(t *testing.T) {
+	h, cp, _ := newTemplateEventsHarness(t)
+	syncer := newMockSecretSyncer()
+	h.client.secretSyncer = syncer
+	cp.providerYAML = tmplEvtProviderYAML(tmplEvtHandle)
+	cp.templates[tmplEvtHandle] = `apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: ` + tmplEvtHandle + `
+spec:
+  displayName: '{{ secret "acme-display-name" }}'
+  promptTokens:
+    location: payload
+    identifier: $.meta.tokens.in
+`
+	cp.secrets["acme-display-name"] = "Acme Inference"
+
+	h.client.handleLLMProviderDeployedEvent(tmplEvtDeployedEvent(t))
+
+	ack := h.nextAck(t)
+	assert.Equal(t, "success", ack.Status, "error code %q", ack.ErrorCode)
+	assert.Equal(t, "Acme Inference", syncer.upserted["acme-display-name"],
+		"a secret the fetched template references is synced before the template is rendered")
+	_, err := h.db.GetLLMProviderTemplateByHandle(tmplEvtHandle)
+	assert.NoError(t, err)
+}
+
+func TestProviderDeploy_TemplateFetchFails_NoSecretSync(t *testing.T) {
+	h, cp, _ := newTemplateEventsHarness(t)
+	syncer := newMockSecretSyncer()
+	h.client.secretSyncer = syncer
+	cp.providerYAML = tmplEvtProviderYAML(tmplEvtHandle) // no template served: 404
+	cp.secrets["acme-display-name"] = "Acme Inference"
+
+	h.client.handleLLMProviderDeployedEvent(tmplEvtDeployedEvent(t))
+
+	assert.Equal(t, "failed", h.nextAck(t).Status, "a provider whose template is missing fails as before")
+	assert.Empty(t, syncer.upserted, "a failed fetch syncs nothing")
 }

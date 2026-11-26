@@ -83,6 +83,11 @@ func (c *Client) ensureLLMProviderTemplateFromYAML(yamlData []byte, correlationI
 		return
 	}
 
+	// Make any {{ secret "handle" }} references in the template available
+	// locally before it is rendered and validated, exactly as the provider's
+	// own YAML is handled: secrets created since the last sync are not cached.
+	c.syncSecretRefsFromYAML(templateYAML, correlationID)
+
 	// The template gets its own event ID: the event hub drops a second event
 	// with an ID it has already seen for this gateway, and the provider's own
 	// event carries correlationID.
