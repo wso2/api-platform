@@ -18,6 +18,7 @@
 
 import { get, post, put, del } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
+import { getHttpStatus } from '../utils/apiError';
 
 import type {
   Proxy,
@@ -127,6 +128,24 @@ export async function getProxy(
     return response;
   } catch (error) {
     logger.error(`Failed to fetch proxy ${proxyId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Whether an LLM Proxy with this ID exists. A 404 is the expected answer for a
+ * free ID, so it is not logged as an error; any other failure is rethrown.
+ *
+ * @param proxyId - The proxy ID
+ * @param baseUrl - The APIM base URL
+ */
+export async function proxyExists(proxyId: string, baseUrl: string): Promise<boolean> {
+  try {
+    await get<Proxy>(`/llm-proxies/${encodeURIComponent(proxyId)}`, undefined, baseUrl);
+    return true;
+  } catch (error) {
+    if (getHttpStatus(error) === 404) return false;
+    logger.error(`Failed to check proxy ${proxyId}:`, error);
     throw error;
   }
 }

@@ -18,6 +18,7 @@
 
 import { get, post, put, del } from '../../clients/choreoApiClient';
 import { logger } from '../../utils/logger';
+import { getHttpStatus } from '../../utils/apiError';
 import { BFF_API_BASE_URL } from '../../paths';
 
 import type {
@@ -114,6 +115,24 @@ export async function getMCPServer(
     return response;
   } catch (error) {
     logger.error(`Failed to fetch MCP server ${mcpServerId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Whether an MCP proxy with this ID exists. A 404 is the expected answer for a
+ * free ID, so it is not logged as an error; any other failure is rethrown.
+ *
+ * @param mcpServerId - The MCP proxy ID
+ * @param baseUrl - The APIM base URL
+ */
+export async function mcpProxyExists(mcpServerId: string, baseUrl: string): Promise<boolean> {
+  try {
+    await get<MCPServer>(`/mcp-proxies/${encodeURIComponent(mcpServerId)}`, undefined, baseUrl);
+    return true;
+  } catch (error) {
+    if (getHttpStatus(error) === 404) return false;
+    logger.error(`Failed to check MCP proxy ${mcpServerId}:`, error);
     throw error;
   }
 }
@@ -247,6 +266,7 @@ export async function unpublishMcpProxyFromApiPortal(
 
 export const mcpProxiesApis = {
   createMCPServer,
+  mcpProxyExists,
   getMCPServers,
   getMCPServer,
   updateMCPServer,
