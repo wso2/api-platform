@@ -112,6 +112,9 @@ func planDefaultAdminCredentials(ctx context.Context, in defaultAdminInput) (def
 		return defaultAdminPlan{}, err
 	}
 	if secret != nil {
+		if err := checkGeneratedSecretOwner(in, secret); err != nil {
+			return defaultAdminPlan{}, err
+		}
 		return generated, nil
 	}
 
@@ -142,13 +145,31 @@ func planDefaultAdminCredentials(ctx context.Context, in defaultAdminInput) (def
 			return defaultAdminPlan{}, err
 		}
 		// Created concurrently: use it if it is ours.
-		if _, err := auth.GetGeneratedAdminSecret(ctx, in.Client, in.Namespace, in.GatewayName); err != nil {
+		existing, err := auth.GetGeneratedAdminSecret(ctx, in.Client, in.Namespace, in.GatewayName)
+		if err != nil {
+			return defaultAdminPlan{}, err
+		}
+		if existing == nil {
+			return defaultAdminPlan{}, fmt.Errorf("generated admin credentials secret %s/%s was deleted while it was being created", in.Namespace, secretName)
+		}
+		if err := checkGeneratedSecretOwner(in, existing); err != nil {
 			return defaultAdminPlan{}, err
 		}
 		return generated, nil
 	}
 	generated.Created = true
 	return generated, nil
+}
+
+// checkGeneratedSecretOwner fails unless the gateway being planned owns the generated
+// Secret. An APIGateway and a Gateway API Gateway with the same name in one namespace map
+// to the same Secret; the second one must not share the first one's credential.
+func checkGeneratedSecretOwner(in defaultAdminInput, secret *corev1.Secret) error {
+	if in.Owner == nil || auth.GeneratedAdminSecretOwnedBy(secret, in.Owner) {
+		return nil
+	}
+	return fmt.Errorf("secret %s/%s holds the generated admin credential of another gateway with the same name; "+
+		"rename this gateway, or set its admin credentials explicitly: %w", secret.Namespace, secret.Name, auth.ErrForeignAdminSecret)
 }
 
 func createGeneratedAdminSecret(ctx context.Context, in defaultAdminInput, name string) error {

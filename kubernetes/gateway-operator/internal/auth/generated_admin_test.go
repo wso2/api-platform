@@ -44,6 +44,7 @@ func generatedSecret(gatewayName, password string, ours bool) *corev1.Secret {
 	}
 	if ours {
 		s.Labels = map[string]string{GeneratedAdminCredentialsLabel: GeneratedAdminCredentialsLabelValue}
+		s.Annotations = map[string]string{GeneratedAdminCredentialsGatewayAnnotation: gatewayName}
 	}
 	return s
 }
@@ -97,6 +98,46 @@ func TestGetGeneratedAdminSecret(t *testing.T) {
 
 	_, err = GetGeneratedAdminSecret(ctx, newFakeClient(t, generatedSecret("gateway-1", "pw", false)), testNS, "gateway-1")
 	require.ErrorIs(t, err, ErrForeignAdminSecret, "a same-name Secret the operator did not create is never used")
+}
+
+// Two gateway names can map to one Secret name: a 236-character name is shortened to 226
+// characters plus "-<hash>", which a 235-character name can spell out in full. The
+// second gateway must not use the first one's credential.
+func TestGetGeneratedAdminSecretRejectsAnotherGatewaysSecret(t *testing.T) {
+	ctx := context.Background()
+	long := strings.Repeat("a", 236)
+	short := GeneratedAdminSecretName(long)
+	twin := strings.TrimSuffix(short, generatedAdminSecretSuffix)
+	require.Len(t, twin, 235)
+	require.Equal(t, short, GeneratedAdminSecretName(twin), "the two names collide")
+
+	c := newFakeClient(t, generatedSecret(long, "pw", true))
+	s, err := GetGeneratedAdminSecret(ctx, c, testNS, long)
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	_, err = GetGeneratedAdminSecret(ctx, c, testNS, twin)
+	require.ErrorIs(t, err, ErrForeignAdminSecret)
+}
+
+func TestGeneratedAdminSecretOwnedBy(t *testing.T) {
+	gw := &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: testNS, UID: "uid-1"}}
+	other := &apiv1.APIGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway-1", Namespace: testNS, UID: "uid-2"}}
+	s := generatedSecret("gateway-1", "pw", true)
+	assert.False(t, GeneratedAdminSecretOwnedBy(s, gw), "no owner")
+	s.OwnerReferences = []metav1.OwnerReference{{APIVersion: "v1", Kind: "APIGateway", Name: "gateway-1", UID: "uid-1"}}
+	assert.True(t, GeneratedAdminSecretOwnedBy(s, gw))
+	assert.False(t, GeneratedAdminSecretOwnedBy(s, other))
+}
+
+// The username of a generated credential is always the one the operator deploys
+// (admin), whatever the Secret's informational username key says.
+func TestGeneratedAdminCredentialsIgnoresUsernameKey(t *testing.T) {
+	s := generatedSecret("gateway-1", "pw", true)
+	s.Data[GeneratedAdminUsernameKey] = []byte("ops")
+	user, pass, err := GeneratedAdminCredentials(s)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultAdminUsername, user)
+	assert.Equal(t, "pw", pass)
 }
 
 // A gateway without spec.adminCredentials or values users signs in with the generated

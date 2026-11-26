@@ -143,7 +143,9 @@ func (r *GatewayReconciler) planDefaultAdmin(ctx context.Context, gw *apiv1.APIG
 	releaseValues := r.previousReleaseValues
 	if releaseValues == nil {
 		releaseValues = func(name, namespace string) (map[string]interface{}, bool, error) {
-			return helmgateway.PreviousReleaseValues(r.Config, name, namespace)
+			return helmgateway.PreviousReleaseValues(ctx, helmgateway.PreviousReleaseInput{
+				Config: r.Config, Client: r.Client, GatewayName: name, Namespace: namespace, FromGatewayAPI: false,
+			})
 		}
 	}
 	return planDefaultAdminCredentials(ctx, defaultAdminInput{

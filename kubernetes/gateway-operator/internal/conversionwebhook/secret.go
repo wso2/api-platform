@@ -95,9 +95,10 @@ func (m *secretManager) ensureOnce(ctx context.Context) (certBundle, error) {
 	if plan == renewAll {
 		// A new CA: keep trusting the old one for a while, so replicas still serving a
 		// certificate it signed are not rejected while they load the new one. The old
-		// CA comes from the Secret, or from the CRD when the Secret was deleted.
+		// CA comes from the Secret, or from the CRD when the Secret was deleted or
+		// rewritten without one.
 		old := bundle.caCert
-		if !found && m.currentCA != nil {
+		if (!found || len(old) == 0) && m.currentCA != nil {
 			old = m.currentCA(ctx)
 		}
 		renewed.previousCA = previousCAs(old, renewed.caCert, now)
@@ -178,6 +179,15 @@ func (s *servingState) sync(ctx context.Context) (bool, error) {
 		}
 		if bundle, err = s.secrets.ensure(ctx); err != nil {
 			return false, fmt.Errorf("recreate the missing certificate Secret: %w", err)
+		}
+	} else if _, _, caErr := parseCA(bundle.caCert, bundle.caKey); caErr != nil {
+		// Something rewrote the Secret without a usable CA. Repair it now rather than
+		// at the rotator's next pass, which can be an hour away.
+		if s.logger != nil {
+			s.logger.Warn("The conversion webhook certificate Secret has no usable CA; replacing its certificates")
+		}
+		if bundle, err = s.secrets.ensure(ctx); err != nil {
+			return false, fmt.Errorf("repair the certificate Secret: %w", err)
 		}
 	}
 	if s.store.serving(bundle) {
