@@ -19,6 +19,9 @@ package session
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -149,10 +152,40 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	orgID := strClaim(claims, m.OrgID)
 	orgName := strClaim(claims, m.OrgName)
 	orgHandle := strClaim(claims, m.OrgHandle)
-	if orgID != "" || orgHandle != "" {
+
+	// If org claims were not resolved as flat strings, inspect if the configured
+	// claim is a nested object (e.g. {"organization": {"uuid": ..., "handle": ..., "name": ...}}).
+	if orgID == "" && orgHandle == "" {
+		if raw, ok := resolveClaimPath(claims, m.OrgID); ok {
+			if nested, isMap := raw.(map[string]any); isMap {
+				orgID = first(strClaim(nested, "uuid"), strClaim(nested, "id"), orgID)
+				orgHandle = first(strClaim(nested, "handle"), orgHandle)
+				if nestedName := first(strClaim(nested, "name"), strClaim(nested, "displayName")); nestedName != "" {
+					orgName = nestedName
+				}
+			}
+		}
+	}
+
+	if orgID != "" || orgHandle != "" || orgName != "" {
 		name := orgName
 		if name == "" {
-			name = orgHandle
+			name = first(orgHandle, orgID)
+		}
+		if !isValidHandle(orgHandle) {
+			if slug := slugify(name); isValidHandle(slug) {
+				orgHandle = slug
+			} else if isValidHandle(orgID) {
+				orgHandle = strings.ToLower(orgID)
+			} else {
+				fallbackSource := first(name, orgID, orgHandle)
+				if fallbackSource != "" {
+					orgHandle = stableFallbackHandle(fallbackSource)
+				}
+			}
+		}
+		if orgID == "" {
+			orgID = first(orgHandle, name)
 		}
 		u.Org = &Org{ID: orgID, Name: name, Handle: orgHandle}
 	}
@@ -285,3 +318,34 @@ func first(vals ...string) string {
 	}
 	return ""
 }
+
+func slugify(displayName string) string {
+	s := strings.ToLower(strings.TrimSpace(displayName))
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r == ' ' || r == '_':
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+var validHandleRegex = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+
+func isValidHandle(h string) bool {
+	h = strings.ToLower(h)
+	if len(h) < 3 || len(h) > 63 || strings.Contains(h, "--") {
+		return false
+	}
+	return validHandleRegex.MatchString(h)
+}
+
+func stableFallbackHandle(input string) string {
+	h := fnv.New32a()
+	h.Write([]byte(input))
+	return fmt.Sprintf("org-%08x", h.Sum32())
+}
+
