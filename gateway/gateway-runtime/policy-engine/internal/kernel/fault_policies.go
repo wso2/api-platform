@@ -296,7 +296,16 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 	}
 	// On an OpenAI route the body is reshaped instead, unless it is encoded. The fault entries
 	// have already run, so it only fills gaps in any re-description of theirs.
+	//
+	// On a router failure nothing is declared yet, and the body carries no code or type. The
+	// router's own description fills those, or the envelope would lose them.
 	if fault, ok := ec.openAIPolicyBodyFault(actionBody(authored)); ok && !actionEncoded(authored) {
+		if router := routerErrorFor(ec.resolvedFaultSource(), ec.responseCodeDetails); router != nil {
+			fault = *withFallbackDetails(&fault, *router)
+			if fault.Code == "" { // withFallbackDetails leaves Code alone
+				fault.Code = router.Code
+			}
+		}
 		ec.faultDeclared = withFallbackDetails(ec.faultDeclared, fault)
 	} else {
 		ec.faultBodyAuthored = true

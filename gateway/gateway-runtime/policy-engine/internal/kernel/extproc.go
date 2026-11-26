@@ -149,14 +149,11 @@ func WithHandleUpstreamFaults(enabled bool) ServerOption {
 
 // WithLLMOpenAIErrors renders gateway-produced errors on LlmProvider and LlmProxy routes in the
 // OpenAI envelope, from policy_engine.llm_errors.enable_openai_format. It adds the LLM kinds to
-// the formatter's set, leaving Agent unaffected; pass it after WithErrorFormatterKinds, which
-// replaces the set.
+// the formatter's set, leaving Agent unaffected. The kinds are added once every option has run,
+// so the order relative to WithErrorFormatterKinds does not matter.
 func WithLLMOpenAIErrors(enabled bool) ServerOption {
 	return func(s *ExternalProcessorServer) {
 		s.llmOpenAIErrors = enabled
-		if enabled {
-			s.errorFormatterKinds = s.errorFormatterKinds.With(faultformat.OpenAIErrorKinds()...)
-		}
 	}
 }
 
@@ -200,6 +197,10 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 	}
 	for _, opt := range opts {
 		opt(srv)
+	}
+	// After the loop, so WithErrorFormatterKinds replacing the set cannot drop the LLM kinds.
+	if srv.llmOpenAIErrors {
+		srv.errorFormatterKinds = srv.errorFormatterKinds.With(faultformat.OpenAIErrorKinds()...)
 	}
 	return srv
 }

@@ -31,6 +31,7 @@ Feature: OpenAI-compatible error responses for LLM APIs
   # The option is scoped by API kind, not by provider template. A guardrail written for REST APIs
   # writes its own JSON body without describing the failure; on an LLM route that body is
   # reshaped and the guardrail's status is kept.
+  @FAULT-017
   Scenario Outline: A policy rejection on a <template> provider is returned in the OpenAI envelope
     Given I generate a unique resource name from "oai-err-guard-<template>" and store it as "providerName"
     And I generate a unique value from "oai-err-guard-<template>-display" and store it as "providerDisplayName"
@@ -86,6 +87,7 @@ Feature: OpenAI-compatible error responses for LLM APIs
       | mistralai       |
       | awsbedrock      |
 
+  @FAULT-018
   Scenario: A policy rejection on an LLM proxy is returned in the OpenAI envelope
     Given I generate a unique resource name from "oai-err-proxy-backing" and store it as "providerName"
     And I generate a unique value from "oai-err-proxy-backing-display" and store it as "providerDisplayName"
@@ -138,6 +140,7 @@ Feature: OpenAI-compatible error responses for LLM APIs
   # The upstream refuses connections, so the router produces the 503 itself. The route's only
   # policy never reads the response body, so this also covers buffering the body of an error
   # response alone: the router's plain-text reply must still be replaced.
+  @FAULT-019
   Scenario Outline: A router failure on a <template> provider is returned in the OpenAI envelope
     Given I generate a unique resource name from "oai-err-down-<template>" and store it as "providerName"
     And I generate a unique value from "oai-err-down-<template>-display" and store it as "providerDisplayName"
@@ -183,6 +186,7 @@ Feature: OpenAI-compatible error responses for LLM APIs
 
   # A provider owns its complete error response, including the decision to send no body. Neither
   # form is replaced by the gateway's formatter.
+  @FAULT-020
   Scenario Outline: A <template> backend error is preserved with or without a body
     Given I generate a unique resource name from "oai-err-backend-<template>" and store it as "providerName"
     And I generate a unique value from "oai-err-backend-<template>-display" and store it as "providerDisplayName"
@@ -247,6 +251,7 @@ Feature: OpenAI-compatible error responses for LLM APIs
       | awsbedrock      |
 
   # The option is scoped to LLM kinds: the same guardrail on a REST API keeps its own body.
+  @FAULT-021
   Scenario: A REST API rejection is not reshaped
     Given I generate a unique value from "oai-err-rest" and store it as "apiName"
     And I generate a unique API version from "oai-err-rest" and store it as "apiVersion"

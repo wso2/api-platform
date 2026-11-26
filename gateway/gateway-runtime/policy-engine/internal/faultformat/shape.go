@@ -204,6 +204,9 @@ func Negotiate(req Request) ShapeID {
 	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		// Whatever the Accept header, including a streaming call: the reference API returns
 		// errors as plain JSON before the stream opens.
+		//
+		// Returned even with enable_openai_format off: the opt-out is enforced by leaving the
+		// LLM kinds out of the formatter's kind set, so these never reach negotiation.
 		return ShapeOpenAI
 	}
 	// 2. Protocols identified by the request's own media type. SOAP is the case this

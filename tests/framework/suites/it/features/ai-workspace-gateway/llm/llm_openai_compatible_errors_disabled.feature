@@ -28,6 +28,7 @@ Feature: Opting out of OpenAI-compatible error responses for LLM APIs
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
+  @FAULT-022
   Scenario: A policy rejection keeps the policy's own body
     Given I generate a unique resource name from "oai-off-guard" and store it as "providerName"
     And I generate a unique value from "oai-off-guard-display" and store it as "providerDisplayName"
@@ -63,6 +64,7 @@ Feature: Opting out of OpenAI-compatible error responses for LLM APIs
     Then the response should be successful
 
   # The upstream refuses connections, so the router writes the 503 itself and sends it as written.
+  @FAULT-023
   Scenario: A router failure keeps the router's own reply
     Given I generate a unique resource name from "oai-off-down" and store it as "providerName"
     And I generate a unique value from "oai-off-down-display" and store it as "providerDisplayName"
@@ -92,6 +94,7 @@ Feature: Opting out of OpenAI-compatible error responses for LLM APIs
     Then the response should be successful
 
   # The opt-out changes only what the gateway produces: a provider's own error is unaffected.
+  @FAULT-024
   Scenario: A backend error is preserved with or without a body
     Given I generate a unique resource name from "oai-off-backend" and store it as "providerName"
     And I generate a unique value from "oai-off-backend-display" and store it as "providerDisplayName"

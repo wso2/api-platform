@@ -45,9 +45,8 @@ import (
 // ServerOption, as it is when policy_engine.llm_errors.enable_openai_format is left on.
 func llmCtx(t *testing.T, faultPolicies []policy.Policy, faultSpecs []policy.PolicySpec) *PolicyExecutionContext {
 	t.Helper()
-	ec := faultExecCtx(t, faultPolicies, faultSpecs)
+	ec := faultExecCtxWithOptions(t, faultPolicies, faultSpecs, WithLLMOpenAIErrors(true))
 	ec.sharedCtx.APIKind = policy.APIKindLlmProxy
-	WithLLMOpenAIErrors(true)(ec.server)
 	return ec
 }
 
@@ -95,6 +94,21 @@ func TestLLMOpenAIErrors_OptionDoesNotDisturbTheShippedKinds(t *testing.T) {
 	assert.True(t, ec.server.errorFormatterKinds.Enabled(policy.APIKindAgent))
 	assert.True(t, ec.server.errorFormatterKinds.Enabled(policy.APIKindLlmProvider))
 	assert.False(t, ec.server.errorFormatterKinds.Enabled(policy.APIKindRestApi))
+}
+
+// WithErrorFormatterKinds replaces the kind set, so the LLM kinds must not depend on being passed
+// after it.
+func TestLLMOpenAIErrors_KindsSurviveAnyOptionOrder(t *testing.T) {
+	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer(""))
+	for name, opts := range map[string][]ServerOption{
+		"llm first": {WithLLMOpenAIErrors(true), WithErrorFormatterKinds([]string{"Mcp"})},
+		"llm last":  {WithErrorFormatterKinds([]string{"Mcp"}), WithLLMOpenAIErrors(true)},
+	} {
+		s := NewExternalProcessorServer(NewKernel(), chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil, opts...)
+		assert.True(t, s.errorFormatterKinds.Enabled(policy.APIKindLlmProvider), name)
+		assert.True(t, s.errorFormatterKinds.Enabled(policy.APIKindLlmProxy), name)
+		assert.True(t, s.errorFormatterKinds.Enabled(policy.APIKindMCP), name)
+	}
 }
 
 // The case option B exists for: a policy written for REST APIs still writes its own JSON on an
@@ -833,4 +847,28 @@ func TestFormatEngineRejection_WithoutAServerKeepsTheBody(t *testing.T) {
 	got, contentType := (&PolicyExecutionContext{}).formatEngineRejection(context.Background(), http.StatusBadGateway, "id", "Bad Gateway", body)
 	assert.Equal(t, body, got)
 	assert.Equal(t, "application/json", contentType)
+}
+
+// A router failure is the gateway's own error, so a response policy that rewrites its body
+// without rejecting still gets the envelope. The policy's text wins, but the router's code and
+// type must survive: the rewritten body carries neither, and it must not replace the router's
+// description wholesale.
+func TestLLMOpenAIErrors_PolicyBodyOverARouterFailureKeepsTheRouterDescription(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+	withRejectedBody(ec, 503)
+	ec.responseCodeDetails = codeDetailsNoHealthyUpstream
+	ec.responseBodyCtx.ResponseBody = &policy.Body{Content: []byte("no healthy upstream"), Present: true}
+
+	execResult := &executor.ResponseExecutionResult{Results: []executor.ResponsePolicyResult{{
+		PolicyName: "response-policy", PolicyVersion: "v1",
+		Action: policy.DownstreamResponseModifications{Body: []byte(`{"error":"Unavailable","message":"Try again later"}`)},
+	}}}
+	require.True(t, ec.runFaultPoliciesOnResponse(context.Background(), execResult, originUpstream))
+
+	formatted := formattedResult(execResult)
+	require.NotNil(t, formatted)
+	inner := openAIErrorOf(t, formatted)
+	assert.Equal(t, "Try again later", inner["message"], "the policy's text wins")
+	assert.Equal(t, codeUpstreamUnavailable, inner["code"], "the router's code is kept")
+	assert.Equal(t, "server_error", inner["type"], "the router's type is kept")
 }
