@@ -27,7 +27,7 @@ RUN set -eu; \
     elif [ -f "$root/policy-engine-amd64" ] || [ -f "$root/policy-engine-arm64" ]; then \
         component="$root"; \
     else \
-        set -- "$root"/api-gateway.*/gateway-runtime; \
+        set -- "$root"/api-gateway-*/gateway-runtime; \
         if [ "$#" -ne 1 ] || [ ! -d "$1" ]; then \
             echo "Error: BINARY_PATH does not contain a gateway-runtime binary package" >&2; \
             exit 1; \
