@@ -183,7 +183,10 @@ token = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'
 reconnect_initial = "1s"
 # Maximum reconnect delay
 reconnect_max = "5m"
-# Polling interval for periodic sync
+# Interval at which the controller, while connected to the control plane, re-syncs
+# secrets, gateway-originated artifacts, subscription plans, subscriptions and API keys.
+# With deployment_sync_enabled = true, an on-prem tick also pushes gateway artifacts to APIM.
+# Only the control-plane-to-gateway bulk deployment pull stays first-connect-only.
 polling_interval = "15m"
 # Skip TLS certificate verification for control plane connections
 insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "true" }}'
