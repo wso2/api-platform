@@ -393,6 +393,22 @@ describe('HeaderScopeSwitchers — project menu', () => {
     expect(screen.getByText(`at ${routes.projectHome(ORG, 'retail-apis')}`)).toBeInTheDocument();
   });
 
+  it('keeps a project-scoped page when switching from the organization-level alias of it', async () => {
+    // `/select-scope/deploy` resolves to `/projects/<handle>/select-scope/deploy`, which
+    // is inside the chosen project and is not its Home page.
+    const { user } = renderTrail(
+      makeConsoleScope({ projects: SCENARIO_PROJECTS, params: { orgHandle: ORG } }),
+      { route: `/organizations/${ORG}/select-scope/deploy` },
+    );
+
+    await user.click(trigger('Select Project'));
+    await user.click(await screen.findByRole('menuitemradio', { name: /Retail APIs/ }));
+
+    expect(
+      screen.getByText(`at /organizations/${ORG}/projects/retail-apis/select-scope/deploy`),
+    ).toBeInTheDocument();
+  });
+
   it('opens the new-project page from the New project action', async () => {
     const { user } = renderTrail(scopeInProject());
 

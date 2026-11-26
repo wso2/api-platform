@@ -40,7 +40,7 @@ import {
   toRestListableApi,
   type ApiKind,
 } from './appShellPages/apis/listing/apiListItem';
-import { routes } from '../../routes/paths';
+import { projectPath, routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 
 const ORGANIZATION_LEVEL = 'organization';
@@ -193,8 +193,13 @@ export function HeaderScopeSwitchers() {
     // A page with no project-level counterpart (the organization's Projects
     // list, say) resolves to its own organization URL, which would navigate
     // nowhere: only a target inside the chosen project is taken.
-    const projectHome = routes.projectHome(params.orgHandle, projectHandler);
-    navigate(target?.startsWith(projectHome) ? target : projectHome);
+    // The segment boundary matters: a bare prefix check would also accept a
+    // sibling project whose handle starts with this one's (`orders-two`).
+    const projectRoot = projectPath(params.orgHandle, projectHandler);
+    const insideProject =
+      typeof target === 'string' &&
+      (target === projectRoot || target.startsWith(`${projectRoot}/`));
+    navigate(insideProject ? target : routes.projectHome(params.orgHandle, projectHandler));
   };
 
   const changeApi = (apiHandler: string) => {
