@@ -373,3 +373,19 @@ Feature: APIP cloud REST API lifecycle
     Then the OpenAPI validation should list the errors and return no content
     When I validate the spec fixture "petstore-v1.yaml"
     Then the OpenAPI validation should find no errors
+
+  # The cloud counterpart of on-premises CPLIM-001, at the cloud's request body cap: platform-api's
+  # 10 MiB default, which the cloud does not change. The padding is a field the definition does not
+  # define, so a body's size is all that sets the two requests apart.
+  @ID_APIP_BASIC_023 @type:negative
+  Scenario: A REST API create over the cloud's request body cap is refused, and one under it is created
+    Given I obtain an APIP cloud console token
+    And I find the APIP test project
+    When I create a synthetic REST API in the APIP test project with:
+      | paddingBytes | 9437184 |
+    Then the cloud API response status code should be 201
+    When I submit a synthetic REST API creation request with:
+      | paddingBytes | 11534336 |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "VALIDATION_FAILED"
+    And the submitted synthetic REST API should not exist

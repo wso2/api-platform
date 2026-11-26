@@ -77,3 +77,22 @@ Feature: APIP cloud secrets
     Then the cloud API response status code should be 400
     And the cloud API error code should be "VALIDATION_FAILED"
     And the cloud API response body should contain "${CTX:cloudSecretID}"
+
+  # The cloud counterpart of the on-premises platform-api secret deployment of a REST API with a
+  # secret-backed upstream credential, asserted through the data plane.
+  @ID_APIP_SECRETS_006
+  Scenario: A secret named as a REST API's upstream credential is sent by the gateway to the upstream
+    Given I obtain an APIP cloud console token
+    And I find the APIP test project
+    And I find an active APIP gateway
+    And an echo backend is available for deployment overrides
+    And I create a synthetic secret
+    When I create a synthetic REST API in the APIP test project with:
+      | upstream | {"main":{"url":"${CTX:cloudEchoBackendURL}","auth":{"type":"api-key","header":"x-apip-secret-probe","value":"${CTX:cloudSecretReference}"}}} |
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment} |
+      | gatewayId   | ${CTX:cloudGatewayID}          |
+    Then the cloud API response status code should be 201
+    And the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
+    And the echoed request header "x-apip-secret-probe" should carry the synthetic secret's value

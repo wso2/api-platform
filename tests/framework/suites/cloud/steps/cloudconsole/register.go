@@ -47,6 +47,7 @@ const (
 	keyGatewayID        = "cloudGatewayID"
 	keyGatewayEndpoint  = "cloudGatewayEndpoint"
 	keyGatewayEnv       = "cloudGatewayEnvironment"
+	keyGatewayHost      = "cloudGatewayHost"
 	keyAPIID            = "cloudAPIID"
 	keyDeploymentID     = "cloudDeploymentID"
 	keyEnvironmentName  = "cloudEnvironmentName"
@@ -253,6 +254,10 @@ func (s *Steps) registerDeploymentSteps(sc stepRegistrar) {
 	sc.Step(`^the synthetic REST API deployment should report a status reason code$`, s.assertDeploymentStatusReason)
 	sc.Step(`^an echo backend is available for deployment overrides$`, s.useEchoBackend)
 	sc.Step(`^the deployment response should report the echo backend as the production endpoint$`, s.assertDeploymentReportsEchoEndpoint)
+	sc.Step(`^the deployment response should report the active gateway's public host as the main host, and no sandbox host$`,
+		s.assertDeploymentOnGatewayHost)
+	sc.Step(`^the deployment response should report the main host "([^"]*)" and the sandbox host "([^"]*)"$`,
+		s.assertDeploymentHosts)
 	sc.Step(`^the echo backend should have received a request for "([^"]*)"$`, s.assertEchoBackendReceived)
 }
 
