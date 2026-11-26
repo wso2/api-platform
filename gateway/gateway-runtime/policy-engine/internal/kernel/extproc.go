@@ -194,6 +194,9 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 
 // traceContextCarrier builds a W3C trace-context carrier from the downstream
 // HTTP request headers Envoy delivers in a RequestHeaders ProcessingRequest.
+// It is a defensive fallback, used only when the ext_proc stream metadata
+// carries no valid trace context (in practice, when the router's tracing
+// configuration diverges from the policy engine's).
 // Only traceparent/tracestate are copied. Any non-header message (or one with
 // no headers) yields an empty carrier, so a new root trace is started. Header
 // keys arrive lowercased over HTTP/2, but ToLower keeps this robust regardless.
@@ -234,14 +237,19 @@ func traceContextCarrier(req *extprocv3.ProcessingRequest) propagation.MapCarrie
 }
 
 // startRootSpan starts the ext_proc root span for a stream. When tracing is
-// enabled and a request is available, the span is parented on the downstream
-// request's W3C trace context (traceparent/tracestate from its HTTP headers);
-// otherwise it starts a new root. When tracing is disabled the returned span is
-// a no-op and the per-request header extraction is skipped entirely. req is nil
-// on the pre-first-message error path, which likewise starts a plain new root.
+// enabled the span is parented on the W3C trace context carried in the ext_proc
+// gRPC stream metadata (Envoy's ext_proc client span; one stream = one HTTP
+// request), falling back to the downstream request's traceparent/tracestate HTTP
+// headers when the metadata has no valid span context; otherwise it starts a new
+// root. When tracing is disabled the returned span is a no-op and all extraction
+// is skipped. req is nil on the pre-first-message error path, where only the
+// metadata parent is available.
 func (s *ExternalProcessorServer) startRootSpan(ctx context.Context, req *extprocv3.ProcessingRequest) (context.Context, trace.Span) {
-	if s.tracingEnabled && req != nil {
-		ctx = tracing.ExtractTraceContext(ctx, traceContextCarrier(req))
+	if s.tracingEnabled {
+		ctx = tracing.ExtractTraceContextFromMetadata(ctx) // Envoy ext_proc span (preferred)
+		if !trace.SpanContextFromContext(ctx).IsValid() && req != nil {
+			ctx = tracing.ExtractTraceContext(ctx, traceContextCarrier(req)) // client headers fallback
+		}
 	}
 	return s.tracer.Start(ctx, constants.SpanExternalProcessingProcess,
 		trace.WithSpanKind(trace.SpanKindServer),
@@ -255,12 +263,11 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	metrics.ActiveStreams.Inc()
 	defer metrics.ActiveStreams.Dec()
 
-	// The root span and its context are created lazily on the first message.
-	// The downstream request's W3C trace context (traceparent/tracestate) is
-	// delivered by Envoy inside the RequestHeaders ProcessingRequest body — NOT
-	// as ext_proc gRPC stream metadata — so it cannot be extracted until the
-	// first message arrives. Until then, ctx is the raw stream context and span
-	// is nil. NoOp if tracing is disabled.
+	// The root span and its context are created lazily on the first message,
+	// so the downstream HTTP headers (the fallback trace-context source) are
+	// available. The preferred parent, Envoy's ext_proc span, arrives in the
+	// stream metadata. Until then, ctx is the raw stream context and span is
+	// nil. NoOp if tracing is disabled.
 	ctx := stream.Context()
 	var span trace.Span
 
@@ -313,10 +320,10 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 		if err != nil {
 			// Ensure the root span exists even when the stream fails before the
-			// first message ever arrives: there is no request trace context to
-			// parent on yet, so this is the same new root we would otherwise
-			// start below — created here only so a stream-level failure is still
-			// observable.
+			// first message ever arrives, so a stream-level failure is still
+			// observable. No request headers are available yet, so the span is
+			// parented only on the ext_proc stream metadata (Envoy's ext_proc
+			// span) when present, and is otherwise a new root.
 			if span == nil {
 				ctx, span = s.startRootSpan(ctx, nil)
 			}
@@ -352,8 +359,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			}
 		}
 
-		// Start the root span on the first message, parented on the request's
-		// trace context extracted from its HTTP headers (RequestHeaders phase).
+		// Start the root span on the first message, parented on Envoy's ext_proc
+		// span from the stream metadata, falling back to the request's HTTP
+		// headers (RequestHeaders phase) when the metadata has no valid context.
 		// Subsequent messages on this stream reuse the same span and context.
 		if span == nil {
 			ctx, span = s.startRootSpan(ctx, req)
