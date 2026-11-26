@@ -59,7 +59,7 @@ type EventDispatcher struct {
 func NewEventDispatcher(hub eventhub.EventHub, manager *ws.Manager, logger *slog.Logger) *EventDispatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventDispatcher{
-		hub:    hub,
+		hub:     hub,
 		manager: manager,
 		logger:  logger,
 		subs:    make(map[string]*gatewaySubscription),
@@ -175,6 +175,16 @@ func (d *EventDispatcher) dispatchLoop(gatewayID string, ch <-chan eventhub.Even
 // If this instance has no connections for the gateway, the event is silently skipped —
 // another replica will hold the connection and deliver it.
 func (d *EventDispatcher) deliver(gatewayID string, event eventhub.Event) {
+	// A token-revoked signal is for platform-api, not the gateway: close the local
+	// sessions opened with that token before any later event is delivered.
+	if event.EventType == eventTypeGatewayTokenRevoked {
+		if closed := d.manager.CloseConnectionsForToken(gatewayID, event.EntityID); closed > 0 {
+			d.logger.Info("EventDispatcher: closed gateway sessions opened with a revoked token",
+				"gatewayID", gatewayID, "tokenID", event.EntityID, "connections", closed)
+		}
+		return
+	}
+
 	connections := d.manager.GetConnections(gatewayID)
 	if len(connections) == 0 {
 		return

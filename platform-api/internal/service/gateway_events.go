@@ -41,6 +41,11 @@ const (
 	// The full event type string is stored inside the EventData JSON payload.
 	eventTypePlatformGateway eventhub.EventType = "PLATFORM_GATEWAY_EVENT"
 
+	// eventTypeGatewayTokenRevoked is the EventHub entity_type of the signal telling every
+	// replica to close the WebSocket sessions opened with a revoked gateway token. The
+	// EventDispatcher consumes it and never forwards it to the gateway.
+	eventTypeGatewayTokenRevoked eventhub.EventType = "GATEWAY_TOKEN_REVOKED"
+
 	// Gateway event type constants
 	EventTypeAPIDeployed   = "api.deployed"
 	EventTypeAPIUndeployed = "api.undeployed"
@@ -89,6 +94,8 @@ const (
 	EventTypeSubscriptionPlanCreated = "subscriptionPlan.created"
 	EventTypeSubscriptionPlanUpdated = "subscriptionPlan.updated"
 	EventTypeSubscriptionPlanDeleted = "subscriptionPlan.deleted"
+
+	EventTypeGatewayTokenRevoked = "gateway.token.revoked"
 )
 
 // GatewayEventsService handles broadcasting events to connected gateways via EventHub.
@@ -340,6 +347,39 @@ func (s *GatewayEventsService) BroadcastSubscriptionPlanUpdatedEvent(gatewayID s
 // BroadcastSubscriptionPlanDeletedEvent sends a subscriptionPlan.deleted event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionPlanDeletedEvent(gatewayID string, event *model.SubscriptionPlanDeletedEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeSubscriptionPlanDeleted, event)
+}
+
+// PublishGatewayTokenRevoked tells every platform-api replica that tokenID of gatewayID was
+// revoked, so whichever replica holds a WebSocket session opened with that token closes it.
+// EventHub delivers a gateway's events in order, so an event published after this signal
+// is never delivered on such a session. The token ID travels in EntityID; EventData is a
+// typed envelope only so that a replica still running a release without this signal
+// forwards a message the gateway ignores as an unknown event type.
+func (s *GatewayEventsService) PublishGatewayTokenRevoked(gatewayID, tokenID string) error {
+	eventID := uuid.New().String()
+	eventJSON, err := json.Marshal(dto.GatewayEventDTO{
+		Type:          EventTypeGatewayTokenRevoked,
+		Payload:       map[string]string{"tokenId": tokenID},
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: eventID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal %s event: %w", EventTypeGatewayTokenRevoked, err)
+	}
+
+	hubEvent := eventhub.Event{
+		GatewayID:           gatewayID,
+		OriginatedTimestamp: time.Now(),
+		EventType:           eventTypeGatewayTokenRevoked,
+		Action:              "DELETE",
+		EntityID:            tokenID,
+		EventID:             eventID,
+		EventData:           string(eventJSON),
+	}
+	if err := s.hub.PublishEvent(gatewayID, hubEvent); err != nil {
+		return fmt.Errorf("failed to publish %s event: %w", EventTypeGatewayTokenRevoked, err)
+	}
+	return nil
 }
 
 // broadcastEvent is the generic helper for broadcasting gateway events without a userId.

@@ -64,12 +64,13 @@ func (t *WebSocketTransport) Send(message []byte) error {
 // Returns an error if sending the close frame fails.
 func (t *WebSocketTransport) Close(code int, reason string) error {
 	closeMessage := websocket.FormatCloseMessage(code, reason)
-	err := t.conn.WriteMessage(websocket.CloseMessage, closeMessage)
-	if err != nil {
+	writeErr := t.conn.WriteMessage(websocket.CloseMessage, closeMessage)
+	// Close the underlying connection even if the close frame could not be
+	// written, so the session really ends and the read loop unblocks.
+	if err := t.conn.Close(); err != nil {
 		return err
 	}
-	// Close the underlying connection
-	return t.conn.Close()
+	return writeErr
 }
 
 // SetReadDeadline sets the deadline for read operations.

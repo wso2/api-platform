@@ -51,9 +51,9 @@ type Connection struct {
 	// Abstraction allows swapping WebSocket for other protocols without changing business logic.
 	Transport Transport
 
-	// AuthToken stores the API key used to authenticate this connection.
-	// Can be used for re-validation or audit logging.
-	AuthToken string
+	// TokenID is the ID of the gateway token this connection authenticated with,
+	// so revoking that token can close exactly the sessions it opened.
+	TokenID string
 
 	// DeliveryStats tracks event delivery statistics for this connection
 	DeliveryStats *DeliveryStats
@@ -71,11 +71,11 @@ type Connection struct {
 //   - gatewayID: UUID of the authenticated gateway
 //   - connectionID: Unique identifier for this connection instance
 //   - transport: Transport implementation (e.g., WebSocketTransport)
-//   - authToken: API key used for authentication
+//   - tokenID: ID of the gateway token used for authentication
 //   - orgID: UUID of the organization that owns the gateway
 //
 // Returns a fully initialized Connection ready for message delivery.
-func NewConnection(gatewayID, connectionID string, transport Transport, authToken string, orgID string) *Connection {
+func NewConnection(gatewayID, connectionID string, transport Transport, tokenID string, orgID string) *Connection {
 	now := time.Now()
 	return &Connection{
 		GatewayID:      gatewayID,
@@ -84,7 +84,7 @@ func NewConnection(gatewayID, connectionID string, transport Transport, authToke
 		ConnectedAt:    now,
 		LastHeartbeat:  now,
 		Transport:      transport,
-		AuthToken:      authToken,
+		TokenID:        tokenID,
 		DeliveryStats:  &DeliveryStats{},
 		closed:         false,
 	}
