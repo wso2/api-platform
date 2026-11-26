@@ -54,6 +54,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -1681,6 +1682,106 @@ func TestGetRestAPIByIdNoDB(t *testing.T) {
 	server.GetRestAPIById(w, r, "0000-test-id-0000-000000000000")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// getRestAPIWithAccept calls GetRestAPIById with the given Accept header.
+func getRestAPIWithAccept(server *APIServer, handle, accept string) *httptest.ResponseRecorder {
+	w, r := createTestContextWithHeader("GET", "/rest-apis/"+handle, nil, map[string]string{"Accept": accept})
+	server.GetRestAPIById(w, r, handle)
+	return w
+}
+
+// A YAML GET carries the same RestApi as the JSON GET: the body read back
+// through the YAML request parser equals the JSON body. The upstreams cover
+// both arms of the Upstream union (url and ref), which yaml.v3 alone would
+// marshal without their MarshalJSON, and the params cover strings that would
+// read back as another type if left unquoted.
+func TestGetRestAPIById_YAMLMatchesJSON(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+
+	handle := "0000-test-handle-0000-000000000000"
+	cfg := createTestStoredConfig(handle, "0000-test-api-0000-000000000000", "v1.0.0", "/test")
+	ra := cfg.SourceConfiguration.(api.RestAPI)
+	manual := api.UpstreamHostRewriteManual
+	ra.Spec.Upstream.Main = api.Upstream{Url: stringPtr("https://backend.example.com:8443/v1"), HostRewrite: &manual}
+	ra.Spec.Upstream.Sandbox = &api.Upstream{Ref: stringPtr("sandbox-backend")}
+	ra.Spec.Policies = &[]api.Policy{{
+		Name:    "set-headers",
+		Version: "v1",
+		Params:  &map[string]interface{}{"version": "1.0", "enabled": "true", "count": 3, "empty": ""},
+	}}
+	cfg.SourceConfiguration = ra
+	cfg.Configuration = ra
+	cfg.GetMetadata().Name = handle
+	mockDB.SaveConfig(cfg)
+
+	jsonRec := getRestAPIWithAccept(server, handle, "application/json")
+	require.Equal(t, http.StatusOK, jsonRec.Code)
+	yamlRec := getRestAPIWithAccept(server, handle, "application/yaml")
+	require.Equal(t, http.StatusOK, yamlRec.Code, "body: %s", yamlRec.Body.String())
+
+	assert.Equal(t, "application/yaml", yamlRec.Header().Get("Content-Type"))
+	assert.Equal(t, "Accept", yamlRec.Header().Get("Vary"))
+	assert.NotContains(t, yamlRec.Body.String(), "{", "YAML body should be block style: %s", yamlRec.Body.String())
+
+	var fromJSON, fromYAML api.RestAPI
+	require.NoError(t, json.Unmarshal(jsonRec.Body.Bytes(), &fromJSON))
+	require.NoError(t, config.NewParser().ParseAPIConfigYAML(yamlRec.Body.Bytes(), &fromYAML))
+	require.NotNil(t, fromYAML.Spec.Upstream.Sandbox)
+	assert.Equal(t, "sandbox-backend", *fromYAML.Spec.Upstream.Sandbox.Ref)
+	assert.Equal(t, api.UpstreamHostRewriteManual, *fromYAML.Spec.Upstream.Main.HostRewrite)
+
+	// Compared as JSON: the union types keep their raw source bytes in an
+	// unexported field, which assert.Equal would compare byte for byte.
+	wantJSON, err := json.Marshal(fromJSON)
+	require.NoError(t, err)
+	gotJSON, err := json.Marshal(fromYAML)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(wantJSON), string(gotJSON))
+}
+
+// Status timestamps are RFC 3339 strings in YAML, as in JSON, not YAML
+// timestamps that a client would decode into a different type.
+func TestGetRestAPIById_YAMLTimestampsAreRFC3339Strings(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+
+	handle := "0000-test-handle-0000-000000000000"
+	cfg := createTestStoredConfig(handle, "0000-test-api-0000-000000000000", "v1.0.0", "/test")
+	deployedAt := time.Date(2026, 11, 20, 10, 30, 0, 123000000, time.UTC)
+	cfg.DeployedAt = &deployedAt
+	cfg.GetMetadata().Name = handle
+	mockDB.SaveConfig(cfg)
+
+	rec := getRestAPIWithAccept(server, handle, "application/yaml")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, yaml.Unmarshal(rec.Body.Bytes(), &body))
+	status, ok := body["status"].(map[string]any)
+	require.True(t, ok, "status should be a map, got %T", body["status"])
+	for _, field := range []string{"createdAt", "updatedAt", "deployedAt"} {
+		value, ok := status[field].(string)
+		require.True(t, ok, "status.%s should decode as a string, got %T", field, status[field])
+		_, err := time.Parse(time.RFC3339Nano, value)
+		assert.NoError(t, err, "status.%s = %q is not RFC 3339", field, value)
+	}
+	assert.Equal(t, "2026-11-20T10:30:00.123Z", status["deployedAt"])
+}
+
+// Error responses stay JSON even when YAML was requested; the spec declares
+// them JSON only.
+func TestGetRestAPIById_YAMLRequestedNotFoundIsJSON(t *testing.T) {
+	server := createTestAPIServer()
+
+	rec := getRestAPIWithAccept(server, "nonexistent", "application/yaml")
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	assert.Equal(t, "error", response.Status)
 }
 
 // TestGetAPIByIdWrongKind tests getting an API with wrong kind

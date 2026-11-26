@@ -156,7 +156,7 @@ func (s *APIServer) GetGraphQLAPIById(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
+	writeResource(w, r, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
 // UpdateGraphQLAPI implements ServerInterface.UpdateGraphQLAPI

@@ -165,7 +165,7 @@ func (s *APIServer) GetLLMProxyById(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(proxy, cfg))
+	writeResource(w, r, http.StatusOK, buildResourceResponseFromStored(proxy, cfg))
 }
 
 // UpdateLLMProxy implements ServerInterface.UpdateLLMProxy

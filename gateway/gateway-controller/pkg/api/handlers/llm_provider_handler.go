@@ -161,7 +161,7 @@ func (s *APIServer) GetLLMProviderById(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(prov, cfg))
+	writeResource(w, r, http.StatusOK, buildResourceResponseFromStored(prov, cfg))
 }
 
 // UpdateLLMProvider implements ServerInterface.UpdateLLMProvider
