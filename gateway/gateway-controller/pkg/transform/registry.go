@@ -42,6 +42,7 @@ var registryKinds = []string{
 	models.KindLlmProxy,
 	models.KindAgent,
 	models.KindGraphQLApi,
+	models.KindSoapApi,
 }
 
 // envoyTranslatorExcludedKinds are the kinds that must NOT be wired into the
@@ -99,6 +100,11 @@ func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployCon
 			return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
 		}
 		return r.graphqlT.Transform(cfg)
+	case models.KindSoapApi:
+		if r.soapT == nil {
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
+		}
+		return r.soapT.Transform(cfg)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
 	}
@@ -110,9 +116,10 @@ type Registry struct {
 	llmT     *LLMTransformer
 	agentT   *AgentTransformer
 	graphqlT *GraphQLAPITransformer
+	soapT    *SoapAPITransformer
 }
 
 // NewRegistry creates a new transformer Registry.
-func NewRegistry(restT *RestAPITransformer, llmT *LLMTransformer, agentT *AgentTransformer, graphqlT *GraphQLAPITransformer) *Registry {
-	return &Registry{restT: restT, llmT: llmT, agentT: agentT, graphqlT: graphqlT}
+func NewRegistry(restT *RestAPITransformer, llmT *LLMTransformer, agentT *AgentTransformer, graphqlT *GraphQLAPITransformer, soapT *SoapAPITransformer) *Registry {
+	return &Registry{restT: restT, llmT: llmT, agentT: agentT, graphqlT: graphqlT, soapT: soapT}
 }

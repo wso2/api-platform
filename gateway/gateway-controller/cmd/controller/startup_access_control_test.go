@@ -79,7 +79,7 @@ func TestLoadStartupRuntimeConfigs_UndeploysRefusedArtifactsBeforeTheFirstSnapsh
 	runtimeStore := storage.NewRuntimeConfigStore()
 	var persisted []string
 	err := loadStartupRuntimeConfigs([]*models.StoredConfig{refused, valid}, runtimeStore, &fakeSecretResolver{},
-		&fakeRuntimeTransformer{}, &config.RouterConfig{}, true, false,
+		&fakeRuntimeTransformer{}, nil, &config.RouterConfig{}, true, false,
 		func(c *models.StoredConfig) error { persisted = append(persisted, c.UUID); return nil }, newDiscardLogger())
 
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestLoadStartupRuntimeConfigs_UndeploysRefusedArtifactsBeforeTheFirstSnapsh
 	// A nil persist callback and a nil logger are tolerated.
 	again := metadataUpstream("refused-again")
 	require.NoError(t, loadStartupRuntimeConfigs([]*models.StoredConfig{again}, storage.NewRuntimeConfigStore(),
-		&fakeSecretResolver{}, &fakeRuntimeTransformer{}, &config.RouterConfig{}, false, false, nil, nil))
+		&fakeSecretResolver{}, &fakeRuntimeTransformer{}, nil, &config.RouterConfig{}, false, false, nil, nil))
 	assert.Equal(t, models.StateUndeployed, again.DesiredState)
 }
 
@@ -115,11 +115,11 @@ func TestLoadStartupRuntimeConfigs_ReportsJWKSConflictsAndLoadErrors(t *testing.
 	api := &models.StoredConfig{UUID: "jwks-api", Kind: models.KindRestApi, Handle: "jwks-api", DesiredState: models.StateDeployed}
 	runtimeStore := storage.NewRuntimeConfigStore()
 	require.NoError(t, loadStartupRuntimeConfigs([]*models.StoredConfig{api}, runtimeStore, nil,
-		jwksRouteTransformer{}, &config.RouterConfig{}, true, false, nil, newDiscardLogger()))
+		jwksRouteTransformer{}, nil, &config.RouterConfig{}, true, false, nil, newDiscardLogger()))
 	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "jwks-api"))
 	assert.True(t, ok, "a route shadowed by the JWKS endpoint still loads; it is only reported")
 
 	err := loadStartupRuntimeConfigs([]*models.StoredConfig{api}, storage.NewRuntimeConfigStore(), nil,
-		failingTransformer{}, &config.RouterConfig{}, false, false, nil, newDiscardLogger())
+		failingTransformer{}, nil, &config.RouterConfig{}, false, false, nil, newDiscardLogger())
 	assert.Error(t, err, "a load failure without skip_invalid_deployments_on_startup stops startup")
 }

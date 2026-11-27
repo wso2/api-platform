@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -76,6 +77,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsFromDatabase(t *te
 		runtimeStore,
 		nil,
 		transformer,
+		nil,
 		newDiscardLogger(),
 		false,
 		nil,
@@ -113,6 +115,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_SkipsWebSubAPI(t *testi
 		runtimeStore,
 		nil,
 		transformer,
+		nil,
 		newDiscardLogger(),
 		false,
 		nil,
@@ -150,6 +153,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterRenderFai
 		runtimeStore,
 		secretResolver,
 		transformer,
+		nil,
 		newDiscardLogger(),
 		true,
 		nil,
@@ -187,6 +191,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_FailsFastOnRenderFailur
 		runtimeStore,
 		secretResolver,
 		transformer,
+		nil,
 		newDiscardLogger(),
 		false,
 		nil,
@@ -290,6 +295,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_UndeploysEnvRefusedArti
 				runtimeStore,
 				&fakeSecretResolver{},
 				transformer,
+				nil,
 				newDiscardLogger(),
 				skipInvalid,
 				func(cfg *models.StoredConfig) error {
@@ -321,6 +327,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_AlreadyUndeployedEnvRef
 		storage.NewRuntimeConfigStore(),
 		&fakeSecretResolver{},
 		&fakeRuntimeTransformer{},
+		nil,
 		newDiscardLogger(),
 		false,
 		func(*models.StoredConfig) error { called = true; return nil },
@@ -344,6 +351,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesWhenUndeployCa
 		storage.NewRuntimeConfigStore(),
 		&fakeSecretResolver{},
 		&fakeRuntimeTransformer{},
+		nil,
 		newDiscardLogger(),
 		false,
 		func(*models.StoredConfig) error { return fmt.Errorf("database unavailable") },
@@ -394,7 +402,7 @@ func TestStartup_PersistsUndeployOfEnvRefusedAPI(t *testing.T) {
 		require.NoError(t, err)
 		runtimeStore := storage.NewRuntimeConfigStore()
 		loaded, err := loadRuntimeConfigsFromExistingAPIConfigurations(
-			configs, runtimeStore, &fakeSecretResolver{}, &fakeRuntimeTransformer{}, newDiscardLogger(),
+			configs, runtimeStore, &fakeSecretResolver{}, &fakeRuntimeTransformer{}, nil, newDiscardLogger(),
 			false, utils.NewEnvRefusedUndeployer(db, nil, "platform-gateway-id", newDiscardLogger()),
 		)
 		require.NoError(t, err)
@@ -451,6 +459,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_UndeploysAccessControlR
 		runtimeStore,
 		&fakeSecretResolver{},
 		&fakeRuntimeTransformer{},
+		nil,
 		newDiscardLogger(),
 		false,
 		func(cfg *models.StoredConfig) error {
@@ -466,4 +475,60 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_UndeploysAccessControlR
 	assert.Equal(t, models.StateDeployed, valid.DesiredState)
 	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "metadata-api"))
 	assert.False(t, ok, "a refused artifact must not get a policy chain")
+}
+
+// capturingTransformer records the configuration it was handed.
+type capturingTransformer struct {
+	seen *models.StoredConfig
+}
+
+func (c *capturingTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployConfig, error) {
+	c.seen = cfg
+	return &models.RuntimeDeployConfig{Metadata: models.Metadata{UUID: cfg.UUID, Kind: cfg.Kind, Handle: cfg.Handle}}, nil
+}
+
+// A SoapApi reloaded at startup is rendered from its stored source, which turns
+// templated policy params into strings. They must reach the transformer with
+// their schema types restored, as on the event path.
+func TestLoadRuntimeConfigs_CoercesSoapAPIPolicyParams(t *testing.T) {
+	templated := func() *map[string]any { return &map[string]any{"limit": `{{ default "10" "" }}`} }
+	soapAPI := api.SoapAPI{
+		ApiVersion: api.SoapAPIApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.SoapAPIKindSoapApi,
+		Metadata:   api.Metadata{Name: "stockquote"},
+		Spec: api.SoapAPIData{
+			DisplayName:   "StockQuote API",
+			Version:       "v1.0",
+			Context:       "/stockquote/$version",
+			Policies:      &[]api.Policy{{Name: "rate-limit", Version: "v1", Params: templated()}},
+			FaultPolicies: &[]api.Policy{{Name: "rate-limit", Version: "v1", Params: templated()}},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID: "soap-1", Kind: models.KindSoapApi, Handle: "stockquote",
+		Configuration: soapAPI, SourceConfiguration: soapAPI,
+	}
+	limitSchema := map[string]any{"properties": map[string]any{"limit": map[string]any{"type": "integer"}}}
+	policyValidator := config.NewPolicyValidator(map[string]models.PolicyDefinition{
+		"rate-limit|v1.0.0": {Name: "rate-limit", Version: "v1.0.0", Parameters: &limitSchema},
+	}, nil)
+	transformer := &capturingTransformer{}
+
+	loaded, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		[]*models.StoredConfig{cfg},
+		storage.NewRuntimeConfigStore(),
+		&fakeSecretResolver{},
+		transformer,
+		policyValidator,
+		newDiscardLogger(),
+		false,
+		nil,
+	)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, loaded)
+	rendered, ok := transformer.seen.Configuration.(api.SoapAPI)
+	assert.True(t, ok)
+	assert.Equal(t, float64(10), (*(*rendered.Spec.Policies)[0].Params)["limit"])
+	assert.Equal(t, float64(10), (*(*rendered.Spec.FaultPolicies)[0].Params)["limit"])
 }

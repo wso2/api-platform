@@ -19,6 +19,7 @@
 package eventlistener
 
 import (
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"testing"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -271,4 +272,62 @@ func TestUndeployAfterEnvRefusal_WebSubApiRefreshesEventChannel(t *testing.T) {
 	if res, ok := resources[cfg.UUID]; ok {
 		assert.NotEqual(t, &structpb.Struct{}, res, "only a removal marker may remain for the undeployed channel")
 	}
+}
+
+// The database keeps a SoapApi's policy params as written, templates included.
+// Rendering on consumption yields strings, so the listener must restore the
+// schema types in both policies and faultPolicies before the config reaches the
+// runtime, as it does for a RestApi.
+func TestHandleEvent_SoapAPICreate_CoercesRenderedPolicyParams(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	templated := func() *map[string]any { return &map[string]any{"limit": `{{ secret "soap-limit" }}`} }
+	soapAPI := api.SoapAPI{
+		ApiVersion: api.SoapAPIApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.SoapAPIKindSoapApi,
+		Metadata:   api.Metadata{Name: "stockquote"},
+		Spec: api.SoapAPIData{
+			DisplayName:   "StockQuote API",
+			Version:       "v1.0",
+			Context:       "/stockquote/$version",
+			Policies:      &[]api.Policy{{Name: "rate-limit", Version: "v1", Params: templated()}},
+			FaultPolicies: &[]api.Policy{{Name: "rate-limit", Version: "v1", Params: templated()}},
+		},
+	}
+	soapAPI.Spec.Upstream.Main.Url = stringPtr("http://backend:8080/ws")
+	cfg := &models.StoredConfig{
+		UUID:                "soap-coerce-id",
+		Kind:                models.KindSoapApi,
+		Handle:              "stockquote",
+		DisplayName:         "StockQuote API",
+		Version:             "v1.0",
+		Configuration:       soapAPI,
+		SourceConfiguration: soapAPI,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+	}
+	require.NoError(t, db.SaveConfig(cfg))
+
+	policyDefinitions := agentTestPolicyDefinitions()
+	listener := &EventListener{
+		store:           store,
+		db:              db,
+		policyValidator: config.NewPolicyValidator(policyDefinitions, nil),
+		secretResolver:  stubSecretResolver{value: "42"},
+		logger:          newTestLogger(),
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "CREATE",
+		EntityID:  cfg.UUID,
+		EventID:   "corr-soap-coerce",
+	})
+
+	stored, err := store.Get(cfg.UUID)
+	require.NoError(t, err)
+	rendered, ok := stored.Configuration.(api.SoapAPI)
+	require.True(t, ok)
+	assert.Equal(t, float64(42), (*(*rendered.Spec.Policies)[0].Params)["limit"])
+	assert.Equal(t, float64(42), (*(*rendered.Spec.FaultPolicies)[0].Params)["limit"])
 }

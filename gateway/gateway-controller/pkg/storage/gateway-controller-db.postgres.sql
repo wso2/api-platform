@@ -99,6 +99,17 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- soap_apis, like graphql_apis, is a core kind defined directly here as a
+-- one-column-identical clone of rest_apis (the guarded create also brings an
+-- already-provisioned database up to date).
+CREATE TABLE IF NOT EXISTS soap_apis (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Table for custom TLS certificates
 CREATE TABLE IF NOT EXISTS certificates (
     uuid TEXT NOT NULL,

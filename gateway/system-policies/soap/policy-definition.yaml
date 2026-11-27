@@ -1,0 +1,80 @@
+name: wso2_apip_sys_soap
+version: v1.0.0
+description: |
+  The gateway's internal SOAP system policy: the parts of serving a SOAP API the
+  gateway does itself rather than leaving to the backend. Attached by the gateway
+  controller to the routes that need it, never by an API author.
+
+  wsdlRewrite — service description rewriting. Attached to the GET route of every
+  SoapApi, which serves ?wsdl. The request is forwarded; a successful response whose
+  root element is a WSDL 1.1 definitions or a WSDL 2.0 description comes back with
+  its endpoint addresses (soap:address, soap12:address, http:address, and WSDL 2.0
+  endpoint/@address) pointing at the gateway, so a client generated from it
+  (SoapUI, wsimport, svcutil) calls the gateway rather than the backend.
+
+  Every endpoint address is replaced, whatever host it names. An address below the
+  upstream's base path keeps the part after it, appended to the API's gateway path,
+  and its query; any other value becomes the API's gateway path, as WSO2 API
+  Manager does. Imports and includes are left as the backend wrote them. Only the
+  address values change; every other byte of the document is forwarded as is.
+
+  The gateway URL is built from the request's own scheme, the API's configured
+  virtual host and the port the request arrived on. A wildcard virtual host names
+  no dialable host, so the request's own authority is used whole; a request
+  carrying neither fails closed rather than being answered with a guess.
+
+  Any other response — a non-2xx status, an empty body, or a document whose root is
+  not a service description (an XML Schema, an HTML page) — is forwarded untouched.
+  A service description the gateway cannot rewrite safely (over the size ceiling,
+  carrying a DOCTYPE, too deeply nested, malformed, or not parsed in time) fails
+  with a 502 rather than being forwarded with the backend's addresses in it, and
+  so does a document that cannot be read far enough to tell (UTF-16, an encoding
+  other than UTF-8, US-ASCII, ISO-8859-x or Windows-125x, or a root element a
+  DOCTYPE entity makes unreadable). ISO-8859-x and Windows-125x descriptions are
+  served in the encoding they declare.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    wsdlRewrite:
+      type: object
+      additionalProperties: false
+      required: ["gatewayPath", "upstreamUrl"]
+      description: >
+        Service description rewriting for this route. Its presence is the switch:
+        without it the response is neither buffered nor touched.
+      properties:
+        gatewayPath:
+          type: string
+          minLength: 1
+          description: >
+            The API's resolved context on the gateway, e.g. /calc/v1.0. A rewritten
+            address is this path followed by whatever followed the upstream base path.
+        upstreamUrl:
+          type: string
+          minLength: 1
+          description: >
+            The route's upstream URL. Its path is the base path endpoint addresses
+            are matched under.
+        vhost:
+          type: string
+          description: >
+            The virtual host the API is published under. Empty, or a wildcard,
+            means the request's own authority is advertised.
+        maxResponseBytes:
+          type: integer
+          minimum: 1024
+          maximum: 104857600
+          default: 1048576
+          description: >
+            The largest service description that is rewritten. A larger one fails
+            the response rather than being forwarded unrewritten. The controller
+            sets it to the router's per-connection buffer limit, which is the most
+            the router buffers for this policy to read: a response above that limit
+            is refused by the router itself (500, response_payload_too_large) before
+            the policy sees it.
+
+systemParameters:
+  type: object
+  properties: {}

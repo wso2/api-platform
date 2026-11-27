@@ -805,6 +805,8 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// Collect analytics data for REST API scenario
+	case policy.APIKindSoapApi:
+		// No body analytics for SOAP API
 	case policy.APIKindGraphQL:
 		// Collect analytics data for GraphQL API scenario. A GraphQL API has a
 		// single POST route, so request.path/request.method carry no operation
@@ -973,6 +975,8 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// Collect analytics data for REST API specific scenario
+	case policy.APIKindSoapApi:
+		// No body analytics for SOAP API
 	case policy.APIKindGraphQL:
 		// GraphQL responses are always a single buffered JSON object (never SSE/streaming
 		// in this gateway), so only the buffered OnResponseBody path needs this check.

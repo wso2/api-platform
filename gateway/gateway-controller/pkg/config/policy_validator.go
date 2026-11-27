@@ -125,6 +125,41 @@ func (pv *PolicyValidator) ValidateGraphQLAPIPolicies(apiConfig *api.GraphQLAPI)
 	return errors
 }
 
+// ValidateSoapAPIPolicies validates all policies in a SOAP API configuration. A SoapApi
+// is a single wildcard resource with no operations, so only the API-level lists are
+// validated: spec.policies and spec.faultPolicies.
+func (pv *PolicyValidator) ValidateSoapAPIPolicies(apiConfig *api.SoapAPI) []ValidationError {
+	var errors []ValidationError
+
+	if apiConfig.Spec.Policies != nil {
+		for i, policy := range *apiConfig.Spec.Policies {
+			fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errs := pv.validatePolicy(policy, fieldPath)
+			errors = append(errors, errs...)
+		}
+	}
+
+	// Fault entries are validated exactly like normal policies, as for RestApi. mtls-auth
+	// is refused as it is on every non-REST kind's fault list.
+	if apiConfig.Spec.FaultPolicies != nil {
+		for i, policy := range *apiConfig.Spec.FaultPolicies {
+			fieldPath := fmt.Sprintf("spec.faultPolicies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errs := pv.validatePolicy(policy, fieldPath)
+			errors = append(errors, errs...)
+		}
+	}
+
+	return errors
+}
+
 // ValidateRestAPIPolicies validates all policies in a REST API configuration
 func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []ValidationError {
 	var errors []ValidationError
@@ -561,6 +596,19 @@ func (pv *PolicyValidator) CoerceRestAPIPolicies(config *api.RestAPI) {
 func (pv *PolicyValidator) CoerceMCPProxyPolicies(config *api.MCPProxyConfiguration) {
 	if config.Spec.Policies != nil {
 		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+}
+
+// CoerceSoapAPIPolicies coerces policy param strings to their schema-declared types for
+// a SoapAPI, across the two lists ValidateSoapAPIPolicies walks: spec.policies and
+// spec.faultPolicies. Must be called after template rendering wherever a rendered
+// configuration reaches the runtime (event listener, startup load).
+func (pv *PolicyValidator) CoerceSoapAPIPolicies(config *api.SoapAPI) {
+	if config.Spec.Policies != nil {
+		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+	if config.Spec.FaultPolicies != nil {
+		pv.coercePolicySlice(*config.Spec.FaultPolicies)
 	}
 }
 

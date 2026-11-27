@@ -133,6 +133,18 @@ CREATE TABLE dbo.graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- soap_apis, like graphql_apis, is a core kind defined directly here as a
+-- one-column-identical clone of rest_apis (the guarded create also brings an
+-- already-provisioned database up to date).
+IF OBJECT_ID(N'dbo.soap_apis', N'U') IS NULL
+CREATE TABLE dbo.soap_apis (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Table for custom TLS certificates
 IF OBJECT_ID(N'dbo.certificates', N'U') IS NULL
 CREATE TABLE dbo.certificates (
