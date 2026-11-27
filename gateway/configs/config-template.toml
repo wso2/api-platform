@@ -99,6 +99,11 @@ ecdh_curves = "X25519,P-256"
 # max_redirects         Redirect hops a policy follows; each hop is checked again.
 # allowed_schemes       "http" and/or "https".
 #
+# A templated Backend's host (spec.endpoints[0].url with {key}) is chosen per request,
+# so only its fixed part is checked when it is saved: the scheme and the hostnames
+# rules, against the template with a sample key. The router then drops every address
+# such a host resolves to that these rules refuse, so the request gets 503.
+#
 # Limitation: the router keeps re-resolving upstream hostnames. Their addresses are
 # checked when an artifact is deployed and on every restart, not in between, and a
 # hostname the controller cannot resolve at deploy time is not refused.
@@ -548,6 +553,13 @@ present_default_identity = true
 route_timeout_ms = 60000
 route_idle_timeout_ms = 300000
 connect_timeout_ms = 5000
+
+# DNS cache for templated Backends, whose endpoint host is chosen per request. One cache serves
+# every templated Backend on the gateway. A request for a new host beyond max_hosts gets 503 until
+# an entry expires; an entry no request uses for host_ttl_ms is evicted.
+[router.upstream.backend_dns_cache]
+max_hosts = 1024
+host_ttl_ms = 300000
 
 [router.http_listener]
 server_header_transformation = "OVERWRITE"

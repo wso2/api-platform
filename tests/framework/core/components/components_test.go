@@ -1538,3 +1538,20 @@ func TestComposeRejectsDuplicateStagedNames(t *testing.T) {
 		require.NoError(t, definition.Validate())
 	})
 }
+
+// Extra aliases are further names for a single-image component; an empty one, one equal to the
+// alias, and extra aliases on a compose stack are refused.
+func TestDefinitionValidate_ExtraAliases(t *testing.T) {
+	d := controllerLike()
+	d.ExtraAliases = []string{"env-dev.testbench", "env-prod.testbench"}
+	require.NoError(t, d.Validate())
+
+	for name, extra := range map[string][]string{
+		"empty":          {" "},
+		"the same alias": {d.Alias},
+	} {
+		bad := controllerLike()
+		bad.ExtraAliases = extra
+		require.ErrorContains(t, bad.Validate(), "extra alias", name)
+	}
+}

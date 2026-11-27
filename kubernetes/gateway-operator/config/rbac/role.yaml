@@ -136,6 +136,32 @@ rules:
   - list
   - watch
 - apiGroups:
+  - gateway.choreolabs.com
+  resources:
+  - backends
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gateway.choreolabs.com
+  resources:
+  - backends/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gateway.choreolabs.com
+  resources:
+  - backends/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - gateway.networking.k8s.io
   resources:
   - gatewayclasses

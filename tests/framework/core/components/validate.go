@@ -73,6 +73,14 @@ func (d *Definition) Validate() error {
 	if strings.TrimSpace(d.Alias) == "" {
 		errs.addf("%s: alias is required", d)
 	}
+	for _, extra := range d.ExtraAliases {
+		if strings.TrimSpace(extra) == "" || extra == d.Alias {
+			errs.addf("%s: an extra alias must be non-empty and differ from the alias", d)
+		}
+	}
+	if len(d.ExtraAliases) > 0 && (d.IsCompose() || d.IsExternal()) {
+		errs.addf("%s: extra aliases apply only to a single-image component", d)
+	}
 
 	if d.IsExternal() {
 		errs.add(d.validateExternal())

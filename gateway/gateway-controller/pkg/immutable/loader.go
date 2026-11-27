@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/backend"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
@@ -54,6 +55,13 @@ type ImmutableGW struct {
 	mcpService     *utils.MCPDeploymentService
 	agentService   *agent.AgentService
 	parser         *config.Parser
+	// backendService applies kind: Backend artifacts; nil when the storage backend has none.
+	backendService *backend.Service
+}
+
+// SetBackendService wires the service that applies gateway-wide Backend artifacts.
+func (g *ImmutableGW) SetBackendService(svc *backend.Service) {
+	g.backendService = svc
 }
 
 // NewImmutableGW creates an ImmutableGW. All methods are no-ops when cfg.Enabled is false.
@@ -96,7 +104,8 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	}
 
 	// Dependency order:
-	//   pass1: LlmProviderTemplate — no dependencies
+	//   pass1: LlmProviderTemplate, Backend — no dependencies (a Backend goes first so an
+	//          API naming it as a fixed target serves it from the first request)
 	//   pass2: LlmProvider         — depends on LlmProviderTemplate
 	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp, Agent — LlmProxy depends on LlmProvider;
 	//          an Agent references no other artifact, so it needs no earlier pass
@@ -131,7 +140,7 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 
 		a := artifact{path: path, data: data, kind: envelope.Kind, contentType: contentType}
 		switch envelope.Kind {
-		case string(api.LLMProviderTemplateKindLlmProviderTemplate):
+		case string(api.LLMProviderTemplateKindLlmProviderTemplate), models.KindBackend:
 			pass1 = append(pass1, a)
 		case models.KindLlmProvider:
 			pass2 = append(pass2, a)
@@ -142,9 +151,18 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		}
 	}
 
+	templates, backends := 0, 0
+	for _, a := range pass1 {
+		if a.kind == models.KindBackend {
+			backends++
+		} else {
+			templates++
+		}
+	}
 	total := len(pass1) + len(pass2) + len(pass3)
 	log.Info("Discovered artifacts", slog.Int("total", total),
-		slog.Int("llm_provider_templates", len(pass1)),
+		slog.Int("llm_provider_templates", templates),
+		slog.Int("backends", backends),
 		slog.Int("llm_providers", len(pass2)))
 
 	var errs []error
@@ -165,6 +183,17 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 	log.Info("Applying artifact", slog.String("path", path), slog.String("kind", kind))
 
 	switch kind {
+	case models.KindBackend:
+		if g.backendService == nil {
+			return fmt.Errorf("failed to apply %s %s: global backends are not available on this gateway", kind, path)
+		}
+		if _, err := g.backendService.Create(backend.Request{
+			Body:        data,
+			ContentType: contentType,
+			Origin:      models.OriginGatewayAPI,
+		}); err != nil {
+			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
+		}
 	case string(api.LLMProviderTemplateKindLlmProviderTemplate):
 		if _, err := g.llmService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
 			Spec:        data,

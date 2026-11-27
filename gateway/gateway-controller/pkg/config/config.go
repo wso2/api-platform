@@ -673,6 +673,41 @@ type RouterHealthConfig struct {
 type RouterUpstream struct {
 	TLS      UpstreamTLS      `koanf:"tls"`
 	Timeouts UpstreamTimeouts `koanf:"timeouts"`
+	// BackendDNSCache sizes the DNS cache the router resolves templated Backend hosts with.
+	BackendDNSCache BackendDNSCacheConfig `koanf:"backend_dns_cache"`
+}
+
+// Bounds and defaults of router.upstream.backend_dns_cache.
+const (
+	maxBackendDNSCacheHosts       = 65536
+	defaultBackendDNSCacheHosts   = 1024
+	defaultBackendDNSCacheHostTTL = 5 * time.Minute
+)
+
+// EffectiveMaxHosts is MaxHosts, or its default when unset.
+func (c BackendDNSCacheConfig) EffectiveMaxHosts() uint32 {
+	if c.MaxHosts == 0 {
+		return defaultBackendDNSCacheHosts
+	}
+	return c.MaxHosts
+}
+
+// EffectiveHostTTL is HostTTLMs as a duration, or its default when unset.
+func (c BackendDNSCacheConfig) EffectiveHostTTL() time.Duration {
+	if c.HostTTLMs == 0 {
+		return defaultBackendDNSCacheHostTTL
+	}
+	return time.Duration(c.HostTTLMs) * time.Millisecond
+}
+
+// BackendDNSCacheConfig sizes the router's DNS cache for templated Backends, whose host is
+// chosen per request. One cache serves every templated Backend on the gateway.
+type BackendDNSCacheConfig struct {
+	// MaxHosts bounds the hosts the cache holds at once. A request for a new host beyond it gets
+	// 503 until an entry expires.
+	MaxHosts uint32 `koanf:"max_hosts"`
+	// HostTTLMs evicts a host no request has used for this long, in milliseconds.
+	HostTTLMs uint32 `koanf:"host_ttl_ms"`
 }
 
 // UpstreamTLS holds TLS configuration for upstream connections.
@@ -1591,6 +1626,10 @@ func defaultConfig() *Config {
 					RouteTimeoutMs:     60000,
 					RouteIdleTimeoutMs: 300000,
 					ConnectTimeoutMs:   5000,
+				},
+				BackendDNSCache: BackendDNSCacheConfig{
+					MaxHosts:  1024,
+					HostTTLMs: 300000,
 				},
 			},
 			PolicyEngine: PolicyEngineConfig{
@@ -2520,6 +2559,17 @@ func (c *Config) validateTimeoutConfig() error {
 	if timeouts.ConnectTimeoutMs > constants.MaxReasonableTimeoutMs {
 		return fmt.Errorf("router.upstream.timeouts.connect_timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
 			timeouts.ConnectTimeoutMs, constants.MaxReasonableTimeoutMs)
+	}
+
+	// 0 leaves a DNS cache setting at its default.
+	dnsCache := c.Router.Upstream.BackendDNSCache
+	if dnsCache.MaxHosts > maxBackendDNSCacheHosts {
+		return fmt.Errorf("router.upstream.backend_dns_cache.max_hosts must be at most %d, got: %d",
+			maxBackendDNSCacheHosts, dnsCache.MaxHosts)
+	}
+	if dnsCache.HostTTLMs != 0 && (dnsCache.HostTTLMs < 1000 || dnsCache.HostTTLMs > constants.MaxReasonableTimeoutMs) {
+		return fmt.Errorf("router.upstream.backend_dns_cache.host_ttl_ms must be from 1000 to %d, got: %d",
+			constants.MaxReasonableTimeoutMs, dnsCache.HostTTLMs)
 	}
 
 	// Validate HCM (downstream/connection) timeouts. Unlike the upstream timeouts above,

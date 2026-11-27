@@ -42,6 +42,11 @@ type WebhookSecretEventHandler interface {
 	HandleEvent(event eventhub.Event)
 }
 
+// BackendEventHandler applies a gateway-wide Backend change on this replica.
+type BackendEventHandler interface {
+	HandleBackendEvent(event eventhub.Event)
+}
+
 // APIKeyXDSManager defines API key xDS operations used by the listener.
 type APIKeyXDSManager interface {
 	StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error
@@ -75,6 +80,7 @@ type EventListener struct {
 	secretResolver        funcs.SecretResolver
 	policyVersionResolver utils.PolicyVersionResolver
 	webhookSecretHandler  WebhookSecretEventHandler
+	backendHandler        BackendEventHandler
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -221,6 +227,11 @@ func (l *EventListener) processEventSafely(event eventhub.Event) {
 	l.handleEvent(event)
 }
 
+// SetBackendEventHandler wires the handler for gateway-wide Backend events. Set before Start.
+func (l *EventListener) SetBackendEventHandler(h BackendEventHandler) {
+	l.backendHandler = h
+}
+
 // handleEvent dispatches events to the appropriate handler by event type
 func (l *EventListener) handleEvent(event eventhub.Event) {
 	l.logger.Info("Processing replica sync event",
@@ -255,6 +266,10 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeWebhookSecret:
 		if l.webhookSecretHandler != nil {
 			l.webhookSecretHandler.HandleEvent(event)
+		}
+	case eventhub.EventTypeBackend:
+		if l.backendHandler != nil {
+			l.backendHandler.HandleBackendEvent(event)
 		}
 	default:
 		l.logger.Warn("Unknown event type received",

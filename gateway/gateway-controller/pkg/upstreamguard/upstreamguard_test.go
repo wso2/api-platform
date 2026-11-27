@@ -149,6 +149,48 @@ func TestCheck_EveryUpstreamShape(t *testing.T) {
 	}
 }
 
+// A gateway-wide Backend's endpoints are upstream URLs the router dials, so they are checked like
+// any other; the field names the refused endpoint.
+func TestCheckArtifact_BackendEndpoints(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true})
+	backend := map[string]any{"spec": map[string]any{"endpoints": []any{
+		map[string]any{"url": "http://ok.example.com:9080"},
+		map[string]any{"url": "http://169.254.169.254"},
+	}}}
+	if got := refusedField(t, g.CheckArtifact(string(models.KindBackend), backend)); got != "spec.endpoints[1].url" {
+		t.Errorf("refused field = %q, want spec.endpoints[1].url", got)
+	}
+	ok := map[string]any{"spec": map[string]any{"endpoints": []any{map[string]any{"url": "http://ok.example.com:9080"}}}}
+	if err := g.CheckArtifact(string(models.KindBackend), ok); err != nil {
+		t.Fatalf("positive control: a permitted endpoint is accepted: %v", err)
+	}
+}
+
+// With private networks denied, a Backend endpoint at a loopback, private, link-local or cloud
+// metadata address is refused, as an API upstream URL is; a public address is permitted.
+func TestCheckArtifact_BackendEndpointsDenyPrivateNetworks(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
+	backend := func(url string) map[string]any {
+		return map[string]any{"spec": map[string]any{"endpoints": []any{map[string]any{"url": url}}}}
+	}
+	for _, url := range []string{
+		"http://127.0.0.1:9080",     // loopback
+		"http://10.0.0.5:9080",      // private
+		"http://192.168.1.10:9080",  // private
+		"http://169.254.10.10:9080", // link-local
+		"http://169.254.169.254",    // cloud metadata
+		"http://[::1]:9080",         // IPv6 loopback
+		"http://[fd00::1]:9080",     // IPv6 unique-local
+	} {
+		if got := refusedField(t, g.CheckArtifact(string(models.KindBackend), backend(url))); got != "spec.endpoints[0].url" {
+			t.Errorf("%s: refused field = %q, want spec.endpoints[0].url", url, got)
+		}
+	}
+	if err := g.CheckArtifact(string(models.KindBackend), backend("http://93.184.216.34:9080")); err != nil {
+		t.Fatalf("positive control: a public address is permitted: %v", err)
+	}
+}
+
 func TestCheck_HostRuleModes(t *testing.T) {
 	deny := guard(t, netguard.GuardConfig{Enabled: true, Mode: netguard.ModeDeny, Hostnames: []string{`[a-z]+\.internal\.example`}})
 	if refusedField(t, deny.Check(restAPI("https://billing.internal.example/v1"))) == "" {
@@ -444,5 +486,40 @@ func TestCheck_ParameterSchemaShapes(t *testing.T) {
 	noParams := map[string]any{"name": "noparams", "version": "v1", "params": map[string]any{"endpoint": "http://169.254.169.254"}}
 	if err := g.Check(restAPI("http://ok.example.com", noParams)); err != nil {
 		t.Fatalf("a policy that declares no parameters has no URL parameters: %v", err)
+	}
+}
+
+// A templated Backend endpoint is checked, never skipped as an unparseable URL. Its host is chosen
+// per request, so the scheme and the hostname rules apply to the template's fixed part, and no DNS
+// lookup happens: the sample host need not exist.
+func TestCheckArtifact_TemplatedBackendEndpoint(t *testing.T) {
+	backend := func(url string) map[string]any {
+		return map[string]any{"spec": map[string]any{"endpoints": []any{map[string]any{"url": url}}}}
+	}
+
+	deny := guard(t, netguard.GuardConfig{Enabled: true, Mode: netguard.ModeDeny, Hostnames: []string{`.*\.internal\.example`}})
+	if got := refusedField(t, deny.CheckArtifact(string(models.KindBackend), backend("https://env-{key}.internal.example"))); got != "spec.endpoints[0].url" {
+		t.Errorf("deny mode: refused field = %q, want spec.endpoints[0].url", got)
+	}
+	if err := deny.CheckArtifact(string(models.KindBackend), backend("https://url-{key}.url.fr")); err != nil {
+		t.Fatalf("positive control: deny mode permits a template outside the denied domain: %v", err)
+	}
+
+	allow := guard(t, netguard.GuardConfig{Enabled: true, Mode: netguard.ModeAllow, Hostnames: []string{`[a-z0-9-]+\.url\.fr`}})
+	if err := allow.CheckArtifact(string(models.KindBackend), backend("https://url-{key}.url.fr")); err != nil {
+		t.Fatalf("allow mode permits a template whose fixed domain is allowed: %v", err)
+	}
+	if got := refusedField(t, allow.CheckArtifact(string(models.KindBackend), backend("https://api-{key}.example.com"))); got != "spec.endpoints[0].url" {
+		t.Errorf("allow mode: refused field = %q, want spec.endpoints[0].url", got)
+	}
+
+	schemes := guard(t, netguard.GuardConfig{Enabled: true, AllowedSchemes: []string{"https"}})
+	if got := refusedField(t, schemes.CheckArtifact(string(models.KindBackend), backend("http://env-{key}.testbench:3000"))); got != "spec.endpoints[0].url" {
+		t.Errorf("allowed schemes: refused field = %q, want spec.endpoints[0].url", got)
+	}
+
+	// A broken template is left to the validators, which name the rule it breaks.
+	if err := deny.CheckArtifact(string(models.KindBackend), backend("https://{key}")); err != nil {
+		t.Fatalf("a broken template is the validators' to report: %v", err)
 	}
 }

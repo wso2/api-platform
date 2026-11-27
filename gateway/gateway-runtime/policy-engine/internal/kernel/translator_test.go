@@ -543,9 +543,8 @@ func TestTranslateRequestActionsCore_BodyPreservesHeaderPhaseUpstream(t *testing
 	execCtx.upstreamDefinitionPaths = map[string]string{
 		"anthropic-provider": "/anthropic-provider",
 	}
-	execCtx.dynamicMetadata[constants.ExtProcFilterName] = map[string]interface{}{
-		constants.TargetUpstreamNameKey: "anthropic-provider",
-	}
+	// The header phase chose the provider's upstream definition.
+	execCtx.routing.set(strPtr("anthropic-provider"), nil, nil, nil)
 
 	result := &executor.RequestExecutionResult{
 		Results: []executor.RequestPolicyResult{{

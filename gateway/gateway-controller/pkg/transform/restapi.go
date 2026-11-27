@@ -47,6 +47,9 @@ type RestAPITransformer struct {
 	systemConfig      *config.Config
 	policyDefinitions map[string]models.PolicyDefinition
 	latestVersions    map[string]string // pre-computed policyName -> latest full semver
+	// backendRouting lists the policy parameters annotated x-choreolabs-backend-routing; a route
+	// whose chain sets one selects its cluster per request among the global Backends.
+	backendRouting config.BackendRoutingIndex
 }
 
 // NewRestAPITransformer creates a new RestAPITransformer.
@@ -60,7 +63,21 @@ func NewRestAPITransformer(
 		systemConfig:      systemConfig,
 		policyDefinitions: policyDefinitions,
 		latestVersions:    config.BuildLatestVersionIndex(policyDefinitions),
+		backendRouting:    config.BuildBackendRoutingIndex(policyDefinitions),
 	}
+}
+
+// chainRoutesToBackends reports whether a route's policy chain may route a request to a global
+// Backend — it holds a policy instance that sets a parameter annotated x-choreolabs-backend-routing.
+// Such a route must read its cluster from x-target-upstream even when the API has no upstream
+// definitions or sandbox, or the policy engine's choice would be ignored.
+func (t *RestAPITransformer) chainRoutesToBackends(chain []policyenginev1.PolicyInstance) bool {
+	for _, instance := range chain {
+		if t.backendRouting.RoutesToBackends(instance.Name, instance.Version, instance.Parameters) {
+			return true
+		}
+	}
+	return false
 }
 
 // Transform converts a StoredConfig with RestAPI configuration into a RuntimeDeployConfig.
@@ -263,6 +280,14 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
+
+			// A route whose chain can pick a global Backend is divertible on its own, per route:
+			// APIs that never route to Backends keep today's route shape exactly.
+			if !rdcRoute.Upstream.UseClusterHeader && t.chainRoutesToBackends(chain) {
+				rdcRoute.Upstream.UseClusterHeader = true
+				rdcRoute.Upstream.DefaultCluster = mainUpstream.ClusterKey
+			}
+
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 			routeChain := sdkChainToModel(injected)
 			// Fault policies: this operation's entries then the API's, which is the order
@@ -299,51 +324,11 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				continue
 			}
 			defClusterKey := "upstream_" + cfg.Kind + "_" + cfg.UUID + "_" + SanitizeUpstreamDefinitionName(def.Name)
-			basePath := "/"
-			if def.BasePath != nil && *def.BasePath != "" {
-				basePath = *def.BasePath
-			}
-			defConnectTimeout, err := definitionConnectTimeout(&def)
+			uc, err := UpstreamClusterFromDefinition(def)
 			if err != nil {
-				return nil, fmt.Errorf("upstream definition '%s': %w", def.Name, err)
+				return nil, err
 			}
-			endpoints := make([]models.Endpoint, 0, len(def.Upstreams))
-			tlsExists := false
-			plaintextExists := false
-			for _, up := range def.Upstreams {
-				parsedURL, err := url.Parse(up.Url)
-				if err != nil {
-					return nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
-				}
-				port := ResolvePort(parsedURL)
-				ep := models.Endpoint{Host: parsedURL.Hostname(), Port: port}
-				if up.Weight != nil {
-					ep.Weight = up.Weight
-				}
-				endpoints = append(endpoints, ep)
-				if parsedURL.Scheme == "https" {
-					tlsExists = true
-				} else {
-					plaintextExists = true
-				}
-			}
-			// A single Envoy cluster has one transport socket, and the model carries one TLS bit
-			// for the whole cluster (createWeightedCluster applies it to every endpoint). A weighted
-			// definition that mixes https and non-https endpoints therefore cannot be represented —
-			// the plaintext endpoints would be silently dialed over TLS. Reject it with a clear error
-			// instead of collapsing to an ambiguous single flag. Uniform definitions (all https or all
-			// plaintext) are unaffected: Enabled = tlsExists matches the previous "any https" result.
-			if tlsExists && plaintextExists {
-				return nil, fmt.Errorf("upstream definition '%s' mixes https and non-https endpoints; "+
-					"all endpoints in a definition must use the same scheme", def.Name)
-			}
-			rdc.UpstreamClusters[defClusterKey] = &models.UpstreamCluster{
-				Name:           def.Name,
-				BasePath:       basePath,
-				Endpoints:      endpoints,
-				TLS:            upstreamTLSFromParams(def.Tls, tlsExists),
-				ConnectTimeout: defConnectTimeout,
-			}
+			rdc.UpstreamClusters[defClusterKey] = uc
 		}
 	}
 
@@ -388,6 +373,57 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	return rdc, nil
+}
+
+// UpstreamClusterFromDefinition converts an upstreamDefinitions entry — or a gateway-wide
+// Endpoint, which has the same shape — into the upstream-cluster model the xDS translator builds
+// a cluster from. Weights are kept, every target is used, and a definition mixing https and
+// plaintext targets is rejected.
+func UpstreamClusterFromDefinition(def api.UpstreamDefinition) (*models.UpstreamCluster, error) {
+	basePath := "/"
+	if def.BasePath != nil && *def.BasePath != "" {
+		basePath = *def.BasePath
+	}
+	connectTimeout, err := definitionConnectTimeout(&def)
+	if err != nil {
+		return nil, fmt.Errorf("upstream definition '%s': %w", def.Name, err)
+	}
+	endpoints := make([]models.Endpoint, 0, len(def.Upstreams))
+	tlsExists := false
+	plaintextExists := false
+	for _, up := range def.Upstreams {
+		parsedURL, err := url.Parse(up.Url)
+		if err != nil {
+			return nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
+		}
+		ep := models.Endpoint{Host: parsedURL.Hostname(), Port: ResolvePort(parsedURL)}
+		if up.Weight != nil {
+			ep.Weight = up.Weight
+		}
+		endpoints = append(endpoints, ep)
+		if parsedURL.Scheme == "https" {
+			tlsExists = true
+		} else {
+			plaintextExists = true
+		}
+	}
+	// A single Envoy cluster has one transport socket, and the model carries one TLS bit
+	// for the whole cluster (createWeightedCluster applies it to every endpoint). A weighted
+	// definition that mixes https and non-https endpoints therefore cannot be represented —
+	// the plaintext endpoints would be silently dialed over TLS. Reject it with a clear error
+	// instead of collapsing to an ambiguous single flag. Uniform definitions (all https or all
+	// plaintext) are unaffected: Enabled = tlsExists matches the previous "any https" result.
+	if tlsExists && plaintextExists {
+		return nil, fmt.Errorf("upstream definition '%s' mixes https and non-https endpoints; "+
+			"all endpoints in a definition must use the same scheme", def.Name)
+	}
+	return &models.UpstreamCluster{
+		Name:           def.Name,
+		BasePath:       basePath,
+		Endpoints:      endpoints,
+		TLS:            upstreamTLSFromParams(def.Tls, tlsExists),
+		ConnectTimeout: connectTimeout,
+	}, nil
 }
 
 // splitVhosts parses a vhosts.main value into its individual hostnames; see

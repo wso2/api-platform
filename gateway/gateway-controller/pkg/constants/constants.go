@@ -196,6 +196,11 @@ const (
 	// Routes can be configured with cluster_header to read this header and select the target cluster
 	TargetUpstreamHeader = "x-target-upstream"
 
+	// TargetUpstreamHostHeader carries the host a templated Backend's key expanded to. The
+	// router's dynamic forward proxy resolves it and connects to it (DFP host_rewrite_header),
+	// and the router strips it before forwarding. Must match the policy engine constant.
+	TargetUpstreamHostHeader = "x-target-upstream-host"
+
 	// InternalLoopbackHeader marks the LLM proxy's internal loopback forward to its provider.
 	// The proxy stamps it via a set-headers policy; the analytics system policy reads it on the
 	// provider hop so the duplicate provider analytics event can be dropped from Moesif.

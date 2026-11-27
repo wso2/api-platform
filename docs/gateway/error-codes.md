@@ -86,10 +86,38 @@ it takes next.
 | Route has no policy chain | `905005` |
 | Resolver could not turn the request into an operation | `905006` |
 | Content coding the gateway cannot decode | `905007` |
+| A policy routed to a global Backend the gateway does not hold | `905008` |
 | Resolver found no operation for the request | `900906` |
 
 `905005` is distinct from `905003` because it is a different thing to fix: the chain never
 arrived, rather than arrived and failed. Both are opaque 500s to the caller.
+
+`905008` is a `503`: a fixed `targetUpstream` that names neither one of the API's upstream
+definitions nor a Backend on the gateway (for example a Backend not created yet), a Backend
+removed while the request was in flight, or a Backend that moved to a new revision after a policy
+checked it (for example against a dynamic-endpoint `backendSelector`), which the log marks with
+`revision_changed=true`. The request fails closed rather than falling back to the API's
+own upstream, and the gateway doesn't retry it. Subsequent requests succeed once the Backend
+exists on the gateway that serves them, with no change to the API, provided that a Backend
+chosen through a `backendSelector` still matches it; one that no longer does is answered with
+dynamic-endpoint's 400. The Backend name goes to
+the log under the `x-error-id`, never to the caller.
+
+`905008` covers the decision the policy engine makes. Once it has answered, Envoy routes the
+request to the cluster it named. After a Backend update, the gateway removes the previous
+revision's cluster as soon as the policy engine holds the new record. A request the engine routed
+to that cluster just before can reach Envoy just after, in a window of milliseconds. Envoy then
+answers with its own `503` (response flag `NC`, no cluster), without a `905008` body.
+
+A request routed to a templated Backend without a valid key is a request error, not `905008`:
+the engine answers `400` with `960004` and the message dynamic-endpoint gives any value it
+cannot route, and logs `key_rejected=true` with the Backend name under the `x-error-id`.
+
+A templated Backend's host is resolved per request. When it does not resolve, or resolves only to
+addresses the gateway's network access control refuses, the router answers `503`, and fault
+policies and the error response formatter see an upstream it could not reach (`101503`). When the
+DNS cache is full (`router.upstream.backend_dns_cache.max_hosts`), they see an unavailable
+upstream (`303001`).
 
 Resolution failures are coded by the **status**, never one code per internal failure kind. The
 status already tells a caller which class of thing went wrong, so a code tracking it discloses

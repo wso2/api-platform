@@ -31,6 +31,7 @@ const (
 	ResourceKindLLMProvider = "LlmProvider"
 	ResourceKindLLMProxy    = "LlmProxy"
 	ResourceKindGraphQLAPI  = "GraphQLApi"
+	ResourceKindBackend     = "Backend"
 )
 
 // Resource represents a parsed gateway resource
@@ -127,6 +128,21 @@ func (h *GraphQLAPIHandler) UpdateEndpoint(handle string) string {
 	return fmt.Sprintf(utils.GatewayGraphQLAPIByIDPath, handle)
 }
 
+// BackendHandler handles gateway-wide Backend kind resources
+type BackendHandler struct{}
+
+func (h *BackendHandler) GetEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayBackendByIDPath, handle)
+}
+
+func (h *BackendHandler) CreateEndpoint() string {
+	return utils.GatewayBackendsPath
+}
+
+func (h *BackendHandler) UpdateEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayBackendByIDPath, handle)
+}
+
 // GetResourceHandler returns the appropriate handler for a resource kind
 func GetResourceHandler(kind string) ResourceHandler {
 	switch kind {
@@ -140,6 +156,8 @@ func GetResourceHandler(kind string) ResourceHandler {
 		return &LLMProxyHandler{}
 	case ResourceKindGraphQLAPI:
 		return &GraphQLAPIHandler{}
+	case ResourceKindBackend:
+		return &BackendHandler{}
 	default:
 		return nil
 	}

@@ -31,6 +31,7 @@ const (
 	certificatesPath         = ManagementAPIBasePath + "/certificates"
 	subscriptionPlansPath    = ManagementAPIBasePath + "/subscription-plans"
 	subscriptionsPath        = ManagementAPIBasePath + "/subscriptions"
+	backendsPath             = ManagementAPIBasePath + "/backends"
 )
 
 // ApiKeyParentKind values map to the parent path segment used when nesting
@@ -65,6 +66,9 @@ func LLMProviderTemplatesPath() string { return llmProviderTemplatesPath }
 
 // LLMProxiesPath returns the configured /llm-proxies base path.
 func LLMProxiesPath() string { return llmProxiesPath }
+
+// BackendsPath returns the configured /backends base path.
+func BackendsPath() string { return backendsPath }
 
 // MCPProxiesPath returns the configured /mcp-proxies base path.
 func MCPProxiesPath() string { return mcpProxiesPath }
