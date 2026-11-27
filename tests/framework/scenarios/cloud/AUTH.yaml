@@ -97,7 +97,7 @@ scenarios:
       # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
       # refuses <case>".
       status: known-issue
-      issue: "WSO2 Cloud development turns service accounts off (apip_papi_sa_enabled is not set on wso2cloud-deployment's dev branch), so POST /service-accounts answers 404 there (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). No tracker link yet."
+      issue: "Service accounts are off in the cloud by decision: they are turned off on every cloud environment, since the console hides them and nothing in the cloud calls the token endpoint, so POST /service-accounts answers 404 on development (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). https://github.com/wso2-enterprise/wso2cloud-deployment/pull/6686"
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "The service-account token exchange refuses <case>"
@@ -108,7 +108,7 @@ scenarios:
       # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
       # refuses a client that authenticates twice, and a wrong HTTP Basic secret".
       status: known-issue
-      issue: "WSO2 Cloud development turns service accounts off (apip_papi_sa_enabled is not set on wso2cloud-deployment's dev branch), so POST /service-accounts answers 404 there (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). No tracker link yet."
+      issue: "Service accounts are off in the cloud by decision: they are turned off on every cloud environment, since the console hides them and nothing in the cloud calls the token endpoint, so POST /service-accounts answers 404 on development (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). https://github.com/wso2-enterprise/wso2cloud-deployment/pull/6686"
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret"
@@ -119,7 +119,7 @@ scenarios:
       # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
       # refuses a request that leaves out the scope".
       status: known-issue
-      issue: "WSO2 Cloud development turns service accounts off (apip_papi_sa_enabled is not set on wso2cloud-deployment's dev branch), so POST /service-accounts answers 404 there (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). No tracker link yet."
+      issue: "Service accounts are off in the cloud by decision: they are turned off on every cloud environment, since the console hides them and nothing in the cloud calls the token endpoint, so POST /service-accounts answers 404 on development (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). https://github.com/wso2-enterprise/wso2cloud-deployment/pull/6686"
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "The service-account token exchange refuses a request that leaves out the scope"
