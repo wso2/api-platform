@@ -164,6 +164,8 @@ var singleEngineBlocks = map[string]components.DBType{
 	"gateway-mtls-hostnames-all-connections-required": components.SQLite,
 	"gateway-mtls-trust-any":                          components.SQLite,
 	"gateway-mtls-observability-default-identity":     components.SQLite,
+	"gateway-audit":                                   components.SQLite,
+	"gateway-audit-masked":                            components.SQLite,
 	// Its scenarios stop and pause the block's Postgres server, which every component shares.
 	"health-dependency-outage": components.Postgres,
 	// Its scenarios refuse health probes, which do not depend on the gateway's database.

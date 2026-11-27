@@ -31,6 +31,7 @@ import (
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -51,6 +52,12 @@ type APIDeploymentParams struct {
 	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
 	CorrelationID string        // Correlation ID for tracking
 	Logger        *slog.Logger  // Logger instance
+	Actor         string        // Authenticated user, recorded in the audit log
+}
+
+var auditResourceTypes = map[models.ArtifactKind]string{
+	models.KindRestApi:    "rest_api",
+	models.KindGraphQLApi: "graphql_api",
 }
 
 // APIDeploymentResult contains the result of API deployment
@@ -82,6 +89,11 @@ type APIDeploymentService struct {
 	eventHub        eventhub.EventHub
 	gatewayID       string
 	secretResolver  funcs.SecretResolver
+	auditService    *audit.AuditService
+}
+
+func (s *APIDeploymentService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
@@ -369,8 +381,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Try to save/update the configuration using timestamp-guarded upsert.
 	// affected=true means the row was actually inserted or updated in the DB.
 	// affected=false means a newer version already exists (stale event — no-op).
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
+	}
 	affected, saveErr := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if saveErr != nil {
+		if resourceType, ok := auditResourceTypes[models.ArtifactKind(kind)]; ok {
+			s.auditService.Record(action, storedCfg.UUID, storedCfg.Handle, resourceType, audit.OutcomeFailed, params.Actor, params.CorrelationID)
+		}
 		return nil, saveErr
 	}
 
@@ -408,11 +427,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	action := "CREATE"
-	if isUpdate {
-		action = "UPDATE"
-	}
 	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
+	if resourceType, ok := auditResourceTypes[models.ArtifactKind(kind)]; ok {
+		s.auditService.Record(action, storedCfg.UUID, storedCfg.Handle, resourceType, audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
+	}
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,

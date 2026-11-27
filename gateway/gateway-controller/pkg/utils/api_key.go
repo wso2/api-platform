@@ -34,6 +34,7 @@ import (
 
 	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 
 	commonmodels "github.com/wso2/api-platform/common/models"
@@ -189,6 +190,11 @@ type APIKeyService struct {
 	apiKeyConfig *config.APIKeyConfig // Configuration for API keys
 	eventHub     eventhub.EventHub
 	gatewayID    string
+	auditService *audit.AuditService
+}
+
+func (s *APIKeyService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 // NewAPIKeyService creates a new API key generation service
@@ -354,6 +360,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 				logger.Error("Failed to save API key after retry",
 					slog.String("operation", operationType+"_key"),
 					slog.Any("error", err))
+				s.auditService.Record("CREATE", apiKey.UUID, apiKey.Name, "api_key", audit.OutcomeFailed, user.UserID, params.CorrelationID)
 				return nil, fmt.Errorf("failed to save API key after retry: %w", err)
 			}
 			result.IsRetry = true
@@ -361,6 +368,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 			logger.Error("Failed to save API key to database",
 				slog.String("operation", operationType+"_key"),
 				slog.Any("error", err))
+			s.auditService.Record("CREATE", apiKey.UUID, apiKey.Name, "api_key", audit.OutcomeFailed, user.UserID, params.CorrelationID)
 			return nil, fmt.Errorf("failed to save API key to database: %w", err)
 		}
 	}
@@ -370,6 +378,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 
 	apiId := config.UUID
 	s.publishAPIKeyEvent("CREATE", apiId, apiKey.UUID, params.CorrelationID, logger)
+	s.auditService.Record("CREATE", apiKey.UUID, apiKey.Name, "api_key", audit.OutcomeSucceeded, user.UserID, params.CorrelationID)
 
 	// Build response following the generated schema
 	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle, plainAPIKey, isExternalKeyInjection)
@@ -524,11 +533,13 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		if err := s.db.UpdateAPIKey(apiKey); err != nil {
 			logger.Error("Failed to update API key status in database",
 				slog.Any("error", err))
+			s.auditService.Record("REVOKE", apiKey.UUID, apiKey.Name, "api_key", audit.OutcomeFailed, user.UserID, params.CorrelationID)
 			return nil, fmt.Errorf("failed to revoke API key: %w", err)
 		}
 
 		apiId := config.UUID
 		s.publishAPIKeyEvent("DELETE", apiId, apiKey.UUID, params.CorrelationID, logger)
+		s.auditService.Record("REVOKE", apiKey.UUID, apiKey.Name, "api_key", audit.OutcomeSucceeded, user.UserID, params.CorrelationID)
 		// Remove the API key from database (complete removal)
 		// Note: This is cleanup only - the revocation is already complete
 		if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
@@ -682,11 +693,13 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	if err := s.db.UpdateAPIKey(updatedKey); err != nil {
 		logger.Error("Failed to update API key in database",
 			slog.Any("error", err))
+		s.auditService.Record("UPDATE", updatedKey.UUID, updatedKey.Name, "api_key", audit.OutcomeFailed, user.UserID, params.CorrelationID)
 		return nil, fmt.Errorf("failed to update API key in database: %w", err)
 	}
 
 	apiId := config.UUID
 	s.publishAPIKeyEvent("UPDATE", apiId, updatedKey.UUID, params.CorrelationID, logger)
+	s.auditService.Record("UPDATE", updatedKey.UUID, updatedKey.Name, "api_key", audit.OutcomeSucceeded, user.UserID, params.CorrelationID)
 
 	// Build response
 	// If API key was updated, use the new masked value; otherwise use existing
@@ -838,6 +851,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 				logger.Error("Failed to save regenerated API key after retry",
 					slog.Any("error", err),
 					slog.String("correlation_id", params.CorrelationID))
+				s.auditService.Record("UPDATE", regeneratedKey.UUID, regeneratedKey.Name, "api_key", audit.OutcomeFailed, user.UserID, params.CorrelationID)
 				return nil, fmt.Errorf("failed to save regenerated API key after retry: %w", err)
 			}
 
@@ -847,6 +861,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 				slog.Any("error", err),
 				slog.String("handle", params.Handle),
 				slog.String("correlation_id", params.CorrelationID))
+			s.auditService.Record("UPDATE", regeneratedKey.UUID, regeneratedKey.Name, "api_key", audit.OutcomeFailed, user.UserID, params.CorrelationID)
 			return nil, fmt.Errorf("failed to save regenerated API key to database: %w", err)
 		}
 	}
@@ -857,6 +872,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 
 	apiId := config.UUID
 	s.publishAPIKeyEvent("UPDATE", apiId, regeneratedKey.UUID, params.CorrelationID, logger)
+	s.auditService.Record("UPDATE", regeneratedKey.UUID, regeneratedKey.Name, "api_key", audit.OutcomeSucceeded, user.UserID, params.CorrelationID)
 
 	// Build and return the response
 	result.Response = s.buildAPIKeyResponse(regeneratedKey, params.Handle, plainAPIKey, false)

@@ -54,6 +54,7 @@ func (s *APIServer) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Req
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 
 	if err != nil {
@@ -152,6 +153,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Req
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		if errors.Is(err, utils.ErrLLMTemplateNotFound) {
@@ -190,7 +192,7 @@ func (s *APIServer) DeleteLLMProviderTemplate(w http.ResponseWriter, r *http.Req
 	log := middleware.GetLogger(r, s.logger)
 	correlationID := middleware.GetCorrelationID(r)
 
-	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, log)
+	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, actorFromRequest(r), log)
 	if err != nil {
 		if errors.Is(err, utils.ErrLLMTemplateNotFound) {
 			log.Warn("LLM provider template not found for deletion", slog.String("handle", id))

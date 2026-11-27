@@ -19,10 +19,13 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +34,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -437,4 +443,64 @@ func TestDeleteSubscriptionPlan_Errors(t *testing.T) {
 		require.Equal(t, http.StatusInternalServerError, code)
 		assert.Equal(t, "Failed to delete subscription plan", errorMessage(t, body))
 	})
+}
+
+// --- audit ---
+
+// planAuditRows reads back each record's action, resource name and type,
+// outcome and actor from the audit service's file output.
+func planAuditRows(t *testing.T, path string) [][]string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var rows [][]string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var record map[string]string
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		rows = append(rows, []string{record["action"], record["resourceName"], record["resourceType"], record["outcome"], record["performedBy"]})
+	}
+	return rows
+}
+
+// The handlers record the authenticated user through the audit service that
+// SetAuditService wires into every service.
+func TestSubscriptionPlanHandlersRecordTheAuthenticatedUser(t *testing.T) {
+	server, _ := newPlanTestServer(t)
+	auditPath := filepath.Join(t.TempDir(), "audit.log")
+	auditService, err := audit.NewAuditService("test-gateway", config.AuditConfig{
+		Enabled: true,
+		Outputs: []string{config.AuditOutputFile},
+		File:    config.AuditFileConfig{Path: auditPath},
+	}, server.logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditService.Close(context.Background()) })
+	server.SetAuditService(auditService)
+	asAlice := func(r *http.Request) *http.Request {
+		return withAuthContext(r, commonmodels.AuthContext{UserID: "alice", Roles: []string{"admin"}})
+	}
+
+	w, r := createTestContextWithHeader("POST", "/subscription-plans", []byte(`{"planName":"Gold"}`),
+		map[string]string{"Content-Type": "application/json"})
+	server.CreateSubscriptionPlan(w, asAlice(r))
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	w, r = createTestContext("DELETE", "/subscription-plans/"+created.ID, nil)
+	server.DeleteSubscriptionPlan(w, asAlice(r), created.ID)
+	require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+
+	// A request without an authenticated user is recorded with an empty actor.
+	w, r = createTestContextWithHeader("POST", "/subscription-plans", []byte(`{"planName":"Silver"}`),
+		map[string]string{"Content-Type": "application/json"})
+	server.CreateSubscriptionPlan(w, r)
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+
+	assert.Equal(t, [][]string{
+		{"CREATE", "Gold", "subscription_plan", audit.OutcomeSucceeded, "alice"},
+		{"DELETE", "", "subscription_plan", audit.OutcomeSucceeded, "alice"},
+		{"CREATE", "Silver", "subscription_plan", audit.OutcomeSucceeded, ""},
+	}, planAuditRows(t, auditPath))
 }

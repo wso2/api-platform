@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -69,6 +70,7 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to deploy GraphQL API configuration", slog.Any("error", err))
@@ -228,6 +230,7 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 		Origin:        existing.Origin,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to update GraphQL API configuration", slog.Any("error", err))
@@ -280,6 +283,9 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 	}
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "graphql_api", audit.OutcomeFailed, actorFromRequest(r), middleware.GetCorrelationID(r))
+		}
 		log.Error("Failed to delete GraphQL API config from database", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
@@ -290,6 +296,7 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 
 	correlationID := middleware.GetCorrelationID(r)
 	s.publishGraphQLAPIEvent("DELETE", cfg.UUID, correlationID, log)
+	s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "graphql_api", audit.OutcomeSucceeded, actorFromRequest(r), correlationID)
 
 	// Notify the control plane (DP->CP) that this artifact was deleted via the shared
 	// handler path; it keeps the artifact and marks it undeployed.
