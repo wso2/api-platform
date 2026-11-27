@@ -3,6 +3,23 @@ replicaCount: 1
 # Namespaces to watch (cluster-wide if empty)
 watchNamespaces: []
 
+# APIGateway CRD conversion webhook. APIGateway is served at v1 (storage), v1alpha1 and
+# v2alpha1, and v2alpha1 adds spec.adminCredentials, so the API server converts between
+# versions through the operator. The operator creates and renews the webhook's TLS
+# certificate itself (Secret <fullname>-webhook-cert in the release namespace) and
+# points the APIGateway CRD at the <fullname>-webhook Service. Requests through v1
+# never need the webhook; requests through v1alpha1 or v2alpha1 fail while no operator
+# pod is ready, so consider replicaCount >= 2 where those versions are used.
+conversionWebhook:
+  # Container port the webhook listens on (the Service exposes it on 443)
+  port: 9443
+  # Largest ConversionReview request body accepted, in bytes. A LIST through
+  # v1alpha1/v2alpha1 converts every object in one request.
+  maxRequestBytes: 67108864
+  # Prefer the hybrid post-quantum X25519MLKEM768 TLS key exchange; classical groups
+  # remain as fallback for API servers without it.
+  pqcKeyExchange: true
+
 # Override the chart name used for resource naming
 nameOverride: ""
 # Override the full name used for resource naming
@@ -12,6 +29,17 @@ fullnameOverride: ""
 # Set `false` if CRDs are already managed by another Helm release, a cloud add-on, Traefik, or 
 # OpenShift 4.19+ to avoid ownership and upgrade conflicts.
 gatewayApi:
+  # Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute and the
+  # APIPolicy/ReferenceGrant objects they use) → gateway_api.enabled. Set false on clusters
+  # that deploy gateways only through APIGateway: the operator then watches no Gateway API
+  # resources, needs no Gateway API RBAC or CRDs, and caches only the gateway chart's own
+  # Services and Deployments, found by their app.kubernetes.io/component label (controller
+  # or gateway-runtime). Gateway chart versions after 2026.11.26-r1 always set it; with
+  # an earlier version, do not override that label in the gateway's deployment.labels.
+  # APIGateway, RestApi and the other management resources are unaffected. The upgrade fails while any Gateway of a managedGatewayClassNames class, or
+  # any HTTPRoute still carrying this operator's finalizer, exists: delete those first with
+  # this still true, so their finalizers are removed. Independent of installStandardCRDs.
+  enabled: true
   installStandardCRDs: true
   # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
   managedGatewayClassNames:
@@ -24,7 +52,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.10.1"
+  tag: "0.13.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -85,7 +113,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "2026.11.19-r1"
+    chartVersion: "2026.11.26-r1"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
@@ -139,11 +167,12 @@ gateway:
           auth:
             basic:
               enabled: true
-              users:
-                - username: "admin"
-                  password: "admin"
-                  password_hashed: false
-                  roles: ["admin"]
+              # No shared default user. Each gateway's admin user comes from its
+              # APIGateway spec.adminCredentials, users in its configRef values, or a
+              # password the operator generates into the Secret <gateway>-admin-credentials
+              # on first deployment. Gateways an earlier operator deployed with admin/admin
+              # keep it. Users listed here apply to every gateway.
+              users: []
             idp:
               enabled: false
               jwks_url: ""
@@ -726,6 +755,22 @@ reconciliation:
   initialBackoff: 1s
   # Maximum exponential backoff (Go duration) → reconciliation.max_backoff_duration.
   maxBackoffDuration: 60s
+# Objects the operator never reads, kept out of its informer cache. Without these, the
+# cache holds every gateway's Helm release Secrets and the gateway chart's rendered
+# ConfigMaps (several hundred KB per gateway), and its memory grows with the gateway count.
+# Turn one off only if a resource references an object it excludes: that reference then
+# resolves as not found.
+cache:
+  # How long each controller waits for the informer cache's initial list at startup
+  # before it fails, which restarts the operator (Go duration) → cache.sync_timeout.
+  # Raise it on clusters with many gateways if the leader logs "timed out waiting for
+  # cache to be synced".
+  syncTimeout: 2m
+  # Leave Secrets labeled owner=helm (Helm's release storage) out → cache.exclude_helm_release_secrets.
+  excludeHelmReleaseSecrets: true
+  # Leave ConfigMaps labeled app.kubernetes.io/name=gateway (rendered by the gateway chart) out
+  # → cache.exclude_gateway_chart_config_maps.
+  excludeGatewayChartConfigMaps: true
 logging:
   level: "info"
   format: "json"

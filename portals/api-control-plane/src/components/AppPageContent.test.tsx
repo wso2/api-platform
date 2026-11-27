@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runtimeConfig } from '@/config/runtime';
 
@@ -41,16 +42,46 @@ describe('AppPageContent', () => {
     renderWithProviders(<AppPageContent>Page body</AppPageContent>);
 
     const expected: Record<string, string> = {
-      Documentation: 'https://wso2.com/api-platform/docs/',
-      Support: 'https://discord.com/invite/wso2',
-      'Terms of Use': 'https://wso2.com/api-platform/terms-of-use/',
-      'Privacy Policy': 'https://wso2.com/privacy-policy',
+      Documentation: 'https://choreolabs.com/documentation/api-management/cloud/',
+      Support: 'https://choreolabs.com/subscription',
+      'Terms of Use': 'https://choreolabs.com/cloud/terms-of-use/',
+      'Privacy Policy': 'https://choreolabs.com/privacy-policy',
     };
     Object.entries(expected).forEach(([name, href]) => {
       const link = screen.getByRole('link', { name });
       expect(link).toHaveAttribute('href', href);
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+    });
+  });
+
+  describe('Cookie Settings link', () => {
+    afterEach(() => {
+      runtimeConfig.cookieProDomainScript = '';
+      runtimeConfig.gtmContainerId = '';
+      delete (window as Window & { OneTrust?: unknown }).OneTrust;
+    });
+
+    it('is hidden unless the cookie banner is configured', () => {
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      expect(screen.queryByRole('link', { name: 'Cookie Settings' })).not.toBeInTheDocument();
+    });
+
+    it('is hidden when an id is not in the format the tracking plugin accepts', () => {
+      runtimeConfig.cookieProDomainScript = '0198a8a4-0000-7000-8000-000000000000';
+      runtimeConfig.gtmContainerId = 'not-a-gtm-id';
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      expect(screen.queryByRole('link', { name: 'Cookie Settings' })).not.toBeInTheDocument();
+    });
+
+    it('opens the cookie preference center when clicked', async () => {
+      const toggle = vi.fn();
+      (window as Window & { OneTrust?: unknown }).OneTrust = { ToggleInfoDisplay: toggle };
+      runtimeConfig.cookieProDomainScript = '0198a8a4-0000-7000-8000-000000000000';
+      runtimeConfig.gtmContainerId = 'GTM-ABCD123';
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      await userEvent.click(screen.getByRole('link', { name: 'Cookie Settings' }));
+      expect(toggle).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -24,7 +24,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -146,9 +145,9 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 	if !f.finals.Tracked() || len(bases) == 0 {
 		return nil, nil
 	}
-	token := strings.TrimSpace(os.Getenv(cloudConsoleAccessTokenEnv))
-	if token == "" {
-		return nil, fmt.Errorf("cloud run finalizer: environment variable %s is required to look for leftovers", cloudConsoleAccessTokenEnv)
+	token, err := consoleToken()
+	if err != nil {
+		return nil, fmt.Errorf("cloud run finalizer: looking for leftovers: %w", err)
 	}
 
 	var removed []string
@@ -330,7 +329,7 @@ func portalSweeps(client *httpx.Client, base, token string, owns func(names []st
 						resp, err := client.Do(ctx, httpx.Request{
 							Method:  method,
 							URL:     cloudAPIURL(base, path),
-							Headers: map[string]string{"Authorization": "Bearer " + token},
+							Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(token)},
 						}, 0, 0)
 						if err != nil {
 							return false, retry.Transient(err)
@@ -405,7 +404,7 @@ func portalPublications(ctx context.Context, client *httpx.Client, base, token s
 				resp, err := client.Do(ctx, httpx.Request{
 					Method:  http.MethodGet,
 					URL:     cloudAPIURL(base, target.path("/publication")),
-					Headers: map[string]string{"Authorization": "Bearer " + token},
+					Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(token)},
 				}, 0, 0)
 				switch {
 				case err != nil:
@@ -524,7 +523,7 @@ func getListPage(ctx context.Context, client *httpx.Client, target, token string
 			resp, err := client.Do(ctx, httpx.Request{
 				Method:  http.MethodGet,
 				URL:     target,
-				Headers: map[string]string{"Authorization": "Bearer " + token},
+				Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(token)},
 			}, 0, 0)
 			if err != nil {
 				return nil, retry.Transient(err)

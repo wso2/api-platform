@@ -55,8 +55,8 @@ import { useConsoleScope } from '../../../../api-control-plane/src/scope/Console
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
-import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
-import cloudLogoLight from '../assets/logos/apiplatform_black.svg';
+import cloudLogoDark from '../assets/logos/choreo-api-management-white.svg';
+import cloudLogoLight from '../assets/logos/choreo-api-management-dark.svg';
 
 /**
  * Scopes the cloud Deploy page deploys under (apip-cloud-ui-deploy

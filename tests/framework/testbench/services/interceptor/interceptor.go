@@ -16,10 +16,10 @@
  * under the License.
  */
 
-// Package interceptor provides a stateless request/response interceptor upstream.
 package interceptor
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -28,10 +28,16 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/wso2/api-platform/tests/framework/testbench"
 )
 
 // Port is the container port used by the testbench.
 const Port = 3003
+
+// TLSPort is the port the same service answers on over HTTPS, for a policy configured with an
+// https:// interceptor endpoint.
+const TLSPort = 3027
 
 type invocationContext struct {
 	Path string `json:"path,omitempty"`
@@ -51,6 +57,7 @@ type reply struct {
 	DirectRespond      bool              `json:"directRespond,omitempty"`
 	ResponseCode       int               `json:"responseCode,omitempty"`
 	HeadersToAdd       map[string]string `json:"headersToAdd,omitempty"`
+	HeadersToReplace   map[string]string `json:"headersToReplace,omitempty"`
 	PathToRewrite      string            `json:"pathToRewrite,omitempty"`
 	Body               string            `json:"body,omitempty"`
 	InterceptorContext map[string]string `json:"interceptorContext,omitempty"`
@@ -71,12 +78,45 @@ func (s *Service) Port() int { return Port }
 // Stateful reports whether the service keeps request-specific state.
 func (s *Service) Stateful() bool { return false }
 
-// Handler returns the policy hooks and health handler.
+// OverTLS returns the service served over HTTPS on TLSPort with the supplied PEM certificate and
+// key. It answers exactly as the plain service does.
+func (s *Service) OverTLS(certPEM, keyPEM []byte) (testbench.Service, error) {
+	certificate, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("interceptor: loading the TLS key pair: %w", err)
+	}
+	return &secure{
+		Service:   s,
+		tlsConfig: &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12},
+	}, nil
+}
+
+// secure is the service registered on TLSPort; everything but its name, port and TLS
+// configuration is the plain service's.
+type secure struct {
+	*Service
+	tlsConfig *tls.Config
+}
+
+// Name returns the HTTPS service's registration name.
+func (s *secure) Name() string { return "interceptor-tls" }
+
+// Port returns the HTTPS listening port.
+func (s *secure) Port() int { return TLSPort }
+
+// TLSConfig returns the certificate configuration the HTTPS port serves with.
+func (s *secure) TLSConfig() *tls.Config { return s.tlsConfig }
+
+// Handler returns the policy hooks, the scripted hooks and the health handler.
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/handle-request", s.handleRequest)
 	mux.HandleFunc("/handle-response", s.handleResponse)
+	mux.HandleFunc("POST /scripted/{id}/handle-request", s.scripted(phaseRequest, false))
+	mux.HandleFunc("POST /scripted/{id}/handle-response", s.scripted(phaseResponse, false))
+	mux.HandleFunc("POST /scripted/{id}/reflect/handle-request", s.scripted(phaseRequest, true))
+	mux.HandleFunc("POST /scripted/{id}/reflect/handle-response", s.scripted(phaseResponse, true))
 	return mux
 }
 

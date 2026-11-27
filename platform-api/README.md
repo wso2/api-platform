@@ -473,8 +473,10 @@ kind under `kinds/`, every gateway version literal in `gwversion/versions.go`, a
 This covers the LTS gateway releases `1.0.0`, `1.1.0` and `1.2.0`, which use semver. STS releases
 are named after their release date (e.g. `2026.05.13`) and do not share the LTS version line, so
 they are not compared against LTS releases: a gateway reporting a date is treated as a current build
-and receives artifacts unchanged, as before. Per-channel handling is tracked in
-[#3681](https://github.com/wso2/api-platform/issues/3681).
+and receives artifacts unchanged, as before. The event gateway is a separate product on its own
+`0.x` line (`event-gateway/VERSION`) and reports that version through the same manifest field, so it
+is not compared either — a `0.x` is a different line, not an early `1.x`. Per-channel handling is
+tracked in [#3681](https://github.com/wso2/api-platform/issues/3681).
 
 | Gateway release | What changes for it |
 |---|---|

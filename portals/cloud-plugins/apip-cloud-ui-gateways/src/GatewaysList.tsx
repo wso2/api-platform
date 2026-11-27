@@ -586,7 +586,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
             <Box sx={{ display: 'flex', '& > button + button': { ml: '-1px' } }}>
               <HostingTab
                 icon={<Cloud size={20} />}
-                title="Cloud gateways"
+                title="Cloud API gateways"
                 description="Hosted and operated by Choreo in the cloud."
                 active={managedSummary.active}
                 inactive={managedSummary.inactive}

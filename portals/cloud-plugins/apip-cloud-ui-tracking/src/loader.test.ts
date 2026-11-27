@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isTrackingStarted, resetTrackingForTests, startTracking } from './loader';
 
 const config = { cookieProDomainScript: '01a1a5f4-f908-7fef-aa9a-e3d16219021b-test', gtmContainerId: 'GTM-ABC123' };
@@ -48,5 +48,28 @@ describe('startTracking', () => {
     expect(document.body.getAttribute('data-clarity-mask')).toBe('true');
     expect(document.head.querySelectorAll('script')).toHaveLength(2);
     expect(isTrackingStarted()).toBe(true);
+  });
+
+  describe('the floating cookie icon', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      delete (document as unknown as { adoptedStyleSheets?: unknown }).adoptedStyleSheets;
+    });
+
+    it('is hidden with a constructable stylesheet', () => {
+      const replaceSync = vi.fn();
+      class FakeSheet {
+        replaceSync = replaceSync;
+      }
+      vi.stubGlobal('CSSStyleSheet', FakeSheet);
+      (document as unknown as { adoptedStyleSheets: unknown[] }).adoptedStyleSheets = [];
+      startTracking(config);
+      expect(replaceSync).toHaveBeenCalledWith(expect.stringContaining('#ot-sdk-btn-floating'));
+      expect((document as unknown as { adoptedStyleSheets: unknown[] }).adoptedStyleSheets).toHaveLength(1);
+    });
+
+    it('is left alone where constructable stylesheets are not supported', () => {
+      expect(() => startTracking(config)).not.toThrow();
+    });
   });
 });

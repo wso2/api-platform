@@ -105,6 +105,7 @@ func TestGatewayConfigChangeUnsticksPermanentlyFailedGateway(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	r := NewGatewayReconciler(c, scheme, &config.OperatorConfig{}, logger)
+	r.previousReleaseValues = deployedByEarlierOperator
 
 	trackingKey := types.NamespacedName{Namespace: namespace, Name: name}.String()
 	// Mirror the exhausted-retries tracker state left behind by handleGatewayDeploymentError.
@@ -163,6 +164,7 @@ func TestGatewayNoConfigChangeStaysPermanentlyFailed(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	r := NewGatewayReconciler(c, scheme, &config.OperatorConfig{}, logger)
+	r.previousReleaseValues = deployedByEarlierOperator
 
 	trackingKey := types.NamespacedName{Namespace: namespace, Name: name}.String()
 	r.gatewayTracker.Set(trackingKey, &GatewayTrackingEntry{
@@ -230,6 +232,7 @@ func TestTerminalFailureRecordsAttemptedConfigHash(t *testing.T) {
 	cfg := &config.OperatorConfig{}
 	cfg.Reconciliation.MaxRetryAttempts = maxRetries
 	r := NewGatewayReconciler(c, scheme, cfg, logger)
+	r.previousReleaseValues = deployedByEarlierOperator
 
 	trackingKey := types.NamespacedName{Namespace: namespace, Name: name}.String()
 	entry := &GatewayTrackingEntry{
@@ -306,6 +309,7 @@ func TestConfigRefRemovalDoesNotLoop(t *testing.T) {
 		cfg.Reconciliation.MaxRetryAttempts = maxRetries
 		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		r := NewGatewayReconciler(c, scheme, cfg, logger)
+		r.previousReleaseValues = deployedByEarlierOperator
 
 		trackingKey := types.NamespacedName{Namespace: namespace, Name: name}.String()
 		entry := &GatewayTrackingEntry{
@@ -371,4 +375,15 @@ func TestConfigRefRemovalDoesNotLoop(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, GatewayTrackingStatusDeployed, after.Status)
 	})
+}
+
+// deployedByEarlierOperator stands in for the Helm release lookup: these gateways were
+// deployed before the operator generated credentials (release values carry admin/admin),
+// so they keep that user and no generated Secret enters their config hash.
+func deployedByEarlierOperator(string, string) (map[string]interface{}, bool, error) {
+	return map[string]interface{}{"gateway": map[string]interface{}{"config": map[string]interface{}{"controller": map[string]interface{}{
+		"auth": map[string]interface{}{"basic": map[string]interface{}{"enabled": true, "users": []interface{}{
+			map[string]interface{}{"username": "admin", "password": "admin"},
+		}}},
+	}}}}, true, nil
 }

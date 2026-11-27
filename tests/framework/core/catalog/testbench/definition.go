@@ -122,6 +122,9 @@ func Testbench() *components.Definition {
 			{Name: "jwks", Port: jwks.Port, Scheme: "http", AwaitListening: true},
 			{Name: "echo", Port: echo.Port, Scheme: "http", AwaitListening: true},
 			{Name: "interceptor", Port: interceptor.Port, Scheme: "http", AwaitListening: true},
+			// The same interceptor service over HTTPS with shared.JevTLS, which the gateway runtime
+			// trusts, at https://testbench:3027.
+			{Name: "interceptor-tls", Port: interceptor.TLSPort, Scheme: "https", AwaitListening: true},
 			{Name: "bedrock", Port: aws.BedrockPort, Scheme: "http", AwaitListening: true},
 			{Name: "openai", Port: openai.Port, Scheme: "http", AwaitListening: true},
 			{Name: "mcp", Port: mcp.Port, Scheme: "http", AwaitListening: true},

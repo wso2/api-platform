@@ -1,0 +1,22 @@
+# Routes the API server's conversion requests (port 443) to the operator's
+# conversion webhook (container port 9443).
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook
+  namespace: system
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  ports:
+  - name: webhook
+    port: 443
+    protocol: TCP
+    targetPort: webhook-server
+  selector:
+    control-plane: controller-manager
+    # Only operator pods that serve the webhook; pods of an older operator version
+    # without it are skipped during a rolling upgrade.
+    gateway.api-platform.wso2.com/conversion-webhook-server: "true"

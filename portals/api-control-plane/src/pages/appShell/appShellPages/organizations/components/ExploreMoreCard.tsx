@@ -17,10 +17,10 @@
  */
 
 import { Box, Card, CardContent, Grid, Stack, Typography, useTheme } from '@wso2/oxygen-ui';
-import { ArrowRight, BookOpen, Server, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, BookOpen, Network, Server } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-const DOCS_BASE = 'https://wso2.com/api-platform/docs';
+import { runtimeConfig } from '../../../../../config/runtime';
 
 const messages = defineMessages({
   exploreMore: {
@@ -28,58 +28,68 @@ const messages = defineMessages({
     defaultMessage: 'Explore More',
     description: 'Heading above a card of links into the product documentation.',
   },
-  designAttachPolicies: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies',
-    defaultMessage: 'Attach and Manage Policies',
-  },
-  designCustomize: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designCustomize',
-    defaultMessage: 'Design and Customize API Proxies',
-  },
-  designSelfHostedGateway: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designSelfHostedGateway',
-    defaultMessage: 'Getting Started with a Self-Hosted Gateway',
-  },
-  designTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designTitle',
-    defaultMessage: 'Design and Deploy',
-    description: 'Section heading. Refers to building an API proxy and putting it on a gateway.',
-  },
-  getStartedCreateProxy: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateProxy',
-    defaultMessage: 'Create an API Proxy',
+  getStartedTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedTitle',
+    defaultMessage: 'Get started',
+    description: 'Section heading for introductory documentation.',
   },
   getStartedGuide: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide',
-    defaultMessage: 'Get Started with the Choreo API Management',
+    defaultMessage: 'Get started with the Choreo API Management',
   },
-  getStartedRestFromScratch: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedRestFromScratch',
-    defaultMessage: 'Create a REST API Proxy from Scratch',
+  getStartedCreateRest: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateRest',
+    defaultMessage: 'Create REST APIs',
   },
-  getStartedTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedTitle',
-    defaultMessage: 'Get Started',
-    description: 'Section heading for introductory documentation.',
+  getStartedCreateGraphql: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateGraphql',
+    defaultMessage: 'Create GraphQL APIs',
   },
-  governGovernance: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governGovernance',
-    defaultMessage: 'API Governance Overview',
+  designTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designTitle',
+    defaultMessage: 'Design and deploy',
+    description: 'Section heading. Refers to building an API proxy and putting it on a gateway.',
   },
-  governInsights: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governInsights',
-    defaultMessage: 'Insights and Analytics',
+  designCustomize: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designCustomize',
+    defaultMessage: 'Design and customize APIs',
   },
-  governTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governTitle',
-    defaultMessage: 'Govern and Monitor',
-    description: 'Section heading. "Govern" means applying organization-wide rules to APIs.',
+  designAttachPolicies: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies',
+    defaultMessage: 'Attach and manage policies',
+  },
+  designDeployTest: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designDeployTest',
+    defaultMessage: 'Deploy and test an API',
+  },
+  designPublish: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designPublish',
+    defaultMessage: 'Publish an API',
+  },
+  gatewaysTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysTitle',
+    defaultMessage: 'Gateways and portals',
+    description: 'Section heading. Refers to running gateways, including self-hosted ones, and managing API portals.',
+  },
+  gatewaysSelfHosted: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysSelfHosted',
+    defaultMessage: 'Self-hosted gateways',
+  },
+  gatewaysManage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysManage',
+    defaultMessage: 'Manage gateways',
+  },
+  gatewaysPortals: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysPortals',
+    defaultMessage: 'Manage API portals',
   },
 });
 
 export default function ExploreMoreCard() {
   const intl = useIntl();
   const theme = useTheme();
+  // Same docs root as the footer's Documentation link, so one setting moves both.
+  const docsBase = runtimeConfig.documentationLink.replace(/\/+$/, '');
 
   const sections = [
     {
@@ -87,17 +97,14 @@ export default function ExploreMoreCard() {
       title: intl.formatMessage(messages.getStartedTitle),
       icon: BookOpen,
       links: [
+        { label: intl.formatMessage(messages.getStartedGuide), href: `${docsBase}/get-started` },
         {
-          label: intl.formatMessage(messages.getStartedGuide),
-          href: `${DOCS_BASE}/get-started/`,
+          label: intl.formatMessage(messages.getStartedCreateRest),
+          href: `${docsBase}/api-control-plane/create-api-proxy/rest-apis/start-from-scratch`,
         },
         {
-          label: intl.formatMessage(messages.getStartedCreateProxy),
-          href: `${DOCS_BASE}/cloud/create-api-proxy/overview/`,
-        },
-        {
-          label: intl.formatMessage(messages.getStartedRestFromScratch),
-          href: `${DOCS_BASE}/cloud/create-api-proxy/my-apis/http/start-from-scratch/`,
+          label: intl.formatMessage(messages.getStartedCreateGraphql),
+          href: `${docsBase}/api-control-plane/create-api-proxy/graphql-apis/start-from-scratch`,
         },
       ],
     },
@@ -108,30 +115,38 @@ export default function ExploreMoreCard() {
       links: [
         {
           label: intl.formatMessage(messages.designCustomize),
-          href: `${DOCS_BASE}/cloud/develop-api-proxy/policy/overview/`,
+          href: `${docsBase}/api-control-plane/develop-api-proxy/definition`,
         },
         {
           label: intl.formatMessage(messages.designAttachPolicies),
-          href: `${DOCS_BASE}/cloud/develop-api-proxy/policy/attach-and-manage-policies/`,
+          href: `${docsBase}/api-control-plane/develop-api-proxy/policy/attach-and-manage-policies`,
         },
         {
-          label: intl.formatMessage(messages.designSelfHostedGateway),
-          href: `${DOCS_BASE}/cloud/api-platform-gateway/getting-started/`,
+          label: intl.formatMessage(messages.designDeployTest),
+          href: `${docsBase}/api-control-plane/deploy-api-proxy/overview`,
+        },
+        {
+          label: intl.formatMessage(messages.designPublish),
+          href: `${docsBase}/api-control-plane/publish-api-proxy/publish-an-api`,
         },
       ],
     },
     {
-      key: 'govern',
-      title: intl.formatMessage(messages.governTitle),
-      icon: ShieldCheck,
+      key: 'gateways',
+      title: intl.formatMessage(messages.gatewaysTitle),
+      icon: Network,
       links: [
         {
-          label: intl.formatMessage(messages.governGovernance),
-          href: `${DOCS_BASE}/cloud/governance/overview/`,
+          label: intl.formatMessage(messages.gatewaysSelfHosted),
+          href: `${docsBase}/api-gateway/self-hosted-gateways/architecture`,
         },
         {
-          label: intl.formatMessage(messages.governInsights),
-          href: `${DOCS_BASE}/cloud/monitoring-and-insights/insights/`,
+          label: intl.formatMessage(messages.gatewaysManage),
+          href: `${docsBase}/api-control-plane/administer/managing-gateways`,
+        },
+        {
+          label: intl.formatMessage(messages.gatewaysPortals),
+          href: `${docsBase}/api-control-plane/administer/managing-portals`,
         },
       ],
     },

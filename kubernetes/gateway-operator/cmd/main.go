@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"log/slog"
+	"maps"
 	"os"
 	"strings"
 
@@ -27,22 +28,27 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/go-logr/logr"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	apiv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv2alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v2alpha1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/cachescope"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/controller"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/conversionwebhook"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/pkg/logger"
 	//+kubebuilder:scaffold:imports
 )
@@ -54,9 +60,11 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 
 	utilruntime.Must(apiv1.AddToScheme(scheme))
 	utilruntime.Must(apiv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(apiv2alpha1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
@@ -69,6 +77,12 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var configPath string
+	var enableConversionWebhook bool
+	var conversionWebhookPort int
+	var conversionWebhookService string
+	var conversionWebhookSecret string
+	var conversionWebhookMaxRequestBytes int64
+	var conversionWebhookPQCKeyExchange bool
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -80,6 +94,19 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&enableConversionWebhook, "enable-conversion-webhook", true,
+		"Serve the APIGateway CRD conversion webhook (v1 <-> v2alpha1) and keep the CRD pointed at it. "+
+			"Without it, APIGateway requests through v1alpha1 or v2alpha1 fail.")
+	flag.IntVar(&conversionWebhookPort, "conversion-webhook-port", conversionwebhook.DefaultPort,
+		"Container port the conversion webhook listens on.")
+	flag.StringVar(&conversionWebhookService, "conversion-webhook-service-name", "gateway-operator-webhook",
+		"Service in the operator's namespace that routes port 443 to the conversion webhook.")
+	flag.StringVar(&conversionWebhookSecret, "conversion-webhook-cert-secret", "gateway-operator-webhook-cert",
+		"Secret in the operator's namespace that holds the conversion webhook's CA and serving certificate.")
+	flag.Int64Var(&conversionWebhookMaxRequestBytes, "conversion-webhook-max-request-bytes", conversionwebhook.DefaultMaxRequestBytes,
+		"Largest ConversionReview request body the conversion webhook accepts.")
+	flag.BoolVar(&conversionWebhookPQCKeyExchange, "conversion-webhook-pqc-key-exchange", true,
+		"Prefer the hybrid X25519MLKEM768 TLS key exchange on the conversion webhook, with classical groups as fallback.")
 	flag.Parse()
 
 	// Load operator configuration first to get logging config
@@ -117,10 +144,6 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	webhookServer := webhook.NewServer(webhook.Options{
-		TLSOpts: tlsOpts,
-	})
-
 	// Parse WATCH_NAMESPACES env var
 	watchNamespaces := os.Getenv("WATCH_NAMESPACES")
 	var defaultNamespaces map[string]cache.Config
@@ -135,17 +158,35 @@ func main() {
 		setupLog.Info("watching all namespaces (cluster-wide)")
 	}
 
+	cacheOpts, err := cachescope.Options(defaultNamespaces, cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to build cache options")
+		os.Exit(1)
+	}
+	setupLog.Info("informer cache settings",
+		"syncTimeout", cfg.Cache.SyncTimeout.String(),
+		"helmReleaseSecrets", cfg.Cache.ExcludeHelmReleaseSecrets,
+		"gatewayChartConfigMaps", cfg.Cache.ExcludeGatewayChartConfigMaps,
+		"servicesAndDeploymentsOutsideGatewayChart", !cfg.GatewayAPI.Enabled)
+	// Only the APIGateway CRD, for the conversion webhook's CRD reconciler.
+	if cacheOpts.ByObject == nil {
+		cacheOpts.ByObject = map[client.Object]cache.ByObject{}
+	}
+	maps.Copy(cacheOpts.ByObject, conversionwebhook.CacheByObject())
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
-		Cache: cache.Options{
-			DefaultNamespaces: defaultNamespaces,
+		Cache:  cacheOpts,
+		// Every controller waits this long for its informers' initial list; none sets
+		// its own CacheSyncTimeout, so this is the bound for all of them.
+		Controller: ctrlconfig.Controller{
+			CacheSyncTimeout: cfg.Cache.SyncTimeout,
 		},
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
 			SecureServing: secureMetrics,
 			TLSOpts:       tlsOpts,
 		},
-		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a5e4ae5b.gateway.api-platform.wso2.com",
@@ -166,6 +207,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	if enableConversionWebhook {
+		if err := conversionwebhook.Setup(mgr, conversionwebhook.Options{
+			Namespace:       os.Getenv("POD_NAMESPACE"),
+			ServiceName:     conversionWebhookService,
+			SecretName:      conversionWebhookSecret,
+			Port:            conversionWebhookPort,
+			MaxRequestBytes: conversionWebhookMaxRequestBytes,
+			PQCKeyExchange:  conversionWebhookPQCKeyExchange,
+			EnableHTTP2:     enableHTTP2,
+			Logger:          appLog,
+		}); err != nil {
+			setupLog.Error(err, "unable to set up the conversion webhook")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("conversion webhook disabled: APIGateway requests through v1alpha1 or v2alpha1 will fail")
+	}
+
 	if err = controller.NewGatewayReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
@@ -184,32 +243,39 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "RestApi")
 		os.Exit(1)
 	}
-	if err = controller.NewK8sGatewayReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
-		os.Exit(1)
-	}
-	if err = controller.NewK8sGatewayClassReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
-		os.Exit(1)
-	}
-	if err = controller.NewHTTPRouteReconciler(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		cfg,
-		appLog,
-	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
-		os.Exit(1)
+	// Gateway API controllers (GatewayClass, Gateway, HTTPRoute). When they are off,
+	// nothing watches Gateway API resources, so the operator also runs on clusters
+	// without the Gateway API CRDs.
+	if cfg.GatewayAPI.Enabled {
+		if err = controller.NewK8sGatewayReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
+			os.Exit(1)
+		}
+		if err = controller.NewK8sGatewayClassReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
+			os.Exit(1)
+		}
+		if err = controller.NewHTTPRouteReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			cfg,
+			appLog,
+		).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Gateway API support disabled; GatewayClass, Gateway and HTTPRoute resources are not reconciled")
 	}
 
 	// Management-API resource controllers (WSO2 APIGateway flow only).

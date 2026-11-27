@@ -53,7 +53,7 @@ const messages = defineMessages({
   intro: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.intro',
     defaultMessage:
-      "You're in the <strong>{projectName}</strong> project. It's empty for now, so start creating.",
+      "You're in the <strong>{projectName}</strong> project. Nothing is published yet, so start with your first API.",
     description: '{projectName} is the name of the project the user is in. Never translated.',
   },
   startHere: {
@@ -63,7 +63,7 @@ const messages = defineMessages({
   },
   heroTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroTitle',
-    defaultMessage: 'Expose and secure APIs',
+    defaultMessage: 'Govern and manage every API',
   },
   heroDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.heroDescription',
@@ -72,15 +72,15 @@ const messages = defineMessages({
   },
   createApi: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.createApi',
-    defaultMessage: 'Create API',
+    defaultMessage: 'Create an API',
   },
   gatewayTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayTitle',
-    defaultMessage: 'Run on any gateway',
+    defaultMessage: 'Run your APIs on any gateway',
   },
   gatewayDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayDescription',
-    defaultMessage: 'Deploy to a managed gateway or a self-hosted one in your own cluster.',
+    defaultMessage: 'Deploy your APIs to a managed gateway or a self-hosted one in your own cluster.',
   },
   gatewayCount: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectWelcome.gatewayCount',
@@ -159,7 +159,22 @@ function SideCard({
   );
   return (
     <Card
-      sx={{ display: 'flex', flex: 1, flexDirection: 'column', justifyContent: 'center', p: 2 }}
+      sx={{
+        '@keyframes sideCardRiseIn': {
+          from: { opacity: 0, transform: 'translateY(24px)' },
+          to: { opacity: 1, transform: 'translateY(0)' },
+        },
+        // Both cards rise in together once the welcome view is on screen.
+        '@media (prefers-reduced-motion: no-preference)': {
+          animation: 'sideCardRiseIn 0.5s ease-out both',
+        },
+        display: 'flex',
+        flex: 1,
+        flexDirection: 'column',
+        justifyContent: 'center',
+        px: 3,
+        py: 3,
+      }}
     >
       <Stack spacing={0.75}>
         <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={1}>
@@ -249,7 +264,7 @@ export function ProjectWelcome({
         spacing={2}
       >
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 800 }} variant="h3">
+          <Typography sx={{ fontSize: '1.75rem', fontWeight: 800 }} variant="h3">
             <FormattedMessage
               {...messages.greeting}
               values={{
@@ -293,19 +308,34 @@ export function ProjectWelcome({
             sx={(theme) => {
               const palette = theme.vars?.palette ?? theme.palette;
               return {
-                backgroundImage: `linear-gradient(135deg, color-mix(in srgb, ${palette.primary.main} 9%, ${palette.background.paper}) 0%, ${palette.background.paper} 60%)`,
-                borderColor: `color-mix(in srgb, ${palette.primary.main} 35%, transparent)`,
+                // The page's own background with a faint primary glow from the top-left, and a
+                // primary-tinted edge: the same treatment as the other products' start cards.
+                backgroundColor: palette.background.default,
+                backgroundImage: `linear-gradient(135deg, color-mix(in srgb, ${palette.primary.main} 6%, ${palette.background.default}) 0%, ${palette.background.default} 60%)`,
+                borderColor: `color-mix(in srgb, ${palette.primary.main} 30%, transparent)`,
                 height: '100%',
               };
             }}
           >
-            <CardContent sx={{ p: { md: 5, xs: 3 } }}>
+            <CardContent
+              sx={{
+                p: { md: 5, xs: 3 },
+                // MUI's CardContent shrinks its last-child bottom padding to 24px, which made the
+                // card's top and bottom padding unequal.
+                '&:last-child': { pb: { md: 5, xs: 3 } },
+              }}
+            >
               <Grid alignItems="center" container spacing={3}>
                 <Grid size={{ md: 6, xs: 12 }}>
                   <Stack alignItems="flex-start" spacing={2.5}>
                     <Typography
                       color="primary"
-                      sx={{ fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase' }}
+                      sx={{
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        letterSpacing: 1.5,
+                        textTransform: 'uppercase',
+                      }}
                       variant="subtitle2"
                     >
                       <FormattedMessage {...messages.startHere} />
@@ -313,7 +343,11 @@ export function ProjectWelcome({
                     <Typography sx={{ fontWeight: 600 }} variant="h3">
                       <FormattedMessage {...messages.heroTitle} />
                     </Typography>
-                    <Typography color="text.secondary" sx={{ lineHeight: 1.7 }} variant="h6">
+                    <Typography
+                      color="text.secondary"
+                      sx={{ fontWeight: 400, lineHeight: 1.7 }}
+                      variant="h6"
+                    >
                       <FormattedMessage {...messages.heroDescription} />
                     </Typography>
                     <ApiTypeTicker />

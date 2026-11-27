@@ -248,9 +248,9 @@ func (s *Starter) CheckProjects(ctx context.Context) {
 
 // StartAt is Start for the platform API endpoint given as a URL, for a caller that has no topology.
 func (s *Starter) StartAt(_ context.Context, base string) error {
-	token := strings.TrimSpace(os.Getenv(cloudConsoleAccessTokenEnv))
-	if token == "" {
-		return fmt.Errorf("cloud run starter: environment variable %s is required to prepare the organisation", cloudConsoleAccessTokenEnv)
+	token, err := consoleToken()
+	if err != nil {
+		return fmt.Errorf("cloud run starter: preparing the organisation: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -560,7 +560,7 @@ func (p organisationAPI) do(ctx context.Context, method, path string, body []byt
 		Method: method,
 		URL:    cloudAPIURL(p.base, path),
 		Headers: map[string]string{
-			"Authorization": "Bearer " + p.token,
+			"Authorization": "Bearer " + liveConsoleToken(p.token),
 			"Content-Type":  "application/json",
 		},
 		Body: body,
