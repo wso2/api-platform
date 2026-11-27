@@ -128,23 +128,19 @@ func runGatewayBuilder(config DockerBuildConfig, engine containerEngine, logFile
 	defer cleanup()
 
 	return engine.runBuilder(config, builderAccessRun{
-		args:           accessArgs,
-		env:            env,
-		forwardSignals: len(config.BuilderAccess.GitCredentials) > 0,
-		access:         config.BuilderAccess,
+		args:   accessArgs,
+		env:    env,
+		access: config.BuilderAccess,
 	}, logFile)
 }
 
 // builderAccessRun is what the engine adds to the builder run for the Go settings
-// and credentials: extra run arguments, the environment for the engine process
-// (nil to inherit), and whether to forward signals to it. Every command run
-// while a generated credentials file exists forwards signals, so an interrupt
-// never ends ap before the file is deleted.
+// and credentials: extra run arguments and the environment for the engine
+// process (nil to inherit).
 type builderAccessRun struct {
-	args           []string
-	env            []string
-	forwardSignals bool
-	access         BuilderAccess // for the --netrc mount hint
+	args   []string
+	env    []string
+	access BuilderAccess // for the --netrc mount hint
 }
 
 // runBuilderProcess runs the command that executes the gateway builder, with its
@@ -159,8 +155,13 @@ func runBuilderProcess(name string, args []string, access builderAccessRun, logF
 }
 
 // runForwarding runs a command with its output scrolled on a TTY and written to
-// the log file, forwarding signals to it when access says so. With captureStdout,
-// stdout is returned instead of shown.
+// the log file, forwarding signals to it. With captureStdout, stdout is returned
+// instead of shown.
+//
+// Signals are always forwarded, so an interrupt never ends ap before its deferred
+// cleanup: deleting a generated --git-credential netrc, and removing buildah's
+// working container, which buildah run (unlike docker and podman run --rm)
+// leaves behind.
 func runForwarding(name string, args []string, access builderAccessRun, logFile *os.File, captureStdout bool) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Env = access.env
@@ -182,11 +183,7 @@ func runForwarding(name string, args []string, access builderAccessRun, logFile 
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("%s %s failed: %w", name, args[0], err)
 	}
-	if access.forwardSignals {
-		// Without this, Ctrl-C would kill ap before the deferred cleanup removes
-		// the generated credentials file.
-		defer forwardSignals(cmd.Process)()
-	}
+	defer forwardSignals(cmd.Process)()
 	if err := cmd.Wait(); err != nil {
 		return "", fmt.Errorf("%s %s failed: %w", name, args[0], err)
 	}
@@ -209,9 +206,9 @@ func netrcMountHint(err error, access BuilderAccess) string {
 	if access.NetrcFile == "" || !errors.As(err, &exitErr) || exitErr.ExitCode() != runCreateFailed {
 		return ""
 	}
-	return "\n\nThe container engine could not create the builder container. If the log says the bind source path does not exist, " +
-		"move the --netrc file under your home directory: Docker Desktop, Colima and podman machine share it with their VM by default, " +
-		"but not every other host path."
+	return "\n\nThe container engine could not create the builder container. If the log says the --netrc file does not exist " +
+		"(\"bind source path does not exist\" or \"no such file or directory\"), move it under your home directory: " +
+		"Docker Desktop, Colima and podman machine share it with their VM by default, but not every other host path."
 }
 
 // forwardSignals passes interrupt, terminate and hangup (terminal closed) signals to
