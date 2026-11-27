@@ -209,6 +209,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	s.registerPortalSignInSteps(sc)
 	s.registerPortalConsumerSteps(sc)
 	s.registerSelfHostedGatewaySteps(sc)
+	s.registerRuntimeSteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)

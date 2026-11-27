@@ -29,6 +29,7 @@ blocks:
         tags: "~@known-issue"
         features:
           - features/apip_deploy.feature
+          - features/apip_gateway_runtime.feature
       - name: apip-gateway
         features:
           - features/apip_gateway.feature

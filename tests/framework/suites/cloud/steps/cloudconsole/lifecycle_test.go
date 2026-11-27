@@ -10939,3 +10939,86 @@ func TestPlanReadsListsAndUpdates(t *testing.T) {
 	require.NoError(t, steps.assertCloudErrorCode(ctx, "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"))
 	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "not a subscription plan")
 }
+
+func TestJSONBodyOfSizeIsExactAndValid(t *testing.T) {
+	for _, size := range []int{14, 15, 1024} {
+		body, err := jsonBodyOfSize(size)
+		require.NoError(t, err)
+		require.Len(t, body, size)
+		require.True(t, json.Valid(body), size)
+	}
+	_, err := jsonBodyOfSize(13)
+	require.ErrorContains(t, err, "at least 14 bytes")
+}
+
+func TestSendOnceSendsTheHeaderAndBodyAndPublishesAnyStatus(t *testing.T) {
+	var gotHeader string
+	var gotBody int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-Request-Id")
+		body, _ := io.ReadAll(r.Body)
+		gotBody = len(body)
+		w.Header().Set("X-Request-Id", "answered")
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer server.Close()
+	steps, ctx, local, _ := cloudSteps(t, nil)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set("probe", "client-1")
+
+	require.NoError(t, steps.sendOnceWithHeader(ctx, http.MethodGet, server.URL, "X-Request-Id", "${CTX:probe}"))
+	require.Equal(t, "client-1", gotHeader)
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusTeapot), "a single send publishes whatever status it gets")
+	require.NoError(t, steps.assertResponseHeader(ctx, "x-request-id", "be", "answered"))
+
+	require.NoError(t, steps.sendOnceWithJSONBody(ctx, http.MethodPost, server.URL, 64))
+	require.Equal(t, 64, gotBody)
+	require.ErrorContains(t, steps.sendOnceWithHeader(ctx, http.MethodGet, server.URL, " ", "v"), "header name is required")
+}
+
+func TestResponseHeaderAssertions(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	headers := http.Header{}
+	headers.Set("Cache-Control", "public, max-age=300")
+	headers.Set("X-Request-Id", "9b821994-8aa4-4fbb-a21f-f6cea5b78a0b")
+	headers.Set("ETag", `"abc"`)
+	require.NoError(t, steps.funnel.Publish(ctx, &httpx.Response{StatusCode: 200, Headers: headers}))
+
+	require.NoError(t, steps.assertResponseHeader(ctx, "cache-control", "be", "public, max-age=300"))
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "Cache-Control", "be", "no-store"), `want "no-store"`)
+	require.NoError(t, steps.assertResponseHeader(ctx, "Cache-Control", "contain", "max-age"))
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "Allow", "contain", "GET"), "want it to contain")
+	require.NoError(t, steps.assertResponseHeader(ctx, "X-Request-Id", "not be", "policy-set-value"))
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "ETag", "not be", `"abc"`), "want anything else")
+	require.NoError(t, steps.assertResponseHeader(ctx, "Allow", "not be", "GET"), "an absent header is not the value")
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "ETag", "match", "x"), "unsupported header relation")
+
+	require.NoError(t, steps.storeResponseHeader(ctx, "ETag", "jwksETag"))
+	got, err := requiredValue(ctx, "jwksETag")
+	require.NoError(t, err)
+	require.Equal(t, `"abc"`, got)
+	require.ErrorContains(t, steps.storeResponseHeader(ctx, "Allow", "allow"), "no \"Allow\" header to store")
+
+	require.NoError(t, steps.assertGeneratedRequestID(ctx))
+	headers.Set("X-Request-Id", "client-request-id-123")
+	require.ErrorContains(t, steps.assertGeneratedRequestID(ctx), "not one the gateway generated")
+	headers.Del("X-Request-Id")
+	require.ErrorContains(t, steps.assertGeneratedRequestID(ctx), "not one the gateway generated")
+}
+
+func TestBodyAssertions(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	publishedResponse(t, steps, ctx, 304, "")
+	require.NoError(t, steps.assertEmptyBody(ctx))
+	require.ErrorContains(t, steps.assertResponseOmits(ctx, "checks"), "not JSON")
+
+	publishedResponse(t, steps, ctx, 200, `{"status":"healthy","checks":{}}`)
+	require.ErrorContains(t, steps.assertEmptyBody(ctx), "want none")
+	require.NoError(t, steps.assertResponseOmits(ctx, "checks.policy_engine"))
+	require.ErrorContains(t, steps.assertResponseOmits(ctx, "checks"), "want it absent")
+
+	publishedResponse(t, steps, ctx, 200, `{"headers":{"x-request-id":"client-request-id-123"}}`)
+	require.NoError(t, steps.assertEchoedHeader(ctx, "X-Request-Id", "client-request-id-123"))
+	require.ErrorContains(t, steps.assertEchoedHeader(ctx, "X-Request-Id", "other"), `want "other"`)
+	require.ErrorContains(t, steps.assertEchoedHeader(ctx, "X-Other", "x"), `no "X-Other" header`)
+}
