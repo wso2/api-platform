@@ -171,7 +171,7 @@ func TestArtifactImport_CreateRestAPI(t *testing.T) {
 	d := setupImportTest(t)
 
 	const id = "11111111-1111-1111-1111-111111111111"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, restImportRequest(id, "weather-api", "Weather API"))
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, restImportRequest(id, "weather-api", "Weather API"))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -236,7 +236,7 @@ func TestArtifactImport_CreateGraphQLAPI(t *testing.T) {
 	d := setupImportTest(t)
 
 	const id = "55555555-5555-5555-5555-555555555555"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, graphqlImportRequest(id, "countries-graphql", "Countries GraphQL API"))
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, graphqlImportRequest(id, "countries-graphql", "Countries GraphQL API"))
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -296,7 +296,7 @@ func TestArtifactImport_RestAPIFlatOperationsPreserved(t *testing.T) {
 		},
 	}
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -343,7 +343,7 @@ func TestArtifactImport_RestAPIMatchOperationsPreserved(t *testing.T) {
 		},
 	}
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -378,7 +378,7 @@ func TestArtifactImport_RestAPIMatchOnlyOperation(t *testing.T) {
 		},
 	}
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -403,7 +403,7 @@ func TestArtifactImport_RestAPIOperationsReplacedOnNewerPush(t *testing.T) {
 	first.Configuration.Spec["operations"] = []interface{}{
 		map[string]interface{}{"method": "GET", "path": "/alerts"},
 	}
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, withDeployedAt(first, baseDeployedAt))
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, withDeployedAt(first, baseDeployedAt))
 	if err != nil {
 		t.Fatalf("first import: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestArtifactImport_RestAPIOperationsReplacedOnNewerPush(t *testing.T) {
 	second.Configuration.Spec["operations"] = []interface{}{
 		map[string]interface{}{"method": "PUT", "path": "/alerts/{id}"},
 	}
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, withDeployedAt(second, newerDeployedAt)); err != nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, withDeployedAt(second, newerDeployedAt)); err != nil {
 		t.Fatalf("second import: %v", err)
 	}
 
@@ -435,7 +435,7 @@ func TestArtifactImport_RestAPIMalformedOperationRejected(t *testing.T) {
 		map[string]interface{}{"method": 42, "path": "/weather"},
 	}
 
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); err == nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req); err == nil {
 		t.Fatal("Import() error = nil, want a decode error for a non-string method")
 	}
 }
@@ -473,7 +473,7 @@ func TestArtifactImport_UnsupportedKind(t *testing.T) {
 	req := restImportRequest("22222222-2222-2222-2222-222222222222", "x", "X")
 	req.Configuration.Kind = "Nonexistent"
 
-	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	_, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrArtifactInvalidKind", err)
 	}
@@ -484,7 +484,7 @@ func TestArtifactImport_MissingProjectForProjectScopedKind(t *testing.T) {
 	req := restImportRequest("33333333-3333-3333-3333-333333333333", "x", "X")
 	req.Configuration.Metadata.Annotations = nil // REST requires a project
 
-	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	_, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput", err)
 	}
@@ -498,7 +498,7 @@ func TestArtifactImport_NonexistentProject(t *testing.T) {
 
 	// Project provided but not present in the org -> the import fails with ErrProjectNotFound
 	// and no artifact is created.
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); !apperror.ProjectNotFound.Is(err) {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req); !apperror.ProjectNotFound.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrProjectNotFound", err)
 	}
 	art, err := d.artifactRepo.GetByHandle("x", importTestOrgID)
@@ -521,7 +521,7 @@ func TestArtifactImport_ResolvesProjectByHandleNotDisplayName(t *testing.T) {
 	// The display name ("Default") is not a handle -> the import must fail.
 	byDisplayName := restImportRequest("55555555-5555-5555-5555-555555555555", "by-display-name", "By Display Name")
 	byDisplayName.Configuration.Metadata.Annotations = projectAnnotations("Default")
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, byDisplayName); !apperror.ProjectNotFound.Is(err) {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, byDisplayName); !apperror.ProjectNotFound.Is(err) {
 		t.Fatalf("Import(display name) error = %v, want ErrProjectNotFound", err)
 	}
 	if art, err := d.artifactRepo.GetByHandle("by-display-name", importTestOrgID); err != nil {
@@ -533,7 +533,7 @@ func TestArtifactImport_ResolvesProjectByHandleNotDisplayName(t *testing.T) {
 	// The handle ("default") resolves -> the import succeeds and lands in the project.
 	byHandle := restImportRequest("66666666-6666-6666-6666-666666666666", "by-handle", "By Handle")
 	byHandle.Configuration.Metadata.Annotations = projectAnnotations("default")
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, byHandle)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, byHandle)
 	if err != nil {
 		t.Fatalf("Import(handle) error = %v", err)
 	}
@@ -576,7 +576,7 @@ func TestArtifactImport_CPArtifactMetadataNotOverwritten(t *testing.T) {
 	// CP, its metadata must be preserved even though this gateway syncs metadata; the
 	// push should only add a new deployment entry for the existing CP artifact.
 	req := restImportRequest(DPId, "cp-api", "Hacked Name")
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -613,7 +613,7 @@ func TestArtifactImport_DPArtifactMetadataUpdatedOnNewerPush(t *testing.T) {
 
 	const id = "66666666-6666-6666-6666-666666666666"
 	// First import creates the DP artifact and sets the metadata watermark.
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id, "dp-api", "First Name"), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("first import: %v", err)
@@ -621,7 +621,7 @@ func TestArtifactImport_DPArtifactMetadataUpdatedOnNewerPush(t *testing.T) {
 	cpID := resp.ID
 	// Second import (same handle) carries a strictly newer DeployedAt, so it wins and
 	// updates the working-copy display name (last-in-wins).
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id, "dp-api", "Second Name"), newerDeployedAt)); err != nil {
 		t.Fatalf("second import: %v", err)
 	}
@@ -636,7 +636,7 @@ func TestArtifactImport_DPArtifactMetadataNotUpdatedOnStalePush(t *testing.T) {
 	d := setupImportTest(t)
 
 	const id = "77777777-7777-7777-7777-777777777777"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id, "dp-api", "First Name"), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("first import: %v", err)
@@ -644,7 +644,7 @@ func TestArtifactImport_DPArtifactMetadataNotUpdatedOnStalePush(t *testing.T) {
 	cpID := resp.ID
 	// The re-push carries an OLDER DeployedAt than the watermark, so it is stale: the
 	// working copy/metadata must be left untouched.
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id, "dp-api", "Second Name"), olderDeployedAt)); err != nil {
 		t.Fatalf("second import: %v", err)
 	}
@@ -684,7 +684,7 @@ func TestArtifactImport_RetriesAsUpdateOnHandleConflict(t *testing.T) {
 
 	const id1 = "99999999-9999-9999-9999-999999999991"
 	// The "winning" gateway creates and imports the handle first.
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id1, "shared-handle", "First Name"), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("first import: %v", err)
@@ -699,7 +699,7 @@ func TestArtifactImport_RetriesAsUpdateOnHandleConflict(t *testing.T) {
 	t.Cleanup(func() { d.svc.importers[constants.RestApi] = real })
 
 	const id2 = "99999999-9999-9999-9999-999999999992"
-	resp2, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp2, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id2, "shared-handle", "Second Name"), newerDeployedAt))
 	if err != nil {
 		t.Fatalf("second import should recover via retry, got error: %v", err)
@@ -726,7 +726,7 @@ func TestArtifactImport_RetryPreservesLastInWinsForStalePush(t *testing.T) {
 
 	const id1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"
 	// The winner imports with the NEWER deployment time.
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id1, "stale-handle", "Winner Name"), newerDeployedAt))
 	if err != nil {
 		t.Fatalf("first import: %v", err)
@@ -741,7 +741,7 @@ func TestArtifactImport_RetryPreservesLastInWinsForStalePush(t *testing.T) {
 	const id2 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"
 	// The loser pushes with an OLDER deployment time; after the forced conflict + retry it
 	// must be treated as stale and NOT overwrite the winner's metadata.
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id2, "stale-handle", "Loser Name"), olderDeployedAt)); err != nil {
 		t.Fatalf("second import should recover via retry, got error: %v", err)
 	}
@@ -846,7 +846,7 @@ func TestArtifactImport_UndeployedStatus(t *testing.T) {
 	d := setupImportTest(t)
 
 	const id = "88888888-8888-8888-8888-888888888888"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, restImportRequest(id, "u-api", "U API"))
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, restImportRequest(id, "u-api", "U API"))
 	if err != nil {
 		t.Fatalf("create import: %v", err)
 	}
@@ -854,7 +854,7 @@ func TestArtifactImport_UndeployedStatus(t *testing.T) {
 	// Push an undeployed status.
 	req := restImportRequest(id, "u-api", "U API")
 	req.Status = "undeployed"
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); err != nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req); err != nil {
 		t.Fatalf("undeploy import: %v", err)
 	}
 
@@ -889,7 +889,7 @@ func TestArtifactImport_LLMProviderTemplate_OrgLevelNoDeployment(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -919,7 +919,7 @@ func TestArtifactImport_Enforcement_ReadOnlyAndDeletion(t *testing.T) {
 	d := setupImportTest(t)
 
 	const id = "b0000000-0000-0000-0000-000000000001"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, restImportRequest(id, "guarded-api", "Guarded API"))
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, restImportRequest(id, "guarded-api", "Guarded API"))
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
@@ -954,7 +954,7 @@ func TestArtifactImport_Enforcement_ReadOnlyAndDeletion(t *testing.T) {
 	// Once undeployed on the gateway, deletion is permitted.
 	undeploy := restImportRequest(id, "guarded-api", "Guarded API")
 	undeploy.Status = "undeployed"
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, undeploy); err != nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, undeploy); err != nil {
 		t.Fatalf("undeploy import: %v", err)
 	}
 	active, err = d.deployment.HasActiveDeployment(cpID, importTestOrgID)
@@ -1017,7 +1017,7 @@ func TestArtifactImport_ProxyMissingProvider(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	_, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput for a missing provider reference", err)
 	}
@@ -1029,7 +1029,7 @@ func TestArtifactImport_UndeployThenRedeploy(t *testing.T) {
 	const id = "ab000000-0000-0000-0000-000000000001"
 
 	// 1. Initial deploy (sets the metadata watermark).
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id, "rd-api", "Original Name"), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("deploy: %v", err)
@@ -1045,7 +1045,7 @@ func TestArtifactImport_UndeployThenRedeploy(t *testing.T) {
 	//    recreate, so the undeploy is matched by handle, not UUID.
 	undeploy := restImportRequest("ab000000-0000-0000-0000-0000000000ff", "rd-api", "Hacked On Undeploy")
 	undeploy.Status = "undeployed"
-	undeployResp, err := d.svc.Import(importTestOrgID, importTestGatewayID, undeploy)
+	undeployResp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, undeploy)
 	if err != nil {
 		t.Fatalf("undeploy: %v", err)
 	}
@@ -1072,7 +1072,7 @@ func TestArtifactImport_UndeployThenRedeploy(t *testing.T) {
 	//    the undeployed artifact by handle, reuses its CP UUID, creates a NEW deployment
 	//    (status DEPLOYED), and updates metadata because this push carries a newer DeployedAt.
 	redeploy := withDeployedAt(restImportRequest("ab000000-0000-0000-0000-00000000aaaa", "rd-api", "Updated Name"), newerDeployedAt)
-	redeployResp, err := d.svc.Import(importTestOrgID, importTestGatewayID, redeploy)
+	redeployResp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, redeploy)
 	if err != nil {
 		t.Fatalf("redeploy: %v", err)
 	}
@@ -1096,7 +1096,7 @@ func TestArtifactImport_RedeployNoMetadataUpdateOnStalePush(t *testing.T) {
 	d := setupImportTest(t)
 
 	const id = "ab000000-0000-0000-0000-000000000002"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id, "rd2-api", "Original Name"), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("deploy: %v", err)
@@ -1104,7 +1104,7 @@ func TestArtifactImport_RedeployNoMetadataUpdateOnStalePush(t *testing.T) {
 	cpID := resp.ID
 	// Re-deploy with a different display name but an OLDER DeployedAt (stale); metadata
 	// must NOT change.
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAt(restImportRequest(id, "rd2-api", "Updated Name"), olderDeployedAt)); err != nil {
 		t.Fatalf("redeploy: %v", err)
 	}
@@ -1116,7 +1116,7 @@ func TestArtifactImport_RedeployNoMetadataUpdateOnStalePush(t *testing.T) {
 
 func TestArtifactImport_GatewayNotFound(t *testing.T) {
 	d := setupImportTest(t)
-	_, err := d.svc.Import(importTestOrgID, "nonexistent-gateway", restImportRequest("a0000000-0000-0000-0000-000000000000", "x", "X"))
+	_, err := d.svc.importArtifact(importTestOrgID, "nonexistent-gateway", restImportRequest("a0000000-0000-0000-0000-000000000000", "x", "X"))
 	if !apperror.GatewayNotFound.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrGatewayNotFound", err)
 	}
@@ -1152,7 +1152,7 @@ func TestArtifactImport_ReplayDoesNotDuplicateDeployment(t *testing.T) {
 	d := setupImportTest(t)
 
 	const id = "22222222-2222-2222-2222-222222222222"
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAtRev(restImportRequest(id, "replay-api", "Replay API"), baseDeployedAt))
 	if err != nil {
 		t.Fatalf("initial import: %v", err)
@@ -1164,7 +1164,7 @@ func TestArtifactImport_ReplayDoesNotDuplicateDeployment(t *testing.T) {
 
 	// Re-push the same artifact twice (same revision) — simulates reconnect/full reconcile.
 	for i := 0; i < 2; i++ {
-		if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 			withDeployedAtRev(restImportRequest(id, "replay-api", "Replay API"), baseDeployedAt)); err != nil {
 			t.Fatalf("replay import %d: %v", i, err)
 		}
@@ -1196,7 +1196,7 @@ func TestArtifactImport_DistinctRevisionsRecordSeparateDeployments(t *testing.T)
 
 	const id = "33333333-3333-3333-3333-333333333333"
 	// PUT (newer) arrives first: creates the artifact with the newer working copy.
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAtRev(restImportRequest(id, "ro-api", "PUT Name"), newerDeployedAt))
 	if err != nil {
 		t.Fatalf("put import: %v", err)
@@ -1205,7 +1205,7 @@ func TestArtifactImport_DistinctRevisionsRecordSeparateDeployments(t *testing.T)
 
 	// CREATE (older) arrives second: stale for the working copy (SkipWorkingCopy) but a genuinely
 	// distinct deployment — it must add a second deployment row.
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		withDeployedAtRev(restImportRequest(id, "ro-api", "CREATE Name"), baseDeployedAt)); err != nil {
 		t.Fatalf("create import: %v", err)
 	}
@@ -1242,7 +1242,7 @@ func TestArtifactImport_DifferentGatewaySameRevisionRecordsOwnDeployment(t *test
 	const id = "44444444-4444-4444-4444-444444444444"
 	req := withDeployedAtRev(restImportRequest(id, "mg-api", "Multi GW API"), baseDeployedAt)
 
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if err != nil {
 		t.Fatalf("gw1 import: %v", err)
 	}
@@ -1250,7 +1250,7 @@ func TestArtifactImport_DifferentGatewaySameRevisionRecordsOwnDeployment(t *test
 
 	// Same artifact (same handle → same CP UUID) and same revision, but pushed by a different
 	// gateway: must create a deployment for gw2 rather than being deduped as a replay.
-	if _, err := d.svc.Import(importTestOrgID, gw2, req); err != nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, gw2, req); err != nil {
 		t.Fatalf("gw2 import: %v", err)
 	}
 

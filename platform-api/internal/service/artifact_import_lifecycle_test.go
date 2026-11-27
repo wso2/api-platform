@@ -128,7 +128,7 @@ func undeployed(req dto.ImportGatewayArtifactRequest) dto.ImportGatewayArtifactR
 
 func mustImport(t *testing.T, d *importTestDeps, req dto.ImportGatewayArtifactRequest) *dto.ImportGatewayArtifactResponse {
 	t.Helper()
-	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	resp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req)
 	if err != nil {
 		t.Fatalf("Import(kind=%s, handle=%s) error: %v", req.Configuration.Kind, req.Configuration.Metadata.Name, err)
 	}
@@ -545,7 +545,7 @@ func TestImport_LLMProvider_StalePushPreservesMetadata(t *testing.T) {
 
 func TestImport_LLMProvider_MissingTemplate(t *testing.T) {
 	d := setupImportTest(t)
-	_, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	_, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		dpProviderReq("dp-prov-1", "openai", "OpenAI", "does-not-exist"))
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput for a missing template reference", err)
@@ -661,7 +661,7 @@ func TestImport_LLMProxy_StalePushPreservesMetadata(t *testing.T) {
 
 func TestImport_LLMProxy_MissingProvider(t *testing.T) {
 	d := setupImportTest(t)
-	_, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	_, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		dpProxyReq("dp-proxy-1", "chat-proxy", "Chat", "no-such-provider"))
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput for a missing provider reference", err)

@@ -72,7 +72,7 @@ func TestArtifactImport_GeneratesCPUUIDAcrossKinds(t *testing.T) {
 	)
 
 	// REST API (artifacts table).
-	restResp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	restResp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		mkReq(restDPID, constants.RestApi, "dp-rest", "default", map[string]interface{}{"context": "/r"}))
 	if err != nil {
 		t.Fatalf("import REST: %v", err)
@@ -81,13 +81,13 @@ func TestArtifactImport_GeneratesCPUUIDAcrossKinds(t *testing.T) {
 	importDPTemplate(t, d, tmplDPID, "dp-tmpl")
 	importDPProvider(t, d, provDPID, "dp-prov", "dp-tmpl")
 	// LLM Proxy referencing the provider by its handle (not a UUID).
-	proxyResp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	proxyResp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		mkReq(proxyDPID, constants.LLMProxy, "dp-proxy", "default", map[string]interface{}{"provider": map[string]interface{}{"id": "dp-prov"}}))
 	if err != nil {
 		t.Fatalf("import LLM proxy: %v", err)
 	}
 	// MCP Proxy.
-	mcpResp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+	mcpResp, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID,
 		mkReq(mcpDPID, constants.MCPProxy, "dp-mcp", "default", map[string]interface{}{"context": "/m"}))
 	if err != nil {
 		t.Fatalf("import MCP proxy: %v", err)
@@ -161,7 +161,7 @@ func importDPTemplate(t *testing.T, d *importTestDeps, id, handle string) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); err != nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req); err != nil {
 		t.Fatalf("import DP template: %v", err)
 	}
 }
@@ -185,7 +185,7 @@ func importDPProvider(t *testing.T, d *importTestDeps, id, handle, templateHandl
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); err != nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req); err != nil {
 		t.Fatalf("import DP provider: %v", err)
 	}
 }
@@ -230,7 +230,7 @@ func TestArtifactImport_LLMProviderLiftsSecurityAndRateLimit(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); err != nil {
+	if _, err := d.svc.importArtifact(importTestOrgID, importTestGatewayID, req); err != nil {
 		t.Fatalf("import provider: %v", err)
 	}
 
