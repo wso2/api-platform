@@ -1168,8 +1168,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I deregister the "([^"]*)" "([^"]*)" from cleanup$`, g.deregisterAdminResourceFromCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
 	sc.Step(`^the "([^"]*)" service logs should not contain "([^"]*)"$`, g.serviceLogsNotContain)
-	sc.Step(`^the "([^"]*)" service log event containing "([^"]*)" should not contain "([^"]*)"$`,
-		g.serviceLogEventExcludes)
+	sc.Step(`^the "([^"]*)" service log event containing "([^"]*)" should (contain|not contain) "([^"]*)"$`,
+		g.serviceLogEvent)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until lazy resource "([^"]*)" has display name "([^"]*)"$`,
 		g.serviceRequestUntilLazyDisplayName)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until provider template mapping "([^"]*)" maps to template "([^"]*)"$`,
@@ -1180,7 +1180,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
+	sc.Step(`^I wait for the analytics events for path "([^"]*)" to settle$`, g.waitForAnalyticsPathToSettle)
 	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
+	sc.Step(`^the analytics event for path "([^"]*)" with metadata field "([^"]*)" "([^"]*)" should have metadata fields:$`,
+		g.analyticsEventMetadataFields)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
@@ -1197,6 +1200,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsAIContextField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
 		g.analyticsCompanyID)
+	sc.Step(`^the analytics event for the logged request should have user id "([^"]*)"$`, g.analyticsUserID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
 	sc.Step(`^the lazy resources should contain template "([^"]*)" of type "([^"]*)"$`, g.lazyTemplatePresent)
 	sc.Step(`^the lazy resources should not contain template "([^"]*)"$`, g.lazyTemplateAbsent)
@@ -1269,6 +1273,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.assertCPArtifactID)
 
 	g.registerTimeoutSteps(sc)
+	g.registerConfigSteps(sc)
 }
 
 const elapsedTolerance = 0.05
@@ -1672,6 +1677,9 @@ var serviceEndpoints = map[string]struct {
 	"moesif": {component: "testbench", endpoint: "moesif", partitioned: true},
 	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
 	"mcp": {component: "testbench", endpoint: "mcp"},
+	// The Microsoft Entra ID mock, addressed like jev: the tenant a scenario names is its
+	// partition, so token request counts are scoped to the scenario.
+	"entra": {component: "testbench", endpoint: "entra"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.
@@ -2057,76 +2065,104 @@ func (g *Gateway) serviceLogsContain(ctx context.Context, service, marker string
 	return g.assertServiceLogs(ctx, service, marker, true)
 }
 
-// serviceLogsNotContain waits until a service log no longer contains the supplied marker.
+// serviceLogsNotContain checks that a service log does not contain the supplied marker.
 func (g *Gateway) serviceLogsNotContain(ctx context.Context, service, marker string) error {
+	marker, err := expandLogMarker(ctx, marker)
+	if err != nil {
+		return err
+	}
 	stack, _, err := g.topo.ServiceControl(service)
 	if err != nil {
 		return err
 	}
-	logs := stack.Logs(ctx)
-	if strings.Contains(logs, marker) {
+	if logsHaveMarker(stack.Logs(ctx), marker) {
 		return fmt.Errorf("service %q logs unexpectedly contain %q", service, marker)
 	}
 	return nil
 }
 
-// serviceLogEventExcludes waits for the event identified by marker and checks the
-// exclusion against that event rather than the complete historical log.
-func (g *Gateway) serviceLogEventExcludes(ctx context.Context, service, marker, excluded string) error {
-	if strings.TrimSpace(marker) == "" || strings.TrimSpace(excluded) == "" {
-		return fmt.Errorf("service log event marker and excluded text must not be empty")
+// serviceLogEvent waits for a log event (a line) that contains marker, then checks text against
+// the events that contain it: "contain" holds when one of them contains text, "not contain" when
+// none does. Matching within a line binds the check to the event the marker identifies, rather
+// than to the complete historical log.
+func (g *Gateway) serviceLogEvent(ctx context.Context, service, marker, op, text string) error {
+	marker, err := expandLogMarker(ctx, marker)
+	if err != nil {
+		return err
+	}
+	text, err = expandLogMarker(ctx, text)
+	if err != nil {
+		return err
 	}
 	stack, _, err := g.topo.ServiceControl(service)
 	if err != nil {
 		return err
 	}
-	last := ""
-	_, err = retry.Until(ctx, retry.Options{Interval: 200 * time.Millisecond}, func(ctx context.Context) (string, error) {
-		last = stack.Logs(ctx)
-		return last, nil
-	}, func(logs string) bool {
-		for _, line := range strings.Split(logs, "\n") {
-			if strings.Contains(line, marker) {
-				return !strings.Contains(line, excluded)
-			}
-		}
-		return false
-	})
-	if err != nil {
-		return fmt.Errorf("waiting for log event containing %q without %q: %w; last logs: %s",
-			marker, excluded, err, truncateLog(last))
-	}
-	return nil
+	wantContain := op == "contain"
+	return retry.Await(ctx, retry.Options{Interval: 200 * time.Millisecond},
+		func(ctx context.Context) (serviceLog, error) { return serviceLog(stack.Logs(ctx)), nil },
+		func(logs serviceLog) bool { return logEventMatches(string(logs), marker, text, wantContain) },
+		fmt.Sprintf("waiting for a %q log event containing %q that should %s %q", service, marker, op, text))
 }
 
 func (g *Gateway) assertServiceLogs(ctx context.Context, service, marker string, wantPresent bool) error {
-	if strings.TrimSpace(marker) == "" {
-		return fmt.Errorf("service log marker must not be empty")
+	marker, err := expandLogMarker(ctx, marker)
+	if err != nil {
+		return err
 	}
 	stack, resolved, err := g.topo.ServiceControl(service)
 	if err != nil {
 		return err
 	}
-	last := ""
-	_, err = retry.Until(ctx, retry.Options{Interval: 200 * time.Millisecond}, func(ctx context.Context) (string, error) {
-		last = stack.Logs(ctx)
-		return last, nil
-	}, func(logs string) bool {
-		present := strings.Contains(logs, marker)
-		if wantPresent {
-			return present
-		}
-		return !present
-	})
-	if err != nil {
-		state := "present"
-		if !wantPresent {
-			state = "absent"
-		}
-		return fmt.Errorf("waiting for %s logs for service %q to become %s: %w; last logs: %s",
-			resolved, service, state, err, truncateLog(last))
+	state := "present"
+	if !wantPresent {
+		state = "absent"
 	}
-	return nil
+	return retry.Await(ctx, retry.Options{Interval: 200 * time.Millisecond},
+		func(ctx context.Context) (serviceLog, error) { return serviceLog(stack.Logs(ctx)), nil },
+		func(logs serviceLog) bool { return logsHaveMarker(string(logs), marker) == wantPresent },
+		fmt.Sprintf("waiting for %s logs for service %q to have %q %s", resolved, service, marker, state))
+}
+
+// serviceLog is a service's log output, described by its tail when a wait for it fails.
+type serviceLog string
+
+// Describe returns the tail of the log, for a failure message.
+func (l serviceLog) Describe() string { return truncateLog(string(l)) }
+
+// expandLogMarker resolves placeholders in a log marker and rejects an empty one, which every log
+// would contain.
+func expandLogMarker(ctx context.Context, marker string) (string, error) {
+	expanded, err := stepscommon.Expand(ctx, marker)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(expanded) == "" {
+		return "", fmt.Errorf("service log marker must not be empty")
+	}
+	return expanded, nil
+}
+
+// logsHaveMarker reports whether the log output contains the marker.
+func logsHaveMarker(logs, marker string) bool {
+	return strings.Contains(logs, marker)
+}
+
+// logEventMatches reports whether the log lines that contain marker satisfy the check. With
+// wantContain, one of those lines must contain text; without it, at least one line must contain
+// marker and none of them may contain text.
+func logEventMatches(logs, marker, text string, wantContain bool) bool {
+	seen := false
+	for _, line := range strings.Split(logs, "\n") {
+		if !strings.Contains(line, marker) {
+			continue
+		}
+		seen = true
+		if strings.Contains(line, text) {
+			return wantContain
+		}
+	}
+	return seen && !wantContain
 }
 
 func truncateLog(logs string) string {
@@ -2341,6 +2377,43 @@ func (g *Gateway) resetAnalyticsCollector(ctx context.Context) error {
 	}, "resetting the analytics collector")
 }
 
+// addAnalyticsEventsForPath adds the collector's events for path to seen, keyed by correlation id,
+// or by the whole event when it has none.
+func (g *Gateway) addAnalyticsEventsForPath(ctx context.Context, path string, seen map[string]bool) error {
+	url, err := g.serviceURL(ctx, "analytics", "/test/events")
+	if err != nil {
+		return err
+	}
+	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+	}, 0, 0)
+	if err != nil {
+		return retry.Transient(err)
+	}
+	if !resp.Succeeded() {
+		return retry.Transient(fmt.Errorf("analytics events returned %s", resp.Describe()))
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(resp.Body, &raw); err != nil {
+		return err
+	}
+	for _, item := range raw {
+		var event analyticsEvent
+		if err := json.Unmarshal(item, &event); err != nil {
+			return err
+		}
+		if !analyticsEventMatchesPath(event.Request.URI, path) {
+			continue
+		}
+		key, _ := event.Metadata["correlationId"].(string)
+		if key == "" {
+			key = string(item)
+		}
+		seen[key] = true
+	}
+	return nil
+}
+
 func (g *Gateway) analyticsEventCount(ctx context.Context) (int, error) {
 	url, err := g.serviceURL(ctx, "analytics", "/test/events/count")
 	if err != nil {
@@ -2427,6 +2500,38 @@ func (g *Gateway) waitForAnalyticsToSettle(ctx context.Context) error {
 	return err
 }
 
+// waitForAnalyticsPathToSettle waits until the number of events for path stops changing. The
+// collector holds the whole block's events, and in a block that runs runners in parallel the
+// others keep adding theirs, so a scenario that reads only its own path's events settles on those.
+func (g *Gateway) waitForAnalyticsPathToSettle(ctx context.Context, path string) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	quiet := analyticsQuietWindow
+	if isMTLSScenario(ctx) {
+		quiet = mtlsAnalyticsQuietWindow
+	}
+	// The collector keeps a bounded list per block, so other runners' events can evict this
+	// path's: counting the distinct events seen across polls keeps the count from dropping.
+	seen := map[string]bool{}
+	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, quiet,
+		func(ctx context.Context) (int, error) {
+			if err := g.addAnalyticsEventsForPath(ctx, resolved, seen); err != nil {
+				return 0, err
+			}
+			return len(seen), nil
+		})
+	if err != nil {
+		return err
+	}
+	if !settled.Quiet {
+		return fmt.Errorf("analytics events for path %q did not settle: last observed %d after %d sample(s)",
+			resolved, settled.Value, settled.Samples)
+	}
+	return nil
+}
+
 // waitForAnalyticsEvent waits until the collector holds an event for path with the response
 // status, such as a readiness call's, so a settle and reset that follow can't run before it lands.
 func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status int) error {
@@ -2439,6 +2544,44 @@ func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status
 			return analyticsEventMatchesPath(event.Request.URI, resolved) && event.Response.Status == status
 		})
 	return err
+}
+
+// analyticsEventMetadataFields selects the event for path whose metadata field has the value,
+// waiting for it to arrive, and checks the table's further fields (field, value) on that same
+// event. Requests that share a route, such as an MCP proxy's, publish events the "latest event
+// for path" steps cannot tell apart, and they reach the collector in no guaranteed order.
+func (g *Gateway) analyticsEventMetadataFields(ctx context.Context, path, field, want string, table *godog.Table) error {
+	resolvedPath, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	what := fmt.Sprintf("path %q with metadata field %q %q", resolvedPath, field, resolved)
+	event, err := g.latestMatchingAnalyticsEvent(ctx, what, func(event *analyticsEvent) bool {
+		value, ok := traverseJSON(event.Metadata, field)
+		return analyticsEventMatchesPath(event.Request.URI, resolvedPath) && ok && fmt.Sprintf("%v", value) == resolved
+	})
+	if err != nil {
+		return err
+	}
+	for _, row := range table.Rows {
+		name := row.Cells[0].Value
+		expected, err := stepscommon.Expand(ctx, row.Cells[1].Value)
+		if err != nil {
+			return err
+		}
+		value, ok := traverseJSON(event.Metadata, name)
+		if !ok {
+			return fmt.Errorf("analytics event for %s has no metadata field %q", what, name)
+		}
+		if got := fmt.Sprintf("%v", value); got != expected {
+			return fmt.Errorf("analytics event for %s has metadata field %q %q, want %q", what, name, got, expected)
+		}
+	}
+	return nil
 }
 
 // analyticsEventForPath resolves path's placeholders and returns the event latestAnalyticsEvent
@@ -2660,6 +2803,29 @@ func metadataFieldAwait(event *analyticsEvent, field string, absent bool, want s
 	default:
 		return fmt.Errorf("the latest analytics event has metadata field %q %q, want %q", field, got, want)
 	}
+}
+
+// analyticsUserID checks the user id of the analytics event for the request whose access log line
+// a step matched last: the subject of its authenticated AuthContext, or "anonymous" when it has
+// none. The correlation id singles out that request among others for the same API.
+func (g *Gateway) analyticsUserID(ctx context.Context, want string) error {
+	correlationID, err := stepscommon.Expand(ctx, "${CTX:"+keyLoggedCorrelationID+"}")
+	if err != nil {
+		return fmt.Errorf("no access log line matched before this step: %w", err)
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	event, err := g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("correlation id %q", correlationID),
+		func(event *analyticsEvent) bool { return event.Metadata["correlationId"] == correlationID })
+	if err != nil {
+		return err
+	}
+	if event.UserID != resolved {
+		return fmt.Errorf("analytics event for correlation id %q has user id %q, want %q", correlationID, event.UserID, resolved)
+	}
+	return nil
 }
 
 // companyIDAssert checks an event's company id: "have" a given one, or "not have" one at all.

@@ -26,13 +26,26 @@ import (
 	"github.com/wso2/api-platform/cli/utils"
 )
 
+// CountLabel returns "1 policy" or "N policies", with an optional qualifier
+// before the noun: CountLabel(2, "local") is "2 local policies".
+func CountLabel(n int, qualifier string) string {
+	noun := "policies"
+	if n == 1 {
+		noun = "policy"
+	}
+	if qualifier != "" {
+		noun = qualifier + " " + noun
+	}
+	return fmt.Sprintf("%d %s", n, noun)
+}
+
 // ProcessLocalPolicies processes local policies from the build file
 func ProcessLocalPolicies(localPolicies []BuildFilePolicy) ([]ProcessedPolicy, error) {
 	if len(localPolicies) == 0 {
 		return []ProcessedPolicy{}, nil
 	}
 
-	fmt.Printf("  → Processing %d local policies...\n", len(localPolicies))
+	fmt.Printf("  → Processing %s...\n", CountLabel(len(localPolicies), "local"))
 
 	var processed []ProcessedPolicy
 
@@ -91,6 +104,6 @@ func ProcessLocalPolicies(localPolicies []BuildFilePolicy) ([]ProcessedPolicy, e
 		}
 	}
 
-	fmt.Printf("✓ Processed %d local policies\n\n", len(processed))
+	fmt.Printf("✓ Processed %s\n\n", CountLabel(len(processed), "local"))
 	return processed, nil
 }

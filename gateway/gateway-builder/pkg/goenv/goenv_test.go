@@ -44,8 +44,8 @@ func TestWithToolchain(t *testing.T) {
 		{name: "local is overridden to auto", in: []string{"GOTOOLCHAIN=local"}, want: "auto"},
 		{name: "empty is overridden to auto", in: []string{"GOTOOLCHAIN="}, want: "auto"},
 		{name: "explicit auto is kept", in: []string{"GOTOOLCHAIN=auto"}, want: "auto"},
-		{name: "pinned version is respected", in: []string{"GOTOOLCHAIN=go1.26.10"}, want: "go1.26.10"},
-		{name: "path+auto is respected", in: []string{"GOTOOLCHAIN=go1.26.10+auto"}, want: "go1.26.10+auto"},
+		{name: "pinned version is respected", in: []string{"GOTOOLCHAIN=go1.26.11"}, want: "go1.26.11"},
+		{name: "path+auto is respected", in: []string{"GOTOOLCHAIN=go1.26.11+auto"}, want: "go1.26.11+auto"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

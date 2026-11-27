@@ -22,6 +22,7 @@ import { Fragment, Suspense, useMemo } from 'react';
 
 import { useInvalidateApiPortals } from '../../api/resources/apiPortals';
 import { useInvalidateGateways } from '../../api/resources/gateways';
+import { useInvalidateApiDeployments } from '../../api/resources/restApis';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { getBillingOrganization } from '../../billing/organization';
@@ -50,6 +51,9 @@ import { usePermissions } from '../../permissions';
 import { AppHeader } from './AppHeader';
 import { AppSidebar } from './AppSidebar';
 import { FormattedMessage } from 'react-intl';
+
+/** Expanded width of the left navigation, in pixels. Oxygen UI's own default is 250. */
+const SIDEBAR_WIDTH = 280;
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -117,14 +121,16 @@ export default function AppLayout() {
   // and pagination elsewhere too.
   const invalidateGateways = useInvalidateGateways();
   const invalidateApiPortals = useInvalidateApiPortals();
+  const invalidateApiDeployments = useInvalidateApiDeployments();
   const resources = useMemo(
     () => ({
       invalidate: (resource: InvalidatableResource) => {
         if (resource === 'gateways') invalidateGateways();
+        else if (resource === 'apiDeployments') invalidateApiDeployments();
         else invalidateApiPortals();
       },
     }),
-    [invalidateGateways, invalidateApiPortals]
+    [invalidateGateways, invalidateApiPortals, invalidateApiDeployments]
   );
 
   // Built once per render from this portal's own hooks, then handed down as
@@ -157,7 +163,7 @@ export default function AppLayout() {
 
   return (
     <PortProvider value={port}>
-      <AppShell initialCollapsed={false} collapseOnSelectOnMobile>
+      <AppShell initialCollapsed={false} collapseOnSelectOnMobile sidebarWidth={SIDEBAR_WIDTH}>
         <AppShell.Navbar>
           <AppHeader />
         </AppShell.Navbar>

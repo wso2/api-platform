@@ -470,7 +470,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
-	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, apiService, slogger)
+	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, cfg.Auth.Authorization, apiService, graphqlAPIService, slogger)
 	if err != nil {
 		return nil, err
 	}
@@ -1443,7 +1443,7 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 // invalid allow_hosts entry fails startup. A gateway's endpoints are deployment
 // configuration, so server.network_security.access_control does not apply to the
 // relay; gateway_relay.egress.allow_hosts and the relay's own dial guard do.
-func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
+func newAPIInvokeHandler(cfg *config.GatewayRelay, authz config.Authorization, apiService *service.APIService, graphqlAPIService *service.GraphQLAPIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
 	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
 	if err != nil {
 		return nil, fmt.Errorf("invalid gateway_relay.egress: %w", err)
@@ -1462,7 +1462,7 @@ func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIServic
 		return nil, fmt.Errorf("failed to initialize the gateway relay: %w", err)
 	}
 	slogger.Info("Gateway relay ready", "egress", policy.Describe())
-	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, cfg.RequestTimeout, slogger), nil
+	return handler.NewAPIInvokeHandler(apiService, graphqlAPIService, relay, authz, cfg.MaxRequestBytes, cfg.RequestTimeout, slogger), nil
 }
 
 // newFeatureUsageIndex resolves the REST API operations bound in

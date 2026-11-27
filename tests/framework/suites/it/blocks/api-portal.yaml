@@ -79,6 +79,9 @@ blocks:
       - name: views-pages
         features:
           - features/apiportal/content/views_pages.feature
+      - name: health
+        features:
+          - features/apiportal/core/health.feature
       - name: workflows
         tags: "~@known-issue"
         features:

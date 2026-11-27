@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -33,12 +34,14 @@ import {
 } from "@wso2/oxygen-ui";
 import {
   ExternalLink,
+  PanelTop,
   Pencil,
   Plus,
   Search,
   Trash2,
 } from "@wso2/oxygen-ui-icons-react";
 
+import { PORTAL_DELETE_CLICK, PORTAL_OPEN, type PortalAddEntryPoint } from "./featureUsage";
 import { useManagedPortalList } from "./hooks";
 import { NO_PERMISSION_TOOLTIP } from "./permissions";
 import type { ManagedPortal } from "./types";
@@ -46,9 +49,6 @@ import { changeFailed, describeChange, isBeingChanged } from "./utils/change";
 import { PortalPublishAnimation } from "./PortalPublishAnimation";
 import { usePortalFeature } from "./portContext";
 import UnexpectedErrorState from "./components/UnexpectedErrorState";
-
-const devportalLogo = new URL("./images/devportal-logo.png", import.meta.url)
-  .href;
 
 /**
  * Create button, disabled with the no-permission tooltip when the user holds no
@@ -95,8 +95,8 @@ export type ManagedPortalsListProps = {
   canUpdate: boolean;
   /** Whether the user holds a scope that deletes portals; every Delete is disabled otherwise. */
   canDelete: boolean;
-  /** Switches parent to the create view; create is a full page, not a modal. */
-  onCreate: () => void;
+  /** Switches parent to the create view; create is a full page, not a modal. `entryPoint` says from where, for usage analytics. */
+  onCreate: (entryPoint: PortalAddEntryPoint) => void;
   /** Switches parent to the edit view for the given portal; edit is a full page, not a modal. */
   onEdit: (portal: ManagedPortal) => void;
 };
@@ -164,6 +164,7 @@ export default function ManagedPortalsList({
       setDeleteTarget(null);
       return;
     }
+    host.trackFeature?.(PORTAL_DELETE_CLICK);
     setDeleting(true);
     try {
       await remove(deleteTarget.id);
@@ -218,7 +219,7 @@ export default function ManagedPortalsList({
               sx={{ ml: "auto", flexShrink: 0 }}
             >
               {portals.length > 0 ? (
-                <AddPortalButton label="Add Portal" canCreate={canCreate} onClick={onCreate} />
+                <AddPortalButton label="Add Portal" canCreate={canCreate} onClick={() => onCreate("portals-list")} />
               ) : null}
             </Stack>
           </Box>
@@ -267,7 +268,7 @@ export default function ManagedPortalsList({
                   and get started with your services.
                 </Typography>
                 <Box sx={{ pt: 2 }}>
-                  <AddPortalButton label="Create Portal" canCreate={canCreate} onClick={onCreate} />
+                  <AddPortalButton label="Create Portal" canCreate={canCreate} onClick={() => onCreate("portals-empty-state")} />
                 </Box>
               </Stack>
             </Box>
@@ -346,32 +347,22 @@ export default function ManagedPortalsList({
                               flex: 1,
                             }}
                           >
-                            <Box
-                              sx={{
+                            {/* Tinted rounded square with a primary-coloured icon, like the API fallback tile. */}
+                            <Avatar
+                              sx={(theme) => ({
                                 width: { xs: 64, sm: 72 },
                                 height: { xs: 64, sm: 72 },
                                 flexShrink: 0,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
+                                borderRadius: "25%",
+                                color: "primary.main",
+                                bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 14%, transparent)`,
                                 border: 1,
-                                borderColor: "divider",
-                                borderRadius: 1,
-                                bgcolor: "action.hover",
+                                borderColor: `color-mix(in srgb, ${theme.palette.primary.main} 35%, transparent)`,
                                 opacity: isPending || isDeleting ? 0.4 : 1,
-                              }}
+                              })}
                             >
-                              <Box
-                                component="img"
-                                src={devportalLogo}
-                                alt=""
-                                sx={{
-                                  width: "75%",
-                                  height: "75%",
-                                  objectFit: "contain",
-                                }}
-                              />
-                            </Box>
+                              <PanelTop size={32} />
+                            </Avatar>
                             <Stack
                               spacing={0.5}
                               sx={{ flex: 1, minWidth: 0, pt: 0.5 }}
@@ -493,6 +484,7 @@ export default function ManagedPortalsList({
                                 variant="contained"
                                 component="a"
                                 href={portal.url}
+                                onClick={() => host.trackFeature?.(PORTAL_OPEN)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 startIcon={<ExternalLink size={16} />}

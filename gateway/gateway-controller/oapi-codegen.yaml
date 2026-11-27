@@ -7,3 +7,9 @@ generate:
   strict-server: false
 output-options:
   yaml-tags: true
+  # The health and readiness operations are documented in the spec but served by
+  # the controller's health handler in front of authentication (cmd/controller), so
+  # the generated router must not register them behind the management middlewares.
+  exclude-operation-ids:
+    - getManagementHealth
+    - getManagementReady

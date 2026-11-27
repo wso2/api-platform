@@ -19,6 +19,7 @@
 package contentsafety
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,6 +29,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 )
 
 const analyzeURL = AnalyzePath + "?api-version=" + APIVersion
@@ -169,6 +172,76 @@ func TestAnalyzeRejectsAMissingOrWrongSubscriptionKey(t *testing.T) {
 			require.Equal(t, http.StatusUnauthorized, recorder.Code)
 		})
 	}
+}
+
+// entraToken is a token the testbench Entra mock issues for audience.
+func entraToken(t *testing.T, audience string) string {
+	t.Helper()
+	claims, err := json.Marshal(entra.Claims{Aud: audience, Tid: "7f3c2a10-4b5e-4c6d-8e9f-0a1b2c3d4e5f", AppID: "system-assigned", N: 1})
+	require.NoError(t, err)
+	return entra.TokenPrefix + base64.RawURLEncoding.EncodeToString(claims)
+}
+
+// analyzeWithBearer sends body with Authorization: Bearer token and no subscription key.
+func analyzeWithBearer(token, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, analyzeURL, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	New().Handler().ServeHTTP(recorder, req)
+	return recorder
+}
+
+// Azure Content Safety accepts a Microsoft Entra ID token for Azure AI services in place of the
+// key, as the service does for the Entra mock's tokens.
+func TestAnalyzeAcceptsAnEntraTokenForCognitiveServices(t *testing.T) {
+	_, scores := severities(t, analyzeWithBearer(entraToken(t, entra.CognitiveAudience),
+		`{"text":"Plan an attack","categories":["Violence"],"outputType":"EightSeverityLevels"}`))
+	require.Equal(t, map[string]int{"Violence": severityFlagged}, scores)
+}
+
+func TestAnalyzeRejectsAnyOtherBearerToken(t *testing.T) {
+	for name, token := range map[string]string{
+		"a token for another audience":  entraToken(t, entra.FoundryAudience),
+		"a token the mock didn't issue": "not-a-testbench-token",
+		"an empty token":                "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder := analyzeWithBearer(token, `{"text":"hello"}`)
+			require.Equal(t, http.StatusUnauthorized, recorder.Code)
+			if token != "" {
+				require.NotContains(t, recorder.Body.String(), token, "the 401 must not echo the token")
+			}
+		})
+	}
+}
+
+// An Authorization header decides on its own: a rejected one is not rescued by a key.
+func TestAnAuthorizationHeaderIsJudgedEvenWithAKey(t *testing.T) {
+	for name, header := range map[string]string{
+		"a token for another audience": "Bearer " + entraToken(t, entra.FoundryAudience),
+		"a lowercase bearer":           "bearer " + entraToken(t, entra.CognitiveAudience),
+		"a bare Bearer":                "Bearer",
+		"another scheme":               "Basic dXNlcjpwYXNz",
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, analyzeURL, strings.NewReader(`{"text":"hello"}`))
+			req.Header.Set("Authorization", header)
+			req.Header.Set(keyHeader, SubscriptionKey)
+			recorder := httptest.NewRecorder()
+			New().Handler().ServeHTTP(recorder, req)
+			require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		})
+	}
+}
+
+// The scheme must be exactly "Bearer", as the policies send it.
+func TestAnalyzeRejectsALowercaseBearerScheme(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, analyzeURL, strings.NewReader(`{"text":"hello"}`))
+	req.Header.Set("Authorization", "bearer "+entraToken(t, entra.CognitiveAudience))
+	recorder := httptest.NewRecorder()
+	New().Handler().ServeHTTP(recorder, req)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 }
 
 func TestAnalyzeChecksTheKeyBeforeTheRequest(t *testing.T) {

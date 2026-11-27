@@ -164,6 +164,9 @@ config:
       callbackUrl: ""
       logoutUrl: ""
       scope: "openid profile email"
+      # Accepted token audience(s) ("aud"). For several, use a list, e.g. ["api-portal", "account"]
+      # (a comma-separated string also works from API Portal 1.0.0.4). Empty ("" or []) skips the
+      # audience check, except in multi-organization mode, which requires a non-empty audience.
       audience: ""
       certificate: ""            # PEM to pin the IDP's signing cert (optional)
       signUpUrl: ""

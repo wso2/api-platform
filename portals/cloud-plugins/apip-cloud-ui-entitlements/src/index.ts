@@ -32,5 +32,8 @@ export type {
   ResourceLimitsPort,
   TrialStatusHostPort,
 } from './hostPort';
-export type { BillingOrganization, TrialDetails } from './types';
+export type { BillingOrganization, BillingSubscription, TrialDetails } from './types';
+export { subscriptionsUrl } from './subscriptionsUrl';
+export { trialBadgeState } from './trialState';
+export type { TrialBadgeState } from './trialState';
 export type { Entitlement, EntitlementSummary } from './entitlementTypes';

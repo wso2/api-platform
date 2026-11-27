@@ -57,25 +57,14 @@ const messages = defineMessages({
   },
 });
 
-export type ExecuteModeSwitchProps = { store: CallModeStore };
+export type CallModeSwitchProps = {
+  callMode: TestCallMode;
+  onChange: (mode: TestCallMode) => void;
+};
 
-/**
- * The proxy/direct switch, rendered beside swagger's Execute button.
- *
- * It sits here rather than only on the Gateway card because the two modes fail
- * in opposite situations; the relay cannot reach a self-hosted gateway, the
- * browser cannot reach a cluster-internal one; and the moment someone learns
- * which is at the moment a request has just failed. Having to scroll away from
- * the response to retry the other way is the whole friction this removes.
- *
- * One setting, shown in as many places as there are open operations. Swagger
- * renders an Execute button per expanded operation, so flipping any one of
- * these flips all of them; they are views of a single page-level value, not
- * per-operation settings.
- */
-export function ExecuteModeSwitch({ store }: ExecuteModeSwitchProps) {
+/** The proxy/direct switch with its hint: what each mode asks of the gateway. */
+export function CallModeSwitch({ callMode, onChange }: CallModeSwitchProps) {
   const intl = useIntl();
-  const callMode = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 
   return (
     <Tooltip
@@ -99,7 +88,7 @@ export function ExecuteModeSwitch({ store }: ExecuteModeSwitchProps) {
       <ToggleButtonGroup
         aria-label={intl.formatMessage(messages.callModeLabel)}
         exclusive
-        onChange={(_event, next) => next && store.requestMode(next as TestCallMode)}
+        onChange={(_event, next) => next && onChange(next as TestCallMode)}
         size="small"
         value={callMode}
       >
@@ -122,6 +111,28 @@ export function ExecuteModeSwitch({ store }: ExecuteModeSwitchProps) {
       </ToggleButtonGroup>
     </Tooltip>
   );
+}
+
+export type ExecuteModeSwitchProps = { store: CallModeStore };
+
+/**
+ * The proxy/direct switch, rendered beside swagger's Execute button.
+ *
+ * It sits here rather than only on the Gateway card because the two modes fail
+ * in opposite situations; the relay cannot reach a self-hosted gateway, the
+ * browser cannot reach a cluster-internal one; and the moment someone learns
+ * which is at the moment a request has just failed. Having to scroll away from
+ * the response to retry the other way is the whole friction this removes.
+ *
+ * One setting, shown in as many places as there are open operations. Swagger
+ * renders an Execute button per expanded operation, so flipping any one of
+ * these flips all of them; they are views of a single page-level value, not
+ * per-operation settings.
+ */
+export function ExecuteModeSwitch({ store }: ExecuteModeSwitchProps) {
+  const callMode = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+
+  return <CallModeSwitch callMode={callMode} onChange={store.requestMode} />;
 }
 
 /**

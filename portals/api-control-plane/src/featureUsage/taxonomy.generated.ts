@@ -967,8 +967,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
             type: 'enum',
             values: ['proxy', 'direct'],
             required: false,
-            description:
-              'REST only: proxy is relayed by the console server, direct is sent from the browser.',
+            description: 'proxy: relayed by the Platform API; direct: sent from the browser.',
           },
           {
             name: 'outcome',
@@ -1011,7 +1010,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       code: 'apip.manage-apis.api-test-invoke',
       name: 'API Test Invocation',
       description:
-        "Invoke a deployed API through the console's relay (POST /gateway-relay/invoke, InvokeRESTAPIOnGateway). Emitted by Platform API.",
+        "Invoke a deployed API through the console's relay (POST /gateway-relay/invoke, InvokeAPIOnGateway). Emitted by Platform API.",
       category: 'manage-apis',
       tier: 'core',
       status: 'stable',
@@ -1078,6 +1077,46 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
           { type: 'count', label: 'Gateway Registration' },
           { type: 'count_distinct', label: 'Outcomes', dimension: 'outcome' },
         ],
+      },
+    },
+    {
+      code: 'apip.gateway.gateway-add-open',
+      name: 'Gateway Add Form Open',
+      description:
+        'Open the form that adds a gateway, from the gateways list or its empty state. Emitted by the console.',
+      category: 'gateway',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.gateway.gateway-add-open',
+        event_category: 'discovery',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'entry_point',
+            type: 'enum',
+            values: ['gateways-list', 'gateways-empty-state'],
+            required: true,
+            description:
+              "Where the form was opened from: the list's Add button, or a hosting card on the empty list.",
+          },
+          {
+            name: 'gateway_hosting',
+            type: 'enum',
+            values: ['managed', 'self-hosted'],
+            required: false,
+            description: 'The hosting the form opened with, when the entry point chose one.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Gateway Add Form Open' }],
       },
     },
     {
@@ -1311,6 +1350,126 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
           { type: 'count', label: 'Gateway Custom Policy Sync Click' },
           { type: 'count_distinct', label: 'Sync Kinds', dimension: 'sync_kind' },
         ],
+      },
+    },
+    {
+      code: 'apip.gateway.gateway-delete-click',
+      name: 'Gateway Delete Click',
+      description: 'Delete a gateway. Emitted by the console.',
+      category: 'gateway',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.gateway.gateway-delete-click',
+        event_category: 'lifecycle',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'gateway_hosting',
+            type: 'enum',
+            values: ['managed', 'self-hosted'],
+            required: true,
+            description:
+              'Whether the gateway is hosted for the organization or runs on its own infrastructure.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Gateway Delete Click' }],
+      },
+    },
+    {
+      code: 'apip.gateway.gateway-settings-open',
+      name: 'Gateway Settings Open',
+      description: "Open a hosted gateway's settings. Emitted by the console.",
+      category: 'gateway',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.gateway.gateway-settings-open',
+        event_category: 'discovery',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Gateway Settings Open' }],
+      },
+    },
+    {
+      code: 'apip.gateway.key-manager-discover-click',
+      name: 'Key Manager Discovery Click',
+      description:
+        "Look up a key manager's issuer configuration while adding it to a gateway's trusted key managers. Emitted by the console.",
+      category: 'gateway',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.gateway.key-manager-discover-click',
+        event_category: 'engagement',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Key Manager Discovery Click' }],
+      },
+    },
+    {
+      code: 'apip.gateway.gateway-configuration-update-click',
+      name: 'Gateway Configuration Update Click',
+      description:
+        "Save and apply a hosted gateway's settings and trusted key managers. Emitted by the console.",
+      category: 'gateway',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.gateway.gateway-configuration-update-click',
+        event_category: 'engagement',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'settings_changed',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: 'Whether the save changes any gateway setting.',
+          },
+          {
+            name: 'key_managers_changed',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: 'Whether the save changes the trusted key managers.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Gateway Configuration Update Click' }],
       },
     },
     {
@@ -2643,6 +2802,45 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       },
     },
     {
+      code: 'apip.lifecycle.api-deploy-open',
+      name: 'API Deploy Dialog Open',
+      description: 'Open the dialog that deploys or promotes an API. Emitted by the console.',
+      category: 'lifecycle',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.lifecycle.api-deploy-open',
+        event_category: 'discovery',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'artifact_kind',
+            type: 'enum',
+            values: ['rest-api', 'graphql-api'],
+            required: true,
+            description: 'The kind of API being deployed.',
+          },
+          {
+            name: 'deploy_mode',
+            type: 'enum',
+            values: ['deploy', 'build-and-deploy', 'promote'],
+            required: false,
+            description:
+              'Deploy an existing build, build and deploy in one step, or promote the build running in the previous environment. Sent where the console offers the choice.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'API Deploy Dialog Open' }],
+      },
+    },
+    {
       code: 'apip.lifecycle.api-deploy-click',
       name: 'API Deployment Click',
       description: 'Deploy an API to a gateway. Emitted by the console.',
@@ -2679,6 +2877,14 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
             type: 'enum',
             values: ['regular', 'ai', 'event'],
             required: true,
+          },
+          {
+            name: 'deploy_mode',
+            type: 'enum',
+            values: ['deploy', 'build-and-deploy', 'promote'],
+            required: false,
+            description:
+              'Deploy an existing build, build and deploy in one step, or promote the build running in the previous environment. Sent where the console offers the choice.',
           },
         ],
         aggregations: [{ type: 'count', label: 'API Deployment Click' }],
@@ -2907,6 +3113,37 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
           },
         ],
         aggregations: [{ type: 'count', label: 'Deployment Deletion Click' }],
+      },
+    },
+    {
+      code: 'apip.lifecycle.build-delete-click',
+      name: 'Build Delete Click',
+      description: 'Delete a build of an API that no gateway is running. Emitted by the console.',
+      category: 'lifecycle',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.lifecycle.build-delete-click',
+        event_category: 'lifecycle',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'artifact_kind',
+            type: 'enum',
+            values: ['rest-api', 'graphql-api'],
+            required: true,
+            description: 'The kind of API the build belongs to.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Build Delete Click' }],
       },
     },
     {
@@ -3949,6 +4186,172 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       },
     },
     {
+      code: 'apip.developer-portal.portal-add-open',
+      name: 'Portal Add Form Open',
+      description:
+        'Open the form that adds an API Portal to the organization, from the portals list or its empty state. Emitted by the console.',
+      category: 'developer-portal',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.developer-portal.portal-add-open',
+        event_category: 'discovery',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'entry_point',
+            type: 'enum',
+            values: ['portals-list', 'portals-empty-state'],
+            required: true,
+            description:
+              "Where the form was opened from: the list's Add button, or the empty list's Create button.",
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Portal Add Form Open' }],
+      },
+    },
+    {
+      code: 'apip.developer-portal.portal-create-click',
+      name: 'Portal Create Click',
+      description:
+        'Submit the form that adds an API Portal to the organization. Emitted by the console.',
+      category: 'developer-portal',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.developer-portal.portal-create-click',
+        event_category: 'adoption',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'self_signup',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: 'Whether the portal lets developers sign up by themselves.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Portal Create Click' }],
+      },
+    },
+    {
+      code: 'apip.developer-portal.portal-open',
+      name: 'Portal Open',
+      description:
+        "Open an organization's live API Portal from the console. Emitted by the console.",
+      category: 'developer-portal',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.developer-portal.portal-open',
+        event_category: 'engagement',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Portal Open' }],
+      },
+    },
+    {
+      code: 'apip.developer-portal.portal-update-click',
+      name: 'Portal Update Click',
+      description: "Save changes to an API Portal's settings. Emitted by the console.",
+      category: 'developer-portal',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.developer-portal.portal-update-click',
+        event_category: 'engagement',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'name_changed',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: "Whether the save changes the portal's name.",
+          },
+          {
+            name: 'description_changed',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: "Whether the save changes the portal's description.",
+          },
+          {
+            name: 'login_environment_changed',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: 'Whether the save changes the environment that signs portal users in.',
+          },
+          {
+            name: 'self_signup_changed',
+            type: 'enum',
+            values: ['yes', 'no'],
+            required: true,
+            description: 'Whether the save turns self sign-up on or off.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Portal Update Click' }],
+      },
+    },
+    {
+      code: 'apip.developer-portal.portal-delete-click',
+      name: 'Portal Delete Click',
+      description: 'Delete an API Portal. Emitted by the console.',
+      category: 'developer-portal',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.developer-portal.portal-delete-click',
+        event_category: 'lifecycle',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Portal Delete Click' }],
+      },
+    },
+    {
       code: 'apip.key-management.third-party-km',
       name: 'Key Manager Integration',
       description:
@@ -4195,6 +4598,38 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
         platforms: ['api'],
         dimensions: [],
         aggregations: [{ type: 'count', label: 'Tracing Enabled' }],
+      },
+    },
+    {
+      code: 'apip.analytics.insights-open',
+      name: 'Insights Open',
+      description:
+        'Open the usage analytics dashboards for an organization or a project. Emitted by the console, once per visit.',
+      category: 'analytics',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.analytics.insights-open',
+        event_category: 'discovery',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'scope',
+            type: 'enum',
+            values: ['organization', 'project'],
+            required: true,
+            description: 'Whether the dashboards cover the organization or one project.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'Insights Open' }],
       },
     },
     {
@@ -4759,6 +5194,31 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       },
     },
     {
+      code: 'apip.admin.landing-page-open',
+      name: 'API Management Landing Page Open',
+      description:
+        'Open the API Management landing page, the organization home where the console starts. Emitted by the console, once per visit.',
+      category: 'admin',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.admin.landing-page-open',
+        event_category: 'discovery',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'API Management Landing Page Open' }],
+      },
+    },
+    {
       code: 'apip.ai-gateway.ai-guardrails',
       name: 'AI Guardrails',
       description:
@@ -5296,6 +5756,16 @@ export const CONSOLE_FEATURES = {
     eventCategory: 'engagement',
     dimensions: { api_type: { required: true, values: ['rest-api'] } },
   },
+  'apip.gateway.gateway-add-open': {
+    name: 'Gateway Add Form Open',
+    category: 'gateway',
+    tier: 'core',
+    eventCategory: 'discovery',
+    dimensions: {
+      entry_point: { required: true, values: ['gateways-list', 'gateways-empty-state'] },
+      gateway_hosting: { required: false, values: ['managed', 'self-hosted'] },
+    },
+  },
   'apip.gateway.gateway-register-click': {
     name: 'Gateway Registration Click',
     category: 'gateway',
@@ -5342,6 +5812,37 @@ export const CONSOLE_FEATURES = {
     tier: 'core',
     eventCategory: 'adoption',
     dimensions: { sync_kind: { required: true, values: ['add', 'update'] } },
+  },
+  'apip.gateway.gateway-delete-click': {
+    name: 'Gateway Delete Click',
+    category: 'gateway',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: { gateway_hosting: { required: true, values: ['managed', 'self-hosted'] } },
+  },
+  'apip.gateway.gateway-settings-open': {
+    name: 'Gateway Settings Open',
+    category: 'gateway',
+    tier: 'core',
+    eventCategory: 'discovery',
+    dimensions: {},
+  },
+  'apip.gateway.key-manager-discover-click': {
+    name: 'Key Manager Discovery Click',
+    category: 'gateway',
+    tier: 'core',
+    eventCategory: 'engagement',
+    dimensions: {},
+  },
+  'apip.gateway.gateway-configuration-update-click': {
+    name: 'Gateway Configuration Update Click',
+    category: 'gateway',
+    tier: 'core',
+    eventCategory: 'engagement',
+    dimensions: {
+      settings_changed: { required: true, values: ['yes', 'no'] },
+      key_managers_changed: { required: true, values: ['yes', 'no'] },
+    },
   },
   'apip.policies.client-authentication-attach': {
     name: 'Client Authentication',
@@ -5672,6 +6173,16 @@ export const CONSOLE_FEATURES = {
     eventCategory: 'engagement',
     dimensions: {},
   },
+  'apip.lifecycle.api-deploy-open': {
+    name: 'API Deploy Dialog Open',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'discovery',
+    dimensions: {
+      artifact_kind: { required: true, values: ['rest-api', 'graphql-api'] },
+      deploy_mode: { required: false, values: ['deploy', 'build-and-deploy', 'promote'] },
+    },
+  },
   'apip.lifecycle.api-deploy-click': {
     name: 'API Deployment Click',
     category: 'lifecycle',
@@ -5681,6 +6192,7 @@ export const CONSOLE_FEATURES = {
       artifact_kind: { required: true, values: ['rest-api', 'graphql-api'] },
       gateway_hosting: { required: false, values: ['managed', 'self-hosted'] },
       gateway_type: { required: true, values: ['regular', 'ai', 'event'] },
+      deploy_mode: { required: false, values: ['deploy', 'build-and-deploy', 'promote'] },
     },
   },
   'apip.lifecycle.deployment-undeploy-click': {
@@ -5706,6 +6218,13 @@ export const CONSOLE_FEATURES = {
   },
   'apip.lifecycle.deployment-delete-click': {
     name: 'Deployment Deletion Click',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: { artifact_kind: { required: true, values: ['rest-api', 'graphql-api'] } },
+  },
+  'apip.lifecycle.build-delete-click': {
+    name: 'Build Delete Click',
     category: 'lifecycle',
     tier: 'core',
     eventCategory: 'lifecycle',
@@ -5770,6 +6289,55 @@ export const CONSOLE_FEATURES = {
     eventCategory: 'engagement',
     dimensions: { api_type: { required: false, values: ['rest-api', 'graphql-api', 'mcp-proxy'] } },
   },
+  'apip.developer-portal.portal-add-open': {
+    name: 'Portal Add Form Open',
+    category: 'developer-portal',
+    tier: 'core',
+    eventCategory: 'discovery',
+    dimensions: {
+      entry_point: { required: true, values: ['portals-list', 'portals-empty-state'] },
+    },
+  },
+  'apip.developer-portal.portal-create-click': {
+    name: 'Portal Create Click',
+    category: 'developer-portal',
+    tier: 'core',
+    eventCategory: 'adoption',
+    dimensions: { self_signup: { required: true, values: ['yes', 'no'] } },
+  },
+  'apip.developer-portal.portal-open': {
+    name: 'Portal Open',
+    category: 'developer-portal',
+    tier: 'core',
+    eventCategory: 'engagement',
+    dimensions: {},
+  },
+  'apip.developer-portal.portal-update-click': {
+    name: 'Portal Update Click',
+    category: 'developer-portal',
+    tier: 'core',
+    eventCategory: 'engagement',
+    dimensions: {
+      name_changed: { required: true, values: ['yes', 'no'] },
+      description_changed: { required: true, values: ['yes', 'no'] },
+      login_environment_changed: { required: true, values: ['yes', 'no'] },
+      self_signup_changed: { required: true, values: ['yes', 'no'] },
+    },
+  },
+  'apip.developer-portal.portal-delete-click': {
+    name: 'Portal Delete Click',
+    category: 'developer-portal',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.analytics.insights-open': {
+    name: 'Insights Open',
+    category: 'analytics',
+    tier: 'core',
+    eventCategory: 'discovery',
+    dimensions: { scope: { required: true, values: ['organization', 'project'] } },
+  },
   'apip.monetization.subscription-plan-create-click': {
     name: 'Subscription Plan Creation Click',
     category: 'monetization',
@@ -5831,6 +6399,13 @@ export const CONSOLE_FEATURES = {
     category: 'admin',
     tier: 'core',
     eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.admin.landing-page-open': {
+    name: 'API Management Landing Page Open',
+    category: 'admin',
+    tier: 'core',
+    eventCategory: 'discovery',
     dimensions: {},
   },
 } as const;

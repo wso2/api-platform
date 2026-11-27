@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { useCallback } from 'react';
 import {
   keepPreviousData,
   useMutation,
@@ -45,6 +46,7 @@ import {
   type ValidateOpenAPIResponse,
   type ValidateOpenApiSpecInput,
 } from './restApis.endpoints';
+import { graphQLApiKeys } from '../graphqlApis/graphqlApis.queries';
 import { restApiKeys, restApiQueries } from './restApis.queries';
 
 /**
@@ -495,3 +497,20 @@ export const useValidateOpenApiSpec = () => {
 /** Re-export so consumers can type validation errors without reaching into endpoints. */
 export type { OpenAPIValidationError, ValidateOpenAPIResponse, ValidateOpenApiSpecInput };
 
+/**
+ * Drops everything cached about APIs in this org: their lists, details, gateway
+ * associations and deployments. For the app shell to call on behalf of a cloud
+ * extension that deploys through its own client, which cannot reach this cache:
+ * a deploy creates the API's gateway association on the server, so a cached
+ * (empty) gateway list would otherwise keep the Test page saying "not deployed".
+ */
+export const useInvalidateApiDeployments = (orgId?: string) => {
+  const queryClient = useQueryClient();
+  const { org } = useApiScope({ orgId });
+
+  return useCallback(() => {
+    if (!org) return;
+    void queryClient.invalidateQueries({ queryKey: restApiKeys.all(org) });
+    void queryClient.invalidateQueries({ queryKey: graphQLApiKeys.all(org) });
+  }, [org, queryClient]);
+};

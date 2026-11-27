@@ -259,7 +259,10 @@ func (s *Steps) choose(ctx context.Context, text string) error {
 	if err != nil {
 		return err
 	}
-	if err := page.GetByText(resolved, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).First().Click(); err != nil {
+	// Only what the user can see: a page may keep a hidden view mounted (the Test page keeps its
+	// console while the cURL view is open), and its "Headers" tab must not be the one clicked.
+	visible := playwright.LocatorFilterOptions{Visible: playwright.Bool(true)}
+	if err := page.GetByText(resolved, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).Filter(visible).First().Click(); err != nil {
 		return fmt.Errorf("choosing %q: %w", resolved, err)
 	}
 	return nil

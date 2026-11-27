@@ -79,7 +79,7 @@ Feature: API keys are mapped to applications, and the gateway attributes their c
     And the JSON response field "count" should be 1
     And the JSON response array "list" item with "keyId" equal to "${CTX:keyId}" should have "associatedEntity.id" equal to "${CTX:providerId}"
     And the JSON response array "list" item with "keyId" equal to "${CTX:keyId}" should have "associatedEntity.kind" equal to "LlmProvider"
-    When I wait for the analytics collector to settle
+    When I wait for the analytics events for path "${CTX:providerContext}/chat/completions" to settle
     And I reset the analytics collector
     Then I send a "POST" request to "${CTX:providerContext}/chat/completions" until its analytics event has metadata field "applicationName" with value "${CTX:app}" with body:
       """
@@ -129,7 +129,7 @@ Feature: API keys are mapped to applications, and the gateway attributes their c
     Then the response status code should be 200
     And the JSON response field "count" should be 0
     And the JSON response array "list" should not contain an item with "keyId" equal to "${CTX:keyId}"
-    When I wait for the analytics collector to settle
+    When I wait for the analytics events for path "${CTX:providerContext}/chat/completions" to settle
     And I reset the analytics collector
     Then I send a "POST" request to "${CTX:providerContext}/chat/completions" until its analytics event has no metadata field "applicationName" with body:
       """

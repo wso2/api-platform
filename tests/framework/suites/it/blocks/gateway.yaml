@@ -60,6 +60,10 @@ blocks:
       - name: health
         features:
           - features/gateway/core/health.feature
+      - name: health-endpoints
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/health_endpoints.feature
       - name: api-management
         features:
           - features/gateway/core/api_management.feature
@@ -73,6 +77,10 @@ blocks:
       - name: api-keys
         features:
           - features/gateway/security/api_keys.feature
+      - name: api-key-value-length
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/api_key_value_length.feature
       - name: subscription-management
         tags: "gateway-version>1.2.0"
         features:
@@ -120,13 +128,22 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/path_normalization.feature
+      - name: path-variants
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/routes/path_variants.feature
       - name: header-routing
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
       - name: sandbox-routing
+        tags: "~@known-issue"
         features:
           - features/gateway/routes/sandbox_routing.feature
+      - name: sandbox-routing-wildcard
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/sandbox_routing_wildcard.feature
       - name: sandbox-upstream-first-url
         tags: "gateway-version<1.2.0"
         features:
@@ -138,6 +155,12 @@ blocks:
       - name: cel-conditions
         features:
           - features/gateway/core/cel_conditions.feature
+      # Fault policies on the default configuration (handle_upstream_faults off). Released
+      # gateways up to 1.2.0 have no fault flow.
+      - name: fault-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/fault_policies.feature
       - name: certificates
         tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
         features:
@@ -327,6 +350,22 @@ blocks:
         features:
           - features/gateway/mtls/header_bypass.feature
 
+  # The AuthContext each auth policy leaves (ACTX). Its overlay turns on the traffic log, which
+  # carries the AuthContext fields of each request and which no other block writes.
+  - name: auth-context
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/auth-context.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: auth-context
+        tags: "gateway-version>1.2.0;~@known-issue"
+        features:
+          - features/gateway/security/auth_context.feature
+
   # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
   # certificate gauges and its own JSON access log lines, so runners take turns. The overlay never
   # touches present_default_identity, which also covers the on/default-identity scenario.
@@ -505,8 +544,24 @@ blocks:
       - name: testbench
     runners:
       - name: vhost-routing-single
+        tags: "~@known-issue"
         features:
           - features/gateway/routes/vhost_routing_single.feature
+
+  # Changes the gateway's default main vhost in its config.toml and restarts gateway-controller,
+  # so it runs alone and with the single-domain defaults (vhost-routing-single.toml).
+  - name: vhost-default-change
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/vhost-routing-single.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: vhost-default-change
+        features:
+          - features/gateway/routes/vhost_default_change.feature
 
   # The gateway serves two domains for main and sandbox traffic (vhost-routing-multi.toml).
   # Kept out of gateway-core for the same reason as vhost-routing-single.
@@ -642,3 +697,20 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
+
+  # Backend error statuses and router failures run an API's fault policies instead of its response
+  # policies (fault-policies-upstream.toml), a gateway-wide setting gateway-core's runners must not
+  # see.
+  - name: gateway-fault-policies-upstream
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/fault-policies-upstream.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: fault-policies-upstream
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/fault_policies_upstream.feature

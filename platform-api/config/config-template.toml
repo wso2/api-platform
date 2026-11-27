@@ -401,6 +401,13 @@ jwks_cache_max_age = "5m"
 # cert_file / key_file must point at a certificate pair when
 # server.https.enabled = true. Certificates are always required — there is
 # no self-signed fallback. setup.sh generates a pair for the quickstart.
+#
+# max_request_body_bytes caps every request body on both listeners, in bytes.
+# Routes keep their own lower limits, so do not set it below the largest of
+# them (publication content, 10 MiB by default). 0 disables the cap.
+[platform_api.server]
+max_request_body_bytes = 10485760   # 10 MiB
+
 [platform_api.server.http]
 enabled = false
 port    = 9080
@@ -674,12 +681,13 @@ max_entries  = 512     # LRU cap on cached Agent proxies (0 = cache nothing)
 max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
 
 # ---------------------------------------------------------------------------
-# Gateway relay — the Test console's requests to a deployed REST API
+# Gateway relay — the Test console's requests to a deployed REST or GraphQL API
 # ---------------------------------------------------------------------------
-# POST /gateway-relay/invoke sends the console's test request to a gateway the
-# REST API is deployed to and returns the gateway's response as data. The caller names the REST API and the gateway,
-# never a URL; the target is that gateway's endpoint plus the context of the API's
-# deployment there, sent with the deployment's main vhost as Host when it has one.
+# POST /gateway-relay/invoke sends the console's test request to a gateway a REST
+# or GraphQL API is deployed to and returns the gateway's response as data. The
+# caller names the API and the gateway, never a URL; the target is that gateway's
+# endpoint plus the context of the API's deployment there, sent with a REST API
+# deployment's main vhost as Host when it has one.
 [platform_api.gateway_relay]
 request_timeout    = "30s"     # from the test request's arrival to the end of the gateway call: reading the request and finding the target take from it; must stay below server.timeouts.write
 max_request_bytes  = 2097152   # 2 MiB decoded request body (the JSON request may be up to twice that: base64, escaping)

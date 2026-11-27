@@ -2779,6 +2779,11 @@ func TestDefaultConfig_PathWithEscapedSlashesActionKeepUnchangedByDefault(t *tes
 		"escaped-slash paths must be left unchanged by default")
 }
 
+func TestDefaultConfig_PathCaseVariantsRefusedByDefault(t *testing.T) {
+	cfg := defaultConfig()
+	assert.False(t, cfg.Router.HTTPListener.AllowPathCaseVariants)
+}
+
 func TestLoadConfig_PathWithEscapedSlashesAction(t *testing.T) {
 	t.Run("omitted section defaults to keep unchanged", func(t *testing.T) {
 		tmpDir := t.TempDir()

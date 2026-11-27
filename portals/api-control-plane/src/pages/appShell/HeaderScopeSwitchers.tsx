@@ -16,9 +16,16 @@
  * under the License.
  */
 
-import { Chip, GlobalStyles, Header, HeaderBreadcrumbs } from '@wso2/oxygen-ui';
+import {
+  Chip,
+  GlobalStyles,
+  Header,
+  HeaderBreadcrumbs,
+  writeHeaderBreadcrumbsState,
+} from '@wso2/oxygen-ui';
 import type { HeaderBreadcrumbsItem, HeaderBreadcrumbsLevel } from '@wso2/oxygen-ui';
 import { Box, Building2, BoxesLinked } from '@wso2/oxygen-ui-icons-react';
+import { useEffect } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -33,7 +40,7 @@ import {
   toRestListableApi,
   type ApiKind,
 } from './appShellPages/apis/listing/apiListItem';
-import { routes } from '../../routes/paths';
+import { projectPath, routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 
 const ORGANIZATION_LEVEL = 'organization';
@@ -183,7 +190,16 @@ export function HeaderScopeSwitchers() {
       orgHandle: params.orgHandle,
       projectHandler,
     });
-    navigate(target ?? routes.projectHome(params.orgHandle, projectHandler));
+    // A page with no project-level counterpart (the organization's Projects
+    // list, say) resolves to its own organization URL, which would navigate
+    // nowhere: only a target inside the chosen project is taken.
+    // The segment boundary matters: a bare prefix check would also accept a
+    // sibling project whose handle starts with this one's (`orders-two`).
+    const projectRoot = projectPath(params.orgHandle, projectHandler);
+    const insideProject =
+      typeof target === 'string' &&
+      (target === projectRoot || target.startsWith(`${projectRoot}/`));
+    navigate(insideProject ? target : routes.projectHome(params.orgHandle, projectHandler));
   };
 
   const changeApi = (apiHandler: string) => {
@@ -304,6 +320,17 @@ export function HeaderScopeSwitchers() {
           ]
         : [];
 
+  // Remember where the user is, in the place every app using Oxygen's header
+  // reads it (`oxygen-ui:header-breadcrumbs`), so the next visit, here or in
+  // another app, starts from the same organization and project. Only while a
+  // project is in scope: browsing organization-level pages keeps the last one.
+  const { orgHandle: scopedOrg, projectHandler: scopedProject } = params;
+  useEffect(() => {
+    if (scopedOrg && scopedProject) {
+      writeHeaderBreadcrumbsState({ organization: scopedOrg, project: scopedProject });
+    }
+  }, [scopedOrg, scopedProject]);
+
   if (!params.orgHandle) return null;
 
   const levels: HeaderBreadcrumbsLevel[] = [
@@ -311,7 +338,7 @@ export function HeaderScopeSwitchers() {
       id: ORGANIZATION_LEVEL,
       label: intl.formatMessage(messages.orgLevel),
       icon: <Building2 size={LEVEL_ICON_SIZE} />,
-      items: orgOptions.map((item) => ({ id: item.handle, name: item.name, description: item.handle })),
+      items: orgOptions.map((item) => ({ id: item.handle, name: item.name })),
       selectedId: params.orgHandle,
       menuTitle: intl.formatMessage(messages.orgMenuTitle),
       searchPlaceholder: intl.formatMessage(messages.orgSearch),
@@ -324,7 +351,6 @@ export function HeaderScopeSwitchers() {
       items: projectOptions.map((item) => ({
         id: item.handler,
         name: item.name,
-        description: item.description || undefined,
       })),
       selectedId: params.projectHandler,
       searchable: true,

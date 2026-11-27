@@ -2,13 +2,44 @@ package embeddings
 
 import (
 	"bytes"
+	"cmp"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/wso2/api-platform/sdk/ai/azureauthentication"
 )
+
+// tokenSource gets Entra ID access tokens for the gateway's identity. *azureauthentication.Credential
+// is one; unit tests fake it.
+type tokenSource interface {
+	Token(ctx context.Context, scope string, timeout time.Duration) (string, error)
+}
+
+// getTokenSource returns the gateway-wide credential for id, which every provider with the same
+// identity shares. Tests replace it.
+var getTokenSource = func(id azureauthentication.Identity) (tokenSource, error) {
+	cred, err := azureauthentication.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	return cred, nil
+}
+
+// StatusError is the error for a non-200 answer from Azure OpenAI, so callers can tell, for
+// example, a refused credential (401 or 403) from other failures.
+type StatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("Azure OpenAI API error: status %d, body: %s", e.StatusCode, e.Body)
+}
 
 // AzureOpenAIEmbeddingProvider implements the EmbeddingProvider interface for Azure OpenAI
 type AzureOpenAIEmbeddingProvider struct {
@@ -16,6 +47,8 @@ type AzureOpenAIEmbeddingProvider struct {
 	azureAPIKey    string
 	endpointURL    string
 	client         *http.Client
+	tokens         tokenSource // identity modes only
+	tokenScope     string      // identity modes only
 }
 
 // Init initializes the Azure OpenAI embedding provider with configuration
@@ -24,7 +57,18 @@ func (a *AzureOpenAIEmbeddingProvider) Init(config EmbeddingProviderConfig) erro
 	if err != nil {
 		return fmt.Errorf("invalid embedding provider config properties: %v", err)
 	}
-	a.azureAPIKey = config.APIKey
+	if config.UsesIdentity() {
+		tokens, err := getTokenSource(azureauthentication.Identity{Type: config.AuthenticationType, ClientID: config.ClientID})
+		if err != nil {
+			return fmt.Errorf("authentication type %q can't be used: %w", config.AuthenticationType, err)
+		}
+		a.tokens = tokens
+		a.tokenScope = cmp.Or(config.TokenScope, DefaultTokenScope)
+		a.azureAPIKey = ""
+	} else {
+		a.tokens = nil
+		a.azureAPIKey = config.APIKey
+	}
 	a.endpointURL = config.EmbeddingEndpoint
 	a.authHeaderName = config.AuthHeaderName
 	timeout := DefaultRequestTimeout // Use DefaultRequestTimeout (in seconds)
@@ -34,7 +78,29 @@ func (a *AzureOpenAIEmbeddingProvider) Init(config EmbeddingProviderConfig) erro
 
 	a.client = &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
+		// Refuse every redirect: on a redirect to another host Go keeps custom headers such as
+		// api-key, so following one could send the credential to a resource nobody configured.
+		// The 3xx comes back as the response and fails as any other non-200 does.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
+	return nil
+}
+
+// authorize sets the request's credentials: the key header in api-key mode, otherwise a Bearer
+// token for the gateway's Azure identity, fetched for this call. The error of a failed token fetch
+// keeps its *azureauthentication.TokenError, and never contains a token.
+func (a *AzureOpenAIEmbeddingProvider) authorize(req *http.Request) error {
+	if a.tokens == nil {
+		req.Header.Set(a.authHeaderName, a.azureAPIKey)
+		return nil
+	}
+	token, err := a.tokens.Token(context.Background(), a.tokenScope, azureauthentication.DefaultTokenTimeout)
+	if err != nil {
+		return fmt.Errorf("could not obtain an access token for the embedding provider: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	return nil
 }
 
@@ -57,7 +123,9 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbedding(input string) ([]float32, er
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set(a.authHeaderName, a.azureAPIKey) // Header should be "api-key"
+	if err := a.authorize(req); err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(req)
@@ -72,7 +140,7 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbedding(input string) ([]float32, er
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Azure OpenAI API error: status %d, body: %s", resp.StatusCode, string(respBody))
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var response map[string]interface{}
@@ -121,7 +189,9 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbeddings(inputs []string) ([][]float
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set(a.authHeaderName, a.azureAPIKey)
+	if err := a.authorize(req); err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := a.client.Do(req)
 	if err != nil {
@@ -136,7 +206,7 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbeddings(inputs []string) ([][]float
 
 	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Azure OpenAI API error: status %d, body: %s", resp.StatusCode, string(respBody))
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var response map[string]interface{}

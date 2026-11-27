@@ -318,6 +318,28 @@ func (s *SubscriptionService) CreateSubscriptionWithBilling(apiId, kind, orgUUID
 	return sub, nil
 }
 
+// Audit actions for the disclosure of a subscription token on a read. They are recorded
+// alongside the CREATE/UPDATE/DELETE actions of the subscription itself, so one query over
+// the audit table answers who read which subscription's token and who was refused one.
+const (
+	auditActionTokenRead       = "SUBSCRIPTION_TOKEN_READ"
+	auditActionTokenReadDenied = "SUBSCRIPTION_TOKEN_READ_DENIED"
+)
+
+// RecordTokenRead records that a subscription's token was returned to its subscriber.
+// Like every other audit write here, a failure is ignored rather than failing the read.
+func (s *SubscriptionService) RecordTokenRead(subscriptionUUID, orgUUID, performedBy string) {
+	_ = s.auditRepo.Record(auditActionTokenRead, subscriptionUUID, "subscription", orgUUID, performedBy)
+}
+
+// RecordTokenReadDenied records that a subscription was read by someone other than its
+// subscriber, and the token therefore withheld. Correlating these against
+// subscriptions.subscriber_id — both resolve through user_idp_references — shows which
+// caller read which subscription's token.
+func (s *SubscriptionService) RecordTokenReadDenied(subscriptionUUID, orgUUID, performedBy string) {
+	_ = s.auditRepo.Record(auditActionTokenReadDenied, subscriptionUUID, "subscription", orgUUID, performedBy)
+}
+
 // GetSubscription returns a subscription by ID (and org)
 func (s *SubscriptionService) GetSubscription(subscriptionId, orgUUID string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
