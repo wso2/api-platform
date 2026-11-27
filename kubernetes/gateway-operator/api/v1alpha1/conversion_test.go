@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	v1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
@@ -75,6 +76,39 @@ func TestRestApiConversionRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(orig.Status, back.Status) {
 		t.Errorf("Status round-trip mismatch:\n got  %+v\n want %+v", back.Status, orig.Status)
+	}
+}
+
+// TestSubscriptionPlanConversionCarriesConditions round-trips a plan with
+// conditions through v1alpha1 -> v1 -> v1alpha1.
+func TestSubscriptionPlanConversionCarriesConditions(t *testing.T) {
+	orig := &SubscriptionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "gold", Namespace: "plans"},
+		Spec: SubscriptionPlanSpec{
+			PlanName: "Gold",
+			Conditions: []SubscriptionPlanCondition{
+				{Id: "requests", Type: "request-count", Params: &runtime.RawExtension{Raw: []byte(`{"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`)}},
+				{Type: "token-count", Params: &runtime.RawExtension{Raw: []byte(`{"limits":[{"count":5000,"timeUnit":"HOUR"}],"tokenType":"prompt"}`)}},
+				{Id: "region", Type: "custom", Params: &runtime.RawExtension{Raw: []byte(`{"zone":"eu"}`)}},
+			},
+		},
+	}
+
+	hub := &v1.SubscriptionPlan{}
+	if err := orig.ConvertTo(hub); err != nil {
+		t.Fatalf("ConvertTo: %v", err)
+	}
+	if len(hub.Spec.Conditions) != 3 || hub.Spec.Conditions[1].Type != "token-count" ||
+		string(hub.Spec.Conditions[2].Params.Raw) != `{"zone":"eu"}` {
+		t.Fatalf("hub conditions not converted: %+v", hub.Spec.Conditions)
+	}
+
+	back := &SubscriptionPlan{}
+	if err := back.ConvertFrom(hub); err != nil {
+		t.Fatalf("ConvertFrom: %v", err)
+	}
+	if !reflect.DeepEqual(orig.Spec, back.Spec) {
+		t.Errorf("Spec round-trip mismatch:\n got  %+v\n want %+v", back.Spec, orig.Spec)
 	}
 }
 

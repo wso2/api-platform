@@ -11,6 +11,17 @@ spec:
   stopOnQuotaReach: true
   throttleLimitCount: 1000
   throttleLimitUnit: Min
+  # Or, on gateways that support plan conditions, replace throttleLimitCount and
+  # throttleLimitUnit with conditions (not both); onExceed replaces stopOnQuotaReach:
+  # conditions:
+  #   - id: requests
+  #     type: request-count
+  #     params:
+  #       limits:
+  #         - count: 1000
+  #           timeAmount: 1
+  #           timeUnit: MINUTE
+  #       onExceed: reject
 ---
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: Subscription
