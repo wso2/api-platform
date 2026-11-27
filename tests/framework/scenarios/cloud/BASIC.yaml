@@ -199,8 +199,8 @@ scenarios:
     title: "Validating a URL that serves no OpenAPI definition lists its errors and returns no content, while a valid definition validates."
     priority: P1
     cloud:
-      # The cloud counterpart of on-premises APIDEF-011; written, not yet run against a cloud environment.
-      status: planned
+      # The cloud counterpart of on-premises APIDEF-011.
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_basic.feature
           scenario: "Validating a URL that serves no OpenAPI definition lists its errors and returns no content, while a valid definition validates"
@@ -208,8 +208,8 @@ scenarios:
     title: "A REST API create over the cloud's 10 MiB request body cap is refused with VALIDATION_FAILED and creates nothing, while one under it is created."
     priority: P2
     cloud:
-      # The cloud counterpart of on-premises CPLIM-001; passes on the local cloud (same apip-platform-api build as development), not yet run against development, whose CP gateway build differs.
-      status: planned
+      # The cloud counterpart of on-premises CPLIM-001.
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_basic.feature
           scenario: "A REST API create over the cloud's request body cap is refused, and one under it is created"
