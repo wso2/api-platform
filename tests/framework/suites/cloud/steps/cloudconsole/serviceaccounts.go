@@ -61,7 +61,7 @@ func (s *Steps) registerServiceAccountSteps(sc stepRegistrar) {
 	sc.Step(`^I create a synthetic service account with the role "([^"]*)"$`, s.createServiceAccount)
 	sc.Step(`^I exchange the service account's credentials( using HTTP Basic as "([^"]*)" with secret "([^"]*)")? with:$`,
 		s.exchangeServiceAccountCredentials)
-	sc.Step(`^the service account's own credentials should be exchanged for a token with the scope "([^"]*)"$`,
+	sc.Step(`^the service account's own credentials should be exchanged( using HTTP Basic)? for a token with the scope "([^"]*)"$`,
 		s.assertCredentialsExchange)
 	sc.Step(`^the cloud API answer should carry no access token$`, s.assertNoAccessToken)
 }
@@ -108,21 +108,23 @@ func (s *Steps) createServiceAccount(ctx context.Context, role string) error {
 		ClientID     string `json:"clientId"`
 		ClientSecret string `json:"clientSecret"`
 	}
-	if err := json.Unmarshal(resp.Body, &answer); err != nil || answer.ServiceAccount.ID == "" ||
-		answer.ClientID == "" || answer.ClientSecret == "" {
-		return fmt.Errorf("the service account %q was created, but its answer names no id, client ID and secret", name)
+	if err := json.Unmarshal(resp.Body, &answer); err != nil || answer.ServiceAccount.ID == "" {
+		return fmt.Errorf("the service account %q was created, but its answer names no id", name)
 	}
 	created := struct{ ID, ClientID, ClientSecret string }{
 		answer.ServiceAccount.ID, answer.ClientID, answer.ClientSecret,
 	}
 	if created.ID != name {
-		// Register the id the platform answered with before dropping the guess, so the account is
-		// never left without a registration. If that fails, nothing would clean it up, so delete
-		// it now and fail the step.
+		// Register the id the platform answered with before dropping the guess, and before the
+		// credentials are checked, so the account is never left without a registration. If that
+		// fails, nothing would clean it up, so delete it now and fail the step.
 		if err := registerServiceAccount(ctx, created.ID); err != nil {
 			return errors.Join(err, s.removeUnregisteredServiceAccount(ctx, created.ID))
 		}
 		deregister(ctx, kindServiceAccount, name)
+	}
+	if created.ClientID == "" || created.ClientSecret == "" {
+		return fmt.Errorf("the service account %q was created, but its answer names no client ID and secret", name)
 	}
 	for key, value := range map[string]string{
 		keyServiceAccountID: created.ID, keyServiceAccountClientID: created.ClientID,
@@ -193,7 +195,7 @@ func (s *Steps) exchangeServiceAccountCredentials(ctx context.Context, basic, cl
 
 // assertCredentialsExchange exchanges the account's own credentials for scope and checks that a
 // token is issued: the control for the refusals. The token is never published or reported.
-func (s *Steps) assertCredentialsExchange(ctx context.Context, scope string) error {
+func (s *Steps) assertCredentialsExchange(ctx context.Context, basic, scope string) error {
 	id, err := requiredValue(ctx, keyServiceAccountClientID)
 	if err != nil {
 		return err
@@ -202,9 +204,16 @@ func (s *Steps) assertCredentialsExchange(ctx context.Context, scope string) err
 	if err != nil {
 		return err
 	}
-	resp, err := s.sendTokenRequest(ctx, url.Values{
+	form, authorization := url.Values{
 		"grant_type": {clientCredentialsGrant}, "client_id": {id}, "client_secret": {secret}, "scope": {scope},
-	}, "")
+	}, ""
+	if basic != "" {
+		// The same credentials in the Authorization header alone, as RFC 6749 section 2.3.1 sends them.
+		form.Del("client_id")
+		form.Del("client_secret")
+		authorization = basicClientCredentials(id, secret)
+	}
+	resp, err := s.sendTokenRequest(ctx, form, authorization)
 	if err != nil {
 		return err
 	}
@@ -300,17 +309,23 @@ func basicClientCredentials(id, secret string) string {
 // redactAccessToken returns a copy of resp whose access token is replaced, so a token the
 // exchange issues never reaches a published answer or an error message.
 func redactAccessToken(resp *httpx.Response) *httpx.Response {
-	// The bare field name, not the quoted JSON key: a form-encoded or malformed answer carries
-	// the token too.
-	if resp == nil || !bytes.Contains(resp.Body, []byte(accessTokenField)) {
+	if resp == nil || len(resp.Body) == 0 {
 		return resp
 	}
 	copied := *resp
 	var answer map[string]any
 	if json.Unmarshal(resp.Body, &answer) != nil {
-		// Not JSON, yet it names the field: drop the whole body rather than risk the token.
-		copied.Body = []byte(redactedValue)
-		return &copied
+		// Not a JSON object. A form-encoded or malformed answer can still carry the token, so
+		// one that names the field loses its whole body rather than risk it.
+		if bytes.Contains(resp.Body, []byte(accessTokenField)) {
+			copied.Body = []byte(redactedValue)
+			return &copied
+		}
+		return resp
+	}
+	// The decoded key, so an escaped spelling of it (acc\u0065ss_token) is found too.
+	if _, present := answer[accessTokenField]; !present {
+		return resp
 	}
 	answer[accessTokenField] = redactedValue
 	redacted, err := json.Marshal(answer)

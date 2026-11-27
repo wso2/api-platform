@@ -161,8 +161,9 @@ Feature: APIP cloud GraphQL API lifecycle
     Then the cloud API response status code should be 201
     And the submitted GraphQL API should exist
 
-  # The cloud publishes no mock that serves a schema file, so the permitted URL is the echo
-  # backend: it is fetched and reported unresolved, where a refused one is an error.
+  # The cloud publishes no mock that serves a schema file or answers introspection, so the permitted
+  # SDL URL and introspection endpoint are the echo backend: each is fetched and reported unresolved,
+  # where a refused one is an error.
   @ID_APIP_GRAPHQL_010 @type:negative
   Scenario: Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL is fetched
     Given I obtain an APIP cloud console token
@@ -183,4 +184,8 @@ Feature: APIP cloud GraphQL API lifecycle
     When I validate a GraphQL schema with:
       | schemaSource | url                        |
       | sdlUrl       | ${CTX:cloudEchoBackendURL} |
+    Then the GraphQL schema should be reported as not resolved
+    When I validate a GraphQL schema with:
+      | schemaSource | introspection              |
+      | upstreamUrl  | ${CTX:cloudEchoBackendURL} |
     Then the GraphQL schema should be reported as not resolved

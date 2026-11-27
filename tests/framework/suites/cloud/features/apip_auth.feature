@@ -142,7 +142,7 @@ Feature: APIP cloud access and identity
     Then the cloud API response status code should be 401
     And the cloud API error code should be "UNAUTHORIZED"
     And the cloud API error message should be "Invalid or expired credentials."
-    And the service account's own credentials should be exchanged for a token with the scope "ap:project:read"
+    And the service account's own credentials should be exchanged using HTTP Basic for a token with the scope "ap:project:read"
 
   # Service accounts are off in the cloud by decision (see the scenario list entry).
   @ID_APIP_AUTH_011 @type:negative @known-issue

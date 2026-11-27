@@ -668,6 +668,7 @@ func (s *Steps) assertGraphQLValidation(ctx context.Context, outcome string) err
 	var answer struct {
 		Resolved  *bool  `json:"resolved"`
 		SDL       string `json:"sdl"`
+		Message   string `json:"message"`
 		SDLErrors []*struct {
 			Message string `json:"message"`
 		} `json:"sdlErrors"`
@@ -681,7 +682,9 @@ func (s *Steps) assertGraphQLValidation(ctx context.Context, outcome string) err
 		}
 		return nil
 	}
-	diagnosed := slices.ContainsFunc(answer.SDLErrors, func(issue *struct {
+	// An SDL that was fetched but does not parse is diagnosed in sdlErrors; an endpoint that could
+	// not be introspected is diagnosed in the answer's message.
+	diagnosed := strings.TrimSpace(answer.Message) != "" || slices.ContainsFunc(answer.SDLErrors, func(issue *struct {
 		Message string `json:"message"`
 	}) bool {
 		return issue != nil && strings.TrimSpace(issue.Message) != ""

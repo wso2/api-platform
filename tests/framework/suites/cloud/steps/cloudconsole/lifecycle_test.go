@@ -3328,6 +3328,9 @@ const promotionStages = `{"list":[
 func TestTestbenchURLAcceptsALocalTestbenchOnlyWhenTheLocalDataPlaneIsOn(t *testing.T) {
 	const env = "CLOUD_IT_TEST_TESTBENCH_URL"
 	local := "http://development-wso2cloud.openchoreoapis.localhost:19080/apip-testbench-mocks/backend/"
+	// The caller's shell may have the local data plane on; the refusals below need it off.
+	t.Setenv(cloudLocalDataPlaneEnv, "false")
+	t.Setenv(env, "")
 
 	got, err := testbenchURL(env, "https://testbench.example.com/mocks/backend/")
 	require.NoError(t, err)
@@ -9319,15 +9322,21 @@ func TestValidateGraphQLSchemaAndItsAssertions(t *testing.T) {
 	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"))
 
 	for name, body := range map[string]string{
-		"no errors":    `{"resolved":false,"sdl":""}`,
-		"a null error": `{"resolved":false,"sdl":"","sdlErrors":[null]}`,
-		"no message":   `{"resolved":false,"sdl":"","sdlErrors":[{"message":" "}]}`,
-		"a schema":     `{"resolved":false,"sdl":"type Query { a: String }","sdlErrors":[{}]}`,
-		"not a result": `{"sdl":""}`,
+		"no errors":              `{"resolved":false,"sdl":""}`,
+		"a null error":           `{"resolved":false,"sdl":"","sdlErrors":[null]}`,
+		"no message":             `{"resolved":false,"sdl":"","sdlErrors":[{"message":" "}]}`,
+		"a schema":               `{"resolved":false,"sdl":"type Query { a: String }","sdlErrors":[{}]}`,
+		"not a result":           `{"sdl":""}`,
+		"a blank message":        `{"resolved":false,"sdl":"","message":"  "}`,
+		"a message and a schema": `{"resolved":false,"sdl":"type Query { a: String }","message":"no"}`,
 	} {
 		publishedResponse(t, steps, ctx, http.StatusOK, body)
 		require.Error(t, steps.assertGraphQLValidation(ctx, "not resolved"), name)
 	}
+	// An endpoint that could not be introspected is diagnosed in the answer's message instead.
+	publishedResponse(t, steps, ctx, http.StatusOK,
+		`{"resolved":false,"sdl":"","message":"The provided endpoint could not be used to derive a GraphQL schema."}`)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved"))
 	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"type Query { other: String }"}`)
 	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"), "a schema other than the one given")
 }
@@ -10236,13 +10245,18 @@ func TestTryUpdateAPILeavesTheRefusalAndKeepsTheStoredDefinition(t *testing.T) {
 	stored, err := steps.storedDefinition(ctx, primaryAPI)
 	require.NoError(t, err)
 	require.Equal(t, "https://backend.example.test", stored["upstream"].(map[string]any)["main"].(map[string]any)["url"], "a refused update changes nothing")
-	require.NoError(t, steps.assertUpstreamIsTheBackend(ctx))
+	require.NoError(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"))
 	require.Error(t, steps.updateAPI(ctx, refused), "the plain update step still fails on a refusal")
 
 	held["upstream"] = map[string]any{"main": map[string]any{"url": "http://169.254.169.254/latest"}}
-	require.ErrorContains(t, steps.assertUpstreamIsTheBackend(ctx), "expected the main upstream")
+	require.ErrorContains(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"), "expected the main upstream")
 	held["upstream"] = nil
-	require.Error(t, steps.assertUpstreamIsTheBackend(ctx), "an API with no upstream")
+	require.Error(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"), "an API with no upstream")
+
+	t.Setenv(echoBackendEnv, "https://echo.example.test")
+	held["upstream"] = map[string]any{"main": map[string]any{"url": "https://echo.example.test/"}}
+	require.NoError(t, steps.assertUpstreamIsTheBackend(ctx, "echo backend"))
+	require.ErrorContains(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"), "expected the main upstream")
 
 	require.Error(t, steps.tryUpdateAPI(ctx, valuesTable(t, []string{"upstream", "https://elsewhere.example.test"})))
 	_, err = httpx.Published(ctx)
@@ -10374,6 +10388,13 @@ func TestCreateServiceAccountKeepsTheCredentialsAndRegistersTheAccount(t *testin
 	require.NotContains(t, pendingOf(registry, kindServiceAccount), "flat-id")
 	require.Len(t, pendingOf(registry, kindServiceAccount), 3)
 
+	// An answer with another id but no credentials still has that id registered before the step
+	// fails, so the account it created is cleaned up.
+	platform.createBody = `{"serviceAccount":{"id":"no-secret-id"},"clientId":"sa_client"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "no client ID and secret")
+	require.Contains(t, pendingOf(registry, kindServiceAccount), "no-secret-id")
+
 	// A refused create stores nothing, so nothing stays registered; the answer has no secret.
 	before := pendingOf(registry, kindServiceAccount)
 	platform.createStatus, platform.createBody = http.StatusBadRequest, `{"code":"VALIDATION_FAILED"}`
@@ -10445,16 +10466,20 @@ func TestExchangeServiceAccountCredentialsSendsTheFormAndRedactsTheToken(t *test
 
 func TestAssertCredentialsExchangeNeverReportsTheToken(t *testing.T) {
 	steps, ctx, _, platform := serviceAccountSteps(t)
-	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "ap:project:read"), keyServiceAccountClientID)
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "", "ap:project:read"), keyServiceAccountClientID)
 	local, ok := tcontext.LocalOf(ctx)
 	require.True(t, ok)
 	local.Set(keyServiceAccountClientID, "sa_client")
 	local.Set(keyServiceAccountClientSecret, "apsa_secret")
 
 	platform.tokenBody = `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900,"scope":"ap:project:read"}`
-	require.NoError(t, steps.assertCredentialsExchange(ctx, "ap:project:read"))
+	require.NoError(t, steps.assertCredentialsExchange(ctx, "", "ap:project:read"))
 	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "client_id": {"sa_client"},
 		"client_secret": {"apsa_secret"}, "scope": {"ap:project:read"}}, platform.tokenForm)
+	require.NoError(t, steps.assertCredentialsExchange(ctx, " using HTTP Basic", "ap:project:read"))
+	require.Empty(t, platform.tokenForm.Get("client_id"), "HTTP Basic sends no credential fields")
+	require.Empty(t, platform.tokenForm.Get("client_secret"))
+	require.Equal(t, basicClientCredentials("sa_client", optionalValue(ctx, keyServiceAccountClientSecret)), platform.tokenAuth)
 	_, err := httpx.Published(ctx)
 	require.Error(t, err, "the issued token is never published")
 
@@ -10466,12 +10491,12 @@ func TestAssertCredentialsExchangeNeverReportsTheToken(t *testing.T) {
 		"not a JSON body": `access_token=eyJ.token.sig`,
 	} {
 		platform.tokenBody = body
-		err := steps.assertCredentialsExchange(ctx, "ap:project:read")
+		err := steps.assertCredentialsExchange(ctx, "", "ap:project:read")
 		require.Error(t, err, name)
 		require.NotContains(t, err.Error(), "eyJ.token.sig", name)
 	}
 	platform.tokenStatus, platform.tokenBody = http.StatusUnauthorized, `{"code":"UNAUTHORIZED"}`
-	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "ap:project:read"), "refused the account's own credentials")
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "", "ap:project:read"), "refused the account's own credentials")
 }
 
 func TestRedactAccessToken(t *testing.T) {
@@ -10486,6 +10511,9 @@ func TestRedactAccessToken(t *testing.T) {
 		"an answer that is not JSON but names the field is dropped")
 	require.Equal(t, redactedValue, string(redactAccessToken(&httpx.Response{Body: []byte(`access_token=secret-token&expires_in=900`)}).Body),
 		"a form-encoded answer is dropped too")
+	escaped := redactAccessToken(&httpx.Response{Body: []byte(`{"acc\u0065ss_token":"secret-token","expires_in":900}`)})
+	require.NotContains(t, string(escaped.Body), "secret-token", "an escaped spelling of the key is the same key")
+	require.JSONEq(t, `{"access_token":"[redacted]","expires_in":900}`, string(escaped.Body))
 }
 
 func TestServiceAccountCleanupDeletesTheAccount(t *testing.T) {
@@ -10626,7 +10654,7 @@ func TestPlanReadsListsAndUpdates(t *testing.T) {
 	b, _ := planID(ctx, "B")
 	require.ErrorContains(t, steps.assertPlanLocation(ctx, "A"), "expected the Location", "the last answer locates B")
 
-	platform.page = `{"list":[{"id":"` + a + `","limits":[{"timeUnit":"MINUTE","limitCount":10}]},{"id":"` + b + `","limits":[{"timeUnit":"HOUR","limitCount":100}]}],"pagination":{"total":3}}`
+	platform.page = `{"list":[{"id":"` + a + `","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"MINUTE","limitCount":10}]},{"id":"` + b + `","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":100}]}],"pagination":{"total":3}}`
 	require.NoError(t, steps.listPlans(ctx, 2))
 	require.Equal(t, url.Values{"query": {optionalValue(ctx, keyPlanWord)}, "limit": {"2"}}, platform.query)
 	require.NoError(t, steps.assertPlanPage(ctx, 2, 3))
@@ -10636,6 +10664,10 @@ func TestPlanReadsListsAndUpdates(t *testing.T) {
 	require.NoError(t, steps.assertListedPlanLimit(ctx, "B", 100, "HOUR"))
 	require.Error(t, steps.assertListedPlanLimit(ctx, "A", 10, "HOUR"))
 	require.Error(t, steps.assertListedPlanLimit(ctx, "B", 10, "HOUR"))
+	platform.page = `{"list":[{"id":"` + a + `","limits":[{"limitType":"TOKEN_COUNT","timeUnit":"MINUTE","limitCount":10}]},{"id":"` + b + `","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":100},{"limitType":"REQUEST_COUNT","timeUnit":"DAY","limitCount":5}]}],"pagination":{"total":3}}`
+	require.NoError(t, steps.listPlans(ctx, 2))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"), "a limit of another type")
+	require.Error(t, steps.assertListedPlanLimit(ctx, "B", 100, "HOUR"), "a limit the scenario did not submit")
 	platform.page = `{"list":[],"pagination":{}}`
 	require.NoError(t, steps.listPlans(ctx, 100))
 	require.ErrorContains(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"), "does not list")

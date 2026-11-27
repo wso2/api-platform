@@ -168,7 +168,8 @@ func (s *Steps) assertPlanPage(ctx context.Context, listed, total int) error {
 	return nil
 }
 
-// assertListedPlanLimit checks the first limit of the listed plan named by label.
+// assertListedPlanLimit checks that the listed plan named by label has exactly the one request-count
+// limit the scenario submitted.
 func (s *Steps) assertListedPlanLimit(ctx context.Context, label string, count int, unit string) error {
 	id, err := planID(ctx, label)
 	if err != nil {
@@ -182,7 +183,8 @@ func (s *Steps) assertListedPlanLimit(ctx context.Context, label string, count i
 		if plan.ID != id {
 			continue
 		}
-		if len(plan.Limits) == 0 || plan.Limits[0].LimitCount != count || plan.Limits[0].TimeUnit != unit {
+		if len(plan.Limits) != 1 || plan.Limits[0].LimitType != requestCountLimit ||
+			plan.Limits[0].LimitCount != count || plan.Limits[0].TimeUnit != unit {
 			return fmt.Errorf("expected plan %s to allow %d requests per %s: %s", id, count, unit, response.Describe())
 		}
 		return nil
@@ -324,11 +326,15 @@ func planID(ctx context.Context, label string) (string, error) {
 	return id, nil
 }
 
+// requestCountLimit is the limit type of a plan that allows a number of requests per time unit.
+const requestCountLimit = "REQUEST_COUNT"
+
 // subscriptionPlan is the part of a plan answer the assertions read.
 type subscriptionPlan struct {
 	ID        string `json:"id"`
 	CreatedBy string `json:"createdBy"`
 	Limits    []struct {
+		LimitType  string `json:"limitType"`
 		TimeUnit   string `json:"timeUnit"`
 		LimitCount int    `json:"limitCount"`
 	} `json:"limits"`

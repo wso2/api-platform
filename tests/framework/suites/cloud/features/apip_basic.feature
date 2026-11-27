@@ -349,9 +349,14 @@ Feature: APIP cloud REST API lifecycle
     And the cloud API response body should not contain "169.254"
     And the submitted synthetic REST API should not exist
     When I create a synthetic REST API in the APIP test project
-    And I try to update the synthetic REST API with:
+    And an echo backend is available for deployment overrides
+    And I update the synthetic REST API with:
+      | upstreamUrl | ${CTX:cloudEchoBackendURL} |
+    Then the cloud API response status code should be 200
+    And the synthetic REST API's main upstream should be the echo backend
+    When I try to update the synthetic REST API with:
       | upstreamUrl | http://169.254.169.254/latest |
     Then the cloud API response status code should be 400
     And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
     And the cloud API error should name the field "upstream.main.url"
-    And the synthetic REST API's main upstream should be the testbench backend
+    And the synthetic REST API's main upstream should be the echo backend

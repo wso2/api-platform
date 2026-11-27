@@ -388,8 +388,12 @@ func (s *Steps) sendAPIUpdate(ctx context.Context, table *godog.Table) (*httpx.R
 
 // assertUpstreamIsTheBackend checks that the platform holds the testbench backend as the synthetic
 // REST API's main upstream.
-func (s *Steps) assertUpstreamIsTheBackend(ctx context.Context) error {
-	backend, err := testbenchURL(backendEnv, defaultBackend)
+func (s *Steps) assertUpstreamIsTheBackend(ctx context.Context, which string) error {
+	env, fallback := backendEnv, defaultBackend
+	if which == "echo backend" {
+		env, fallback = echoBackendEnv, defaultEchoBackend
+	}
+	backend, err := testbenchURL(env, fallback)
 	if err != nil {
 		return err
 	}

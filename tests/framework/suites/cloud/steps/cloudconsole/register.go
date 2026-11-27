@@ -170,7 +170,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^the cloud API response status code should be (\d+)$`, s.assertCloudResponseStatus)
 	sc.Step(`^I update the synthetic REST API with:$`, s.updateAPI)
 	sc.Step(`^I try to update the synthetic REST API with:$`, s.tryUpdateAPI)
-	sc.Step(`^the synthetic REST API's main upstream should be the testbench backend$`, s.assertUpstreamIsTheBackend)
+	sc.Step(`^the synthetic REST API's main upstream should be the (testbench backend|echo backend)$`, s.assertUpstreamIsTheBackend)
 	sc.Step(`^I deploy the (synthetic REST API|new API version|synthetic GraphQL API) to the active gateway$`, s.deployAPI)
 	sc.Step(`^I redeploy the synthetic REST API to the active gateway$`, s.redeployAPI)
 	sc.Step(`^I undeploy the (synthetic REST API|synthetic GraphQL API)$`, s.undeployAPI)
