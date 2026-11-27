@@ -19,15 +19,19 @@
 package topology
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
@@ -2475,6 +2479,8 @@ func TestEffectiveParallelGuardsAgainstZero(t *testing.T) {
 	require.Equal(t, 4, b.EffectiveParallel())
 }
 
+// matchesGodogTags mirrors godog v0.16's tag filter (internal/tags/tag_filter.go): the filter is
+// an OR of ","-separated alternatives, each an AND of "&&"-separated tags, with "~" negating one.
 func matchesGodogTags(filter string, scenarioTags []string) bool {
 	has := func(tag string) bool {
 		for _, t := range scenarioTags {
@@ -2484,24 +2490,21 @@ func matchesGodogTags(filter string, scenarioTags []string) bool {
 		}
 		return false
 	}
-
-	ok := true
-	for _, group := range strings.Split(filter, "&&") {
-		matchedInGroup := false
-		for _, tag := range strings.Split(group, ",") {
+	for _, alternative := range strings.Split(filter, ",") {
+		matched := alternative != ""
+		for _, tag := range strings.Split(alternative, "&&") {
 			tag = strings.ReplaceAll(strings.TrimSpace(tag), "@", "")
-			if tag == "" {
+			if strings.HasPrefix(tag, "~") {
+				matched = !has(tag[1:]) && matched
 				continue
 			}
-			if tag[0] == '~' {
-				matchedInGroup = !has(tag[1:]) || matchedInGroup
-				continue
-			}
-			matchedInGroup = has(tag) || matchedInGroup
+			matched = has(tag) && matched
 		}
-		ok = ok && matchedInGroup
+		if matched {
+			return true
+		}
 	}
-	return ok
+	return false
 }
 
 func TestCombinedTagsSelectSomething(t *testing.T) {
@@ -2519,6 +2522,62 @@ func TestCombinedTagsSelectSomething(t *testing.T) {
 		"the runner's exclusion must still apply inside a selected feature")
 	require.False(t, matchesGodogTags(filter, []string{"@cors"}),
 		"a feature outside the selection must not run")
+}
+
+func TestCombinedTagsKeepTheRunnerExclusionForEverySelectedTag(t *testing.T) {
+	filter := combineTags("~@known-issue", "@A,@B,@C")
+
+	for _, tag := range []string{"@A", "@B", "@C"} {
+		require.True(t, matchesGodogTags(filter, []string{tag}), tag)
+		require.False(t, matchesGodogTags(filter, []string{tag, "@known-issue"}),
+			"%s: a selection after the first comma must not escape the runner's exclusion", tag)
+	}
+	require.False(t, matchesGodogTags(filter, []string{"@D"}))
+}
+
+func TestCombinedTagsPairEveryRunnerAlternativeWithEverySelection(t *testing.T) {
+	filter := combineTags("@x,@y && ~@slow", " @A , @B ")
+
+	require.Equal(t, "@x && @A,@x && @B,@y && ~@slow && @A,@y && ~@slow && @B", filter)
+	require.True(t, matchesGodogTags(filter, []string{"@x", "@B"}))
+	require.True(t, matchesGodogTags(filter, []string{"@y", "@A"}))
+	require.False(t, matchesGodogTags(filter, []string{"@y", "@A", "@slow"}))
+	require.False(t, matchesGodogTags(filter, []string{"@x"}), "the selection still applies")
+	require.False(t, matchesGodogTags(filter, []string{"@A"}), "the runner's tags still apply")
+	require.Equal(t, "@A,@B", combineTags("", "@A,@B"))
+}
+
+// scenariosGodogRuns runs an in-memory feature through godog with the tag filter and returns the
+// names of the scenarios it selected, so the filter is checked against godog itself.
+func scenariosGodogRuns(t *testing.T, tags string) []string {
+	t.Helper()
+	var ran []string
+	status := godog.TestSuite{
+		ScenarioInitializer: func(sc *godog.ScenarioContext) {
+			sc.Step(`^it runs$`, func() {})
+			sc.Before(func(ctx context.Context, scenario *godog.Scenario) (context.Context, error) {
+				ran = append(ran, scenario.Name)
+				return ctx, nil
+			})
+		},
+		Options: &godog.Options{Format: "progress", Output: io.Discard, Tags: tags, FeatureContents: []godog.Feature{{
+			Name: "selection.feature",
+			Contents: []byte("Feature: selection\n" +
+				"  @A\n  Scenario: A\n    Given it runs\n" +
+				"  @B @known-issue\n  Scenario: B known issue\n    Given it runs\n" +
+				"  @B\n  Scenario: B\n    Given it runs\n"),
+		}}},
+	}.Run()
+	require.Zero(t, status, "godog run with tags %q", tags)
+	sort.Strings(ran)
+	return ran
+}
+
+func TestCombinedTagsAgreeWithGodog(t *testing.T) {
+	require.Equal(t, []string{"A", "B", "B known issue"}, scenariosGodogRuns(t, "~@known-issue && @A,@B"),
+		"godog binds a bare && to the adjacent alternative only")
+	require.Equal(t, []string{"A", "B"}, scenariosGodogRuns(t, combineTags("~@known-issue", "@A,@B")))
+	require.Equal(t, []string{"B"}, scenariosGodogRuns(t, combineTags("~@known-issue", "@B")))
 }
 
 func TestUncombinedRunnerTagsStillExclude(t *testing.T) {

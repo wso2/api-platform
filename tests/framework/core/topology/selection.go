@@ -529,16 +529,24 @@ func startsComponent(block *ResolvedBlock, name string) bool {
 	return false
 }
 
-// combineTags combines runner and selection tag expressions.
+// combineTags requires both the runner's and the selection's tag expression. Godog has no
+// grouping: it splits an expression on "," (OR) and then each alternative on "&&" (AND), so
+// joining the two with "&&" would bind it to their adjacent alternatives only. Each runner
+// alternative is paired with each selection alternative instead.
 func combineTags(runnerTags, selectionTags string) string {
 	switch {
 	case runnerTags == "":
 		return selectionTags
 	case selectionTags == "":
 		return runnerTags
-	default:
-		return runnerTags + " && " + selectionTags
 	}
+	var alternatives []string
+	for _, runner := range strings.Split(runnerTags, ",") {
+		for _, selection := range strings.Split(selectionTags, ",") {
+			alternatives = append(alternatives, strings.TrimSpace(runner)+" && "+strings.TrimSpace(selection))
+		}
+	}
+	return strings.Join(alternatives, ",")
 }
 
 func cloneBlock(block ResolvedBlock) ResolvedBlock {
