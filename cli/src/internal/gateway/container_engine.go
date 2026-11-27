@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/wso2/api-platform/cli/utils"
 )
@@ -118,10 +119,10 @@ func (e buildahEngine) credentialMount() credentialMount { return volumeMount(e.
 // from the image and passed explicitly; it carries the -system-build-lock flag
 // that adds the system policies.
 //
-// from and inspect run with the same signal handling as the builder: with
-// --git-credential the credentials file already exists while from pulls the
-// image, and an interrupt must not end ap before it is deleted. from shows the
-// pull progress (stderr) like the docker and podman runs do.
+// from and inspect forward signals like the builder run: an interrupt must not
+// end ap before the working container is removed, or, with --git-credential,
+// before the credentials file is deleted. from shows the pull progress (stderr)
+// like the docker and podman runs do.
 func (e buildahEngine) runBuilder(config DockerBuildConfig, access builderAccessRun, logFile *os.File) error {
 	out, err := runForwarding(e.binary(), []string{"from", config.GatewayBuilder}, access, logFile, true)
 	if err != nil {
@@ -131,8 +132,9 @@ func (e buildahEngine) runBuilder(config DockerBuildConfig, access builderAccess
 	if container == "" {
 		return fmt.Errorf("buildah from %s did not return a container name", config.GatewayBuilder)
 	}
-	// rm forwards signals too: the credentials file is deleted only after it.
-	defer runQuiet(logFile, access.forwardSignals, e.binary(), "rm", container)
+	// rm forwards signals too, so an interrupt cannot stop it half way or end ap
+	// before the credentials file is deleted.
+	defer runQuiet(logFile, true, e.binary(), "rm", container)
 
 	// Read the full inspect JSON: older buildah releases (e.g. 1.39) don't support
 	// template functions such as json in --format.
@@ -221,13 +223,13 @@ func selinuxRelabel() bool {
 // buildManifestList builds config.Platform into a local manifest list and
 // pushes the list, with all its images, to imageTag. The local list gets a
 // unique name so that concurrent builds of the same tag never add images to
-// each other's list.
+// each other's list. The list and its images are removed afterwards.
 func buildManifestList(binary string, config DockerBuildConfig, imageTag, dir string, logFile *os.File) error {
 	listName, err := localManifestListName()
 	if err != nil {
 		return err
 	}
-	defer runQuiet(logFile, false, binary, "manifest", "rm", listName)
+	defer removeManifestList(binary, listName, logFile)
 
 	for _, args := range manifestListCommands(config, listName, imageTag) {
 		if err := runStreaming(binary, args, dir, logFile, "      "); err != nil {
@@ -245,6 +247,65 @@ func manifestListCommands(config DockerBuildConfig, listName, imageTag string) [
 	build = append(build, ".")
 	push := []string{"manifest", "push", "--all", listName, "docker://" + imageTag}
 	return [][]string{build, push}
+}
+
+// removeManifestList removes a local manifest list and the images built into it,
+// which `manifest rm` leaves behind as dangling images. The list's image digests
+// are read before it is removed, and the images looked up after: newer podman
+// releases do not report an image as dangling while a list still refers to it.
+// Only dangling images are removed, never one that has a name.
+func removeManifestList(binary, listName string, logFile *os.File) {
+	inspect, inspectErr := exec.Command(binary, "manifest", "inspect", listName).Output()
+	runQuiet(logFile, false, binary, "manifest", "rm", listName)
+	if inspectErr != nil {
+		return
+	}
+	digests := manifestListDigests(inspect)
+	if len(digests) == 0 {
+		return
+	}
+	images, err := exec.Command(binary, "images", "--filter", "dangling=true", "--digests", "--format", "{{.ID}} {{.Digest}}").Output()
+	if err != nil {
+		return
+	}
+	if ids := imagesWithDigests(images, digests); len(ids) > 0 {
+		runQuiet(logFile, false, binary, append([]string{"rmi"}, ids...)...)
+	}
+}
+
+// manifestListDigests returns the image digests in `manifest inspect` output.
+func manifestListDigests(inspectJSON []byte) map[string]bool {
+	var list struct {
+		Manifests []struct {
+			Digest string `json:"digest"`
+		} `json:"manifests"`
+	}
+	if err := json.Unmarshal(inspectJSON, &list); err != nil {
+		return nil
+	}
+	digests := make(map[string]bool, len(list.Manifests))
+	for _, m := range list.Manifests {
+		if m.Digest != "" {
+			digests[m.Digest] = true
+		}
+	}
+	return digests
+}
+
+// imagesWithDigests returns the IDs in `images --format '{{.ID}} {{.Digest}}'`
+// output whose digest is in digests.
+func imagesWithDigests(imagesOutput []byte, digests map[string]bool) []string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(string(imagesOutput), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || !digests[fields[1]] || seen[fields[0]] {
+			continue
+		}
+		seen[fields[0]] = true
+		ids = append(ids, fields[0])
+	}
+	return ids
 }
 
 // localManifestListName returns a random name for a local manifest list.

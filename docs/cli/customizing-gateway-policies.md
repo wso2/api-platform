@@ -26,7 +26,7 @@ ap gateway image build
 
 Use `ap gateway image build --help` to view detailed usage information for this command.
 
-A container engine is a prerequisite for executing this command: Docker by default, or Podman or Buildah. The command checks that the selected engine is available at the beginning and fails immediately if it is not.
+A container engine is a prerequisite for executing this command: Docker by default, or Podman or Buildah (1.30 or later). The command checks that the selected engine is available at the beginning and fails immediately if it is not. Older Buildah releases are refused because they do not pass the Go settings, such as `GOPRIVATE`, into the builder container.
 
 To build with Podman or Buildah instead of Docker, pass `--container-engine`, or set the `AP_CONTAINER_ENGINE` environment variable, for example in a CI job. The flag takes precedence over the environment variable.
 
@@ -74,7 +74,7 @@ Even an output directory is not explicitly specified, the built images are cache
 - `--path`: Specifies the directory containing `build.yaml`. By default, this is the current working directory.
 - `push`: Pushes the built images to the image repository.
 - `no-cache`: Disables the container engine's build cache.
-- `--platform`: Specifies the target platform. By default, the host platform is used. With `--platform`, the images are always pushed: Docker uses `docker buildx`, and Podman and Buildah build a manifest list and push it.
+- `--platform`: Specifies the target platform. By default, the host platform is used. With `--platform`, the images are always pushed: Docker uses `docker buildx`, and Podman and Buildah build a manifest list, push it, and then remove the local list and its images.
 - `--container-engine`: Selects the container engine: `docker` (default), `podman` or `buildah`. Can also be set with the `AP_CONTAINER_ENGINE` environment variable.
 - `--netrc`: A netrc file with credentials for private Go module hosts and proxies. See [Policies from Private Go Module Repositories](#policies-from-private-go-module-repositories).
 - `--git-credential`: A username and token for one private Go module host, as `<host>=<username>:<ENV_VAR>`. Repeat it for more hosts. Cannot be combined with `--netrc`.
@@ -148,7 +148,7 @@ ap gateway image build --netrc ~/.netrc-gateway-policies \
 
 `GONOPROXY` defaults to `GOPRIVATE`, so without `GONOPROXY=none` the modules marked private in step 1 skip the proxy and are fetched straight from their repository. Keep `GOPRIVATE` set: it still keeps those modules away from the public checksum database. An empty `--go-env GONOPROXY=` does not help, because Go then falls back to the same default.
 
-The file is mounted read-only into the builder container. The command refuses a netrc file that other users can read. With Docker Desktop, Colima or podman machine, keep the file under your home directory: other host paths may not be shared with the engine's VM, and the mount then fails with "bind source path does not exist". With Podman and Buildah on Linux, the file gets a shared SELinux label (`z`), so it stays readable to other containers, while the build workspace gets a private one (`Z`).
+The file is mounted read-only into the builder container. The command refuses a netrc file that other users can read. With Docker Desktop, Colima or podman machine, keep the file under your home directory: other host paths may not be shared with the engine's VM, and the mount then fails because the file does not exist ("bind source path does not exist" with Docker, "no such file or directory" with Podman and Buildah). With Podman and Buildah on Linux, the file gets a shared SELinux label (`z`), so it stays readable to other containers, while the build workspace gets a private one (`Z`).
 
 Git and the go command both read the netrc file (Go through its default `GOAUTH=netrc`), so it covers direct repository access, module proxies, and the `?go-get=1` lookups that self-hosted Git servers need. If you set `GOAUTH` with `--go-env`, include `netrc` in its list, or Go stops reading the file.
 

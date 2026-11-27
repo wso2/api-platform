@@ -73,8 +73,8 @@ func TestForwardSignalsPassesHangupToTheChild(t *testing.T) {
 	}
 }
 
-// buildah from and inspect run while a --git-credential netrc already exists, so
-// they must forward signals too and report their stdout.
+// buildah from and inspect create and read the working container that the
+// deferred buildah rm removes, so they must forward signals too and report their stdout.
 func TestRunForwardingCapturesStdoutAndForwardsSignals(t *testing.T) {
 	logFile, err := os.CreateTemp(t.TempDir(), "log")
 	if err != nil {
@@ -88,7 +88,7 @@ func TestRunForwardingCapturesStdoutAndForwardsSignals(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		out, err := runForwarding("sh", []string{"-c", trapTermScript}, builderAccessRun{forwardSignals: true}, logFile, true)
+		out, err := runForwarding("sh", []string{"-c", trapTermScript}, builderAccessRun{}, logFile, true)
 		done <- result{out, err}
 	}()
 
@@ -98,7 +98,7 @@ func TestRunForwardingCapturesStdoutAndForwardsSignals(t *testing.T) {
 	}
 }
 
-// buildah rm runs before the credentials file is deleted, so it forwards signals too.
+// buildah rm must finish, and runs before the credentials file is deleted, so it forwards signals too.
 func TestRunQuietForwardsSignals(t *testing.T) {
 	logFile, err := os.CreateTemp(t.TempDir(), "log")
 	if err != nil {

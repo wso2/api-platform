@@ -65,8 +65,20 @@ func TestResolveContainerEngine(t *testing.T) {
 	}
 }
 
+// buildahVersionOutput is `buildah version` output for the given release.
+func buildahVersionOutput(version string) string {
+	return "Version:         " + version + "\nGo Version:      go1.24.4\nImage Spec:      1.1.1\nRuntime Spec:    1.2.1\n"
+}
+
 // fakeEngineCommands replaces runEngineCommand; failing maps "name args..." to the output and error to return.
+// Successful commands return nothing, except `buildah version`, which reports a supported release.
 func fakeEngineCommands(t *testing.T, failing map[string]string) *[]string {
+	t.Helper()
+	return fakeEngineCommandsWithOutput(t, failing, map[string]string{"buildah version": buildahVersionOutput("1.46.1")})
+}
+
+// fakeEngineCommandsWithOutput is fakeEngineCommands with the output of successful commands in outputs.
+func fakeEngineCommandsWithOutput(t *testing.T, failing, outputs map[string]string) *[]string {
 	t.Helper()
 	var calls []string
 	original := runEngineCommand
@@ -76,10 +88,25 @@ func fakeEngineCommands(t *testing.T, failing map[string]string) *[]string {
 		if out, ok := failing[call]; ok {
 			return []byte(out), errors.New("exit status 1")
 		}
-		return nil, nil
+		return []byte(outputs[call]), nil
 	}
 	t.Cleanup(func() { runEngineCommand = original })
 	return &calls
+}
+
+// fakeInstalledEngines replaces lookPath so that only the given engines are on the PATH.
+func fakeInstalledEngines(t *testing.T, installed ...string) {
+	t.Helper()
+	original := lookPath
+	lookPath = func(file string) (string, error) {
+		for _, name := range installed {
+			if name == file {
+				return "/usr/bin/" + file, nil
+			}
+		}
+		return "", errors.New("executable file not found in $PATH")
+	}
+	t.Cleanup(func() { lookPath = original })
 }
 
 func TestCheckContainerEngineCommands(t *testing.T) {
@@ -105,11 +132,12 @@ func TestCheckContainerEngineCommands(t *testing.T) {
 	}
 }
 
-func TestCheckContainerEngineUnavailableSuggestsOtherEngines(t *testing.T) {
+func TestCheckContainerEngineUnavailableSuggestsInstalledEngines(t *testing.T) {
 	fakeEngineCommands(t, map[string]string{
 		"docker version": "Client: 29.1.3\nCannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n",
 		"podman version": "",
 	})
+	fakeInstalledEngines(t, "docker", "podman", "buildah")
 
 	err := CheckContainerEngine("docker", false)
 	if err == nil {
@@ -127,15 +155,66 @@ func TestCheckContainerEngineUnavailableSuggestsOtherEngines(t *testing.T) {
 	}
 }
 
+// Engines that are not installed are not suggested, for example buildah on macOS.
+func TestCheckContainerEngineUnavailableSkipsMissingEngines(t *testing.T) {
+	fakeEngineCommands(t, map[string]string{"docker version": ""})
+
+	fakeInstalledEngines(t, "docker", "podman")
+	err := CheckContainerEngine("docker", false)
+	if err == nil || !strings.HasSuffix(err.Error(), "\n\nTo use podman instead, set --container-engine or AP_CONTAINER_ENGINE.") {
+		t.Fatalf("got %v, want only podman suggested", err)
+	}
+
+	fakeInstalledEngines(t, "docker")
+	err = CheckContainerEngine("docker", false)
+	if err == nil || err.Error() != "docker is not available: exit status 1" {
+		t.Fatalf("got %v, want no suggestion when no other engine is installed", err)
+	}
+}
+
 func TestCheckContainerEngineMissingBuildx(t *testing.T) {
 	fakeEngineCommands(t, map[string]string{"docker buildx version": "unknown command: docker buildx"})
+	fakeInstalledEngines(t, "docker", "podman", "buildah")
 
 	if err := CheckContainerEngine("docker", false); err != nil {
 		t.Fatalf("buildx should not be checked without --platform: %v", err)
 	}
 	err := CheckContainerEngine("docker", true)
 	if err == nil || !strings.Contains(err.Error(), "docker buildx is not available but required for --platform") ||
-		!strings.Contains(err.Error(), "use podman or buildah") {
+		!strings.Contains(err.Error(), "To use podman or buildah instead") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// buildah before 1.30 drops name-only `run -e NAME` entries, so the builder
+// would silently lose GOPRIVATE and the --go-env settings.
+func TestCheckContainerEngineBuildahVersion(t *testing.T) {
+	tests := []struct {
+		output  string
+		wantErr string
+	}{
+		{output: buildahVersionOutput("1.23.1"), wantErr: "buildah 1.23 is too old: buildah 1.30 or later is required"},
+		{output: buildahVersionOutput("1.29.0"), wantErr: "buildah 1.29 is too old"},
+		{output: buildahVersionOutput("1.30.0")},
+		{output: buildahVersionOutput("1.46.1")},
+		{output: buildahVersionOutput("1.47.0-dev")},
+		{output: buildahVersionOutput("2.0.0")},
+		{output: "Go Version: go1.24.4\n", wantErr: "could not read the buildah version"},
+		{output: "", wantErr: "could not read the buildah version"},
+	}
+
+	for _, tt := range tests {
+		fakeEngineCommandsWithOutput(t, nil, map[string]string{"buildah version": tt.output})
+		fakeInstalledEngines(t)
+		err := CheckContainerEngine("buildah", false)
+		if tt.wantErr == "" {
+			if err != nil {
+				t.Errorf("%q: unexpected error: %v", tt.output, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+			t.Errorf("%q: got %v, want an error containing %q", tt.output, err, tt.wantErr)
+		}
 	}
 }

@@ -207,3 +207,30 @@ func TestLocalManifestListNameIsUnique(t *testing.T) {
 		t.Fatalf("unexpected name %s", a)
 	}
 }
+
+func TestManifestListDigests(t *testing.T) {
+	inspect := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[` +
+		`{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:aaa","size":1,"platform":{"architecture":"amd64","os":"linux"}},` +
+		`{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:bbb","size":1,"platform":{"architecture":"arm64","os":"linux"}}]}`)
+	got := manifestListDigests(inspect)
+	if want := map[string]bool{"sha256:aaa": true, "sha256:bbb": true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if got := manifestListDigests([]byte("not json")); len(got) != 0 {
+		t.Fatalf("got %v for invalid output, want none", got)
+	}
+}
+
+func TestImagesWithDigests(t *testing.T) {
+	digests := map[string]bool{"sha256:aaa": true, "sha256:bbb": true}
+	// buildah pads the columns; podman separates them with one space.
+	output := []byte("e3a7dda8f2ab   sha256:aaa\n" +
+		"2db70850d96b sha256:bbb\n" +
+		"2db70850d96b sha256:bbb\n" + // listed again under a second name: removed once
+		"d2482869a6b8 sha256:other\n" +
+		"\n")
+	got := imagesWithDigests(output, digests)
+	if want := []string{"e3a7dda8f2ab", "2db70850d96b"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
