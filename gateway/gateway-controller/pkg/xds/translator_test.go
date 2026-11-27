@@ -4521,3 +4521,23 @@ func TestTranslator_TranslateConfigs_HealthRouteRBAC(t *testing.T) {
 		assert.EqualError(t, err, `router.health.allowed_clients: "*" cannot be combined with other entries`)
 	})
 }
+
+// The budget stamp is dropped by Envoy on provider routes only: a proxy route must pass it
+// to the provider route it calls.
+func TestChainCountsBudgetsAsProvider(t *testing.T) {
+	budget := func(role string) *models.PolicyChain {
+		return &models.PolicyChain{Policies: []models.Policy{
+			{Name: "api-key-auth"},
+			{Name: constants.BUDGET_SYSTEM_POLICY_NAME, Params: map[string]interface{}{"role": role}},
+		}}
+	}
+	if !chainCountsBudgetsAsProvider(budget("provider")) {
+		t.Fatal("a provider route drops the stamp")
+	}
+	if chainCountsBudgetsAsProvider(budget("proxy")) {
+		t.Fatal("a proxy route keeps the stamp for its provider route")
+	}
+	if chainCountsBudgetsAsProvider(&models.PolicyChain{}) || chainCountsBudgetsAsProvider(nil) {
+		t.Fatal("no budget policy: nothing changes")
+	}
+}

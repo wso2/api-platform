@@ -1119,6 +1119,12 @@ func (m *MockControlPlaneClient) SubmitAPIMSyncAndWait(task func()) {
 	}
 }
 
+// PushResource and PushResourceDeletion record nothing: resource pushes are covered by
+// the controlplane tests.
+func (m *MockControlPlaneClient) PushResource(*models.StoredConfig)                {}
+func (m *MockControlPlaneClient) PushResourceDeletion(*models.StoredConfig)        {}
+func (m *MockControlPlaneClient) SetBudgetApplier(utils.ControlPlaneBudgetApplier) {}
+
 // SubmitArtifactPush runs the task in a goroutine, mirroring the previous per-op
 // goroutine behavior so existing eventual-consistency test assertions still hold.
 func (m *MockControlPlaneClient) SubmitArtifactPush(task func()) {

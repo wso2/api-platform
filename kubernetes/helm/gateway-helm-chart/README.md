@@ -231,6 +231,7 @@ there as well.
 | Control-plane token | `gateway.controller.controlPlane.token.{source,secretName,key,mountPath}` | `/secrets/gateway-controller/controlplane` |
 | PostgreSQL password | `gateway.controller.postgres.passwordSecretRef.{source,name,key,mountPath}` | `/secrets/gateway-controller/postgres` |
 | SQL Server password | `gateway.controller.sqlserver.passwordSecretRef.{source,name,key,mountPath}` | `/secrets/gateway-controller/sqlserver` |
+| Redis password (shared counters, when `gateway.config.counters.redis.enabled`) | `gateway.controller.redis.passwordSecretRef.{source,name,key,mountPath}` | `/secrets/gateway-controller/redis` |
 
 ```bash
 helm install gateway . \

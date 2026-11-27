@@ -3170,6 +3170,496 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
 |field|string|false|none|Field that failed validation|
 |message|string|false|none|Human-readable error message|
 
+## BudgetRequest
+
+<a id="schemabudgetrequest"></a>
+<a id="schema_BudgetRequest"></a>
+<a id="tocSbudgetrequest"></a>
+<a id="tocsbudgetrequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Budget",
+  "metadata": {
+    "name": "research-team-monthly"
+  },
+  "spec": {
+    "limit": {
+      "amount": "500.00",
+      "period": "month",
+      "action": "block",
+      "blockAt": 95
+    },
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
+      {
+        "type": "attribute",
+        "expression": "'research' in request.Auth.Claims[\"groups\"]"
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|Budget specification version|
+|kind|string|true|none|Budget kind|
+|metadata|[BudgetMetadata](#schemabudgetmetadata)|true|none|none|
+|spec|[BudgetSpec](#schemabudgetspec)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|Budget|
+
+## Budget
+
+<a id="schemabudget"></a>
+<a id="schema_Budget"></a>
+<a id="tocSbudget"></a>
+<a id="tocsbudget"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Budget",
+  "metadata": {
+    "name": "research-team-monthly"
+  },
+  "spec": {
+    "limit": {
+      "amount": "500.00",
+      "period": "month",
+      "action": "block",
+      "blockAt": 95
+    },
+    "filters": [
+      {
+        "type": "llmProvider",
+        "id": "openai"
+      },
+      {
+        "type": "attribute",
+        "expression": "'research' in request.Auth.Claims[\"groups\"]"
+      }
+    ]
+  },
+  "status": {
+    "id": "team-daily",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "currentPeriod": {
+      "periodStart": "2026-11-01",
+      "spent": "312.4",
+      "unpricedRequests": 0
+    }
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[BudgetRequest](#schemabudgetrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[BudgetStatus](#schemabudgetstatus)|false|read-only|Server-managed fields. Populated on responses.|
+
+## BudgetStatus
+
+<a id="schemabudgetstatus"></a>
+<a id="schema_BudgetStatus"></a>
+<a id="tocSbudgetstatus"></a>
+<a id="tocsbudgetstatus"></a>
+
+```json
+{
+  "id": "team-daily",
+  "createdAt": "2026-04-24T07:21:13Z",
+  "updatedAt": "2026-04-24T07:21:13Z",
+  "currentPeriod": {
+    "periodStart": "2026-11-01",
+    "spent": "312.4",
+    "unpricedRequests": 0
+  }
+}
+
+```
+
+Server-managed information for a budget. A budget is not deployed or undeployed: spec.status says whether it is enforced, so there is no state or deployedAt.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|Unique identifier assigned by the server (equal to metadata.name)|
+|createdAt|string(date-time)|false|none|Timestamp when the budget was first created (UTC)|
+|updatedAt|string(date-time)|false|none|Timestamp when the budget was last updated (UTC)|
+|currentPeriod|[BudgetCurrentPeriod](#schemabudgetcurrentperiod)|false|none|Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.|
+
+## BudgetCurrentPeriod
+
+<a id="schemabudgetcurrentperiod"></a>
+<a id="schema_BudgetCurrentPeriod"></a>
+<a id="tocSbudgetcurrentperiod"></a>
+<a id="tocsbudgetcurrentperiod"></a>
+
+```json
+{
+  "periodStart": "2026-11-01",
+  "spent": "312.4",
+  "unpricedRequests": 0
+}
+
+```
+
+Spend in the current period, as the control plane shows it: totals include every gateway sharing the counter store.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|periodStart|string(date)|true|none|none|
+|spent|string|true|none|USD, total across the budget's usages|
+|unpricedRequests|integer(int64)|true|none|Requests charged $0 this period because they had no price|
+
+## BudgetUsageListResponse
+
+<a id="schemabudgetusagelistresponse"></a>
+<a id="schema_BudgetUsageListResponse"></a>
+<a id="tocSbudgetusagelistresponse"></a>
+<a id="tocsbudgetusagelistresponse"></a>
+
+```json
+{
+  "periodStart": "2019-08-24",
+  "usages": [
+    {
+      "usage": {
+        "property1": "string",
+        "property2": "string"
+      },
+      "spent": "104.21",
+      "unpricedRequests": 0
+    }
+  ],
+  "total": 0,
+  "limit": 0,
+  "offset": 0
+}
+
+```
+
+A page of a budget's usage, one row per usage, in the current period
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|periodStart|string(date)|true|none|none|
+|usages|[[BudgetUsageEntry](#schemabudgetusageentry)]|true|none|[One usage's spend this period]|
+|total|integer|true|none|none|
+|limit|integer|true|none|none|
+|offset|integer|true|none|none|
+
+## BudgetUsageEntry
+
+<a id="schemabudgetusageentry"></a>
+<a id="schema_BudgetUsageEntry"></a>
+<a id="tocSbudgetusageentry"></a>
+<a id="tocsbudgetusageentry"></a>
+
+```json
+{
+  "usage": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "spent": "104.21",
+  "unpricedRequests": 0
+}
+
+```
+
+One usage's spend this period
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|usage|object|true|none|The allocated values, e.g. {"apiKey":"team-red"}; empty when shared, or when this gateway has not served the usage|
+|» **additionalProperties**|string|false|none|none|
+|spent|string|true|none|USD|
+|unpricedRequests|integer(int64)|true|none|none|
+
+## BudgetMetadata
+
+<a id="schemabudgetmetadata"></a>
+<a id="schema_BudgetMetadata"></a>
+<a id="tocSbudgetmetadata"></a>
+<a id="tocsbudgetmetadata"></a>
+
+```json
+{
+  "name": "research-team-monthly",
+  "labels": [
+    "string"
+  ],
+  "annotations": {
+    "property1": "string",
+    "property2": "string"
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
+|labels|[string]|false|none|One-word labels to organize and find budgets. Not used to enforce; kept with the budget and pushed to the control plane with it. At most 10, no repeats; each 1-63 characters of letters, digits, '.', '_' or '-', starting and ending with a letter or digit (no spaces).|
+|annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget counts only that project: when its filters have no project filter, {type: project, id} is added as the last filter. It exempts only that project's agents and cannot be split by project.|
+|» **additionalProperties**|string|false|none|none|
+
+## BudgetSpec
+
+<a id="schemabudgetspec"></a>
+<a id="schema_BudgetSpec"></a>
+<a id="tocSbudgetspec"></a>
+<a id="tocsbudgetspec"></a>
+
+```json
+{
+  "status": "active",
+  "limit": {
+    "amount": "100.00",
+    "period": "day",
+    "action": "block",
+    "blockAt": 100,
+    "splitBy": {
+      "type": "llmProvider",
+      "expression": "string"
+    }
+  },
+  "filters": [
+    {
+      "type": "llmProvider",
+      "id": "string",
+      "project": "string",
+      "expression": "string"
+    }
+  ],
+  "exemptions": [
+    {
+      "type": "attribute",
+      "expression": "string",
+      "id": "string",
+      "project": "string"
+    }
+  ],
+  "displayName": "string",
+  "description": "string",
+  "warnings": {
+    "thresholds": [
+      0
+    ],
+    "channels": [
+      "string"
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|false|none|An inactive budget is kept but matches no traffic.|
+|limit|[BudgetLimit](#schemabudgetlimit)|true|none|none|
+|filters|[[BudgetFilter](#schemabudgetfilter)]|false|none|Which LLM usage the budget counts. Filters of different types must all match (AND); several of one type are alternatives (OR). Empty means all LLM usage.|
+|exemptions|[[BudgetExemption](#schemabudgetexemption)]|false|none|Matching traffic is left out of this budget.|
+|displayName|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
+|description|string|false|none|Accepted for compatibility with the control plane's Budget; ignored by the gateway (not validated, stored or returned).|
+|warnings|object|false|none|Accepted for compatibility with the control plane's Budget, which sends its warnings to notification channels; ignored by the gateway (not validated, stored or returned).|
+|» thresholds|[integer]|false|none|none|
+|» channels|[string]|false|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|inactive|
+
+## BudgetLimit
+
+<a id="schemabudgetlimit"></a>
+<a id="schema_BudgetLimit"></a>
+<a id="tocSbudgetlimit"></a>
+<a id="tocsbudgetlimit"></a>
+
+```json
+{
+  "amount": "100.00",
+  "period": "day",
+  "action": "block",
+  "blockAt": 100,
+  "splitBy": {
+    "type": "llmProvider",
+    "expression": "string"
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|amount|string|true|none|A positive amount with up to 2 decimal places, such as "100.00".|
+|period|string|true|none|UTC calendar day, ISO week starting Monday, or calendar month.|
+|action|string|true|none|block refuses requests at the block point; allow only counts.|
+|blockAt|integer|false|none|Percentage of the amount at which a block budget refuses requests.|
+|splitBy|[BudgetSplit](#schemabudgetsplit)|false|none|Gives each value of the type its own limit: each LLM provider, project, agent or API key, or each value of an attribute expression. Omitted means one shared limit for all matching usage.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|period|day|
+|period|week|
+|period|month|
+|action|block|
+|action|allow|
+
+## BudgetSplit
+
+<a id="schemabudgetsplit"></a>
+<a id="schema_BudgetSplit"></a>
+<a id="tocSbudgetsplit"></a>
+<a id="tocsbudgetsplit"></a>
+
+```json
+{
+  "type": "llmProvider",
+  "expression": "string"
+}
+
+```
+
+Gives each value of the type its own limit: each LLM provider, project, agent or API key, or each value of an attribute expression. Omitted means one shared limit for all matching usage.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|none|
+|expression|string|false|none|attribute only. CEL over the request returning a string or a list of strings.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|llmProvider|
+|type|project|
+|type|agent|
+|type|apiKey|
+|type|attribute|
+
+## BudgetFilter
+
+<a id="schemabudgetfilter"></a>
+<a id="schema_BudgetFilter"></a>
+<a id="tocSbudgetfilter"></a>
+<a id="tocsbudgetfilter"></a>
+
+```json
+{
+  "type": "llmProvider",
+  "id": "string",
+  "project": "string",
+  "expression": "string"
+}
+
+```
+
+One condition on the LLM usage the budget counts. Filters of different types combine with AND; several filters of the same type (not attribute) are alternatives, combined with OR: two project filters count the usage of either project. List a type either once without an id (any value), or once per value it is limited to, never both and never the same value twice; a type with named values cannot be the split. Each attribute filter is its own condition, and all of them must hold (write OR inside the expression). llmProvider is the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-id and agent-id annotations); apiKey is the name of the API key the request authenticated with; attribute is a CEL condition over the request (token claims). A project, agent or apiKey filter without an id matches any one: requests that carry that value at all (an agent filter without an id leaves out requests sent straight to a provider).
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|none|
+|id|string|false|none|The LLM provider, project, agent or API key name. Required for llmProvider; omitted for project, agent or apiKey means any one. Not for an attribute.|
+|project|string|false|none|agent only, with id: the agent's project; agent names are unique only per project. Omit both for any agent.|
+|expression|string|false|none|attribute only. CEL condition over the request, returning bool.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|llmProvider|
+|type|project|
+|type|agent|
+|type|apiKey|
+|type|attribute|
+
+## BudgetExemption
+
+<a id="schemabudgetexemption"></a>
+<a id="schema_BudgetExemption"></a>
+<a id="tocSbudgetexemption"></a>
+<a id="tocsbudgetexemption"></a>
+
+```json
+{
+  "type": "attribute",
+  "expression": "string",
+  "id": "string",
+  "project": "string"
+}
+
+```
+
+Traffic left out of the budget: an attribute condition (expression), a project (id), or an agent (id and its project).
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|none|
+|expression|string|false|none|attribute only. CEL condition over the request.|
+|id|string|false|none|The project or agent name.|
+|project|string|false|none|agent only. The agent's project.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|attribute|
+|type|project|
+|type|agent|
+
 ## LLMProviderTemplateRequest
 
 <a id="schemallmprovidertemplaterequest"></a>

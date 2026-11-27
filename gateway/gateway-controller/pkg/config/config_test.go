@@ -79,6 +79,7 @@ func validConfig() *Config {
 				ReconnectMax:     30 * time.Second,
 				PollingInterval:  5 * time.Second,
 				SyncBatchSize:    50,
+				Retry:            PushRetryConfig{MaxAttempts: 5, InitialDuration: time.Second, ProgressionFactor: 2, MaxDuration: 30 * time.Second},
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -1296,6 +1297,41 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestConfig_ValidatePushRetry(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.ControlPlane.Host = "localhost"
+	require.NoError(t, cfg.Validate(), "the defaults are valid")
+	assert.Equal(t, PushRetryConfig{MaxAttempts: 5, InitialDuration: time.Second, ProgressionFactor: 2, MaxDuration: 30 * time.Second},
+		defaultConfig().Controller.ControlPlane.Retry)
+
+	tests := []struct {
+		name        string
+		mutate      func(*PushRetryConfig)
+		errContains string
+	}{
+		{"no retry", func(r *PushRetryConfig) { r.MaxAttempts = 1 }, ""},
+		{"constant wait", func(r *PushRetryConfig) { r.ProgressionFactor = 1 }, ""},
+		{"zero attempts", func(r *PushRetryConfig) { r.MaxAttempts = 0 }, "controlplane.retry_config.max_attempts must be at least 1"},
+		{"zero initial duration", func(r *PushRetryConfig) { r.InitialDuration = 0 }, "controlplane.retry_config.initial_duration must be positive"},
+		{"shrinking wait", func(r *PushRetryConfig) { r.ProgressionFactor = 0.5 }, "controlplane.retry_config.progression_factor must be at least 1"},
+		{"longest wait below the first", func(r *PushRetryConfig) { r.MaxDuration = time.Millisecond }, "controlplane.retry_config.max_duration must be at least initial_duration"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Controller.ControlPlane.Host = "localhost"
+			tt.mutate(&cfg.Controller.ControlPlane.Retry)
+			err := cfg.Validate()
+			if tt.errContains == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errContains)
 		})
 	}
 }
@@ -3106,4 +3142,91 @@ func TestLoadConfig_ShippedRouterHealthSectionIsValid(t *testing.T) {
 	cfg, err = LoadConfig(configPath)
 	require.NoError(t, err)
 	assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
+}
+
+var defaultRedisRetry = CountersRedisRetryConfig{InitialDuration: time.Second, ProgressionFactor: 2, MaxDuration: 30 * time.Second}
+
+// With Redis enabled, the reconnect needs a positive first wait, a factor of at least 1
+// and a longest wait no shorter than the first.
+func TestCountersConfigRedisRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		retry CountersRedisRetryConfig
+		field string
+	}{
+		{"defaults", defaultRedisRetry, ""},
+		{"constant wait", CountersRedisRetryConfig{InitialDuration: 5 * time.Second, ProgressionFactor: 1, MaxDuration: 5 * time.Second}, ""},
+		{"no first wait", CountersRedisRetryConfig{ProgressionFactor: 2, MaxDuration: time.Minute}, "counters.redis.retry_config.initial_duration"},
+		{"shrinking wait", CountersRedisRetryConfig{InitialDuration: time.Second, ProgressionFactor: 0.5, MaxDuration: time.Minute}, "counters.redis.retry_config.progression_factor"},
+		{"longest under first", CountersRedisRetryConfig{InitialDuration: time.Minute, ProgressionFactor: 2, MaxDuration: time.Second}, "counters.redis.retry_config.max_duration"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := CountersConfig{Redis: CountersRedisConfig{Enabled: true, Address: "redis:6379", Retry: tc.retry}}.validate()
+			if tc.field == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, tc.field)
+			}
+		})
+	}
+}
+
+func TestCountersConfigRetention(t *testing.T) {
+	for _, tc := range []struct {
+		retention time.Duration
+		ok        bool
+	}{
+		{0, true}, {time.Second, true}, {40 * 24 * time.Hour, true},
+		{500 * time.Millisecond, false}, {-time.Hour, false},
+	} {
+		err := CountersConfig{Retention: tc.retention}.validate()
+		if tc.ok {
+			assert.NoError(t, err, "retention %s", tc.retention)
+		} else {
+			assert.ErrorContains(t, err, "counters.retention", "retention %s", tc.retention)
+		}
+	}
+}
+
+// [ai_cost_management] holds only the switches; the shared counters budgets and cost
+// tracking keep their totals in are their own top-level [counters] section, read by the controller and the policy engine (the
+// controller ignores the policy engine's idle_timeout).
+func TestLoadConfig_BudgetsAndCountersSections(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	contents := `
+[ai_cost_management.tracking]
+enabled = true
+
+[ai_cost_management.budgets]
+enabled = '{{ env "APIP_GW_AI_COST_MANAGEMENT_BUDGETS_ENABLED" "false" }}'
+
+[counters]
+retention = "48h"
+idle_timeout = "5m"
+
+[counters.redis]
+enabled = '{{ env "APIP_GW_COUNTERS_REDIS_ENABLED" "false" }}'
+address = "redis:6379"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(contents), 0o644))
+	t.Setenv("APIP_GW_AI_COST_MANAGEMENT_BUDGETS_ENABLED", "true")
+	t.Setenv("APIP_GW_COUNTERS_REDIS_ENABLED", "true")
+
+	cfg, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.True(t, cfg.AICostManagement.Budgets.Enabled)
+	assert.True(t, cfg.AICostManagement.Tracking.Enabled)
+	assert.Equal(t, 48*time.Hour, cfg.Counters.Retention)
+	assert.True(t, cfg.Counters.Redis.Enabled)
+	assert.Equal(t, defaultRedisRetry, cfg.Counters.Redis.Retry, "the reconnect defaults apply when the file leaves them out")
+	assert.Equal(t, "redis:6379", cfg.Counters.Redis.Address)
+	assert.Equal(t, "apip:counters:", cfg.Counters.Redis.KeyPrefix, "defaults kept")
+
+	empty := filepath.Join(t.TempDir(), "empty.toml")
+	require.NoError(t, os.WriteFile(empty, nil, 0o644))
+	defaults, err := LoadConfig(empty)
+	require.NoError(t, err)
+	assert.False(t, defaults.AICostManagement.Budgets.Enabled, "budgets are off by default")
+	assert.False(t, defaults.AICostManagement.Tracking.Enabled, "AI cost tracking is off by default")
+	assert.False(t, defaults.Counters.Redis.Enabled, "counters are in memory by default")
 }

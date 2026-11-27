@@ -29,6 +29,7 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/counters"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/tlsauth"
@@ -77,6 +78,8 @@ type Server struct {
 	port                     int
 	mtls                     *serverMTLS
 	onFirstConnect           chan struct{}
+	counterStore             counters.Store
+	counterObserver          counters.Observer
 	logger                   *slog.Logger
 }
 
@@ -104,6 +107,21 @@ func WithMTLS(tlsConfig *tls.Config, allowedIdentities []string) ServerOption {
 			tlsConfig:         tlsConfig,
 			allowedIdentities: tlsauth.AllowedSet(allowedIdentities),
 		}
+	}
+}
+
+// WithCounterStore serves the shared counter stream (sdk/core/counters) on this
+// server, backed by store.
+func WithCounterStore(store counters.Store) ServerOption {
+	return func(s *Server) {
+		s.counterStore = store
+	}
+}
+
+// WithCounterObserver is told of every report applied on the counter stream.
+func WithCounterObserver(observer counters.Observer) ServerOption {
+	return func(s *Server) {
+		s.counterObserver = observer
 	}
 }
 
@@ -180,6 +198,11 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	// Register ADS (Aggregated Discovery Service) for policy distribution
 	discoverygrpc.RegisterAggregatedDiscoveryServiceServer(grpcServer, xdsServer)
+
+	// The shared counter stream, on the same port and under the same mTLS identity check.
+	if s.counterStore != nil {
+		counters.Register(grpcServer, s.counterStore, allowedIdentities, s.counterObserver, logger)
+	}
 
 	s.grpcServer = grpcServer
 	s.xdsServer = xdsServer

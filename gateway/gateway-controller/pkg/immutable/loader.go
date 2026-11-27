@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/budget"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -53,7 +54,15 @@ type ImmutableGW struct {
 	llmService     *utils.LLMDeploymentService
 	mcpService     *utils.MCPDeploymentService
 	agentService   *agent.AgentService
+	budgetService  *budget.Service
 	parser         *config.Parser
+}
+
+// SetBudgetService sets what creates Budget artifacts: the budget service, or nil when
+// budgets are disabled ([ai_cost_management.budgets]), in which case a Budget artifact
+// fails the load.
+func (g *ImmutableGW) SetBudgetService(svc *budget.Service) {
+	g.budgetService = svc
 }
 
 // NewImmutableGW creates an ImmutableGW. All methods are no-ops when cfg.Enabled is false.
@@ -98,8 +107,9 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	// Dependency order:
 	//   pass1: LlmProviderTemplate — no dependencies
 	//   pass2: LlmProvider         — depends on LlmProviderTemplate
-	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp, Agent — LlmProxy depends on LlmProvider;
-	//          an Agent references no other artifact, so it needs no earlier pass
+	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp, Agent, Budget — LlmProxy depends on
+	//          LlmProvider; an Agent references no other artifact, and a Budget names LLM
+	//          providers only by handle, so neither needs an earlier pass
 	var pass1, pass2, pass3 []artifact
 
 	filePaths, err := collectArtifacts(g.cfg.ArtifactsDir)
@@ -135,7 +145,7 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 			pass1 = append(pass1, a)
 		case models.KindLlmProvider:
 			pass2 = append(pass2, a)
-		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp, models.KindAgent:
+		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp, models.KindAgent, models.KindBudget:
 			pass3 = append(pass3, a)
 		default:
 			return fmt.Errorf("artifact %s has unsupported kind %q", path, envelope.Kind)
@@ -214,6 +224,17 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 			Body:        data,
 			ContentType: contentType,
 			Origin:      models.OriginGatewayAPI,
+			Logger:      log,
+		}); err != nil {
+			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
+		}
+	case models.KindBudget:
+		if g.budgetService == nil {
+			return fmt.Errorf("failed to apply %s %s: budgets are not enabled ([ai_cost_management.budgets])", kind, path)
+		}
+		if _, err := g.budgetService.Create(budget.CreateParams{
+			Body:        data,
+			ContentType: contentType,
 			Logger:      log,
 		}); err != nil {
 			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)

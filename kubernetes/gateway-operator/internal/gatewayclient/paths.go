@@ -31,6 +31,7 @@ const (
 	certificatesPath         = ManagementAPIBasePath + "/certificates"
 	subscriptionPlansPath    = ManagementAPIBasePath + "/subscription-plans"
 	subscriptionsPath        = ManagementAPIBasePath + "/subscriptions"
+	budgetsPath              = ManagementAPIBasePath + "/budgets"
 )
 
 // ApiKeyParentKind values map to the parent path segment used when nesting
@@ -83,3 +84,6 @@ func SubscriptionPlansPath() string { return subscriptionPlansPath }
 
 // SubscriptionsPath returns the configured /subscriptions base path.
 func SubscriptionsPath() string { return subscriptionsPath }
+
+// BudgetsPath returns the configured /budgets base path.
+func BudgetsPath() string { return budgetsPath }

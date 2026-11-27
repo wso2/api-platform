@@ -1,0 +1,13 @@
+# Budgets are off by default ([ai_cost_management.budgets] enabled): this block turns them on, so its LLM
+# routes carry the budget system policy while every other block's stay as configured.
+[ai_cost_management.budgets]
+enabled = true
+
+# The "mock-jwks" issuer jwt-auth validates against in the budget JWT scenario, as in
+# mcp-jwt-auth.toml.
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"

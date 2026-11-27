@@ -212,7 +212,7 @@ func TestEveryResourceTableIsDefined(t *testing.T) {
 		assert.Assert(t, ok, "builtinResourceTables lists %q, which the schema does not create", table)
 	}
 
-	for _, kind := range []string{"RestApi", "LlmProvider", "LlmProviderTemplate", "LlmProxy", "Mcp", "Agent"} {
+	for _, kind := range []string{"RestApi", "LlmProvider", "LlmProviderTemplate", "LlmProxy", "Mcp", "Agent", "Budget"} {
 		table, err := kindToResourceTable(kind)
 		assert.NilError(t, err, "kind %q has no resource table", kind)
 		_, ok := tables[table]

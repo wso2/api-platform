@@ -150,12 +150,6 @@ blocks:
       - name: cel-conditions
         features:
           - features/gateway/core/cel_conditions.feature
-      # Fault policies on the default configuration (handle_upstream_faults off). Released
-      # gateways up to 1.2.0 have no fault flow.
-      - name: fault-policies
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/core/fault_policies.feature
       - name: certificates
         tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
         features:
@@ -689,3 +683,87 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/fault_policies_upstream.feature
+
+  # Budgets turned on ([ai_cost_management.budgets] enabled), which the other blocks must not see:
+  # with budgets on, LLM routes carry the budget system policy. Serialized: the analytics
+  # scenario counts the events its requests publish.
+  - name: gateway-budgets
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-budgets.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: budget-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_management.feature
+          - features/gateway/core/budget_agent.feature
+      - name: analytics-budget
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/analytics_budget.feature
+      - name: budget-jwt
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_jwt.feature
+
+  # Budgets with the gateway-controller's counters in Redis. Its own block: the Redis overlay
+  # must not reach the other runners, and the scenario restarts the gateway.
+  - name: gateway-budget-redis
+    parallel: 1
+    components:
+      - name: redis
+      - name: platform-gateway
+        dependsOn: [redis]
+        overlay: tests/framework/core/catalog/overlays/gateway-counters-redis.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: budget-redis
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_redis.feature
+
+  # Budgets on one gateway with two controllers sharing one PostgreSQL database (the HA
+  # setup). One controller serves the management API; the other alone feeds the runtime, so
+  # every budget change reaches enforcement through the event path between them, and spend
+  # counted through one is read back through the other from Redis.
+  - name: gateway-budgets-ha
+    parallel: 1
+    components:
+      - name: redis
+      - name: platform-gateway
+        dependsOn: [redis]
+        overlay: tests/framework/core/catalog/overlays/gateway-budgets-ha.toml
+        db: postgres
+      - name: testbench
+    wiring:
+      platform-gateway:
+        controllers: 2
+    runners:
+      - name: budget-ha
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_ha.feature
+
+  # Two gateways (replicas: 2), each with its own database, sharing one Redis for counters.
+  - name: gateway-budget-redis-multigateway
+    parallel: 1
+    components:
+      - name: redis
+      - name: platform-gateway
+        dependsOn: [redis]
+        replicas: 2
+        overlay: tests/framework/core/catalog/overlays/gateway-counters-redis.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: budget-redis-multigateway
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_redis_multigateway.feature

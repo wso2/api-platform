@@ -4299,6 +4299,25 @@ func TestGatewayServiceStopRegistersNothingForAServiceItCannotStop(t *testing.T)
 	require.Equal(t, 1, reg.Count(), "a service that failed to start is still restarted at cleanup")
 }
 
+func TestLazyResourceBodyAndField(t *testing.T) {
+	body := []byte(`{"lazy_resources":{"resources_by_type":{"Budget":[{"id":"research","resource_type":"Budget","resource":{"name":"research","limit":{"amount":"500.00","blockAt":95,"share":0.5}}}]}}}`)
+
+	resource, ok := lazyResourceBody(body, "research", "Budget")
+	require.True(t, ok)
+	_, ok = lazyResourceBody(body, "research", "LlmProviderTemplate")
+	require.False(t, ok, "the type must match too")
+
+	for field, want := range map[string]string{"name": "research", "limit.amount": "500.00", "limit.blockAt": "95", "limit.share": "0.5"} {
+		got, ok := lazyResourceField(resource, field)
+		require.True(t, ok, field)
+		require.Equal(t, want, got, field)
+	}
+	_, ok = lazyResourceField(resource, "limit.missing")
+	require.False(t, ok)
+	_, ok = lazyResourceField(resource, "name.deeper")
+	require.False(t, ok)
+}
+
 func TestServiceLogMarkerHelpers(t *testing.T) {
 	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("log-marker-runner"))
 	require.NoError(t, tcontext.Set(ctx, "apiContext", "/fault-skipped-1"))

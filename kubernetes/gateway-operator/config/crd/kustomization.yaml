@@ -6,6 +6,7 @@ resources:
 - bases/gateway.api-platform.wso2.com_apigateways.yaml
 - bases/gateway.api-platform.wso2.com_apikeys.yaml
 - bases/gateway.api-platform.wso2.com_apipolicies.yaml
+- bases/gateway.api-platform.wso2.com_budgets.yaml
 - bases/gateway.api-platform.wso2.com_certificates.yaml
 - bases/gateway.api-platform.wso2.com_llmproviders.yaml
 - bases/gateway.api-platform.wso2.com_llmprovidertemplates.yaml

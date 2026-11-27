@@ -51,6 +51,8 @@ func Redis() *components.Definition {
 				RedisPasswordEnv:                         RedisPassword,
 				"APIP_GW_REDIS__PASSWORD":                RedisPassword,
 				"APIP_GW_VECTOR__DB__PROVIDER__PASSWORD": RedisPassword,
+				// The gateway-controller's shared counter store (budgets).
+				"APIP_GW_COUNTERS_REDIS_PASSWORD": RedisPassword,
 			}, nil
 		},
 		Endpoints: []components.Endpoint{

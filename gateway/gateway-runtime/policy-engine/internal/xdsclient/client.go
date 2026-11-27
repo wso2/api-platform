@@ -349,18 +349,12 @@ func (c *Client) dial() (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, c.config.ConnectTimeout)
 	defer cancel()
 
-	var opts []grpc.DialOption
-
-	// Configure TLS or insecure
-	if c.config.TLSEnabled {
-		tlsConfig, err := c.loadTLSConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load TLS config: %w", err)
-		}
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
-	} else {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Loaded on every dial, so certificate files rotated on disk are picked up.
+	creds, err := TransportCredentials(c.config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS config: %w", err)
 	}
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 
 	// The ADS stream is idle between config pushes, and the client only
 	// writes after it receives a response. Without keepalive a connection
@@ -395,12 +389,31 @@ func keepaliveParams(cfg *Config) keepalive.ClientParameters {
 }
 
 func (c *Client) loadTLSConfig() (*tls.Config, error) {
-	cert, err := tls.LoadX509KeyPair(c.config.TLSCertPath, c.config.TLSKeyPath)
+	return loadTLSConfig(c.config)
+}
+
+// TransportCredentials returns the credentials a connection to the controller's policy
+// server uses: mTLS when cfg enables TLS, plaintext otherwise. The shared counter stream
+// (internal/counters) connects with the same ones as the xDS stream.
+func TransportCredentials(cfg *Config) (credentials.TransportCredentials, error) {
+	if !cfg.TLSEnabled {
+		return insecure.NewCredentials(), nil
+	}
+	tlsConfig, err := loadTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return credentials.NewTLS(tlsConfig), nil
+}
+
+// loadTLSConfig loads the client TLS configuration cfg names.
+func loadTLSConfig(cfg *Config) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load client certificate: %w", err)
 	}
 
-	caCert, err := os.ReadFile(c.config.TLSCAPath)
+	caCert, err := os.ReadFile(cfg.TLSCAPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CA certificate: %w", err)
 	}
@@ -417,11 +430,11 @@ func (c *Client) loadTLSConfig() (*tls.Config, error) {
 	// classical curves when the operator opts in via xds.tls.ecdh_curves;
 	// gateway-controller's policy xDS server falls back to a later classical
 	// entry if it doesn't support the hybrid group.
-	cipherSuites, err := config.ParseAdminCiphers(c.config.TLSCiphers)
+	cipherSuites, err := config.ParseAdminCiphers(cfg.TLSCiphers)
 	if err != nil {
 		return nil, fmt.Errorf("invalid xds.tls.ciphers: %w", err)
 	}
-	curves, err := config.ParseAdminEcdhCurves(c.config.TLSEcdhCurves)
+	curves, err := config.ParseAdminEcdhCurves(cfg.TLSEcdhCurves)
 	if err != nil {
 		return nil, fmt.Errorf("invalid xds.tls.ecdh_curves: %w", err)
 	}

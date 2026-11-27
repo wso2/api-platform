@@ -46,6 +46,7 @@ var dataMinorVersions = map[ArtifactKind]int{
 	KindLlmProxy:     0,
 	KindLlmProvider:  0,
 	KindAgent:        0,
+	KindBudget:       0,
 }
 
 // majorFromApiVersion parses "<group>/v<N>..." and returns "N" (the leading

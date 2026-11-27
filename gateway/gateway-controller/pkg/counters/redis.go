@@ -1,0 +1,284 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package counters
+
+import (
+	"context"
+	"crypto/tls"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+
+	"github.com/wso2/api-platform/gateway/common/counterproto"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+)
+
+// syncScript applies a report once and reads totals, in one round trip.
+//
+// KEYS[1] is the report marker (empty when there are no adds), KEYS[2..n+1] the
+// counters added to and KEYS[n+2..] the counters read. ARGV[1] is the retention in
+// seconds, ARGV[2] the marker's lifetime in seconds, ARGV[3] the number of adds n and
+// ARGV[4..] their deltas.
+var syncScript = redis.NewScript(`
+local n = tonumber(ARGV[3])
+if n > 0 and redis.call('SET', KEYS[1], '1', 'NX', 'EX', tonumber(ARGV[2])) then
+  for i = 1, n do
+    redis.call('INCRBYFLOAT', KEYS[1 + i], ARGV[3 + i])
+    redis.call('EXPIRE', KEYS[1 + i], tonumber(ARGV[1]))
+  end
+end
+local out = {}
+for j = n + 2, #KEYS do
+  out[#out + 1] = redis.call('GET', KEYS[j]) or '0'
+end
+return out
+`)
+
+// Redis is a Store in Redis (or Valkey), shared by every controller using it.
+//
+// Every key carries the same hash tag, so a report's keys share one cluster slot and
+// the script runs on one node.
+type Redis struct {
+	backend   redisBackend
+	prefix    string
+	retention time.Duration
+}
+
+// redisBackend is the few Redis operations the store makes, so tests can use an
+// in-memory stand-in instead of a Redis server.
+type redisBackend interface {
+	// sync runs syncScript with keys and args and returns its result.
+	sync(ctx context.Context, keys []string, args []any) ([]string, error)
+	// scan returns every key matching the SCAN pattern.
+	scan(ctx context.Context, pattern string) ([]string, error)
+	mget(ctx context.Context, keys ...string) ([]any, error)
+	unlink(ctx context.Context, keys ...string) error
+	ping(ctx context.Context) error
+	close() error
+}
+
+// goRedis is the backend on a Redis (or Valkey) server.
+type goRedis struct{ client *redis.Client }
+
+func (g goRedis) sync(ctx context.Context, keys []string, args []any) ([]string, error) {
+	return syncScript.Run(ctx, g.client, keys, args...).StringSlice()
+}
+
+func (g goRedis) scan(ctx context.Context, pattern string) ([]string, error) {
+	var keys []string
+	iter := g.client.Scan(ctx, 0, pattern, scanCount).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	return keys, iter.Err()
+}
+
+func (g goRedis) mget(ctx context.Context, keys ...string) ([]any, error) {
+	return g.client.MGet(ctx, keys...).Result()
+}
+
+func (g goRedis) unlink(ctx context.Context, keys ...string) error {
+	return g.client.Unlink(ctx, keys...).Err()
+}
+
+func (g goRedis) ping(ctx context.Context) error { return g.client.Ping(ctx).Err() }
+
+func (g goRedis) close() error { return g.client.Close() }
+
+// redisLog routes the Redis client's own messages (dial retries, pool errors) through
+// the structured logger at debug level: the failover store already logs what an operator
+// needs (Redis unreachable, back again) as JSON, and the client's plain-text lines would
+// otherwise break the JSON log.
+type redisLog struct{}
+
+func (redisLog) Printf(ctx context.Context, format string, v ...interface{}) {
+	slog.DebugContext(ctx, "redis client", slog.String("message", fmt.Sprintf(format, v...)))
+}
+
+var setRedisLog sync.Once
+
+// NewRedis connects to Redis.
+func NewRedis(cfg config.CountersRedisConfig, retention time.Duration) (*Redis, error) {
+	if retention <= 0 {
+		retention = DefaultRetention
+	}
+	opts := &redis.Options{
+		Addr:        cfg.Address,
+		Username:    cfg.Username,
+		Password:    cfg.Password,
+		DB:          cfg.DB,
+		DialTimeout: cfg.DialTimeout,
+	}
+	if cfg.TLS {
+		opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	setRedisLog.Do(func() { redis.SetLogger(redisLog{}) })
+	client := redis.NewClient(opts)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.DialTimeout+time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("connecting to the counter store at %s: %w", cfg.Address, err)
+	}
+	return newRedisWithClient(client, cfg.KeyPrefix, retention), nil
+}
+
+func newRedisWithClient(client *redis.Client, prefix string, retention time.Duration) *Redis {
+	return newRedisWithBackend(goRedis{client: client}, prefix, retention)
+}
+
+func newRedisWithBackend(backend redisBackend, prefix string, retention time.Duration) *Redis {
+	return &Redis{backend: backend, prefix: prefix, retention: retention}
+}
+
+// key is the Redis key of a counter.
+func (r *Redis) key(k counterproto.Key) string {
+	return r.prefix + "{c}:" + escape(k.Namespace) + ":" + escape(k.ID) + ":" + strconv.FormatInt(k.Window, 10)
+}
+
+// keyPartEscaper keeps a key part from running into the next.
+var keyPartEscaper = strings.NewReplacer("%", "%25", ":", "%3A")
+
+// escape keeps a key part from running into the next.
+func escape(s string) string {
+	return keyPartEscaper.Replace(s)
+}
+
+// Sync applies adds once per (source, reportID) and returns the totals of keys.
+func (r *Redis) Sync(ctx context.Context, source, reportID string, adds []counterproto.Add, keys []counterproto.Key) ([]counterproto.Total, error) {
+	marker := r.prefix + "{c}:report:" + escape(source) + ":" + escape(reportID)
+	scriptKeys := make([]string, 0, 1+len(adds)+len(keys))
+	scriptKeys = append(scriptKeys, marker)
+	args := make([]any, 0, 3+len(adds))
+	args = append(args, int64(r.retention.Seconds()), int64(appliedReportTTL.Seconds()), len(adds))
+	for _, add := range adds {
+		scriptKeys = append(scriptKeys, r.key(add.Key))
+		args = append(args, strconv.FormatFloat(add.Delta, 'f', -1, 64))
+	}
+	for _, k := range keys {
+		scriptKeys = append(scriptKeys, r.key(k))
+	}
+	raw, err := r.backend.sync(ctx, scriptKeys, args)
+	if err != nil {
+		return nil, fmt.Errorf("counter store: %w", err)
+	}
+	if len(raw) != len(keys) {
+		return nil, fmt.Errorf("counter store returned %d totals for %d keys", len(raw), len(keys))
+	}
+	totals := make([]counterproto.Total, len(keys))
+	for i, k := range keys {
+		total, err := strconv.ParseFloat(raw[i], 64)
+		if err != nil {
+			return nil, fmt.Errorf("counter store: total of %v is %q: %w", k, raw[i], err)
+		}
+		totals[i] = counterproto.Total{Key: k, Total: total}
+	}
+	return totals, nil
+}
+
+// scanCount is how many keys one SCAN step looks at.
+const scanCount = 500
+
+// globEscaper keeps a key part from acting as a SCAN pattern.
+var globEscaper = strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`, "[", `\[`, "]", `\]`)
+
+// keysWithPrefix returns the Redis keys of namespace's counters whose ID starts with
+// idPrefix. Every counter shares the {c} hash tag, so one node holds them all.
+func (r *Redis) keysWithPrefix(ctx context.Context, namespace, idPrefix string) ([]string, error) {
+	pattern := globEscaper.Replace(r.prefix+"{c}:"+escape(namespace)+":"+escape(idPrefix)) + "*"
+	keys, err := r.backend.scan(ctx, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("counter store: %w", err)
+	}
+	return keys, nil
+}
+
+// parseKey reads a counter back from its Redis key: {prefix}{c}:namespace:id:window.
+func (r *Redis) parseKey(redisKey string) (counterproto.Key, bool) {
+	rest, ok := strings.CutPrefix(redisKey, r.prefix+"{c}:")
+	if !ok {
+		return counterproto.Key{}, false
+	}
+	parts := strings.Split(rest, ":")
+	if len(parts) != 3 {
+		return counterproto.Key{}, false
+	}
+	window, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return counterproto.Key{}, false
+	}
+	return counterproto.Key{Namespace: unescape(parts[0]), ID: unescape(parts[1]), Window: window}, true
+}
+
+var keyPartUnescaper = strings.NewReplacer("%3A", ":", "%25", "%")
+
+func unescape(s string) string { return keyPartUnescaper.Replace(s) }
+
+// Totals returns the matching counters.
+func (r *Redis) Totals(ctx context.Context, namespace, idPrefix string) ([]counterproto.Total, error) {
+	keys, err := r.keysWithPrefix(ctx, namespace, idPrefix)
+	if err != nil || len(keys) == 0 {
+		return nil, err
+	}
+	values, err := r.backend.mget(ctx, keys...)
+	if err != nil {
+		return nil, fmt.Errorf("counter store: %w", err)
+	}
+	totals := make([]counterproto.Total, 0, len(keys))
+	for i, redisKey := range keys {
+		key, ok := r.parseKey(redisKey)
+		raw, isString := values[i].(string)
+		if !ok || !isString {
+			continue // expired since the scan, or not a counter
+		}
+		total, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			continue
+		}
+		totals = append(totals, counterproto.Total{Key: key, Total: total})
+	}
+	return totals, nil
+}
+
+// Delete removes the matching counters.
+func (r *Redis) Delete(ctx context.Context, namespace, idPrefix string) error {
+	keys, err := r.keysWithPrefix(ctx, namespace, idPrefix)
+	if err != nil {
+		return err
+	}
+	for len(keys) > 0 {
+		n := min(len(keys), scanCount)
+		if err := r.backend.unlink(ctx, keys[:n]...); err != nil {
+			return fmt.Errorf("counter store: %w", err)
+		}
+		keys = keys[n:]
+	}
+	return nil
+}
+
+// Ping checks Redis answers.
+func (r *Redis) Ping(ctx context.Context) error { return r.backend.ping(ctx) }
+
+// Close closes the connection.
+func (r *Redis) Close() error { return r.backend.close() }

@@ -151,6 +151,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - llmproxies
   - mcps
   - agents
+  - budgets
   - managedsecrets
   - certificates
   - apikeys
@@ -173,6 +174,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - llmproxies/finalizers
   - mcps/finalizers
   - agents/finalizers
+  - budgets/finalizers
   - managedsecrets/finalizers
   - certificates/finalizers
   - apikeys/finalizers
@@ -189,6 +191,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - llmproxies/status
   - mcps/status
   - agents/status
+  - budgets/status
   - managedsecrets/status
   - certificates/status
   - apikeys/status

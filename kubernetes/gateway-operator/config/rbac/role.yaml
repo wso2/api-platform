@@ -73,6 +73,7 @@ rules:
   - agents
   - apigateways
   - apikeys
+  - budgets
   - certificates
   - llmproviders
   - llmprovidertemplates
@@ -96,6 +97,7 @@ rules:
   - agents/finalizers
   - apigateways/finalizers
   - apikeys/finalizers
+  - budgets/finalizers
   - certificates/finalizers
   - llmproviders/finalizers
   - llmprovidertemplates/finalizers
@@ -114,6 +116,7 @@ rules:
   - apigateways/status
   - apikeys/status
   - apipolicies/status
+  - budgets/status
   - certificates/status
   - llmproviders/status
   - llmprovidertemplates/status

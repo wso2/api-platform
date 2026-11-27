@@ -19,13 +19,19 @@
 package transform
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	policyv1alpha "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // LLMTransformer transforms LLM Provider or LLM Proxy StoredConfig into RuntimeDeployConfig.
@@ -137,4 +143,108 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 		return nil
 	}
 	return meta
+}
+
+// budgetAdmittedToken is this controller's secret: the budget policy on an LLM proxy route
+// stamps the requests it evaluated with it, and the policy on the provider route they are
+// forwarded to skips them, so each request is counted once. A forged stamp does not match.
+var budgetAdmittedToken = newBudgetAdmittedToken()
+
+func newBudgetAdmittedToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("budget: generating the admitted token: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
+// budgetPlacement returns the budget policy's parameters for a route, or false when it does
+// not run there. It runs at the first hop a request enters: every LLM provider route, and
+// every LLM proxy route with one provider, which knows the caller (an agent's hidden proxy
+// carries its project-id and agent-id annotations). A proxy with several providers picks one
+// per request, after admission, so its calls are counted on the provider route instead.
+func budgetPlacement(cfg *models.StoredConfig) (map[string]interface{}, bool) {
+	if cfg == nil {
+		return nil, false
+	}
+	params := map[string]interface{}{"admittedToken": budgetAdmittedToken}
+	switch cfg.Kind {
+	case models.KindLlmProvider:
+		params["role"] = "provider"
+		return params, true
+	case models.KindLlmProxy:
+		proxy, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
+		if !ok {
+			return nil, false
+		}
+		attachments, err := models.NormaliseLLMProxyAttachments(proxy.Spec)
+		if err != nil || len(attachments) != 1 {
+			return nil, false
+		}
+		params["role"] = "proxy"
+		// The project is the route's project ID (the project-id annotation), which the
+		// policy reads from the request.
+		if annotations := cfg.GetAnnotations(); annotations != nil {
+			if v := (*annotations)[commonconstants.AnnotationAgentID]; v != "" {
+				params["agent"] = v
+			}
+		}
+		return params, true
+	}
+	return nil, false
+}
+
+// withBudgetEnforcement places the budget system policy where budgetPlacement says, the way
+// llm-cost-based-ratelimit sits: after the route's authentication, so its request-header
+// phase sees the caller, and just before the policy that prices the response, so in the
+// reverse-order response phase it reads the cost that policy published. A route that does
+// not price its responses (llm-cost or azure-llm-cost) gets llm-cost appended after it; a
+// gateway build without llm-cost gets the budget policy alone, which then charges $0.
+// withBudgets places the budget system policy on an LLM route when budgets or AI cost
+// stats are on ([ai_cost_management.budgets] / [ai_cost_management.tracking] enabled); with both off, every chain is left
+// as it is.
+func (t *RestAPITransformer) withBudgets(cfg *models.StoredConfig, chain []policyenginev1.PolicyInstance) []policyenginev1.PolicyInstance {
+	if t.systemConfig == nil || (!t.systemConfig.AICostManagement.Budgets.Enabled && !t.systemConfig.AICostManagement.Tracking.Enabled) {
+		return chain
+	}
+	return withBudgetEnforcement(cfg, chain, t.policyDefinitions, t.latestVersions, t.systemConfig.AICostManagement.Tracking.Enabled)
+}
+
+func withBudgetEnforcement(
+	cfg *models.StoredConfig,
+	chain []policyenginev1.PolicyInstance,
+	definitions map[string]models.PolicyDefinition,
+	latestVersions map[string]string,
+	costStats bool,
+) []policyenginev1.PolicyInstance {
+	params, ok := budgetPlacement(cfg)
+	if !ok {
+		return chain
+	}
+	if costStats {
+		// The policy also counts every request's cost ([ai_cost_management.tracking] enabled).
+		params["costStats"] = true
+	}
+	budget := policyenginev1.PolicyInstance{
+		Name:       constants.BUDGET_SYSTEM_POLICY_NAME,
+		Version:    constants.BUDGET_SYSTEM_POLICY_VERSION,
+		Enabled:    true,
+		Parameters: params,
+	}
+	out := make([]policyenginev1.PolicyInstance, 0, len(chain)+2)
+	for i, p := range chain {
+		if p.Name == constants.LLM_COST_POLICY_NAME || p.Name == constants.AZURE_LLM_COST_POLICY_NAME {
+			out = append(out, chain[:i]...)
+			out = append(out, budget)
+			return append(out, chain[i:]...)
+		}
+	}
+	out = append(append(out, chain...), budget)
+	if _, ok := latestVersions[constants.LLM_COST_POLICY_NAME]; !ok {
+		return out
+	}
+	cost := resolvePolicyInstances(definitions, latestVersions,
+		&[]api.Policy{{Name: constants.LLM_COST_POLICY_NAME, Version: constants.LLM_COST_POLICY_VERSION}},
+		policyv1alpha.LevelRoute)
+	return append(out, cost...)
 }

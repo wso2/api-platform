@@ -41,7 +41,28 @@ const (
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
 	KindGraphQLApi          ArtifactKind = "GraphQLApi"
+	KindBudget              ArtifactKind = "Budget"
 )
+
+// syncedResourceKinds are the kinds a gateway reports to the control plane as resources:
+// stored here like artifacts but never deployed, so they are sent with the generic
+// resource sync (the gateway's complete set per kind) and not the artifact import.
+var syncedResourceKinds = []ArtifactKind{KindBudget}
+
+// SyncedResourceKinds returns the kinds synced to the control plane as resources.
+func SyncedResourceKinds() []ArtifactKind {
+	return append([]ArtifactKind(nil), syncedResourceKinds...)
+}
+
+// IsSyncedResourceKind reports whether kind is synced as a resource, not pushed as an artifact.
+func IsSyncedResourceKind(kind string) bool {
+	for _, k := range syncedResourceKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
 
 // DesiredState represents the intended deployment state of an API configuration.
 // It reflects what the user wants (deployed or undeployed), not the runtime status.
@@ -196,6 +217,8 @@ func apiVersionOf(cfg any) string {
 	case api.AgentConfiguration:
 		return string(sc.ApiVersion)
 	case api.GraphQLAPI:
+		return string(sc.ApiVersion)
+	case api.BudgetRequest:
 		return string(sc.ApiVersion)
 	}
 	return ""

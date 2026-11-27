@@ -65,6 +65,7 @@ type EventListener struct {
 	apiKeyXDSManager      APIKeyXDSManager
 	lazyResourceManager   *lazyresourcexds.LazyResourceStateManager
 	clientAuthorities     ClientAuthorityPublisher
+	budgets               BudgetPublisher
 	certificates          certificateSnapshot
 	policyManager         *policyxds.PolicyManager
 	routerConfig          *config.RouterConfig
@@ -75,6 +76,8 @@ type EventListener struct {
 	secretResolver        funcs.SecretResolver
 	policyVersionResolver utils.PolicyVersionResolver
 	webhookSecretHandler  WebhookSecretEventHandler
+	budgetForgetter       BudgetForgetter
+	localSpend            SpendDeleter
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -91,6 +94,7 @@ func NewEventListener(
 	apiKeyXDSManager APIKeyXDSManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	clientAuthorities ClientAuthorityPublisher,
+	budgets BudgetPublisher,
 	policyManager *policyxds.PolicyManager,
 	routerConfig *config.RouterConfig,
 	logger *slog.Logger,
@@ -114,6 +118,9 @@ func NewEventListener(
 	if clientAuthorities == nil {
 		panic("event listener requires a non-nil client authority publisher")
 	}
+	if budgets == nil {
+		panic("event listener requires a non-nil budget publisher")
+	}
 	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
 	if gatewayID == "" {
 		panic("event listener requires non-empty gateway ID")
@@ -134,6 +141,7 @@ func NewEventListener(
 		apiKeyXDSManager:      apiKeyXDSManager,
 		lazyResourceManager:   lazyResourceManager,
 		clientAuthorities:     clientAuthorities,
+		budgets:               budgets,
 		certificates:          certificates,
 		policyManager:         policyManager,
 		routerConfig:          routerConfig,
@@ -152,6 +160,32 @@ func NewEventListener(
 // handler. Passing nil (the default) means webhook-secret events are ignored.
 func (l *EventListener) SetWebhookSecretHandler(h WebhookSecretEventHandler) {
 	l.webhookSecretHandler = h
+}
+
+// BudgetForgetter drops what this replica keeps for a deleted budget: the usage totals it
+// reports to the control plane and the usages' labels.
+type BudgetForgetter interface {
+	Forget(budget string)
+}
+
+// SetBudgetForgetter makes budget deletes made on any replica drop this replica's usage
+// totals for the budget, so a budget made again under its name is not sent the old ones
+// (on this replica's next reconnect). Call before Start; nil (the default) forgets nothing.
+func (l *EventListener) SetBudgetForgetter(f BudgetForgetter) {
+	l.budgetForgetter = f
+}
+
+// SpendDeleter deletes counters by ID prefix (counters.Store).
+type SpendDeleter interface {
+	Delete(ctx context.Context, namespace, idPrefix string) error
+}
+
+// SetLocalSpend makes a budget deleted on another replica clear its spend in this
+// replica's own counter store. Only for counters kept in memory: each replica then holds
+// its own copy, which the deleting replica cannot reach. Not for a shared store (Redis),
+// which the deleting replica has cleared already. Call before Start.
+func (l *EventListener) SetLocalSpend(s SpendDeleter) {
+	l.localSpend = s
 }
 
 // Start begins listening for events
@@ -252,6 +286,8 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processMCPProxyEvent(event)
 	case eventhub.EventTypeAgent:
 		l.processAgentEvent(event)
+	case eventhub.EventTypeBudget:
+		l.processBudgetEvent(event)
 	case eventhub.EventTypeWebhookSecret:
 		if l.webhookSecretHandler != nil {
 			l.webhookSecretHandler.HandleEvent(event)

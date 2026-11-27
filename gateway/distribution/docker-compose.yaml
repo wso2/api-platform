@@ -34,6 +34,8 @@ services:
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
+      # The same price file the runtime reads: posted to the control plane after each connect when cost tracking or budgets are on
+      - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
       - ./resources/certificates:/app/certificates
       - ./resources/listener-certs:/app/listener-certs:ro
       - ./resources/aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro

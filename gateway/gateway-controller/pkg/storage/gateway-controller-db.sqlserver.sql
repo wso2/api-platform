@@ -1,5 +1,5 @@
 -- SQL Server Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 --
 -- Portable counterpart of gateway-controller-db.postgres.sql. Type mapping:
 --   TEXT (keyed)      -> NVARCHAR(64)/NVARCHAR(255)  (NVARCHAR(MAX) cannot be indexed;
@@ -126,6 +126,16 @@ CREATE TABLE dbo.agents (
 -- supplemental-DDL module.
 IF OBJECT_ID(N'dbo.graphql_apis', N'U') IS NULL
 CREATE TABLE dbo.graphql_apis (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- Budgets: the Budget kind as JSON (artifacts row of kind 'Budget') (added in schema version 7)
+IF OBJECT_ID(N'dbo.budgets', N'U') IS NULL
+CREATE TABLE dbo.budgets (
     uuid NVARCHAR(64) NOT NULL,
     gateway_id NVARCHAR(64) NOT NULL,
     configuration NVARCHAR(MAX) NOT NULL,

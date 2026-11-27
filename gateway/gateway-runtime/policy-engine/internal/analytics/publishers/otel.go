@@ -928,6 +928,20 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 	attrs.anyBool(ns("gen_ai.egress"), event.Properties["isEgress"])
 	attrs.anyBool(ns("guardrail.hit"), event.Properties[constants.GuardrailHitMetadataKey])
 	attrs.anyStr(ns("guardrail.name"), event.Properties[constants.GuardrailNameMetadataKey])
+
+	if budget, ok := event.Properties[constants.BudgetPropertyKey].(map[string]interface{}); ok {
+		// The same budget fields as Moesif's metadata.budget.*.
+		for _, key := range []string{"names", "limits", "blocked"} {
+			if values, ok := budget[key].([]string); ok {
+				attrs.strs(ns("budget."+key), values)
+			}
+		}
+		attrs.anyStr(ns("budget.cost_status"), budget["costStatus"])
+		if cost, ok := budget["costUsd"].(float64); ok {
+			attrs.f64(ns("budget.cost_usd"), cost)
+		}
+		attrs.anyStr(ns("budget.agent"), budget["agent"])
+	}
 }
 
 // appendMCPAttributes flattens Properties["mcpAnalytics"] onto MCP conventions.

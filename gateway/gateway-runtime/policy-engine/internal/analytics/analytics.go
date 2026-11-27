@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -129,6 +130,9 @@ type Analytics struct {
 	// a miss, falling back to decoding headers from the access-log entry's own
 	// metadata, so every existing caller keeps working unchanged.
 	correlationStore *correlation.Store
+	// loopback holds what an LLM proxy call's suppressed provider hop carried (budget,
+	// cost) until the proxy's own event for the same request takes it.
+	loopback *loopbackCarryover
 }
 
 // SetCorrelationStore wires the ext_proc↔ALS correlation store into this
@@ -197,6 +201,7 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 	return &Analytics{
 		cfg:        cfg,
 		publishers: publishers,
+		loopback:   newLoopbackCarryover(),
 	}
 }
 
@@ -233,8 +238,10 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 			"apiType", apiType,
 			"correlationId", correlationID,
 		)
+		c.loopback.keep(event.GetRequest().GetRequestId(), analyticEvent)
 		return
 	}
+	c.loopback.apply(event.GetRequest().GetRequestId(), analyticEvent)
 
 	for _, publisher := range c.publishers {
 		publisher.Publish(analyticEvent)
@@ -601,6 +608,12 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 	if guardrailName, exists := keyValuePairsFromMetadata[constants.GuardrailNameMetadataKey]; exists && guardrailName != "" {
 		event.Properties[constants.GuardrailNameMetadataKey] = guardrailName
+	}
+
+	// Forward the budget system policy's properties: the budgets the request counted
+	// against (handles only, never usage values) and how it was priced.
+	if budget := budgetProperty(typedValuePairsFromMetadata); budget != nil {
+		event.Properties[constants.BudgetPropertyKey] = budget
 	}
 
 	// Only a POST invokes a model. Reading a stored result back (GET /responses/{id}) returns
@@ -1191,4 +1204,64 @@ func (c *Analytics) getAnonymousApp() *dto.Application {
 	application.KeyType = anonymousValue
 	application.ApplicationOwner = anonymousValue
 	return application
+}
+
+// budgetProperty builds the event's "budget" property from the budget system policy's
+// analytics metadata, each only when set: names (the budgets the request counted
+// against), limits ("name ($50.00/month)" per budget), blocked (the budgets that refused
+// it), costUsd (the cost charged, a number), agent ("project/agent") and costStatus. It
+// returns nil when the policy left none of them.
+func budgetProperty(values map[string]interface{}) map[string]interface{} {
+	budget := map[string]interface{}{}
+	for key, prop := range map[string]string{
+		constants.BudgetNamesMetadataKey:   "names",
+		constants.BudgetLimitsMetadataKey:  "limits",
+		constants.BudgetBlockedMetadataKey: "blocked",
+	} {
+		if list := stringList(values[key]); len(list) > 0 {
+			budget[prop] = list
+		}
+	}
+	for key, prop := range map[string]string{
+		constants.BudgetCostStatusMetadataKey: "costStatus",
+		constants.BudgetAgentMetadataKey:      "agent",
+	} {
+		if v, ok := values[key].(string); ok && v != "" {
+			budget[prop] = v
+		}
+	}
+	// Rounded to a millionth of a dollar, so dashboards sum readable amounts.
+	switch cost := values[constants.BudgetCostUSDMetadataKey].(type) {
+	case float64:
+		budget["costUsd"] = math.Round(cost*1e6) / 1e6
+	case string:
+		if parsed, err := strconv.ParseFloat(cost, 64); err == nil {
+			budget["costUsd"] = math.Round(parsed*1e6) / 1e6
+		}
+	}
+	if len(budget) == 0 {
+		return nil
+	}
+	return budget
+}
+
+// stringList reads a list of strings the policy wrote: a list, or a comma-joined string.
+func stringList(v interface{}) []string {
+	switch items := v.(type) {
+	case []interface{}:
+		list := make([]string, 0, len(items))
+		for _, item := range items {
+			if s, ok := item.(string); ok && s != "" {
+				list = append(list, s)
+			}
+		}
+		return list
+	case []string:
+		return items
+	case string:
+		if items != "" {
+			return strings.Split(items, ",")
+		}
+	}
+	return nil
 }

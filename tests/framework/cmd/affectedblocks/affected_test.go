@@ -216,7 +216,7 @@ func TestRealSuite(t *testing.T) {
 }
 
 // helperComponents are the components a block starts only to serve the products under test.
-var helperComponents = []string{"testbench", "tls-backend", "a2a-trip-planner"}
+var helperComponents = []string{"testbench", "tls-backend", "a2a-trip-planner", "redis"}
 
 // Every component a block starts belongs to a product in productPaths or is a helper. A new
 // name for an existing product (another API Portal variant, say) must join that product, or

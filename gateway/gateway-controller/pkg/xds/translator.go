@@ -459,6 +459,13 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		t.stripClientCertificateHeaders(r)
 	}
 
+	// The budget stamp from an LLM proxy route ends at the provider route: Envoy drops it
+	// after the policy engine has read it, so it never reaches the LLM provider, even if
+	// the policy did not run. A proxy route keeps it for the provider route it calls.
+	if chainCountsBudgetsAsProvider(rdc.PolicyChains[routeKey]) {
+		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.BudgetAdmittedHeader)
+	}
+
 	// Build the request matchers (shared with direct-response routes so both kinds of
 	// route match identical requests).
 	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
@@ -3051,6 +3058,20 @@ func (t *Translator) stripClientCertificateHeaders(r *route.Route) {
 
 // chainAttachesMTLSAuth reports whether a route's policy chain contains
 // mtls-auth. A nil chain does not.
+// chainCountsBudgetsAsProvider reports whether a route's chain holds the budget system
+// policy in its provider role: the route an LLM provider is called from.
+func chainCountsBudgetsAsProvider(chain *models.PolicyChain) bool {
+	if chain == nil {
+		return false
+	}
+	for _, p := range chain.Policies {
+		if p.Name == constants.BUDGET_SYSTEM_POLICY_NAME && p.Params["role"] == "provider" {
+			return true
+		}
+	}
+	return false
+}
+
 func chainAttachesMTLSAuth(chain *models.PolicyChain) bool {
 	if chain == nil {
 		return false

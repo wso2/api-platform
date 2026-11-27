@@ -262,7 +262,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			}
 
 			// Build policy chain: API-level + operation-level + system policies
-			chain := t.buildPolicyChain(apiPolicies, op.Policies)
+			chain := t.withBudgets(cfg, t.buildPolicyChain(apiPolicies, op.Policies))
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 			routeChain := sdkChainToModel(injected)
 			// Fault policies: this operation's entries then the API's, which is the order

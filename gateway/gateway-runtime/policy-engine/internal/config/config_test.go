@@ -2690,3 +2690,29 @@ func TestValidate_HealthConfigWarnsWhenPythonExecutorTimeoutReachesProbeTimeout(
 		})
 	}
 }
+
+// The policy engine reads the shared [counters] section: how long it keeps syncing an idle
+// counter. The controller's keys there (retention, redis) are ignored.
+func TestLoad_CountersSection(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	configContent := `
+[counters]
+retention = "48h"
+idle_timeout = "5m"
+
+[counters.redis]
+enabled = true
+address = "redis:6379"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, cfg.Counters.IdleTimeout)
+
+	empty := filepath.Join(t.TempDir(), "empty.toml")
+	require.NoError(t, os.WriteFile(empty, nil, 0644))
+	defaults, err := Load(empty)
+	require.NoError(t, err)
+	assert.Equal(t, 10*time.Minute, defaults.Counters.IdleTimeout)
+}

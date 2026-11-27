@@ -3922,6 +3922,291 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /budgets:
+    post:
+      summary: Create a budget
+      description: Add a budget (a spend limit on LLM traffic) to the Gateway.
+      operationId: createBudget
+      x-basicauth-roles: [admin]
+      tags:
+        - AI Cost Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+      responses:
+        '201':
+          description: Budget created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - a budget with the same name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List budgets
+      description: List the budgets on the Gateway, active and inactive.
+      operationId: listBudgets
+      x-basicauth-roles: [admin]
+      tags:
+        - AI Cost Management
+      responses:
+        '200':
+          description: List of budgets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 1
+                  budgets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Budget'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /budgets/{id}:
+    get:
+      summary: Get a budget
+      description: Get a budget by its name.
+      operationId: getBudget
+      x-basicauth-roles: [admin]
+      tags:
+        - AI Cost Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The budget's name (metadata.name)
+          schema:
+            type: string
+          example: research-team-monthly
+      responses:
+        '200':
+          description: Budget details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/Budget'
+        '404':
+          description: Budget not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update a budget
+      description: >-
+        Update a budget. Only spec.status, spec.limit.amount, spec.limit.action,
+        spec.limit.blockAt and spec.exemptions can change; every other field must
+        match the stored budget. To change the period, splitBy or filters,
+        create a new budget. Budgets from the control plane cannot be changed here.
+      operationId: updateBudget
+      x-basicauth-roles: [admin]
+      tags:
+        - AI Cost Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The budget's name (metadata.name)
+          schema:
+            type: string
+          example: research-team-monthly
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+      responses:
+        '200':
+          description: Budget updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+        '400':
+          description: Invalid configuration, or a field that cannot change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Budget not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - the budget comes from the control plane and is read-only here
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete a budget
+      description: Delete a budget from the Gateway. Budgets from the control plane cannot be deleted here.
+      operationId: deleteBudget
+      x-basicauth-roles: [admin]
+      tags:
+        - AI Cost Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The budget's name (metadata.name)
+          schema:
+            type: string
+          example: research-team-monthly
+      responses:
+        '200':
+          description: Budget deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Budget deleted successfully
+                  id:
+                    type: string
+                    example: research-team-monthly
+        '404':
+          description: Budget not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - the budget comes from the control plane and is read-only here
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /budgets/{id}/usage:
+    get:
+      summary: List a budget's usage
+      description: >-
+        The budget's spend in the current period, one row per usage, highest spend
+        first: the same as the control plane's budget usage. Totals include every gateway
+        sharing the counter store; an usage's values are known once this gateway has
+        served it, and are empty otherwise (and for a shared usage).
+      operationId: getBudgetUsage
+      x-basicauth-roles: [admin]
+      tags:
+        - AI Cost Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The budget's name (metadata.name)
+          schema:
+            type: string
+          example: research-team-monthly
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: The budget's usage this period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetUsageListResponse'
+        '400':
+          description: Invalid limit or offset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Budget not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /health:
     get:
       summary: Liveness check
@@ -6209,6 +6494,366 @@ components:
           description: Human-readable error message
           example: Context must start with / and cannot end with /
 
+    BudgetRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Budget specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: Budget kind
+          example: Budget
+          enum:
+            - Budget
+        metadata:
+          $ref: '#/components/schemas/BudgetMetadata'
+        spec:
+          $ref: '#/components/schemas/BudgetSpec'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: Budget
+        metadata:
+          name: research-team-monthly
+        spec:
+          limit:
+            amount: "500.00"
+            period: month
+            action: block
+            blockAt: 95
+          filters:
+            - type: llmProvider
+              id: openai
+            - type: attribute
+              expression: "'research' in request.Auth.Claims[\"groups\"]"
+
+    Budget:
+      allOf:
+        - $ref: '#/components/schemas/BudgetRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/BudgetStatus'
+
+    BudgetStatus:
+      type: object
+      description: >-
+        Server-managed information for a budget. A budget is not deployed or undeployed:
+        spec.status says whether it is enforced, so there is no state or deployedAt.
+      properties:
+        id:
+          type: string
+          description: Unique identifier assigned by the server (equal to metadata.name)
+          example: team-daily
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the budget was first created (UTC)
+          example: 2026-04-24T07:21:13Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the budget was last updated (UTC)
+          example: 2026-04-24T07:21:13Z
+        currentPeriod:
+          $ref: '#/components/schemas/BudgetCurrentPeriod'
+
+    BudgetCurrentPeriod:
+      type: object
+      description: >-
+        Spend in the current period, as the control plane shows it: totals include every
+        gateway sharing the counter store.
+      required: [periodStart, spent, unpricedRequests]
+      properties:
+        periodStart:
+          type: string
+          format: date
+          example: "2026-11-01"
+        spent:
+          type: string
+          description: USD, total across the budget's usages
+          example: "312.4"
+        unpricedRequests:
+          type: integer
+          format: int64
+          description: Requests charged $0 this period because they had no price
+
+    BudgetUsageListResponse:
+      type: object
+      description: A page of a budget's usage, one row per usage, in the current period
+      required: [periodStart, usages, total, limit, offset]
+      properties:
+        periodStart:
+          type: string
+          format: date
+        usages:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetUsageEntry'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    BudgetUsageEntry:
+      type: object
+      description: One usage's spend this period
+      required: [usage, spent, unpricedRequests]
+      properties:
+        usage:
+          type: object
+          description: >-
+            The allocated values, e.g. {"apiKey":"team-red"}; empty when shared, or when this
+            gateway has not served the usage
+          additionalProperties:
+            type: string
+        spent:
+          type: string
+          description: USD
+          example: "104.21"
+        unpricedRequests:
+          type: integer
+          format: int64
+
+    BudgetMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+          example: research-team-monthly
+        labels:
+          type: array
+          description: >-
+            One-word labels to organize and find budgets. Not used to enforce; kept with the
+            budget and pushed to the control plane with it. At most 10, no repeats; each 1-63
+            characters of letters, digits, '.', '_' or '-', starting and ending with a letter or
+            digit (no spaces).
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 63
+            pattern: '^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'
+        annotations:
+          type: object
+          description: >-
+            Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id
+            sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one.
+            gateway.api-platform.wso2.com/project-id names the project that owns the budget in the
+            control plane; without it, the organization owns it. A project budget counts only that project:
+            when its filters have no project filter, {type: project, id} is added as the last filter.
+            It exempts only that project's agents and cannot be split by project.
+          additionalProperties:
+            type: string
+
+    BudgetSpec:
+      type: object
+      additionalProperties: false
+      required:
+        - limit
+      properties:
+        status:
+          type: string
+          description: An inactive budget is kept but matches no traffic.
+          enum:
+            - active
+            - inactive
+          default: active
+        limit:
+          $ref: '#/components/schemas/BudgetLimit'
+        filters:
+          type: array
+          description: Which LLM usage the budget counts. Filters of different types must all match (AND); several of one type are alternatives (OR). Empty means all LLM usage.
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/BudgetFilter'
+        exemptions:
+          type: array
+          description: Matching traffic is left out of this budget.
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BudgetExemption'
+        displayName:
+          type: string
+          description: >-
+            Accepted for compatibility with the control plane's Budget; ignored by the
+            gateway (not validated, stored or returned).
+        description:
+          type: string
+          description: >-
+            Accepted for compatibility with the control plane's Budget; ignored by the
+            gateway (not validated, stored or returned).
+        warnings:
+          type: object
+          description: >-
+            Accepted for compatibility with the control plane's Budget, which sends its
+            warnings to notification channels; ignored by the gateway (not validated,
+            stored or returned).
+          properties:
+            thresholds:
+              type: array
+              items:
+                type: integer
+            channels:
+              type: array
+              items:
+                type: string
+
+    BudgetLimit:
+      type: object
+      additionalProperties: false
+      required:
+        - amount
+        - period
+        - action
+      properties:
+        amount:
+          type: string
+          description: A positive amount with up to 2 decimal places, such as "100.00".
+          pattern: '^([1-9][0-9]{0,11}(\.[0-9]{1,2})?|0\.([1-9][0-9]?|0[1-9]))$'
+          example: "100.00"
+        period:
+          type: string
+          description: UTC calendar day, ISO week starting Monday, or calendar month.
+          enum:
+            - day
+            - week
+            - month
+        action:
+          type: string
+          description: block refuses requests at the block point; allow only counts.
+          enum:
+            - block
+            - allow
+        blockAt:
+          type: integer
+          description: Percentage of the amount at which a block budget refuses requests.
+          minimum: 1
+          maximum: 100
+          default: 100
+        splitBy:
+          $ref: '#/components/schemas/BudgetSplit'
+
+    BudgetSplit:
+      type: object
+      description: >-
+        Gives each value of the type its own limit: each LLM provider, project, agent or API key,
+        or each value of an attribute expression. Omitted means one shared limit for all matching usage.
+      additionalProperties: false
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - llmProvider
+            - project
+            - agent
+            - apiKey
+            - attribute
+        expression:
+          type: string
+          description: attribute only. CEL over the request returning a string or a list of strings.
+          minLength: 1
+          maxLength: 1024
+
+    BudgetFilter:
+      type: object
+      description: >-
+        One condition on the LLM usage the budget counts. Filters of different types combine with
+        AND; several filters of the same type (not attribute) are alternatives, combined with OR:
+        two project filters count the usage of either project. List a type either once without
+        an id (any value), or once per value it is limited to, never both and never the same
+        value twice; a type with named values cannot be the split. Each attribute filter is its
+        own condition, and all of them must hold (write OR inside the expression). llmProvider is
+        the LLM provider handle; project and agent are the project and agent of an agent's LLM proxy
+        (its gateway.api-platform.wso2.com/project-id and agent-id annotations); apiKey is the
+        name of the API key the request authenticated with; attribute is a CEL condition over the
+        request (token claims). A project, agent or apiKey filter without an id matches any one:
+        requests that carry that value at all (an agent filter without an id leaves out requests
+        sent straight to a provider).
+      additionalProperties: false
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - llmProvider
+            - project
+            - agent
+            - apiKey
+            - attribute
+        id:
+          type: string
+          description: >-
+            The LLM provider, project, agent or API key name. Required for llmProvider; omitted
+            for project, agent or apiKey means any one. Not for an attribute.
+          minLength: 1
+          maxLength: 253
+        project:
+          type: string
+          description: >-
+            agent only, with id: the agent's project; agent names are unique only per project.
+            Omit both for any agent.
+          minLength: 1
+        expression:
+          type: string
+          description: attribute only. CEL condition over the request, returning bool.
+          minLength: 1
+          maxLength: 1024
+
+    BudgetExemption:
+      type: object
+      description: >-
+        Traffic left out of the budget: an attribute condition (expression), a project (id),
+        an LLM provider or an API key (id), or an agent (id and its project).
+      additionalProperties: false
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - attribute
+            - project
+            - agent
+            - llmProvider
+            - apiKey
+        expression:
+          type: string
+          description: attribute only. CEL condition over the request.
+          minLength: 1
+          maxLength: 1024
+        id:
+          type: string
+          description: The project, agent or LLM provider name.
+          minLength: 1
+        project:
+          type: string
+          description: agent only. The agent's project.
+          minLength: 1
+
     LLMProviderTemplateRequest:
       type: object
       required:
@@ -7824,5 +8469,7 @@ tags:
     description: CRUD operations for LLM Proxy configurations
   - name: Secrets Management
     description: CRUD operations for Secrets
+  - name: AI Cost Management
+    description: Budgets (spend limits on LLM traffic)
   - name: System
     description: Health and readiness of the gateway controller

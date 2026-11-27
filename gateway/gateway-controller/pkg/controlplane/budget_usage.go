@@ -1,0 +1,431 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package controlplane
+
+import (
+	"encoding/json"
+	"log/slog"
+	"maps"
+	"sync"
+	"time"
+
+	"github.com/wso2/api-platform/common/budgetspend"
+	"github.com/wso2/api-platform/gateway/common/counterproto"
+)
+
+// Budget spend reaches the control plane the way deployment acknowledgements do: a
+// usage message on the control-plane connection. The budget system
+// policy labels each usage's counters with the budget and the allocated values;
+// the counter stream tells BudgetUsageReporter of every applied report, and it sends the
+// changed totals at once. Totals that change while a message is being sent go in the
+// next one, so messages never pile up. On every (re)connect it sends every current total
+// again (a snapshot), so totals lost with a connection or a control-plane replica reach
+// the control plane. Totals are running totals: a repeated or lost message is harmless.
+
+// Counter namespaces the budget system policy charges: budget spend, and the AI cost
+// stats ([ai_cost_management.tracking]), which count every request's cost by its values.
+const (
+	usageNamespaceSpend    = budgetspend.NamespaceSpend
+	usageNamespaceUnpriced = budgetspend.NamespaceUnpriced
+	usageLabelBudget       = "budget"
+
+	usageNamespaceCost                 = budgetspend.NamespaceCost
+	usageNamespaceCostMissingPrice     = budgetspend.NamespaceCostMissingPrice
+	usageNamespaceCostUsageUnavailable = budgetspend.NamespaceCostUsageUnavailable
+)
+
+// Kinds of usage entries.
+// usageMessageType is the type of the usage message, as the control plane takes it.
+const usageMessageType = "budget.usage"
+
+const (
+	usageKindUsage = "usage"
+	usageKindCost  = "cost"
+)
+
+const (
+	// usageRetryInterval is how soon totals a failed send left unsent are tried again.
+	usageRetryInterval = 5 * time.Second
+	// usageMaxPerMessage bounds one usage message.
+	usageMaxPerMessage = 500
+)
+
+// BudgetUsageMessage is the usage message.
+type BudgetUsageMessage struct {
+	Type    string             `json:"type"`
+	Payload BudgetUsagePayload `json:"payload"`
+}
+
+// BudgetUsagePayload carries usage totals and cost totals.
+type BudgetUsagePayload struct {
+	Usages []UsageEntry `json:"usages,omitempty"`
+	Costs  []CostUsage  `json:"costs,omitempty"`
+}
+
+// CostUsage is what one combination of values cost in one month, across every gateway
+// sharing the counter store. The control plane keeps the higher totals.
+type CostUsage struct {
+	// Month is the month's first day, UTC.
+	Month string `json:"month"`
+	// CostKey keys the combination; the other fields are its values, empty when unknown.
+	CostKey     string `json:"costKey"`
+	Project     string `json:"project,omitempty"`
+	Agent       string `json:"agent,omitempty"`
+	APIKey      string `json:"apiKey,omitempty"`
+	User        string `json:"user,omitempty"`
+	LLMProvider string `json:"llmProvider"`
+	Model       string `json:"model,omitempty"`
+	Cost        string `json:"cost"`
+	// MissingPriceRequests and UsageUnavailableRequests count requests charged $0 because
+	// the model had no price, or the response reported no token usage.
+	MissingPriceRequests     int64 `json:"missingPriceRequests"`
+	UsageUnavailableRequests int64 `json:"usageUnavailableRequests"`
+}
+
+// UsageEntry is one usage's total in one period, across every gateway sharing
+// the counter store. The control plane keeps the higher total.
+type UsageEntry struct {
+	// Budget is the budget's name; spend is keyed by name on every gateway.
+	Budget string `json:"budget"`
+	// PeriodStart is the period's first day, UTC.
+	PeriodStart string `json:"periodStart"`
+	// UsageUUID keys the usage; Usage holds the values it is separated by.
+	UsageUUID string            `json:"usageUuid"`
+	Usage     map[string]string `json:"usage"`
+	Spent     string            `json:"spent"`
+	// UnpricedRequests counts the usage's requests charged $0, for any reason; a cost
+	// entry splits the same kind of count by reason (MissingPriceRequests,
+	// UsageUnavailableRequests).
+	UnpricedRequests int64 `json:"unpricedRequests"`
+}
+
+// usageKey names one usage in one period, or one cost combination in one month.
+type usageKey struct {
+	kind   string
+	usage  string
+	window int64
+}
+
+type usageEntry struct {
+	budget   string
+	usage    map[string]string // an usage's values, or a cost combination's
+	spent    float64
+	unpriced float64
+	// missingPrice and usageUnavailable count a cost combination's requests charged $0.
+	missingPrice     float64
+	usageUnavailable float64
+	writtenAt        time.Time
+	dirty            bool
+}
+
+// usageKindOf returns the kind of entry a counter namespace feeds, or "" for others.
+func usageKindOf(namespace string) string {
+	switch namespace {
+	case usageNamespaceSpend, usageNamespaceUnpriced:
+		return usageKindUsage
+	case usageNamespaceCost, usageNamespaceCostMissingPrice, usageNamespaceCostUsageUnavailable:
+		return usageKindCost
+	}
+	return ""
+}
+
+// BudgetUsageReporter collects usage totals from the counter stream and sends them
+// to the control plane. It implements counters.Observer.
+type BudgetUsageReporter struct {
+	mu      sync.Mutex
+	entries map[usageKey]*usageEntry
+	// sending is set once run starts: without a control plane nothing is sent, so no
+	// entries are kept for it.
+	sending bool
+	// labels are each usage counter's budget and values, kept while its window can
+	// still be current, so the gateway's budget usage can name usages.
+	labels    map[string]*usageLabels
+	lastPrune time.Time
+	// lastEntryPrune is when old totals were last forgotten.
+	lastEntryPrune time.Time
+	// resyncs counts Resync calls: a send that started before one must not clear what it
+	// marked, since the snapshot is meant for the new connection.
+	resyncs uint64
+	// wake tells run that totals changed; one pending signal is enough.
+	wake   chan struct{}
+	now    func() time.Time
+	logger *slog.Logger
+}
+
+type usageLabels struct {
+	budget string
+	values map[string]string
+	window int64 // the latest window it was labelled in
+}
+
+// labelsKeptFor is how long after its window starts an usage's labels are kept, as
+// policy engines keep an idle counter's total.
+const labelsKeptFor = 32 * 24 * time.Hour
+
+// NewBudgetUsageReporter returns an empty reporter.
+func NewBudgetUsageReporter(logger *slog.Logger) *BudgetUsageReporter {
+	return &BudgetUsageReporter{
+		entries: map[usageKey]*usageEntry{}, labels: map[string]*usageLabels{},
+		wake: make(chan struct{}, 1), now: time.Now, logger: logger,
+	}
+}
+
+// Observe records the totals of budget usages: an usage is known once an add
+// labels it, and its totals are taken from every later report, including spend from
+// other gateways sharing the store.
+func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterproto.Total) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, add := range adds {
+		kind := usageKindOf(add.Key.Namespace)
+		if kind == "" || len(add.Labels) == 0 || (kind == usageKindUsage && add.Labels[usageLabelBudget] == "") {
+			continue
+		}
+		if kind == usageKindUsage {
+			r.label(add)
+		}
+		if !r.sending {
+			continue
+		}
+		key := usageKey{kind, add.Key.ID, add.Key.Window}
+		e := r.entries[key]
+		if e == nil {
+			e = &usageEntry{}
+			r.entries[key] = e
+		}
+		e.usage = maps.Clone(add.Labels)
+		if kind == usageKindUsage {
+			e.budget = add.Labels[usageLabelBudget]
+			delete(e.usage, usageLabelBudget)
+		}
+	}
+	now, changed := r.now(), false
+	for _, t := range totals {
+		kind := usageKindOf(t.Key.Namespace)
+		if kind == "" {
+			continue
+		}
+		e := r.entries[usageKey{kind, t.Key.ID, t.Key.Window}]
+		if e == nil {
+			continue
+		}
+		field := &e.spent
+		switch t.Key.Namespace {
+		case usageNamespaceUnpriced:
+			field = &e.unpriced
+		case usageNamespaceCostMissingPrice:
+			field = &e.missingPrice
+		case usageNamespaceCostUsageUnavailable:
+			field = &e.usageUnavailable
+		}
+		if t.Total != *field {
+			*field = t.Total
+			e.dirty, e.writtenAt = true, now
+			changed = true
+		}
+	}
+	r.pruneEntries(now)
+	if changed {
+		r.signal()
+	}
+}
+
+// signal wakes run without blocking; a signal already pending covers this one.
+func (r *BudgetUsageReporter) signal() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+}
+
+// Resync marks every kept total for sending, so the next message is a snapshot of them.
+// The client calls it on every (re)connect.
+func (r *BudgetUsageReporter) Resync() {
+	r.mu.Lock()
+	for _, e := range r.entries {
+		e.dirty = true
+	}
+	r.resyncs++
+	r.mu.Unlock()
+	r.signal()
+}
+
+// pruneEntries forgets, once an hour, sent totals whose window started longer ago than a
+// period can last, as for labels. Callers hold mu.
+func (r *BudgetUsageReporter) pruneEntries(now time.Time) {
+	if now.Sub(r.lastEntryPrune) < time.Hour {
+		return
+	}
+	r.lastEntryPrune = now
+	for key, e := range r.entries {
+		if !e.dirty && now.Sub(time.Unix(key.window, 0)) > labelsKeptFor {
+			delete(r.entries, key)
+		}
+	}
+}
+
+// run sends changed totals as soon as they change, until done is closed. One send at a
+// time: totals that change meanwhile go in the next message. send fails while the
+// control plane is not connected; the totals stay marked, are retried every few seconds
+// and are sent in full on the next connect.
+func (r *BudgetUsageReporter) run(done <-chan struct{}, send func([]byte) error) {
+	r.mu.Lock()
+	r.sending = true
+	r.mu.Unlock()
+	retry := time.NewTicker(usageRetryInterval)
+	defer retry.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-r.wake:
+		case <-retry.C:
+		}
+		r.flush(send)
+	}
+}
+
+// flush sends the changed totals; on failure they stay marked and are sent later.
+func (r *BudgetUsageReporter) flush(send func([]byte) error) {
+	type pending struct {
+		key  usageKey
+		sent usageEntry
+	}
+	r.mu.Lock()
+	resyncs := r.resyncs
+	var batch []pending
+	for key, e := range r.entries {
+		if e.dirty {
+			batch = append(batch, pending{key: key, sent: *e})
+		}
+	}
+	r.mu.Unlock()
+
+	for start := 0; start < len(batch); start += usageMaxPerMessage {
+		end := min(start+usageMaxPerMessage, len(batch))
+		var payload BudgetUsagePayload
+		for _, p := range batch[start:end] {
+			e, day := p.sent, time.Unix(p.key.window, 0).UTC().Format(time.DateOnly)
+			if p.key.kind == usageKindCost {
+				payload.Costs = append(payload.Costs, CostUsage{
+					Month: day, CostKey: p.key.usage,
+					Project: e.usage["project"], Agent: e.usage["agent"], APIKey: e.usage["apiKey"],
+					User: e.usage["user"], LLMProvider: e.usage["llmProvider"], Model: e.usage["model"],
+					Cost: budgetspend.FormatUSD(e.spent), MissingPriceRequests: int64(e.missingPrice),
+					UsageUnavailableRequests: int64(e.usageUnavailable),
+				})
+				continue
+			}
+			payload.Usages = append(payload.Usages, UsageEntry{
+				Budget: e.budget, PeriodStart: day, UsageUUID: budgetspend.Usage(p.key.usage),
+				Usage: maps.Clone(e.usage), Spent: budgetspend.FormatUSD(e.spent), UnpricedRequests: int64(e.unpriced),
+			})
+		}
+		data, err := json.Marshal(BudgetUsageMessage{Type: usageMessageType, Payload: payload})
+		if err != nil {
+			r.logger.Error("Failed to encode usage", slog.Any("error", err))
+			return
+		}
+		if err := send(data); err != nil {
+			r.logger.Debug("Usage not sent; will retry", slog.Any("error", err))
+			return
+		}
+		r.mu.Lock()
+		if r.resyncs != resyncs {
+			// A (re)connect happened while sending: what was sent may be lost with the old
+			// connection, so everything stays marked for the snapshot.
+			r.mu.Unlock()
+			return
+		}
+		for _, p := range batch[start:end] {
+			// A total that changed while sending is still marked.
+			if e := r.entries[p.key]; e != nil && e.spent == p.sent.spent && e.unpriced == p.sent.unpriced &&
+				e.missingPrice == p.sent.missingPrice && e.usageUnavailable == p.sent.usageUnavailable {
+				e.dirty = false
+			}
+		}
+		r.mu.Unlock()
+	}
+}
+
+// SetBudgetUsageReporter makes the client send budget spend to the control plane. Call
+// before Start.
+func (c *Client) SetBudgetUsageReporter(r *BudgetUsageReporter) {
+	c.budgetUsage = r
+}
+
+// sendBudgetUsage sends a usage message; only Agent Manager control planes take it.
+func (c *Client) sendBudgetUsage(data []byte) error {
+	if c.IsOnPrem() {
+		return nil
+	}
+	return c.sendMessage(data)
+}
+
+// label keeps an usage counter's budget and values. Callers hold mu.
+func (r *BudgetUsageReporter) label(add counterproto.Add) {
+	values := maps.Clone(add.Labels)
+	budget := values[usageLabelBudget]
+	delete(values, usageLabelBudget)
+	if l := r.labels[add.Key.ID]; l != nil && l.window > add.Key.Window {
+		return
+	}
+	r.labels[add.Key.ID] = &usageLabels{budget: budget, values: values, window: add.Key.Window}
+	now := r.now()
+	if now.Sub(r.lastPrune) < time.Hour {
+		return
+	}
+	r.lastPrune = now
+	for id, l := range r.labels {
+		if now.Sub(time.Unix(l.window, 0)) > labelsKeptFor {
+			delete(r.labels, id)
+		}
+	}
+}
+
+// Labels returns the values of each usage of budget this gateway has served, by
+// counter ID.
+func (r *BudgetUsageReporter) Labels(budget string) map[string]map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[string]map[string]string{}
+	for id, l := range r.labels {
+		if l.budget == budget {
+			out[id] = maps.Clone(l.values)
+		}
+	}
+	return out
+}
+
+// Forget drops everything kept for a deleted budget, so none of it is sent again or
+// shown for a budget made again under its name.
+func (r *BudgetUsageReporter) Forget(budget string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for key, e := range r.entries {
+		if key.kind == usageKindUsage && e.budget == budget {
+			delete(r.entries, key)
+		}
+	}
+	for id, l := range r.labels {
+		if l.budget == budget {
+			delete(r.labels, id)
+		}
+	}
+}

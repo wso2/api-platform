@@ -14,6 +14,7 @@
 {{- $cpTokenSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "token") | fromYaml -}}
 {{- $pgSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "postgres") | fromYaml -}}
 {{- $sqlSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "sqlserver") | fromYaml -}}
+{{- $redisSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "redis") | fromYaml -}}
 {{- $secretMounts := (include "gateway-operator.controllerSecretMounts" . | fromYaml).mounts -}}
 {{- /* Basic-auth users with a file-mounted password move the whole [controller.auth.basic]
        block into controller-secrets.toml. See gateway-operator.basicAuthInSecretsFile. */ -}}
@@ -222,6 +223,16 @@ data:
     apim_oauth2_client_secret = {{ $gc.controlplane.apim_oauth2_client_secret | quote }}
     apim_oauth2_username = {{ $gc.controlplane.apim_oauth2_username | quote }}
     apim_oauth2_password = {{ $gc.controlplane.apim_oauth2_password | quote }}
+    {{- with $gc.controlplane.retry_config }}
+
+    [controller.controlplane.retry_config]
+    max_attempts = {{ .max_attempts }}
+    initial_duration = {{ .initial_duration | quote }}
+    progression_factor = {{ .progression_factor }}
+    {{- with .max_duration }}
+    max_duration = {{ . | quote }}
+    {{- end }}
+    {{- end }}
 
     {{- if $gc.event_hub }}
     [controller.event_hub]
@@ -868,6 +879,43 @@ data:
     append_resource_path_to_backend = {{ .Values.gateway.config.mcp.append_resource_path_to_backend }}
     {{- end }}
 
+    {{- with .Values.gateway.config.ai_cost_management }}
+
+    [ai_cost_management.tracking]
+    enabled = {{ (default (dict) .tracking).enabled | default false }}
+
+    [ai_cost_management.budgets]
+    enabled = {{ (default (dict) .budgets).enabled | default false }}
+    {{- end }}
+
+    {{- with .Values.gateway.config.counters }}
+
+    [counters]
+    retention = {{ .retention | default "960h" | quote }}
+    idle_timeout = {{ .idle_timeout | default "10m" | quote }}
+    {{- with .redis }}
+
+    [counters.redis]
+    enabled = {{ .enabled | default false }}
+    address = {{ .address | default "localhost:6379" | quote }}
+    username = {{ .username | default "" | quote }}
+    {{- if and $redisSecret.inUse (eq $redisSecret.source "env") }}
+    password = {{ $redisSecret.token }}
+    {{- end }}
+    db = {{ .db | default 0 | int }}
+    key_prefix = {{ .key_prefix | default "apip:counters:" | quote }}
+    tls = {{ .tls | default false }}
+    dial_timeout = {{ .dial_timeout | default "5s" | quote }}
+    {{- with .retry_config }}
+
+    [counters.redis.retry_config]
+    initial_duration = {{ .initial_duration | default "1s" | quote }}
+    progression_factor = {{ .progression_factor | default 2 }}
+    max_duration = {{ .max_duration | default "30s" | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
     {{- with .Values.gateway.config.signing }}
     [signing]
     {{- if hasKey . "jwks_endpoint_enabled" }}
@@ -907,6 +955,11 @@ data:
     {{- else }}
     password = {{ $sqlSecret.token }}
     {{- end }}
+    {{- end }}
+    {{- if and $redisSecret.inUse (eq $redisSecret.source "file") }}
+
+    [counters.redis]
+    password = {{ $redisSecret.token }}
     {{- end }}
     {{- if $basicAuthInSecretsFile }}
 {{ include "gateway-operator.basicAuthToml" . | nindent 4 }}

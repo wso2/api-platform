@@ -159,6 +159,7 @@ var singleEngineBlocks = map[string]components.DBType{
 	"rest-api-definition":                             components.SQLite,
 	"gateway-custom-policies":                         components.SQLite,
 	"gateway-mtls-ha":                                 components.Postgres,
+	"gateway-budgets-ha":                              components.Postgres,
 	"gateway-mtls-hostnames-required":                 components.SQLite,
 	"gateway-mtls-hostnames-all-connections":          components.SQLite,
 	"gateway-mtls-hostnames-all-connections-required": components.SQLite,

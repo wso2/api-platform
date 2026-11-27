@@ -39,6 +39,16 @@ type ArtifactPusher interface {
 	SubmitArtifactPush(task func())
 }
 
+// ResourcePusher pushes gateway-created resources of a pushed kind
+// (models.SyncedResourceKinds) to the control plane, as ArtifactPusher does artifacts. It
+// is implemented by *controlplane.Client.
+type ResourcePusher interface {
+	// PushResource pushes a resource after it is created or updated.
+	PushResource(cfg *models.StoredConfig)
+	// PushResourceDeletion tells the control plane that a resource was deleted.
+	PushResourceDeletion(cfg *models.StoredConfig)
+}
+
 // cpSyncStatusForOrigin returns the initial cp_sync_status for a newly created/updated
 // artifact row in the gateway DB: "pending" for gateway-originated artifacts (those created
 // on the data plane — including via the immutable loader — which still need to be synced up to
@@ -113,4 +123,16 @@ func waitForDeploymentAndPush(store *storage.ConfigStore, pusher ArtifactPusher,
 			return
 		}
 	}
+}
+
+// ControlPlaneBudgetApplier stores the budgets the control plane sends this gateway. It is
+// implemented by the budget service.
+type ControlPlaneBudgetApplier interface {
+	// ApplyControlPlaneBudget stores a created or updated budget; one older than the
+	// stored copy is ignored.
+	ApplyControlPlaneBudget(budget ControlPlaneBudget, correlationID string, log *slog.Logger) error
+	// DeleteControlPlaneBudget deletes a control-plane budget; an unknown ID is ignored.
+	DeleteControlPlaneBudget(budgetID, correlationID string, log *slog.Logger) error
+	// ControlPlaneBudgetIDs lists the stored control-plane budgets.
+	ControlPlaneBudgetIDs() ([]string, error)
 }
