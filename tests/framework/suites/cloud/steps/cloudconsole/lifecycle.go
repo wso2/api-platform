@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -126,6 +127,27 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 		}
 	}
 	return tcontext.Set(ctx, keyGatewayEndpoint, choice.endpoint)
+}
+
+// defaultGatewaysFirst orders the listed gateways so that an environment's default gateway is
+// considered before the others, keeping the listing's order otherwise. The shared organisation also
+// holds short-lived gateways that other clients create and delete, and choosing one of those can
+// leave a scenario deploying to a gateway that is gone or no longer active.
+func defaultGatewaysFirst(items []map[string]any) []map[string]any {
+	ordered := slices.Clone(items)
+	slices.SortStableFunc(ordered, func(a, b map[string]any) int {
+		aDefault, _ := a["isDefault"].(bool)
+		bDefault, _ := b["isDefault"].(bool)
+		switch {
+		case aDefault == bDefault:
+			return 0
+		case aDefault:
+			return -1
+		default:
+			return 1
+		}
+	})
+	return ordered
 }
 
 // gatewayChoice is a listed gateway a scenario can deploy to and send traffic through. The host is
@@ -240,7 +262,7 @@ func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any,
 	// only "none found" hides the difference between an organization with no
 	// gateways and one whose gateways were all filtered out here.
 	skipped := make([]string, 0, len(items))
-	for _, item := range items {
+	for _, item := range defaultGatewaysFirst(items) {
 		id, _ := item["id"].(string)
 		id = strings.TrimSpace(id)
 		if id == "" {
@@ -318,6 +340,13 @@ func (s *Steps) sendRequestUntilStatus(ctx context.Context, request httpx.Reques
 	if want < 100 || want > 599 {
 		return fmt.Errorf("sending %s request: invalid HTTP status %d", strings.ToUpper(request.Method), want)
 	}
+	return s.sendRequestUntil(ctx, request, func(response *httpx.Response) bool {
+		return response.StatusCode == want
+	}, fmt.Sprintf("to return %d", want))
+}
+
+// sendRequestUntil sends a data-plane request until the gateway's answer satisfies done.
+func (s *Steps) sendRequestUntil(ctx context.Context, request httpx.Request, done func(*httpx.Response) bool, what string) error {
 	request, err := s.prepareDataPlaneRequest(ctx, request)
 	if err != nil {
 		return err
@@ -331,9 +360,9 @@ func (s *Steps) sendRequestUntilStatus(ctx context.Context, request httpx.Reques
 			return response, nil
 		},
 		func(response *httpx.Response) bool {
-			return response != nil && response.StatusCode == want
+			return response != nil && done(response)
 		},
-		fmt.Sprintf("waiting for %s %s to return %d", request.Method, request.URL, want))
+		fmt.Sprintf("waiting for %s %s %s", request.Method, request.URL, what))
 }
 
 func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {

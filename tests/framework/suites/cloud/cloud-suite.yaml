@@ -30,6 +30,7 @@ blocks:
         features:
           - features/apip_deploy.feature
           - features/apip_gateway_runtime.feature
+          - features/apip_routes.feature
       - name: apip-gateway
         features:
           - features/apip_gateway.feature

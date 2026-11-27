@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -39,6 +40,8 @@ func (s *Steps) registerRuntimeSteps(sc stepRegistrar) {
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)"$`, s.sendOnce)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with the header "([^"]*)" set to "([^"]*)"$`, s.sendOnceWithHeader)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a JSON body of (\d+) bytes$`, s.sendOnceWithJSONBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until it times out after (\d+) seconds with status (\d+)$`, s.sendUntilTimedOut)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the response header "([^"]*)" is "([^"]*)"$`, s.sendUntilHeader)
 	sc.Step(`^the response header "([^"]*)" should (be|not be|contain) "([^"]*)"$`, s.assertResponseHeader)
 	sc.Step(`^I store the response header "([^"]*)" as "([^"]*)"$`, s.storeResponseHeader)
 	sc.Step(`^the response should carry a request ID the gateway generated$`, s.assertGeneratedRequestID)
@@ -70,6 +73,34 @@ func (s *Steps) sendOnceWithJSONBody(ctx context.Context, method, target string,
 		return err
 	}
 	return s.sendDataPlaneOnce(ctx, httpx.Request{Method: method, URL: target, Body: body, ContentType: "application/json"})
+}
+
+// sendUntilHeader sends a data-plane request until the answer carries a header with the value, so a
+// scenario can wait for a route that only its own operation serves.
+func (s *Steps) sendUntilHeader(ctx context.Context, method, target, name, value string) error {
+	want, err := expandCloudValue(ctx, value)
+	if err != nil {
+		return err
+	}
+	return s.sendRequestUntil(ctx, httpx.Request{Method: method, URL: target}, func(response *httpx.Response) bool {
+		return response.Headers.Get(name) == want
+	}, fmt.Sprintf("to answer with %s: %s", name, want))
+}
+
+// timeoutTolerance is how much sooner than the timeout an answer may arrive and still count as one.
+const timeoutTolerance = 0.05
+
+// sendUntilTimedOut sends a data-plane request until the gateway answers with the status after at
+// least the given number of seconds, less timeoutTolerance: a timeout the gateway waited out, not an
+// immediate refusal.
+func (s *Steps) sendUntilTimedOut(ctx context.Context, method, target string, seconds, want int) error {
+	if seconds <= 0 {
+		return fmt.Errorf("a timeout must be a positive number of seconds, got %d", seconds)
+	}
+	floor := time.Duration(float64(seconds) * (1 - timeoutTolerance) * float64(time.Second))
+	return s.sendRequestUntil(ctx, httpx.Request{Method: method, URL: target}, func(response *httpx.Response) bool {
+		return response.StatusCode == want && response.Elapsed >= floor
+	}, fmt.Sprintf("to time out after %ds with status %d", seconds, want))
 }
 
 // jsonBodyOfSize returns a JSON object of exactly size bytes.

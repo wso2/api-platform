@@ -11022,3 +11022,75 @@ func TestBodyAssertions(t *testing.T) {
 	require.ErrorContains(t, steps.assertEchoedHeader(ctx, "X-Request-Id", "other"), `want "other"`)
 	require.ErrorContains(t, steps.assertEchoedHeader(ctx, "X-Other", "x"), `no "X-Other" header`)
 }
+
+func TestSendUntilTimedOutNeedsTheStatusAfterTheTimeout(t *testing.T) {
+	var delay atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(time.Duration(delay.Load()))
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+
+	delay.Store(int64(1100 * time.Millisecond))
+	require.NoError(t, steps.sendUntilTimedOut(ctx, http.MethodGet, server.URL, 1, http.StatusServiceUnavailable))
+
+	delay.Store(0)
+	short, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	require.Error(t, steps.sendUntilTimedOut(short, http.MethodGet, server.URL, 1, http.StatusServiceUnavailable),
+		"an immediate 503 is a refusal, not a timeout the gateway waited out")
+	require.ErrorContains(t, steps.sendUntilTimedOut(ctx, http.MethodGet, server.URL, 0, http.StatusServiceUnavailable), "positive number of seconds")
+}
+
+func TestDefaultGatewaysFirstKeepsTheListingOrderOtherwise(t *testing.T) {
+	items := []map[string]any{
+		{"id": "development-syn-gw-1", "isDefault": false},
+		{"id": "development-default", "isDefault": true},
+		{"id": "other"},
+		{"id": "production-default", "isDefault": true},
+	}
+	var ids []string
+	for _, item := range defaultGatewaysFirst(items) {
+		ids = append(ids, item["id"].(string))
+	}
+	require.Equal(t, []string{"development-default", "production-default", "development-syn-gw-1", "other"}, ids)
+	require.Equal(t, "development-syn-gw-1", items[0]["id"], "the listing itself is not reordered")
+}
+
+func TestFindActiveGatewayPrefersTheDefaultGateway(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
+			{"id": "development-syn-gw-qr8cz8", "isActive": true, "endpoints": []string{"https://syn.example.com"}},
+			{"id": "development-default", "isActive": true, "isDefault": true, "endpoints": []string{"https://gw.example.com"}},
+		}})
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, steps.findActiveGateway(ctx))
+	id, err := requiredValue(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "development-default", id)
+}
+
+func TestSendUntilHeaderWaitsForTheHeaderValue(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) >= 3 {
+			w.Header().Set("X-Matched-Operation", "inner")
+		} else {
+			w.Header().Set("X-Matched-Operation", "outer-wildcard")
+		}
+	}))
+	defer server.Close()
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	require.NoError(t, steps.sendUntilHeader(ctx, http.MethodGet, server.URL, "X-Matched-Operation", "inner"))
+	require.GreaterOrEqual(t, calls.Load(), int32(3))
+	short, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	require.Error(t, steps.sendUntilHeader(short, http.MethodGet, server.URL, "X-Matched-Operation", "never"))
+}
