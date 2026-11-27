@@ -24,6 +24,7 @@ import {
   getProject,
   listProjects,
   type ListProjectsQuery,
+  type Project,
 } from './projects.endpoints';
 
 export const projectKeys = createResourceKeys('projects');
@@ -39,6 +40,9 @@ export const projectKeys = createResourceKeys('projects');
  * transport can attach `X-Org-Id`. Passing it explicitly rather than reading a
  * context is what keeps these usable outside a component.
  */
+// The API's own maximum page size.
+const ALL_PAGES_LIMIT = 100;
+
 export const projectQueries = {
   list: (org: OrgScope, query: ListProjectsQuery = {}) =>
     queryOptions({
@@ -48,6 +52,33 @@ export const projectQueries = {
       queryFn: ({ signal }) => listProjects({ orgId: org, signal, query }),
       // The `stable` tier: a project's name and description change far less
       // often than the APIs inside it.
+      staleTime: staleTimes.stable,
+    }),
+
+  /**
+   * Every project of the organization, read page by page. For a caller that has
+   * to answer a question over the whole set (which one changed last, does this
+   * one still exist) and so cannot settle for the first page. Filed under the
+   * resource's own key, so invalidating projects refreshes it.
+   */
+  allPages: (org: OrgScope) =>
+    queryOptions({
+      queryKey: [...projectKeys.all(org), 'allPages'] as const,
+      queryFn: async ({ signal }) => {
+        const projects: Project[] = [];
+        for (;;) {
+          const page = await listProjects({
+            orgId: org,
+            signal,
+            query: { limit: ALL_PAGES_LIMIT, offset: projects.length },
+          });
+          const received = page.list ?? [];
+          projects.push(...received);
+          if (received.length === 0 || projects.length >= (page.pagination?.total ?? 0)) {
+            return projects;
+          }
+        }
+      },
       staleTime: staleTimes.stable,
     }),
 

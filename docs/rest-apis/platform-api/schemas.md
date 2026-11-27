@@ -2160,7 +2160,7 @@ Time unit for API key expiration duration
 {
   "id": "production-key-01",
   "displayName": "Production API Key",
-  "apiKey": "sk_example_1234567890abcdef",
+  "apiKey": "sk_example_1234567890abcdef1234567890abcdef",
   "externalRefId": "ext-ref-12345",
   "expiresAt": "2026-12-31T23:59:59Z",
   "expiresIn": {
@@ -2178,7 +2178,7 @@ Time unit for API key expiration duration
 |---|---|---|---|---|
 |id|string|false|none|Unique identifier for this API key within the API (optional; if omitted,<br>generated from displayName)|
 |displayName|string|true|none|Human-readable name for the API key|
-|apiKey|string|false|none|Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.|
+|apiKey|string|false|none|Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways), 36 to 128 characters long. Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.|
 |externalRefId|string¦null|false|none|Optional reference ID for tracing purposes (from external platforms)|
 |expiresAt|string(date-time)¦null|false|none|Optional expiration time in ISO 8601 format|
 |expiresIn|[ExpirationDuration](#schemaexpirationduration)|false|none|Optional expiration duration|
@@ -2228,7 +2228,7 @@ Time unit for API key expiration duration
 {
   "name": "production-key-01",
   "displayName": "Production API Key (Updated)",
-  "apiKey": "sk_example_new1234567890abcdef",
+  "apiKey": "sk_example_new1234567890abcdef1234567890abcdef",
   "externalRefId": "ext-ref-12345",
   "expiresAt": "2027-12-31T23:59:59Z",
   "expiresIn": {
@@ -2246,7 +2246,7 @@ Time unit for API key expiration duration
 |---|---|---|---|---|
 |name|string|false|none|Unique identifier for this API key within the API (optional; if omitted, generated from displayName)|
 |displayName|string|true|none|Human-readable name for the API key|
-|apiKey|string|true|none|The new plain text API key value that will be hashed before storage|
+|apiKey|string|true|none|The new plain text API key value that will be hashed before storage, 36 to 128 characters long|
 |externalRefId|string¦null|false|none|Optional reference ID for tracing purposes (from external platforms)|
 |expiresAt|string(date-time)¦null|false|none|Optional expiration time in ISO 8601 format|
 |expiresIn|[ExpirationDuration](#schemaexpirationduration)|false|none|Optional expiration duration|

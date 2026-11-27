@@ -1,0 +1,225 @@
+/*
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package conversionwebhook
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"slices"
+	"time"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+)
+
+// ConvertPath is where the webhook serves ConversionReview requests.
+const ConvertPath = "/convert"
+
+// webhookVersions are the APIGateway versions whose schema differs from the storage
+// version, so the API server can only convert them through this webhook. A CRD that
+// serves none of them (an older chart's CRD, with identical v1 and v1alpha1 schemas)
+// needs no webhook and keeps strategy None.
+var webhookVersions = []string{"v2alpha1"}
+
+// needsWebhook reports whether the CRD serves a version only the webhook can convert.
+func needsWebhook(crd *apiextensionsv1.CustomResourceDefinition) bool {
+	for _, v := range crd.Spec.Versions {
+		if v.Served && slices.Contains(webhookVersions, v.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// pointsAt reports whether conv is a webhook conversion aimed at namespace/service.
+func pointsAt(conv *apiextensionsv1.CustomResourceConversion, namespace, service string) bool {
+	if conv == nil || conv.Strategy != apiextensionsv1.WebhookConverter || conv.Webhook == nil ||
+		conv.Webhook.ClientConfig == nil || conv.Webhook.ClientConfig.Service == nil {
+		return false
+	}
+	svc := conv.Webhook.ClientConfig.Service
+	return svc.Namespace == namespace && svc.Name == service
+}
+
+// servicePort is the port of the webhook Service the CRD points at.
+const servicePort int32 = 443
+
+// desiredConversion is the spec.conversion the CRD must carry for the API server to
+// call this operator.
+func desiredConversion(namespace, service string, caBundle []byte) *apiextensionsv1.CustomResourceConversion {
+	path := ConvertPath
+	port := servicePort
+	return &apiextensionsv1.CustomResourceConversion{
+		Strategy: apiextensionsv1.WebhookConverter,
+		Webhook: &apiextensionsv1.WebhookConversion{
+			ConversionReviewVersions: []string{"v1"},
+			ClientConfig: &apiextensionsv1.WebhookClientConfig{
+				Service: &apiextensionsv1.ServiceReference{
+					Namespace: namespace,
+					Name:      service,
+					Path:      &path,
+					Port:      &port,
+				},
+				CABundle: caBundle,
+			},
+		},
+	}
+}
+
+// crdConversion keeps the converted CRD's spec.conversion pointed at this operator's
+// webhook Service, trusting a given certificate bundle. The CRD ships with a
+// placeholder Service (the chart's crds/ directory cannot be templated), and kubectl,
+// Helm or Flux put the placeholder back whenever they re-apply it.
+type crdConversion struct {
+	reader    client.Reader // uncached, so a check right before serving sees the live CRD
+	writer    client.Client
+	crdName   string
+	namespace string
+	service   string
+	now       func() time.Time
+	logger    *slog.Logger
+}
+
+// caBundle returns the CRD's current conversion caBundle, or nil.
+func (c *crdConversion) caBundle(ctx context.Context) []byte {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := c.reader.Get(ctx, types.NamespacedName{Name: c.crdName}, crd); err != nil {
+		return nil
+	}
+	if conv := crd.Spec.Conversion; conv != nil && conv.Webhook != nil && conv.Webhook.ClientConfig != nil {
+		return conv.Webhook.ClientConfig.CABundle
+	}
+	return nil
+}
+
+// trust points the CRD at the webhook and makes it trust b (its CA, plus the previous
+// CA while the overlap lasts). Callers run it before serving a certificate from b, so
+// the API server never meets a certificate it does not trust yet. A CRD that is not
+// installed has nothing to trust and is not an error.
+func (c *crdConversion) trust(ctx context.Context, b certBundle) error {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := c.reader.Get(ctx, types.NamespacedName{Name: c.crdName}, crd); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.logger.Warn("The CRD to convert is not installed", slog.String("crd", c.crdName))
+			return nil
+		}
+		return fmt.Errorf("get CRD %s: %w", c.crdName, err)
+	}
+	if !needsWebhook(crd) {
+		return c.releaseWebhook(ctx, crd)
+	}
+	// A bundle without a CA would clear the CRD's working caBundle.
+	if len(b.caCert) == 0 {
+		return fmt.Errorf("the conversion webhook certificate bundle has no CA certificate; not changing CRD %s", c.crdName)
+	}
+	want := desiredConversion(c.namespace, c.service, trustedCABundle(b, c.now()))
+	if equality.Semantic.DeepEqual(crd.Spec.Conversion, want) {
+		return nil
+	}
+	patch := client.MergeFrom(crd.DeepCopy())
+	crd.Spec.Conversion = want
+	if err := c.writer.Patch(ctx, crd, patch); err != nil {
+		return fmt.Errorf("patch CRD %s conversion: %w", c.crdName, err)
+	}
+	c.logger.Info("Pointed the CRD's conversion webhook at the operator",
+		slog.String("crd", c.crdName),
+		slog.String("service", c.namespace+"/"+c.service))
+	return nil
+}
+
+// releaseWebhook handles a CRD that serves no version needing the webhook, such as an
+// older chart's CRD after the operator chart was rolled back, or before the new CRD is
+// applied during an upgrade. The operator then leaves the conversion alone, so a
+// rolled-back install never ends up pointing at a webhook that is about to disappear.
+// If the CRD still points at this operator's webhook, it is set back to strategy None,
+// which is exact while the served versions share one schema.
+func (c *crdConversion) releaseWebhook(ctx context.Context, crd *apiextensionsv1.CustomResourceDefinition) error {
+	if !pointsAt(crd.Spec.Conversion, c.namespace, c.service) {
+		return nil
+	}
+	patch := client.MergeFrom(crd.DeepCopy())
+	crd.Spec.Conversion = &apiextensionsv1.CustomResourceConversion{Strategy: apiextensionsv1.NoneConverter}
+	if err := c.writer.Patch(ctx, crd, patch); err != nil {
+		return fmt.Errorf("reset CRD %s conversion to None: %w", c.crdName, err)
+	}
+	c.logger.Info("The CRD serves no version that needs the conversion webhook; set its conversion back to None",
+		slog.String("crd", c.crdName))
+	return nil
+}
+
+// crdReconciler re-applies crdConversion.trust for the Secret's bundle on every CRD
+// change and periodically, and once more when a previous CA's overlap ends, so the
+// CRD stops trusting it. Like the rotator it runs on every replica (see
+// crdControllerOptions).
+type crdReconciler struct {
+	conversion *crdConversion
+	secrets    *secretManager
+	crdName    string
+	resync     time.Duration
+}
+
+func (r *crdReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+	bundle, _, found, err := r.secrets.read(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !found || len(bundle.caCert) == 0 {
+		// No certificate yet; the rotator or loader is creating it.
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	if err := r.conversion.trust(ctx, bundle); err != nil {
+		return ctrl.Result{}, err
+	}
+	next := r.resync
+	if now := r.conversion.now(); len(bundle.previousCA) > 0 && now.Before(bundle.previousUntil) {
+		if untilEnd := bundle.previousUntil.Sub(now) + time.Second; untilEnd < next {
+			next = untilEnd
+		}
+	}
+	return ctrl.Result{RequeueAfter: next}, nil
+}
+
+// crdControllerOptions runs the CRD reconciler without leader election. During a
+// rolling upgrade the old operator version holds the leader lease and does not know
+// about the webhook, so a leader-only reconciler in the new pods would leave the CRD
+// pointing at the placeholder for as long as the old pods run. Every replica patches
+// to the same value (read from the shared Secret), so concurrent patches agree.
+func crdControllerOptions() controller.Options {
+	needLeaderElection := false
+	return controller.Options{NeedLeaderElection: &needLeaderElection}
+}
+
+// setupWithManager watches only the converted CRD. The manager's cache must select
+// it by name (see CacheByObject), so RBAC can be restricted to that one CRD.
+func (r *crdReconciler) setupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		Named("conversion-webhook-crd").
+		WithOptions(crdControllerOptions()).
+		For(&apiextensionsv1.CustomResourceDefinition{}, builder.WithPredicates(
+			predicate.NewPredicateFuncs(func(obj client.Object) bool { return obj.GetName() == r.crdName }),
+		)).
+		Complete(r)
+}

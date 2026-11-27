@@ -1,6 +1,6 @@
 module api-control-plane-bff
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.4.0

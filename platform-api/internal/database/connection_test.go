@@ -19,6 +19,8 @@ package database
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -30,7 +32,37 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database/observe"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	mssql "github.com/microsoft/go-mssqldb"
 )
+
+// TestIsValueTooLongError covers each driver's refusal of a value longer than its
+// column, wrapped as the repositories wrap it, and errors that are not one.
+func TestIsValueTooLongError(t *testing.T) {
+	db := &DB{}
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"postgres value too long", &pgconn.PgError{Code: "22001"}, true},
+		{"postgres value too long, wrapped", fmt.Errorf("insert: %w", &pgconn.PgError{Code: "22001"}), true},
+		{"postgres duplicate key", &pgconn.PgError{Code: "23505"}, false},
+		{"sql server truncation", mssql.Error{Number: 8152}, true},
+		{"sql server truncation naming the column", mssql.Error{Number: 2628}, true},
+		{"sql server duplicate key", mssql.Error{Number: 2627}, false},
+		{"other error", errors.New("connection refused"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := db.IsValueTooLongError(tt.err); got != tt.want {
+				t.Errorf("IsValueTooLongError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
 
 // TestSplitSQLStatements_SemicolonInLineComment ensures a semicolon inside a
 // "--" line comment is not treated as a statement terminator. This guards the

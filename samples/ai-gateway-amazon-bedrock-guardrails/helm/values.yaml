@@ -1,0 +1,57 @@
+# Settings for the gateway Helm chart. scripts/install-gateway.sh supplies the images, database host,
+# and admin user in a generated values file.
+fullnameOverride: wso2-ai-gateway
+
+serviceAccount:
+  create: true
+  name: wso2-ai-gateway
+
+gateway:
+  config:
+    controller:
+      storage:
+        type: postgres
+        postgres:
+          port: 5432
+          sslmode: require
+
+  controller:
+    encryptionKeys:
+      enabled: true
+      secretName: gateway-encryption-keys
+    postgres:
+      passwordSecretRef:
+        name: gateway-db
+        key: password
+    persistence:
+      enabled: false
+    deployment:
+      replicaCount: 2
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: wso2-ai-gateway
+              app.kubernetes.io/component: controller
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+  gatewayRuntime:
+    service:
+      type: ClusterIP
+    deployment:
+      replicaCount: 2
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: wso2-ai-gateway
+              app.kubernetes.io/component: gateway-runtime
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1

@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@vhost-routing-multi
+@SVR @vhost-routing-multi
 Feature: Multi-domain vhost routing
   As an API user
   I want gateway routing behavior to follow the configured rules
@@ -27,6 +27,7 @@ Feature: Multi-domain vhost routing
     And I authenticate using basic auth as "admin"
 
 
+  @SVR-007
   Scenario: Route requests across all configured main and sandbox domains
     Given I generate a unique value from "vhost-routing-multi-1" and store it as "apiName1"
     And I generate a unique API context from "/vhost-routing-multi-1" and store it as "apiContext1"
@@ -87,6 +88,7 @@ Feature: Multi-domain vhost routing
     Then the response status code should be 404
 
 
+  @SVR-010
   Scenario: API vhost override should bypass multi-domain gateway defaults
     Given I generate a unique value from "vhost-routing-multi-2" and store it as "apiName2"
     And I generate a unique API context from "/vhost-routing-multi-2" and store it as "apiContext2"
@@ -150,6 +152,7 @@ Feature: Multi-domain vhost routing
     Then the response status code should be 404
 
 
+  @SVR-012
   Scenario: Sentinel vhost resolves to all configured gateway domains
     Given I generate a unique value from "vhost-routing-multi-3" and store it as "apiName3"
     And I generate a unique API context from "/vhost-routing-multi-3" and store it as "apiContext3"

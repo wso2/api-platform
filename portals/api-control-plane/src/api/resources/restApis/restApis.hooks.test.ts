@@ -31,12 +31,14 @@ import {
   type Recorder,
 } from '../../../test/msw';
 import { renderApiHook, settle } from '../../../test/renderApiHook';
+import { useRestApiGateways } from './apiGateways/apiGateways.hooks';
 import { server } from '../../../test/server';
 import { resetHttpClient } from '../../core/http';
 import {
   useAllRestApis,
   useCreateRestApi,
   useDeleteRestApi,
+  useInvalidateApiDeployments,
   useRestApi,
   useRestApiCounts,
   useRestApis,
@@ -436,5 +438,27 @@ describe('useAllRestApis — windowing', () => {
 
     await settle();
     expect(requests.count()).toBe(0);
+  });
+});
+
+describe('useInvalidateApiDeployments — an extension deployed around this cache', () => {
+  it('makes a cached API gateway list refetch, so a fresh deployment is seen', async () => {
+    server.use(collection('/rest-apis/pizza-shack/gateways', [], { record: requests }));
+
+    const { result } = renderApiHook(() => ({
+      gateways: useRestApiGateways(API_ID),
+      invalidate: useInvalidateApiDeployments(),
+    }));
+    await waitFor(() => expect(result.current.gateways.isSuccess).toBe(true));
+    expect(requests.count()).toBe(1);
+
+    result.current.invalidate();
+
+    await waitFor(() => expect(requests.count()).toBe(2));
+  });
+
+  it('does nothing while the organization is unknown', async () => {
+    const { result } = renderApiHook(() => useInvalidateApiDeployments(), { orgId: undefined });
+    expect(() => result.current()).not.toThrow();
   });
 });

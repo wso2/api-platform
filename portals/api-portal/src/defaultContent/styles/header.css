@@ -4,7 +4,17 @@
 }
 
 .navbar-logo {
-  height: 2rem;
+  height: 1.75rem;
+  width: auto;
+}
+
+.navbar-brand-name {
+  margin-left: 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text);
 }
 
 .custom-navbar .nav-link {
@@ -106,7 +116,7 @@
   .custom-navbar .navbar-logo {
     max-width: 100%;
     height: auto;
-    max-height: 2rem;
+    max-height: 1.75rem;
   }
 }
 

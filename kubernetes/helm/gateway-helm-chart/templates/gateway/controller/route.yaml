@@ -18,6 +18,7 @@
 {{- end }}
 {{- /* The Route publishes the management API outside the cluster, so refuse it while the API would
        accept the chart's default password, or every request (no basic auth users and no IDP). */}}
+{{- $_ := include "gateway-operator.adminCredentials" . -}}
 {{- $auth := default (dict) .Values.gateway.config.controller.auth -}}
 {{- $basic := default (dict) $auth.basic -}}
 {{- $basicUsers := list -}}

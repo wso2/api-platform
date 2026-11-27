@@ -1,0 +1,36 @@
+# Two gateways, each with its own admin user whose password lives in a Secret
+# (create the Secrets first, see README.md). Each gateway-controller reads its
+# password from the Secret key mounted read-only as a file.
+#
+# Each gateway selects APIs by its own label, so a RestApi reaches exactly one of them.
+apiVersion: gateway.api-platform.wso2.com/v2alpha1
+kind: APIGateway
+metadata:
+  name: gateway-1
+  namespace: gw1
+spec:
+  apiSelector:
+    scope: LabelSelector
+    matchLabels:
+      gateway.api-platform.wso2.com/target: gateway-1
+  adminCredentials:
+    username: gw1-admin
+    passwordSecretRef:
+      name: gateway-1-admin
+      key: password
+---
+apiVersion: gateway.api-platform.wso2.com/v2alpha1
+kind: APIGateway
+metadata:
+  name: gateway-2
+  namespace: gw2
+spec:
+  apiSelector:
+    scope: LabelSelector
+    matchLabels:
+      gateway.api-platform.wso2.com/target: gateway-2
+  adminCredentials:
+    username: gw2-admin
+    passwordSecretRef:
+      name: gateway-2-admin
+      key: password

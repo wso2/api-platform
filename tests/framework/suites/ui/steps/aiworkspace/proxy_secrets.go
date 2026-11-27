@@ -228,8 +228,8 @@ func (u *Steps) theProxyWasUpdated(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("no PUT request to /llm-proxies was recorded: %w", err)
 	}
-	if call.status != 200 {
-		return fmt.Errorf("the proxy update returned %d", call.status)
+	if status := call.Status(); status != 200 {
+		return fmt.Errorf("the proxy update returned %d", status)
 	}
 	return nil
 }

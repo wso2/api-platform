@@ -35,18 +35,27 @@ type Version struct {
 	Major, Minor, Patch int
 }
 
-// stsMinMajor separates the two gateway release channels. LTS releases use
-// semver ("1.2.0"); STS releases are named after their release date
-// ("YYYY.MM.DD"), so their first field is a year. The channels do not share a
-// version line: a date says nothing about which LTS capabilities a build has.
+// stsMinMajor separates the regular gateway's two release channels. LTS
+// releases use semver ("1.2.0"); STS releases are named after their release
+// date ("YYYY.MM.DD"), so their first field is a year. The channels do not
+// share a version line: a date says nothing about which LTS capabilities a
+// build has.
 const stsMinMajor = 2000
 
-// IsLTS reports whether v is an LTS (semver) release rather than a
-// date-named STS release. Only LTS versions are compared against capability
-// minimums; resolving STS capabilities is tracked in
+// ltsMinMajor is the first major on the LTS line. The event gateway is a
+// separate product on its own 0.x line (event-gateway/VERSION), and it reports
+// that version through the same manifest field the regular gateway uses. A 0.x
+// is therefore not an early LTS release, it is a different line, and comparing
+// it against an LTS minimum reads every event gateway as a 1.0-era build.
+const ltsMinMajor = 1
+
+// IsLTS reports whether v is on the regular gateway's LTS (semver) line, as
+// opposed to a date-named STS release or the event gateway's 0.x line. Only
+// LTS versions are compared against capability minimums, which are written
+// against gateway/v1.x tags; resolving STS capabilities is tracked in
 // https://github.com/wso2/api-platform/issues/3681.
 func (v Version) IsLTS() bool {
-	return v.Major < stsMinMajor
+	return v.Major >= ltsMinMajor && v.Major < stsMinMajor
 }
 
 // Parse parses a gateway version string, reporting whether it carried a

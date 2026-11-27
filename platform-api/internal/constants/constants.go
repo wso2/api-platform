@@ -226,6 +226,15 @@ const (
 	ScopeThumbnailManage = "ap:thumbnail:manage"
 )
 
+// The read and manage scopes of REST and GraphQL APIs. POST /gateway-relay/invoke
+// requires one of its API's own kind.
+const (
+	ScopeRESTAPIRead      = "ap:rest_api:read"
+	ScopeRESTAPIManage    = "ap:rest_api:manage"
+	ScopeGraphQLAPIRead   = "ap:graphql_api:read"
+	ScopeGraphQLAPIManage = "ap:graphql_api:manage"
+)
+
 // Service-account scopes. Manage creates privilege (an account and its roles),
 // so keep it out of self-service roles, as with ScopeAPIKeyAllManage.
 const (

@@ -44,6 +44,7 @@ export default function ManageProjectButton({
       color="primary"
       component="a"
       href={projectManageUrl(projectHandle, consoleUrl)}
+      size="small"
       startIcon={<Settings size={16} />}
       variant="outlined"
     >

@@ -1,0 +1,190 @@
+# Scenario list: Gateway Fault Policies (FAULT).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: FAULT
+title: Gateway Fault Policies
+scenarios:
+  - id: FAULT-001
+    title: "Send a request that a guardrail rejects to a REST API with fault policies; 422 rendered by the API's error-response-formatter entry with the guardrail's fault code and type, while a request the guardrail accepts reaches the backend."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "A guardrail rejection runs the API's fault policies"
+  - id: FAULT-002
+    title: "Send a successful request to a REST API with fault policies; 200 from the backend with no header or body change made by a fault policy, while a failing request on the same API gets them."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "A successful request runs no fault policy"
+  - id: FAULT-003
+    title: "Send a request without credentials to a REST API whose operation requires an API key and that has fault policies; 401 rendered with fault code 900902 and type authentication."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "An authentication rejection runs the API's fault policies"
+  - id: FAULT-004
+    title: "Declare a fault policy whose executionCondition reads fault.Type; it runs for a guardrail rejection and is skipped for an authentication rejection on the same API."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "A fault policy's execution condition selects the failures it handles"
+  - id: FAULT-005
+    title: "Declare fault policies on an operation and on its API; a failure on that operation runs both, operation-level entries first, while a failure on another operation runs only the API's."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "Operation-level fault policies run before the API's fault policies"
+  - id: FAULT-006
+    title: "Render a guardrail rejection with each error-response-formatter preset (canonical, openai, jsonrpc, soap11, soap12); each body has the preset's shape and Content-Type, and the status stays 422."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "The error response formatter renders a failure in a JSON preset shape"
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "The error response formatter renders a failure in a SOAP preset shape"
+  - id: FAULT-007
+    title: "Set error-response-formatter statusCode on a fault policy; a guardrail rejection is returned with that status and its fault code, instead of 422."
+    priority: P2
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "A fault policy changes the status of the error response"
+  - id: FAULT-008
+    title: "Declare log-message as a fault policy; a guardrail rejection writes a fault record for that request's resource path to the gateway runtime log."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "Log Message as a fault policy logs the failure"
+  - id: FAULT-009
+    title: "With handle_upstream_faults off (the default), a backend error status on a REST API with fault policies reaches the client as the backend sent it, with no fault policy applied, while a guardrail rejection on the same API is handled."
+    priority: P0
+    ui:
+      status: exempt
+      reason: The setting is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "A backend error does not run fault policies by default"
+  - id: FAULT-010
+    title: "With handle_upstream_faults off (the default), an unreachable upstream on a REST API with fault policies returns the router's 503 with no fault policy applied."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The setting is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "An unreachable upstream does not run fault policies by default"
+  - id: FAULT-011
+    title: "Create a REST API whose fault policies name a policy that does not exist; 400 validation error naming the fault policy, and the API is not created, while the same API with an existing fault policy is created."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The validation is enforced by the gateway management API; no portal action deploys straight to the gateway.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "A fault policy that does not exist is rejected at deployment"
+  - id: FAULT-012
+    title: "Declare a policy that does not implement OnFault (set-headers) as a fault policy; the API deploys, the entry never runs and the gateway logs that it was skipped, while the API's other fault policies still run."
+    priority: P2
+    ui:
+      status: exempt
+      reason: Fault policies are declared on the gateway API definition; no portal journey invokes gateway traffic.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "A policy that cannot run as a fault policy is skipped"
+  - id: FAULT-013
+    title: "With handle_upstream_faults on, a backend error status on a REST API with fault policies runs them, reporting the failure's source as backend, while a successful response does not."
+    priority: P0
+    ui:
+      status: exempt
+      reason: The setting is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies_upstream.feature
+          scenario: "A backend error runs the API's fault policies"
+  - id: FAULT-014
+    title: "With handle_upstream_faults on, an unreachable upstream on a REST API with fault policies runs them with fault code 101503 or 303001 and source router."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The setting is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies_upstream.feature
+          scenario: "An unreachable upstream runs the API's fault policies"
+  - id: FAULT-015
+    title: "With handle_upstream_faults on, a backend error status skips the API's response policies and runs its fault policies instead, while a successful response still runs the response policies."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The setting is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies_upstream.feature
+          scenario: "A backend error runs the fault policies instead of the response policies"
+  - id: FAULT-016
+    title: "With handle_upstream_faults on, fault policies conditioned on fault.Source select their failures: the gateway entry runs for a guardrail rejection only, and the backend entry for a backend error only, on the same API."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The setting is gateway configuration and the behaviour is gateway traffic; no portal journey covers it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/fault_policies_upstream.feature
+          scenario: "A fault policy's execution condition separates gateway and backend failures"

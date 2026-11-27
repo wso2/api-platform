@@ -22,7 +22,9 @@ deliberately left in place, because fixing it would change AI Workspace.
 
 | File | Role |
 | --- | --- |
-| `TrialStatusFeature.tsx` | The header badge, rendered with oxygen-ui's `TrialBadge` |
+| `TrialStatusFeature.tsx` | The header badge, rendered with oxygen-ui's `TrialBadge` and followed by a divider, as in Cloud Console: days left of a running trial, or "Trial expired" once it lapses; both open Cloud Console's subscriptions |
+| `trialState.ts` | Which badge the product subscription gets: running, expired (a suspended subscription that ended on its trial, as Cloud Console's `endedOnTrial` decides), or none |
+| `subscriptionsUrl.ts` | Cloud Console's `/billing?tab=subscriptions` on the host's `cloudConsoleUrl`, else this page's origin |
 | `trialDays.ts` | Trial arithmetic, kept out of the component so it unit-tests without pulling in the UI library |
 | `usagePanel.ts` | The badge's hover panel arithmetic, feeding `TrialBadge`'s `usage` prop — kept out of the component for the same reason |
 | `EntitlementsGate.tsx` | Headless `app.gate` entry mounted on every in-shell route; supplies the creation limits and read-only verdict through the Port |
@@ -31,16 +33,16 @@ deliberately left in place, because fixing it would change AI Workspace.
 | `entitlementsApi.ts` | The same-origin `<proxy base>/billing-entitlement/*` read (`/proxy` behind the BFF), or `billingEntitlementBaseUrl` when the deployment routes the Entitlement API apart from the proxy; the real billing URL never reaches the browser |
 | `entitlementLimits.ts` | Billing metric codes → the host's product nouns. All of the commercial knowledge lives here |
 | `entitlementTypes.ts` | The entitlement summary shape, hand-mirrored from the billing spec (separate repos) |
-| `runtimeConfig.ts` | Reads the runtime config global for the billing console address, the proxy base (`platformApiBaseUrl`) and the Entitlement API path (`billingEntitlementBaseUrl`) |
+| `runtimeConfig.ts` | Reads the runtime config global for the proxy base (`platformApiBaseUrl`) and the Entitlement API path (`billingEntitlementBaseUrl`) |
 | `hostPort.ts` | The slice of the host Port this plugin needs, hand-mirrored rather than imported (separate repos) |
 | `types.ts` | The billing shapes this plugin reads |
 
 ## Dependency note
 
-This package is on `@wso2/oxygen-ui` **0.21.0** — 0.18.0 introduced
-`TrialBadge`, and 0.21.0 added the usage panel's `groups` — while the other cloud plugins remain on 0.5.0.
+`TrialBadge` needs `@wso2/oxygen-ui` 0.18.0 or later, and the usage panel's
+`groups` need 0.21.0 or later. The package is on 0.27.0, like the two portals.
 
-Its `tsconfig.json` therefore resolves `@wso2/oxygen-ui` through
+Its `tsconfig.json` resolves `@wso2/oxygen-ui` through
 `../../api-control-plane/node_modules`, **not** `../../ai-workspace/node_modules`
 like the other plugins do. That matters: the plugin tsconfigs hardcode a portal's
 dependency tree, so a plugin pointed at AI Workspace compiles against AI

@@ -22,7 +22,7 @@ package v1alpha1
 //
 // The v1alpha1 and v1 schemas are field-identical (the promotion changed only
 // the version label), so Spec and Status are copied with a JSON round-trip.
-// ObjectMeta is copied directly. TypeMeta (apiVersion/kind) is deliberately
+// ObjectMeta is deep-copied. TypeMeta (apiVersion/kind) is deliberately
 // NOT copied — the conversion machinery sets it on the destination.
 
 import (
@@ -52,7 +52,7 @@ func convertViaJSON(in, out any) error {
 
 func (src *RestApi) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.RestApi)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (src *RestApi) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *RestApi) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.RestApi)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func (dst *RestApi) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *APIGateway) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.APIGateway)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (src *APIGateway) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *APIGateway) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.APIGateway)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (dst *APIGateway) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *ApiKey) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.ApiKey)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (src *ApiKey) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *ApiKey) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.ApiKey)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (dst *ApiKey) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *APIPolicy) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.APIPolicy)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (src *APIPolicy) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *APIPolicy) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.APIPolicy)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (dst *APIPolicy) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *Certificate) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.Certificate)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func (src *Certificate) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *Certificate) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.Certificate)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func (dst *Certificate) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *LlmProvider) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.LlmProvider)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (src *LlmProvider) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *LlmProvider) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.LlmProvider)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func (dst *LlmProvider) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *LlmProviderTemplate) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.LlmProviderTemplate)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (src *LlmProviderTemplate) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *LlmProviderTemplate) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.LlmProviderTemplate)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (dst *LlmProviderTemplate) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *LlmProxy) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.LlmProxy)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func (src *LlmProxy) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *LlmProxy) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.LlmProxy)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -212,7 +212,7 @@ func (dst *LlmProxy) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *ManagedSecret) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.ManagedSecret)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -221,7 +221,7 @@ func (src *ManagedSecret) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *ManagedSecret) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.ManagedSecret)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -232,7 +232,7 @@ func (dst *ManagedSecret) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *Mcp) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.Mcp)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -241,7 +241,7 @@ func (src *Mcp) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *Mcp) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.Mcp)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -252,7 +252,7 @@ func (dst *Mcp) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *Subscription) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.Subscription)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -261,7 +261,7 @@ func (src *Subscription) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *Subscription) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.Subscription)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -272,7 +272,7 @@ func (dst *Subscription) ConvertFrom(srcRaw conversion.Hub) error {
 
 func (src *SubscriptionPlan) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.SubscriptionPlan)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}
@@ -281,7 +281,7 @@ func (src *SubscriptionPlan) ConvertTo(dstRaw conversion.Hub) error {
 
 func (dst *SubscriptionPlan) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.SubscriptionPlan)
-	dst.ObjectMeta = src.ObjectMeta
+	src.ObjectMeta.DeepCopyInto(&dst.ObjectMeta)
 	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
 		return err
 	}

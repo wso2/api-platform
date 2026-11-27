@@ -2313,7 +2313,13 @@ func TestTranslator_TranslateConfigs_GatewayJWKSRoute(t *testing.T) {
 				assert.Less(t, jwksIdx, i, "the JWKS route must precede API route %q on %q", vh.Routes[i].Name, vh.Name)
 			}
 			if vh.Name == "localhost" {
-				assert.Len(t, apiIdx, 2, "expected both APIs' routes on the API vhost")
+				apiRoutes := 0
+				for _, i := range apiIdx {
+					if !isCaseVariantGuard(vh.Routes[i]) {
+						apiRoutes++
+					}
+				}
+				assert.Equal(t, 2, apiRoutes, "expected both APIs' routes on the API vhost")
 				checked++
 			}
 		}

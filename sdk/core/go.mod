@@ -1,3 +1,3 @@
 module github.com/wso2/api-platform/sdk/core
 
-go 1.26.10
+go 1.26.11

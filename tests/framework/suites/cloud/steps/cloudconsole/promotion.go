@@ -18,7 +18,9 @@ package cloudconsole
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -27,33 +29,23 @@ import (
 
 	"github.com/cucumber/godog"
 
-	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
 const (
-	keyPipelineID            = "cloudPipelineID"
-	keySyntheticEnvironments = "cloudSyntheticEnvironments"
+	keyPipelineEnvironments = "cloudPipelineEnvironments"
 
-	// The numbered keys name the nth synthetic environment, its gateway and that gateway's endpoint.
-	keySyntheticEnvironmentPrefix = "cloudSyntheticEnvironment"
-	keySyntheticGatewayPrefix     = "cloudSyntheticGateway"
-	keySyntheticEndpointPrefix    = "cloudSyntheticEndpoint"
+	// The numbered keys name the nth environment of the chosen promotion chain, its gateway and
+	// that gateway's endpoint.
+	keyPipelineEnvironmentPrefix = "cloudPipelineEnvironment"
+	keyPipelineGatewayPrefix     = "cloudPipelineGateway"
+	keyPipelineEndpointPrefix    = "cloudPipelineEndpoint"
 
 	// maxPromotionEnvironments bounds the numbered keys a scenario can address and the state a
 	// new scenario clears.
 	maxPromotionEnvironments = 5
-)
-
-// A project holds the pipeline it is bound to, a pipeline holds the environments it names and
-// is what makes a gateway its environment's default, and a gateway must be gone before its
-// environment is. A promotion scenario therefore deletes project, pipeline, gateways and
-// environments in that order, which the framework's own order (project last) cannot express.
-var (
-	kindPromotionProject = cleanup.Kind{Name: cleanup.KindProject.Name, Order: 86}
-	kindPipeline         = cleanup.Kind{Name: "pipeline", Order: 87}
 )
 
 func numberedKey(prefix string, n int) string { return fmt.Sprintf("%s%d", prefix, n) }
@@ -61,10 +53,10 @@ func numberedKey(prefix string, n int) string { return fmt.Sprintf("%s%d", prefi
 // resetPromotionState drops what an earlier scenario of the runner recorded about its
 // environments, gateways and deployments, so a numbered key can only name this scenario's own.
 func resetPromotionState(ctx context.Context) error {
-	keys := []string{keySyntheticEnvironments, keyPipelineID, keyDeployedBuildID, keyDeploymentID}
+	keys := []string{keyPipelineEnvironments, keyDeployedBuildID, keyDeploymentID}
 	for n := 1; n <= maxPromotionEnvironments; n++ {
-		keys = append(keys, numberedKey(keySyntheticEnvironmentPrefix, n),
-			numberedKey(keySyntheticGatewayPrefix, n), numberedKey(keySyntheticEndpointPrefix, n))
+		keys = append(keys, numberedKey(keyPipelineEnvironmentPrefix, n),
+			numberedKey(keyPipelineGatewayPrefix, n), numberedKey(keyPipelineEndpointPrefix, n))
 	}
 	for _, key := range keys {
 		if err := tcontext.Set(ctx, key, ""); err != nil {
@@ -74,208 +66,220 @@ func resetPromotionState(ctx context.Context) error {
 	return nil
 }
 
-// createSyntheticEnvironments creates environments, each registered for cleanup before it is
-// requested, and records them as synthetic environments 1 to count. The first is also the
-// scenario's synthetic environment for the steps that take no number.
-func (s *Steps) createSyntheticEnvironments(ctx context.Context, count int) error {
-	if count < 1 || count > maxPromotionEnvironments {
-		return fmt.Errorf("a scenario creates between 1 and %d synthetic environments, asked for %d", maxPromotionEnvironments, count)
+// findPipelineProject makes the project the scenario's feature file works in the scenario's project.
+// The project must already be bound to a deployment pipeline whose environments hold an active
+// regular gateway each: the suite creates no environments or pipelines and never changes a
+// project's binding.
+func (s *Steps) findPipelineProject(ctx context.Context) error {
+	project, err := requiredValue(ctx, keyScenarioProject)
+	if err != nil {
+		return fmt.Errorf("the scenario's project is not known: %w", err)
 	}
-	if err := resetPromotionState(ctx); err != nil {
-		return err
-	}
-	names := make([]string, 0, count)
-	for n := 1; n <= count; n++ {
-		if err := s.createEnvironment(ctx); err != nil {
-			return err
-		}
-		name, err := requiredValue(ctx, keyEnvironmentName)
-		if err != nil {
-			return err
-		}
-		names = append(names, name)
-		if err := tcontext.Set(ctx, numberedKey(keySyntheticEnvironmentPrefix, n), name); err != nil {
-			return err
-		}
-	}
-	if err := tcontext.Set(ctx, keyEnvironmentName, names[0]); err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, keySyntheticEnvironments, strings.Join(names, ","))
-}
-
-// promotionPathsFromTable reads a table whose header row is "source | targets" into promotion
-// paths: one row per source environment, its targets comma separated.
-func promotionPathsFromTable(table *godog.Table, expand func(string) (string, error)) ([]map[string]any, error) {
-	if table == nil || len(table.Rows) < 2 {
-		return nil, fmt.Errorf("a promotion paths table needs a header row and at least one path")
-	}
-	header := table.Rows[0].Cells
-	if len(header) != 2 || strings.TrimSpace(header[0].Value) != "source" || strings.TrimSpace(header[1].Value) != "targets" {
-		return nil, fmt.Errorf("a promotion paths table has the header \"source | targets\"")
-	}
-	paths := make([]map[string]any, 0, len(table.Rows)-1)
-	for _, row := range table.Rows[1:] {
-		if len(row.Cells) != 2 {
-			return nil, fmt.Errorf("a promotion path row has a source and its targets, got %d cells", len(row.Cells))
-		}
-		source, err := expand(row.Cells[0].Value)
-		if err != nil {
-			return nil, err
-		}
-		source = strings.TrimSpace(source)
-		if source == "" {
-			return nil, fmt.Errorf("a promotion path has no source environment")
-		}
-		var targets []string
-		for _, target := range strings.Split(row.Cells[1].Value, ",") {
-			expanded, err := expand(target)
-			if err != nil {
-				return nil, err
-			}
-			if expanded = strings.TrimSpace(expanded); expanded != "" {
-				targets = append(targets, expanded)
-			}
-		}
-		if len(targets) == 0 {
-			return nil, fmt.Errorf("the promotion path from %q has no target environment", source)
-		}
-		paths = append(paths, map[string]any{"sourceEnvironment": source, "targetEnvironments": targets})
-	}
-	return paths, nil
-}
-
-// createPipeline creates a deployment pipeline with the table's promotion paths. The pipeline is
-// registered for cleanup before it is requested.
-func (s *Steps) createPipeline(ctx context.Context, table *godog.Table) error {
-	paths, err := promotionPathsFromTable(table, func(value string) (string, error) { return expandCloudValue(ctx, value) })
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
 	if err != nil {
 		return err
 	}
-	if err := generateResourceAndStore(ctx, "syn-pipeline", keyPipelineID); err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, keyPipelineID)
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: kindPipeline, ID: id, Actor: resourceActor, Description: "deployment pipeline " + id,
-	}); err != nil {
-		return fmt.Errorf("registering deployment pipeline %q for cleanup: %w", id, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/pipelines", map[string]any{"name": id, "promotionPaths": paths})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return tcontext.Set(ctx, keyProjectID, project)
+	case http.StatusNotFound:
+		return fmt.Errorf("the organization has no %q project", project)
+	default:
 		return responseError(resp)
 	}
-	createdID, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("creating a deployment pipeline: %w", err)
-	}
-	if createdID != id {
-		deregister(ctx, kindPipeline, id)
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: kindPipeline, ID: createdID, Actor: resourceActor, Description: "deployment pipeline " + createdID,
-		}); err != nil {
-			return fmt.Errorf("registering deployment pipeline %q for cleanup: %w", createdID, err)
-		}
-	}
-	return tcontext.Set(ctx, keyPipelineID, createdID)
 }
 
-// createProjectBoundToPipeline creates a project that the scenario then keeps as its project, and
-// binds it to the scenario's pipeline. The project is registered for cleanup before it is
-// requested, ahead of the pipeline it is bound to.
-func (s *Steps) createProjectBoundToPipeline(ctx context.Context) error {
-	pipeline, err := requiredValue(ctx, keyPipelineID)
-	if err != nil {
-		return fmt.Errorf("the scenario has created no deployment pipeline: %w", err)
+// inEnvironment rejects a gateway of any environment but the given one.
+func inEnvironment(environment string) gatewayFilter {
+	return func(item map[string]any) string {
+		if got, _ := item["environment"].(string); strings.TrimSpace(got) != environment {
+			return fmt.Sprintf("in environment %q, not %q", got, environment)
+		}
+		return ""
 	}
-	if err := s.createProjectOf(ctx, kindPromotionProject); err != nil {
-		return err
-	}
-	project, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	var bound *httpx.Response
-	err = retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo), Interval: 3 * time.Second},
-		func(ctx context.Context) (*httpx.Response, error) {
-			resp, err := s.doAuthenticatedRaw(ctx, http.MethodPut,
-				"/projects/"+url.PathEscape(project)+"/deployment-pipeline", map[string]string{"pipeline": pipeline})
-			if err != nil {
-				return nil, retry.Transient(err)
-			}
-			switch {
-			case resp.StatusCode == http.StatusOK:
-				return resp, nil
-			case resp.StatusCode == http.StatusNotFound || resp.StatusCode >= http.StatusInternalServerError:
-				// The project is created asynchronously and may not be readable yet.
-				return nil, retry.Transient(responseError(resp))
-			default:
-				return nil, responseError(resp)
-			}
-		},
-		func(resp *httpx.Response) bool {
-			bound = resp
-			return resp != nil
-		},
-		"binding project "+project+" to deployment pipeline "+pipeline)
-	if err != nil {
-		return err
-	}
-	if s.funnel != nil {
-		if err := s.funnel.Publish(ctx, bound); err != nil {
-			return err
+}
+
+// promotionChain finds, in a pipeline's promotion paths, length environments a build passes
+// through one after the other. The first is an entry environment: no path leads to it, so it takes
+// a deployment directly. Each next one is a target of the one before it, and of no earlier one, so
+// a promotion that skips an environment of the chain has no path. usable reports whether an
+// environment may be part of the chain. It returns nil when the paths hold no such chain.
+func promotionChain(paths []promotionPath, length int, usable func(environment string) bool) []string {
+	targets := map[string][]string{}
+	isTarget := map[string]bool{}
+	var order []string
+	note := func(environment string) {
+		if !slices.Contains(order, environment) {
+			order = append(order, environment)
 		}
 	}
-	got, err := stringField(bound, "pipeline")
-	if err != nil {
-		return fmt.Errorf("binding project %q to a deployment pipeline: %w", project, err)
+	for _, path := range paths {
+		source := strings.TrimSpace(path.SourceEnvironment)
+		if source == "" {
+			continue
+		}
+		note(source)
+		for _, target := range path.TargetEnvironments {
+			if target = strings.TrimSpace(target); target == "" {
+				continue
+			}
+			note(target)
+			isTarget[target] = true
+			if !slices.Contains(targets[source], target) {
+				targets[source] = append(targets[source], target)
+			}
+		}
 	}
-	if got != pipeline {
-		return fmt.Errorf("project %q is bound to deployment pipeline %q, want %q", project, got, pipeline)
+	targetOfAny := func(sources []string, environment string) bool {
+		for _, source := range sources {
+			if slices.Contains(targets[source], environment) {
+				return true
+			}
+		}
+		return false
+	}
+	var extend func(chain []string) []string
+	extend = func(chain []string) []string {
+		if len(chain) == length {
+			return chain
+		}
+		for _, next := range targets[chain[len(chain)-1]] {
+			if !usable(next) || slices.Contains(chain, next) || targetOfAny(chain[:len(chain)-1], next) {
+				continue
+			}
+			if found := extend(append(slices.Clone(chain), next)); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	for _, entry := range order {
+		if isTarget[entry] || !usable(entry) {
+			continue
+		}
+		if found := extend([]string{entry}); found != nil {
+			return found
+		}
 	}
 	return nil
 }
 
-func syntheticEnvironmentNames(ctx context.Context) []string {
-	recorded := optionalValue(ctx, keySyntheticEnvironments)
+// findPromotionChain chooses a promotion chain (see promotionChain) of the given length in the
+// deployment pipeline of the scenario's project, whose environments each hold an active regular
+// gateway, and records it as pipeline environments 1 to length with their gateways and endpoints.
+// The gateway of the first, the entry environment, also becomes the scenario's active gateway. A
+// pipeline without such a chain skips the scenario, as the suite creates no environments or
+// pipelines of its own.
+func (s *Steps) findPromotionChain(ctx context.Context, length int) error {
+	if length < 2 || length > maxPromotionEnvironments {
+		return fmt.Errorf("a promotion chain has between 2 and %d environments, asked for %d", maxPromotionEnvironments, length)
+	}
+	if err := resetPromotionState(ctx); err != nil {
+		return err
+	}
+	projectID, err := requiredValue(ctx, keyProjectID)
+	if err != nil {
+		return fmt.Errorf("the scenario has found no project: %w", err)
+	}
+	pipeline, paths, err := boundPipelineOf(ctx, projectID, func(ctx context.Context, path string) (*httpx.Response, error) {
+		return s.doAuthenticatedRaw(ctx, http.MethodGet, path, nil)
+	})
+	if err != nil {
+		return fmt.Errorf("reading the deployment pipeline of project %q: %w", projectID, err)
+	}
+	if !ownedPipeline(pipeline) {
+		slog.Warn("skipping: the project's deployment pipeline is not named with the suite's prefix",
+			"project", projectID, "pipeline", pipeline, "prefix", testResourcePrefix)
+		return godog.ErrSkip
+	}
+	items, err := s.fetchGatewayList(ctx, regularGatewayKind)
+	if err != nil {
+		return err
+	}
+	gateways := map[string]gatewayChoice{}
+	var unusable []string
+	for _, environment := range sortedKeys(environmentsOf(paths)) {
+		if !ownedEnvironment(environment) {
+			unusable = append(unusable, fmt.Sprintf("environment %q is neither the default one nor named with the prefix %q", environment, testResourcePrefix))
+			continue
+		}
+		choice, err := s.chooseActiveGateway(ctx, items, "gateway of environment "+environment,
+			append(gatewayFilters(""), inEnvironment(environment))...)
+		if errors.Is(err, errCloudDataPlaneDomains) {
+			return err
+		}
+		if err != nil {
+			unusable = append(unusable, err.Error())
+			continue
+		}
+		gateways[environment] = choice
+	}
+	chain := promotionChain(paths, length, func(environment string) bool {
+		_, ok := gateways[environment]
+		return ok
+	})
+	if chain == nil {
+		slog.Warn("skipping: the project's deployment pipeline has no promotion chain of the length the scenario needs with an active gateway in each environment",
+			"project", projectID, "pipeline", pipeline, "length", length, "paths", paths, "unusable", strings.Join(unusable, "; "))
+		return godog.ErrSkip
+	}
+	for i, environment := range chain {
+		choice := gateways[environment]
+		for key, value := range map[string]string{
+			numberedKey(keyPipelineEnvironmentPrefix, i+1): environment,
+			numberedKey(keyPipelineGatewayPrefix, i+1):     choice.id,
+			numberedKey(keyPipelineEndpointPrefix, i+1):    choice.endpoint,
+		} {
+			if err := tcontext.Set(ctx, key, value); err != nil {
+				return err
+			}
+		}
+	}
+	entry := gateways[chain[0]]
+	for key, value := range map[string]string{
+		keyPipelineEnvironments: strings.Join(chain, ","),
+		keyGatewayID:            entry.id,
+		keyGatewayEnv:           chain[0],
+		keyGatewayEndpoint:      entry.endpoint,
+	} {
+		if err := tcontext.Set(ctx, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pipelineEnvironmentNames(ctx context.Context) []string {
+	recorded := optionalValue(ctx, keyPipelineEnvironments)
 	if recorded == "" {
 		return nil
 	}
 	return strings.Split(recorded, ",")
 }
 
-// syntheticEnvironmentAt resolves the nth (from one) environment the scenario created.
-func syntheticEnvironmentAt(ctx context.Context, n int) (string, error) {
-	names := syntheticEnvironmentNames(ctx)
+// pipelineEnvironmentAt resolves the nth (from one) environment of the scenario's promotion chain.
+func pipelineEnvironmentAt(ctx context.Context, n int) (string, error) {
+	names := pipelineEnvironmentNames(ctx)
 	if n < 1 || n > len(names) {
-		return "", fmt.Errorf("synthetic APIP environment %d does not exist: the scenario created %d", n, len(names))
+		return "", fmt.Errorf("pipeline environment %d does not exist: the scenario's promotion chain has %d", n, len(names))
 	}
 	return names[n-1], nil
 }
 
-// createAPIInSyntheticProject creates the synthetic REST API in the project the scenario created,
-// and refuses to run against the default project.
-func (s *Steps) createAPIInSyntheticProject(ctx context.Context, table *godog.Table) error {
-	if project := optionalValue(ctx, keyProjectID); project == "" || project == "default" {
-		return fmt.Errorf("the scenario has created no synthetic project, so the API would be created in %q", project)
+// createAPIInPipelineProject creates the synthetic REST API in the project of the scenario's feature
+// file, and refuses to run against any other project.
+func (s *Steps) createAPIInPipelineProject(ctx context.Context) error {
+	project := optionalValue(ctx, keyProjectID)
+	if want := optionalValue(ctx, keyScenarioProject); want == "" || project != want {
+		return fmt.Errorf("the scenario has not found its project %q, so the API would be created in %q", want, project)
 	}
-	overrides, err := tableValues(table)
-	if err != nil {
-		return err
-	}
-	return s.createAPI(ctx, primaryAPI, overrides)
+	return s.createAPI(ctx, primaryAPI, nil)
 }
 
-// assertStageHoldsNothing checks no gateway of the nth synthetic environment shows a deployment
+// assertStageHoldsNothing checks no gateway of the nth pipeline environment shows a deployment
 // of the API. The stage must exist, so an environment missing from the pipeline cannot pass.
 func (s *Steps) assertStageHoldsNothing(ctx context.Context, n int) error {
-	environment, err := syntheticEnvironmentAt(ctx, n)
+	environment, err := pipelineEnvironmentAt(ctx, n)
 	if err != nil {
 		return err
 	}
@@ -318,227 +322,23 @@ func stageOf(stages []map[string]any, environment string) ([]map[string]any, err
 	return nil, fmt.Errorf("the deployment listing has no stage for environment %q", environment)
 }
 
-// baseGatewayWait is how long a new environment is given to show a gateway of its own before the
-// runner builds one. The platform may provision an environment's default gateway itself, and
-// building a second one beside it would spend a gateway of the organisation's allowance for nothing.
-const baseGatewayWait = 90 * time.Second
-
-// syntheticEnvironmentGatewayAt resolves the gateway of the nth synthetic environment.
-func syntheticEnvironmentGatewayAt(ctx context.Context, n int) (string, error) {
-	id := optionalValue(ctx, numberedKey(keySyntheticGatewayPrefix, n))
+// pipelineGatewayAt resolves the gateway of the nth pipeline environment.
+func pipelineGatewayAt(ctx context.Context, n int) (string, error) {
+	id := optionalValue(ctx, numberedKey(keyPipelineGatewayPrefix, n))
 	if id == "" {
-		return "", fmt.Errorf("synthetic APIP environment %d has no gateway", n)
+		return "", fmt.Errorf("pipeline environment %d has no gateway", n)
 	}
 	return id, nil
 }
 
-// environmentsExist reports which of the names the platform still lists as environments.
-func (s *Steps) environmentsExist(ctx context.Context, names []string) (map[string]bool, error) {
-	resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/environments", nil)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, responseError(resp)
-	}
-	items, err := listItems(resp)
-	if err != nil {
-		return nil, fmt.Errorf("decoding APIP environments: %w", err)
-	}
-	listed := map[string]bool{}
-	for _, item := range items {
-		if name, _ := item["name"].(string); name != "" {
-			listed[name] = true
-		}
-	}
-	present := map[string]bool{}
-	for _, name := range names {
-		present[name] = listed[name]
-	}
-	return present, nil
-}
-
-// ensureRunnerEnvironments makes sure the runner holds the given number of synthetic environments,
-// each with a regular gateway that is active, and publishes them as synthetic environments 1 to
-// count. The environments and their gateways last for the runner: a gateway takes minutes to be
-// built and the organisation allows few of them, so the scenarios that promote along a pipeline
-// share these instead of building their own. A scenario that finds them in place changes nothing.
-func (s *Steps) ensureRunnerEnvironments(ctx context.Context, count int) error {
-	if count < 1 || count > maxPromotionEnvironments {
-		return fmt.Errorf("a runner holds between 1 and %d synthetic environments, asked for %d", maxPromotionEnvironments, count)
-	}
-	names := syntheticEnvironmentNames(ctx)
-	valid := 0
-	if len(names) > 0 {
-		present, err := s.environmentsExist(ctx, names)
-		if err != nil {
-			return err
-		}
-		// What the runner recorded is kept only while every environment is still there and
-		// each has its gateway; anything else is state another scenario left behind.
-		for n, name := range names {
-			if !present[name] || optionalValue(ctx, numberedKey(keySyntheticGatewayPrefix, n+1)) == "" ||
-				optionalValue(ctx, numberedKey(keySyntheticEnvironmentPrefix, n+1)) != name {
-				break
-			}
-			valid++
-		}
-		if valid < len(names) {
-			valid = 0
-		}
-	}
-	if valid >= count {
-		return s.publishRunnerEnvironments(ctx, names[:count])
-	}
-	if valid == 0 {
-		if err := resetPromotionState(ctx); err != nil {
-			return err
-		}
-		names = nil
-	}
-	var fresh []string
-	for n := len(names) + 1; n <= count; n++ {
-		if err := s.createRunnerEnvironment(ctx); err != nil {
-			return err
-		}
-		name, err := requiredValue(ctx, keyEnvironmentName)
-		if err != nil {
-			return err
-		}
-		names = append(names, name)
-		fresh = append(fresh, name)
-		if err := tcontext.Set(ctx, numberedKey(keySyntheticEnvironmentPrefix, n), name); err != nil {
-			return err
-		}
-	}
-	first := len(names) - len(fresh)
-	gateways := make([]string, 0, len(fresh))
-	for i, name := range fresh {
-		id, err := s.ensureEnvironmentGateway(ctx, name)
-		if err != nil {
-			return fmt.Errorf("synthetic APIP environment %d (%s): %w", first+i+1, name, err)
-		}
-		gateways = append(gateways, id)
-		if err := tcontext.Set(ctx, numberedKey(keySyntheticGatewayPrefix, first+i+1), id); err != nil {
-			return err
-		}
-	}
-	for i, id := range gateways {
-		if err := s.waitGatewayActive(ctx, id); err != nil {
-			return fmt.Errorf("synthetic APIP environment %d: %w", first+i+1, err)
-		}
-		endpoint, err := s.gatewayEndpoint(ctx, id)
-		if err != nil {
-			return err
-		}
-		if err := tcontext.Set(ctx, numberedKey(keySyntheticEndpointPrefix, first+i+1), endpoint); err != nil {
-			return err
-		}
-	}
-	return s.publishRunnerEnvironments(ctx, names)
-}
-
-// publishRunnerEnvironments records the environments as the ones the scenario's steps name.
-func (s *Steps) publishRunnerEnvironments(ctx context.Context, names []string) error {
-	if err := tcontext.Set(ctx, keyEnvironmentName, names[0]); err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, keySyntheticEnvironments, strings.Join(names, ","))
-}
-
-// regularGatewayOf finds the regular gateway an environment lists, the one that is active first,
-// or "" when it lists none.
-func regularGatewayOf(items []map[string]any, environment string) string {
-	var found []map[string]any
-	for _, item := range items {
-		if item["environment"] == environment && gatewayKind(item) == regularGatewayKind {
-			found = append(found, item)
-		}
-	}
-	slices.SortStableFunc(found, func(a, b map[string]any) int {
-		return boolRank(b["isActive"] == true) - boolRank(a["isActive"] == true)
-	})
-	if len(found) == 0 {
-		return ""
-	}
-	id, _ := found[0]["id"].(string)
-	return id
-}
-
-// ensureEnvironmentGateway returns the regular gateway of a new environment. It is the gateway the
-// platform provisions with the environment when it does, and one the runner builds when it does not
-// provision any.
-func (s *Steps) ensureEnvironmentGateway(ctx context.Context, environment string) (string, error) {
-	var found string
-	var listErr error
-	listed := false
-	_ = retry.Await(ctx, retry.Options{Timeout: baseGatewayWait, Interval: 5 * time.Second},
-		func(ctx context.Context) (string, error) {
-			items, err := s.fetchGatewayList(ctx, "")
-			if err != nil {
-				listErr = err
-				return "", err
-			}
-			listed = true
-			found = regularGatewayOf(items, environment)
-			return found, nil
-		},
-		func(id string) bool { return id != "" },
-		"waiting for environment "+environment+" to list a gateway")
-	if found != "" {
-		return found, nil
-	}
-	if !listed {
-		return "", fmt.Errorf("listing the gateways of environment %q: %w", environment, listErr)
-	}
-	budget, err := s.probeHandleBudget(ctx, environment)
-	if err != nil {
-		return "", err
-	}
-	name, err := freshGatewayName(ctx)
-	if err != nil {
-		return "", err
-	}
-	handle := handleOfLength(name, budget)
-	if err := s.requestManagedGatewayScoped(ctx, map[string]string{
-		"displayName": handle, "handle": handle, "environment": environment,
-	}, cleanup.RunnerScope); err != nil {
-		return "", err
-	}
-	resp, err := httpx.Published(ctx)
-	if err != nil {
-		return "", err
-	}
-	if !gatewayRequestAccepted(resp.StatusCode) {
-		return "", fmt.Errorf("creating a gateway in environment %q: %w", environment, responseError(resp))
-	}
-	return stringField(resp, "id")
-}
-
-// replacePipelinePaths replaces the promotion paths of the scenario's pipeline and publishes the
-// response.
-func (s *Steps) replacePipelinePaths(ctx context.Context, table *godog.Table) error {
-	paths, err := promotionPathsFromTable(table, func(value string) (string, error) { return expandCloudValue(ctx, value) })
-	if err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, keyPipelineID)
-	if err != nil {
-		return fmt.Errorf("the scenario has created no deployment pipeline: %w", err)
-	}
-	_, err = s.doAuthenticated(ctx, http.MethodPut, "/pipelines/"+url.PathEscape(id),
-		map[string]any{"name": id, "promotionPaths": paths})
-	return err
-}
-
 // assertDeploymentListsGatewayOf checks the last deployment response lists a deployment on the
-// gateway of the nth synthetic environment.
+// gateway of the nth pipeline environment.
 func (s *Steps) assertDeploymentListsGatewayOf(ctx context.Context, n int) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
 		return err
 	}
-	gatewayID, err := syntheticEnvironmentGatewayAt(ctx, n)
+	gatewayID, err := pipelineGatewayAt(ctx, n)
 	if err != nil {
 		return err
 	}
@@ -566,14 +366,14 @@ func stageGateway(stages []map[string]any, environment, gatewayID string) (map[s
 	return nil, fmt.Errorf("the stage for environment %q does not list gateway %q", environment, gatewayID)
 }
 
-// assertStageRunsRenderedBuild waits until the gateway of the nth synthetic environment runs the
+// assertStageRunsRenderedBuild waits until the gateway of the nth pipeline environment runs the
 // build the last deployment rendered.
 func (s *Steps) assertStageRunsRenderedBuild(ctx context.Context, n int) error {
-	environment, err := syntheticEnvironmentAt(ctx, n)
+	environment, err := pipelineEnvironmentAt(ctx, n)
 	if err != nil {
 		return err
 	}
-	gatewayID, err := syntheticEnvironmentGatewayAt(ctx, n)
+	gatewayID, err := pipelineGatewayAt(ctx, n)
 	if err != nil {
 		return err
 	}
@@ -601,14 +401,14 @@ func (s *Steps) assertStageRunsRenderedBuild(ctx context.Context, n int) error {
 		fmt.Sprintf("waiting for gateway %q of environment %q to run build %s", gatewayID, environment, want))
 }
 
-// assertStageNoLongerDeployed waits until the gateway of the nth synthetic environment stops
+// assertStageNoLongerDeployed waits until the gateway of the nth pipeline environment stops
 // serving the API.
 func (s *Steps) assertStageNoLongerDeployed(ctx context.Context, n int) error {
-	environment, err := syntheticEnvironmentAt(ctx, n)
+	environment, err := pipelineEnvironmentAt(ctx, n)
 	if err != nil {
 		return err
 	}
-	gatewayID, err := syntheticEnvironmentGatewayAt(ctx, n)
+	gatewayID, err := pipelineGatewayAt(ctx, n)
 	if err != nil {
 		return err
 	}
@@ -629,14 +429,14 @@ func (s *Steps) assertStageNoLongerDeployed(ctx context.Context, n int) error {
 		fmt.Sprintf("waiting for gateway %q of environment %q to stop serving the API", gatewayID, environment))
 }
 
-// undeployFromSyntheticEnvironment undeploys what the last deployment request put on the gateway
-// of the nth synthetic environment, through the project route, and requires it to be accepted.
-func (s *Steps) undeployFromSyntheticEnvironment(ctx context.Context, n int) error {
-	environment, err := syntheticEnvironmentAt(ctx, n)
+// undeployFromPipelineEnvironment undeploys what the last deployment request put on the gateway
+// of the nth pipeline environment, through the project route, and requires it to be accepted.
+func (s *Steps) undeployFromPipelineEnvironment(ctx context.Context, n int) error {
+	environment, err := pipelineEnvironmentAt(ctx, n)
 	if err != nil {
 		return err
 	}
-	gatewayID, err := syntheticEnvironmentGatewayAt(ctx, n)
+	gatewayID, err := pipelineGatewayAt(ctx, n)
 	if err != nil {
 		return err
 	}
@@ -661,18 +461,4 @@ func (s *Steps) undeployFromSyntheticEnvironment(ctx context.Context, n int) err
 		return responseError(resp)
 	}
 	return nil
-}
-
-// recordSyntheticEnvironmentEndpoint keeps the endpoint of the gateway of the nth synthetic
-// environment, for a request that goes to that gateway directly.
-func (s *Steps) recordSyntheticEnvironmentEndpoint(ctx context.Context, n int) error {
-	gatewayID, err := syntheticEnvironmentGatewayAt(ctx, n)
-	if err != nil {
-		return err
-	}
-	endpoint, err := s.gatewayEndpoint(ctx, gatewayID)
-	if err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, numberedKey(keySyntheticEndpointPrefix, n), endpoint)
 }

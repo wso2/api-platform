@@ -94,3 +94,31 @@ func TestVersion_IsLTS(t *testing.T) {
 	}
 	assert.False(t, Version{2026, 5, 13}.IsLTS())
 }
+
+// The event gateway is a separate product on its own 0.x line and reports that
+// version through the same manifest field. A 0.x is not an early LTS release,
+// so it must not be compared against minimums written against gateway/v1.x.
+func TestVersion_IsLTS_EventGatewayLineExcluded(t *testing.T) {
+	for _, v := range []Version{{0, 8, 0}, {0, 10, 0}, {0, 1, 0}} {
+		assert.Falsef(t, v.IsLTS(), "%s is the event gateway line, not LTS", v)
+	}
+}
+
+// Regression for the WebBrokerApi deploy being refused on every event gateway:
+// 0.8.0 was read as "older than 1.2.0" and failed every capability gate.
+func TestAtLeast_EventGatewayVersionSatisfiesLTSMinimums(t *testing.T) {
+	for _, raw := range []string{"0.8.0", "0.10.0", "0.10.0-SNAPSHOT", "v0.8.0"} {
+		assert.Truef(t, AtLeast(raw, MinWebBrokerKindGatewayVersion), "%s must satisfy %s", raw, MinWebBrokerKindGatewayVersion)
+		assert.Truef(t, AtLeast(raw, MinGatewayV1Version), "%s must satisfy %s", raw, MinGatewayV1Version)
+		assert.Falsef(t, Below(raw, MinSecretSyncGatewayVersion), "%s must not be below %s", raw, MinSecretSyncGatewayVersion)
+	}
+}
+
+// The regular gateway's own line is untouched: a real 1.0.0/1.1.0 still gets
+// the down-conversion, and a CalVer STS build still skips the compare.
+func TestAtLeast_RegularGatewayLineUnchanged(t *testing.T) {
+	assert.False(t, AtLeast("1.0.0", MinWebBrokerKindGatewayVersion))
+	assert.False(t, AtLeast("1.1.0", MinWebBrokerKindGatewayVersion))
+	assert.True(t, AtLeast("1.2.0", MinWebBrokerKindGatewayVersion))
+	assert.True(t, AtLeast("2026.09.24", MinWebBrokerKindGatewayVersion))
+}

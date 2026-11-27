@@ -109,3 +109,25 @@ func TestEnsureKindSupported_MessageNamesPlatformKindAndRequirement(t *testing.T
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "gateway version 1.2.0 or newer is required")
 }
+
+// An event gateway reports its own 0.x version (event-gateway/VERSION) through
+// the same manifest field the regular gateway uses. It must not be refused the
+// kinds it exists to serve: 0.8.0 was being read as "older than 1.2.0", so
+// every WebBrokerApi deploy to an event gateway failed with
+// DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY.
+func TestEnsureKindSupported_EventGatewayVersionLine(t *testing.T) {
+	for _, version := range []string{"0.8.0", "0.10.0", "0.10.0-SNAPSHOT"} {
+		assert.NoErrorf(t, EnsureKindSupported(constants.WebBrokerApi, version),
+			"event gateway %s must be allowed to run WebBrokerApi", version)
+		assert.NoErrorf(t, EnsureKindSupported(constants.WebSubApi, version),
+			"event gateway %s must be allowed to run WebSubApi", version)
+	}
+}
+
+// The regular gateway's LTS line still gates WebBrokerApi at 1.2.0.
+func TestEnsureKindSupported_RegularGatewayStillGated(t *testing.T) {
+	err := EnsureKindSupported(constants.WebBrokerApi, "1.1.0")
+	require.Error(t, err)
+	assert.True(t, apperror.DeploymentKindUnsupportedByGateway.Is(err))
+	assert.NoError(t, EnsureKindSupported(constants.WebBrokerApi, "1.2.0"))
+}

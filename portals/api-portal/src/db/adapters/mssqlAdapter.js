@@ -47,11 +47,18 @@ function poolTimeoutMs(connectionTimeoutMs) {
 
 function buildConnectionConfig(config) {
     const db = config.database;
-    const poolTimeout = poolTimeoutMs(db.poolConnectionTimeoutMs);
     // sslMode is shared with the postgres adapter's config.database.sslMode
-    // (see ../dbSsl.js) — 'verify-full' here maps to encrypt+cert verification,
-    // 'disable' to a plain, unencrypted connection.
-    const verifyFull = db.sslMode === 'verify-full';
+    // (see ../dbSsl.js). SQL Server only supports 'disable' and 'verify-full';
+    // 'require' and 'verify-ca' are PostgreSQL-only modes with no equivalent
+    // in the SQL Server driver and must be rejected explicitly.
+    const sslMode = db.sslMode || 'disable';
+    if (sslMode !== 'disable' && sslMode !== 'verify-full') {
+        throw new Error(
+            `ssl_mode "${sslMode}" is not supported for SQL Server — use "disable" or "verify-full"`
+        );
+    }
+    const poolTimeout = poolTimeoutMs(db.poolConnectionTimeoutMs);
+    const verifyFull = sslMode === 'verify-full';
     return {
         server: db.host,
         port: db.port,

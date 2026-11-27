@@ -776,6 +776,16 @@ components:
           example: /my-websub-api
         upstream:
           type: object
+          description: |
+            Upstream endpoint configuration. `auth.value` is write-only: supply
+            it when configuring the API, and it is not returned on reads.
+
+            On update, an omitted or empty `auth.value` keeps the stored
+            credential — the two are equivalent, so a client may safely send
+            back what it read. A new value replaces the stored one. To drop a
+            credential, change `auth.type` (use `none` to remove upstream
+            authentication): the stored value is never carried across a change
+            of scheme.
           x-go-type: Upstream
         allChannels:
           $ref: '#/components/schemas/WebSubAllChannelPolicies'
