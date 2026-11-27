@@ -113,7 +113,7 @@ func init() {
 	// Access to Go module policies in private repositories. StringArray, not
 	// StringSlice: GOPRIVATE-style values contain commas.
 	buildCmd.Flags().StringVar(&netrcFile, "netrc", "",
-		"netrc file with credentials for private Go module hosts and proxies, mounted read-only into the gateway-builder container")
+		"netrc file with credentials for private Go module hosts and proxies; a private copy is mounted read-only into the gateway-builder container")
 	buildCmd.Flags().StringArrayVar(&gitCredentials, "git-credential", nil,
 		"Credentials for a private Go module host as <host>=<username>:<ENV_VAR>, where ENV_VAR names an environment variable holding the token (repeatable)")
 	buildCmd.Flags().StringArrayVar(&goEnvFlags, "go-env", nil,
@@ -169,7 +169,7 @@ func printBuilderAccess(access gateway.BuilderAccess) {
 	if access.HasCredentials() {
 		fmt.Println("  Builder credentials:")
 		if access.NetrcFile != "" {
-			fmt.Printf("    • netrc file %s (mounted read-only)\n", access.NetrcFile)
+			fmt.Printf("    • netrc file %s (a private copy is mounted read-only)\n", access.NetrcFile)
 		}
 		for _, c := range access.GitCredentials {
 			fmt.Printf("    • %s as %s (from --git-credential)\n", c.Host, c.Username)
