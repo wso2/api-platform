@@ -137,11 +137,13 @@ Feature: APIP cloud access and identity
     Then the cloud API response status code should be 400
     And the cloud API error code should be "VALIDATION_FAILED"
     And the cloud API error message should be "use one client authentication method: HTTP Basic or form fields, not both"
+    And the cloud API answer should carry no access token
     When I exchange the service account's credentials using HTTP Basic as "${CTX:cloudServiceAccountClientID}" with secret "apsa_wrong" with:
       | scope | ap:project:read |
     Then the cloud API response status code should be 401
     And the cloud API error code should be "UNAUTHORIZED"
     And the cloud API error message should be "Invalid or expired credentials."
+    And the cloud API answer should carry no access token
     And the service account's own credentials should be exchanged using HTTP Basic for a token with the scope "ap:project:read"
 
   # Service accounts are off in the cloud by decision (see the scenario list entry).

@@ -9337,6 +9337,9 @@ func TestValidateGraphQLSchemaAndItsAssertions(t *testing.T) {
 	publishedResponse(t, steps, ctx, http.StatusOK,
 		`{"resolved":false,"sdl":"","message":"The provided endpoint could not be used to derive a GraphQL schema."}`)
 	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved"))
+	require.Error(t, steps.assertGraphQLValidation(ctx, "not resolved with SDL errors"), "a message alone does not prove a fetch")
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":false,"sdl":"","message":"no","sdlErrors":[{"message":"Syntax Error"}]}`)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved with SDL errors"))
 	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"type Query { other: String }"}`)
 	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"), "a schema other than the one given")
 }
@@ -10300,6 +10303,11 @@ func TestValidateGraphQLSchemaWithSendsTheNamedSource(t *testing.T) {
 
 	require.NoError(t, steps.validateGraphQLSchemaWith(ctx, valuesTable(t, []string{"schemaSource", "introspection"}, []string{"upstreamUrl", "http://169.254.169.254/graphql"})))
 	require.Equal(t, map[string]any{"schemaSource": "introspection", "upstream": map[string]any{"main": map[string]any{"url": "http://169.254.169.254/graphql"}}}, stub.validated)
+	// A fetched schema resolves as any schema: the scenario does not know the text the URL serves.
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"type Query { other: String }"}`)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "resolved"))
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"  "}`)
+	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"), "an empty schema")
 
 	for name, table := range map[string]*godog.Table{
 		"an unsupported value": valuesTable(t, []string{"schemaSource", "inline"}, []string{"sdl", "type Query { a: String }"}),

@@ -49,6 +49,8 @@ const (
 	keyOtherAPIKey          = "cloudOtherAPIKey"
 	keyOtherGraphQLKeyID    = "cloudOtherGraphQLAPIKeyID"
 	keyValidatedGraphQLText = "cloudValidatedGraphQLSchema"
+	// keyValidatedGraphQLSource is the schemaSource of the last validation request.
+	keyValidatedGraphQLSource = "cloudValidatedGraphQLSource"
 
 	// graphQLBackendEnv overrides the backend the synthetic GraphQL APIs call.
 	graphQLBackendEnv = "CLOUD_IT_GRAPHQL_BACKEND_URL"
@@ -89,7 +91,7 @@ func (s *Steps) registerGraphQLSteps(sc stepRegistrar) {
 	sc.Step(`^the submitted GraphQL API should (exist|not exist)$`, s.assertSubmittedGraphQL)
 	sc.Step(`^I validate the GraphQL schema "([^"]*)"$`, s.validateGraphQLSchema)
 	sc.Step(`^I validate a GraphQL schema with:$`, s.validateGraphQLSchemaWith)
-	sc.Step(`^the GraphQL schema should be reported as (resolved|not resolved)$`, s.assertGraphQLValidation)
+	sc.Step(`^the GraphQL schema should be reported as (resolved|not resolved|not resolved with SDL errors)$`, s.assertGraphQLValidation)
 	sc.Step(`^I create (an|another) API key for the synthetic GraphQL API$`, s.createGraphQLAPIKey)
 	sc.Step(`^I revoke the API key of the synthetic GraphQL API$`, s.revokeGraphQLAPIKey)
 }
@@ -596,8 +598,8 @@ func (s *Steps) assertSubmittedGraphQL(ctx context.Context, presence string) err
 var graphQLValidateKeys = map[string]bool{"schemaSource": true, "sdlUrl": true, "upstreamUrl": true}
 
 // validateGraphQLSchemaWith asks the platform to resolve a schema from the source the table names,
-// without creating an API. Only an unresolved outcome can be asserted after it: the schema text
-// a URL serves is not known to the scenario.
+// without creating an API. A resolved outcome is checked for a schema, not for the text the URL
+// served, which the scenario does not know.
 func (s *Steps) validateGraphQLSchemaWith(ctx context.Context, table *godog.Table) error {
 	// A request that fails before it is sent must not leave an earlier answer to be asserted.
 	httpx.ClearPublished(ctx)
@@ -627,8 +629,10 @@ func (s *Steps) validateGraphQLSchemaWith(ctx context.Context, table *godog.Tabl
 	if err != nil {
 		return err
 	}
-	if err := tcontext.Set(ctx, keyValidatedGraphQLText, string(described)); err != nil {
-		return err
+	for key, value := range map[string]any{keyValidatedGraphQLText: string(described), keyValidatedGraphQLSource: request["schemaSource"]} {
+		if err := tcontext.Set(ctx, key, value); err != nil {
+			return err
+		}
 	}
 	body, contentType, err := graphQLForm(request)
 	if err != nil {
@@ -640,8 +644,10 @@ func (s *Steps) validateGraphQLSchemaWith(ctx context.Context, table *godog.Tabl
 
 // validateGraphQLSchema asks the platform to resolve an inline schema without creating an API.
 func (s *Steps) validateGraphQLSchema(ctx context.Context, schema string) error {
-	if err := tcontext.Set(ctx, keyValidatedGraphQLText, schema); err != nil {
-		return err
+	for key, value := range map[string]string{keyValidatedGraphQLText: schema, keyValidatedGraphQLSource: "inline"} {
+		if err := tcontext.Set(ctx, key, value); err != nil {
+			return err
+		}
 	}
 	body, contentType, err := graphQLForm(map[string]any{"schemaSource": "inline", "sdl": schema})
 	if err != nil {
@@ -651,8 +657,10 @@ func (s *Steps) validateGraphQLSchema(ctx context.Context, schema string) error 
 	return err
 }
 
-// assertGraphQLValidation checks the validation answer for the schema last validated: a schema
-// that resolves comes back as it was given, one that does not comes back empty with its errors.
+// assertGraphQLValidation checks the validation answer for the schema last validated: an inline
+// schema that resolves comes back as it was given, a fetched one comes back as a schema, and one
+// that does not resolve comes back empty with a diagnostic. "with SDL errors" requires the errors
+// of a text that was fetched or given: the platform answers a failed fetch with a message only.
 func (s *Steps) assertGraphQLValidation(ctx context.Context, outcome string) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
@@ -677,6 +685,16 @@ func (s *Steps) assertGraphQLValidation(ctx context.Context, outcome string) err
 		return fmt.Errorf("the answer is not a schema validation result: %s", response.Describe())
 	}
 	if outcome == "resolved" {
+		source, err := requiredValue(ctx, keyValidatedGraphQLSource)
+		if err != nil {
+			return err
+		}
+		if source != "inline" {
+			if !*answer.Resolved || len(graphQLTokens(answer.SDL)) == 0 {
+				return fmt.Errorf("the schema from %s was not resolved: %s", schema, response.Describe())
+			}
+			return nil
+		}
 		if !*answer.Resolved || !sameSchema(answer.SDL, schema) {
 			return fmt.Errorf("the schema %q was not resolved as given: %s", schema, response.Describe())
 		}
@@ -684,11 +702,12 @@ func (s *Steps) assertGraphQLValidation(ctx context.Context, outcome string) err
 	}
 	// An SDL that was fetched but does not parse is diagnosed in sdlErrors; an endpoint that could
 	// not be introspected is diagnosed in the answer's message.
-	diagnosed := strings.TrimSpace(answer.Message) != "" || slices.ContainsFunc(answer.SDLErrors, func(issue *struct {
+	sdlErrors := slices.ContainsFunc(answer.SDLErrors, func(issue *struct {
 		Message string `json:"message"`
 	}) bool {
 		return issue != nil && strings.TrimSpace(issue.Message) != ""
 	})
+	diagnosed := sdlErrors || (outcome == "not resolved" && strings.TrimSpace(answer.Message) != "")
 	if *answer.Resolved || strings.TrimSpace(answer.SDL) != "" || !diagnosed {
 		return fmt.Errorf("the schema %q was not reported as unresolved with a diagnostic: %s", schema, response.Describe())
 	}
