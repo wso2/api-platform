@@ -58,7 +58,9 @@ function buildOutboundAgents(config) {
     }
 
     const httpClientCfg = config.httpClient || {};
-    const tlsOptions = buildTLSOptions(httpClientCfg.tls || {});
+    // Name the outbound section so a bad value here isn't reported as a
+    // server.https (inbound listener) error.
+    const tlsOptions = buildTLSOptions(httpClientCfg.tls || {}, 'http_client.tls');
 
     const pooling = {
         keepAlive: httpClientCfg.keepAlive !== false,
