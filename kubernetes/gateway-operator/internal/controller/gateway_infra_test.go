@@ -52,17 +52,35 @@ func TestGatewayHelmExpectedResourcesPresent(t *testing.T) {
 			Labels:    map[string]string{"app.kubernetes.io/instance": release},
 		}}
 	}
+	controllerLabels := map[string]string{
+		"app.kubernetes.io/instance":  release,
+		"app.kubernetes.io/component": "controller",
+	}
+	src := &fakeReleaseServices{services: map[string]*helm.ManifestService{
+		namespace + "/" + release + "/controller": {Name: release + "-controller", Selector: controllerLabels},
+	}}
 	controllerSvc := func() client.Object {
 		return &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      release + "-controller",
 				Namespace: namespace,
-				Labels: map[string]string{
-					"app.kubernetes.io/instance":  release,
-					"app.kubernetes.io/component": "controller",
+				Labels:    controllerLabels,
+				Annotations: map[string]string{
+					helmReleaseNameAnnotation:      release,
+					helmReleaseNamespaceAnnotation: namespace,
 				},
 			},
-			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "rest", Port: 9090}}},
+			Spec: corev1.ServiceSpec{
+				Selector: controllerLabels,
+				Ports:    []corev1.ServicePort{{Name: "rest", Port: 9090}},
+			},
+		}
+	}
+	// A Service someone else created with the controller's labels, not Helm's.
+	decoySvc := func() client.Object {
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "decoy", Namespace: namespace, Labels: controllerLabels},
+			Spec:       corev1.ServiceSpec{Selector: controllerLabels},
 		}
 	}
 	runtimeSvc := func() client.Object {
@@ -100,6 +118,12 @@ func TestGatewayHelmExpectedResourcesPresent(t *testing.T) {
 			detailContains: "gateway controller Service not found",
 		},
 		{
+			name:           "a labeled decoy does not stand in for a missing controller Service",
+			objects:        []client.Object{deployment(), decoySvc(), runtimeSvc()},
+			wantOK:         false,
+			detailContains: "gateway controller Service not found",
+		},
+		{
 			name:           "no deployments triggers re-install",
 			objects:        []client.Object{controllerSvc(), runtimeSvc()},
 			wantOK:         false,
@@ -114,7 +138,7 @@ func TestGatewayHelmExpectedResourcesPresent(t *testing.T) {
 			require.NoError(t, appsv1.AddToScheme(scheme))
 			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tc.objects...).Build()
 
-			ok, detail, err := gatewayHelmExpectedResourcesPresent(context.Background(), cl, gatewayName, namespace)
+			ok, detail, err := gatewayHelmExpectedResourcesPresent(context.Background(), cl, src, gatewayName, namespace)
 			require.NoError(t, err)
 			require.Equal(t, tc.wantOK, ok)
 			if tc.detailContains != "" {

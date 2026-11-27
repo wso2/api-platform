@@ -182,6 +182,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Controller Services are verified against the API server, not the informer cache, before
+	// the operator sends them management calls and credentials.
+	controller.SetServiceReader(mgr.GetAPIReader())
+
 	if err = controller.NewGatewayReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),

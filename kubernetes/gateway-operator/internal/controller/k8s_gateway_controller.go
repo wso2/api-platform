@@ -64,6 +64,9 @@ type K8sGatewayReconciler struct {
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
 	Logger *slog.Logger
+	// releaseServices reads the controller Service from the gateway's Helm release; nil
+	// builds a Helm client from Config.
+	releaseServices releaseServiceSource
 }
 
 // NewK8sGatewayReconciler creates a reconciler for gateway.networking.k8s.io Gateway.
@@ -434,7 +437,14 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	if err != nil {
 		return fmt.Errorf("helm release status: %w", err)
 	}
-	resourcesOK, resDetail, err := gatewayHelmExpectedResourcesPresent(ctx, r.Client, gw.Name, ns)
+	src := r.releaseServices
+	if src == nil {
+		var srcErr error
+		if src, srcErr = newReleaseServiceSource(r.Config); srcErr != nil {
+			return fmt.Errorf("create helm client: %w", srcErr)
+		}
+	}
+	resourcesOK, resDetail, err := gatewayHelmExpectedResourcesPresent(ctx, r.Client, src, gw.Name, ns)
 	if err != nil {
 		return err
 	}
@@ -492,7 +502,7 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		return fmt.Errorf("pending: %s", msg)
 	}
 
-	if err := registerGatewayInRegistry(ctx, r.Client, gw.Name, ns, apiSel, cpHost, helmCM, true); err != nil {
+	if err := registerGatewayInRegistry(ctx, r.Client, src, gw.Name, ns, apiSel, cpHost, helmCM, true); err != nil {
 		return fmt.Errorf("register: %w", err)
 	}
 

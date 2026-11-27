@@ -35,6 +35,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -171,10 +172,23 @@ func newRouteHarness(t *testing.T, ns string, funcs *interceptor.Funcs, objs ...
 	return &routeHarness{t: t, ns: ns, cl: cl, r: r, rest: rest}
 }
 
-// register makes a Gateway known to the operator, as the Gateway controller does once its runtime is up.
+// register makes a Gateway known to the operator, as the Gateway controller does once its runtime is up:
+// the controller Service exists and the registry entry records the identity discovery verified.
 func (h *routeHarness) register(gw *gatewayv1.Gateway) string {
 	h.t.Helper()
-	info := &registry.GatewayInfo{Name: gw.Name, Namespace: gw.Namespace, ServiceName: "gwc-" + gw.Name, ServicePort: 9090, FromGatewayAPI: true}
+	svcName := "gwc-" + gw.Name
+	selector := map[string]string{"app.kubernetes.io/component": "controller", "gateway": gw.Name}
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: svcName, Namespace: gw.Namespace, UID: types.UID("uid-" + gw.Namespace + "-" + svcName)},
+		Spec:       corev1.ServiceSpec{Selector: selector, Ports: []corev1.ServicePort{{Name: "rest", Port: 9090}}},
+	}
+	if err := h.cl.Create(context.Background(), svc); err != nil && !apierrors.IsAlreadyExists(err) {
+		require.NoError(h.t, err)
+	}
+	info := &registry.GatewayInfo{
+		Name: gw.Name, Namespace: gw.Namespace, ServiceName: svcName, ServicePort: 9090, FromGatewayAPI: true,
+		ServiceUID: string(svc.UID), ServiceSelector: selector,
+	}
 	registry.GetGatewayRegistry().Register(info)
 	h.t.Cleanup(func() { registry.GetGatewayRegistry().Unregister(gw.Namespace, gw.Name) })
 	return info.GetGatewayServiceEndpoint()
