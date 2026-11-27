@@ -67,6 +67,9 @@ type LazyResourceStore struct {
 	// derives state from the resources can tell whether it is still current.
 	// Written only while mu is held for writing.
 	version uint64
+
+	// backends caches the parsed global Backend records, rebuilt when version moves.
+	backends backendIndex
 }
 
 // NewLazyResourceStore creates a new in-memory lazy resource store
@@ -141,6 +144,19 @@ func (lrs *LazyResourceStore) GetResourceByIDAndType(id, resourceType string) (*
 	}
 
 	return resource, nil
+}
+
+// snapshotByType returns the resources of one type together with the store version they
+// were read at, under a single read lock so the two always agree.
+func (lrs *LazyResourceStore) snapshotByType(resourceType string) (map[string]*LazyResource, uint64) {
+	lrs.mu.RLock()
+	defer lrs.mu.RUnlock()
+
+	result := make(map[string]*LazyResource, len(lrs.resourcesByType[resourceType]))
+	for id, resource := range lrs.resourcesByType[resourceType] {
+		result[id] = resource
+	}
+	return result, lrs.version
 }
 
 // GetResourcesByType retrieves all resources of a specific type
