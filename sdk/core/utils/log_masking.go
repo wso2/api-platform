@@ -51,37 +51,40 @@ func (m maskedParams) LogValue() slog.Value {
 // every other value replaced with MaskedLogValue. Maps with string keys become
 // map[string]interface{}, slices and arrays become []interface{}, and a nil
 // value stays nil so an unset parameter remains visible. v is never modified.
+//
+// A map, slice or pointer that contains itself, directly or through other
+// containers, is written as MaskedLogValue where it refers back to itself, so
+// masking always terminates. A container reached twice without forming a cycle
+// is masked in full each time.
 func MaskLogValue(v interface{}) interface{} {
-	switch t := v.(type) {
-	case nil:
-		return nil
-	case map[string]interface{}:
-		if t == nil {
-			return nil
-		}
-		out := make(map[string]interface{}, len(t))
-		for k, e := range t {
-			out[k] = MaskLogValue(e)
-		}
-		return out
-	case []interface{}:
-		if t == nil {
-			return nil
-		}
-		out := make([]interface{}, len(t))
-		for i, e := range t {
-			out[i] = MaskLogValue(e)
-		}
-		return out
-	}
+	return maskValue(reflect.ValueOf(v), make(map[containerRef]struct{}))
+}
 
-	rv := reflect.ValueOf(v)
+// containerRef identifies a map, slice or pointer on the current traversal
+// path. A slice is identified by its backing array and length, so a shorter
+// sub-slice of the same array is not mistaken for a cycle.
+type containerRef struct {
+	kind reflect.Kind
+	ptr  uintptr
+	len  int
+}
+
+func maskValue(rv reflect.Value, path map[containerRef]struct{}) interface{} {
 	switch rv.Kind() {
-	case reflect.Pointer, reflect.Interface:
+	case reflect.Invalid:
+		return nil
+	case reflect.Interface:
 		if rv.IsNil() {
 			return nil
 		}
-		return MaskLogValue(rv.Elem().Interface())
+		return maskValue(rv.Elem(), path)
+	case reflect.Pointer:
+		if rv.IsNil() {
+			return nil
+		}
+		return enter(containerRef{kind: reflect.Pointer, ptr: rv.Pointer()}, path, func() interface{} {
+			return maskValue(rv.Elem(), path)
+		})
 	case reflect.Map:
 		if rv.IsNil() {
 			return nil
@@ -89,12 +92,14 @@ func MaskLogValue(v interface{}) interface{} {
 		if rv.Type().Key().Kind() != reflect.String {
 			return MaskedLogValue
 		}
-		out := make(map[string]interface{}, rv.Len())
-		iter := rv.MapRange()
-		for iter.Next() {
-			out[iter.Key().String()] = MaskLogValue(iter.Value().Interface())
-		}
-		return out
+		return enter(containerRef{kind: reflect.Map, ptr: rv.Pointer()}, path, func() interface{} {
+			out := make(map[string]interface{}, rv.Len())
+			iter := rv.MapRange()
+			for iter.Next() {
+				out[iter.Key().String()] = maskValue(iter.Value(), path)
+			}
+			return out
+		})
 	case reflect.Slice:
 		if rv.IsNil() {
 			return nil
@@ -103,14 +108,35 @@ func MaskLogValue(v interface{}) interface{} {
 		if rv.Type().Elem().Kind() == reflect.Uint8 {
 			return MaskedLogValue
 		}
-		fallthrough
+		return enter(containerRef{kind: reflect.Slice, ptr: rv.Pointer(), len: rv.Len()}, path, func() interface{} {
+			return maskElements(rv, path)
+		})
 	case reflect.Array:
-		out := make([]interface{}, rv.Len())
-		for i := range out {
-			out[i] = MaskLogValue(rv.Index(i).Interface())
+		if rv.Type().Elem().Kind() == reflect.Uint8 {
+			return MaskedLogValue
 		}
-		return out
+		// An array is held by value, so it cannot contain itself.
+		return maskElements(rv, path)
 	default:
 		return MaskedLogValue
 	}
+}
+
+// enter masks a container through mask unless the container is already on the
+// traversal path, in which case it is a cycle and is written as MaskedLogValue.
+func enter(ref containerRef, path map[containerRef]struct{}, mask func() interface{}) interface{} {
+	if _, onPath := path[ref]; onPath {
+		return MaskedLogValue
+	}
+	path[ref] = struct{}{}
+	defer delete(path, ref)
+	return mask()
+}
+
+func maskElements(rv reflect.Value, path map[containerRef]struct{}) []interface{} {
+	out := make([]interface{}, rv.Len())
+	for i := range out {
+		out[i] = maskValue(rv.Index(i), path)
+	}
+	return out
 }

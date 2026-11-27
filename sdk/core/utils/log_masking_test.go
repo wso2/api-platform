@@ -130,13 +130,20 @@ func TestMaskedParams_NoValueReachesHandlerOutput(t *testing.T) {
 	secrets := []string{testJWT, testAPIKey, testURL, "idp.internal.example.com", testSecret,
 		"redis.internal", "6379", "1000", "0.25", "1m", "1h", "issuer.example.com", "BEGIN CERTIFICATE"}
 
+	// Drop the record timestamp: its digits (nanoseconds, hours) could match a
+	// value such as "1000" and fail the scan below while everything is masked.
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if len(groups) == 0 && a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return a
+		},
+	}
 	handlers := map[string]func(*bytes.Buffer) slog.Handler{
-		"json": func(b *bytes.Buffer) slog.Handler {
-			return slog.NewJSONHandler(b, &slog.HandlerOptions{Level: slog.LevelDebug})
-		},
-		"text": func(b *bytes.Buffer) slog.Handler {
-			return slog.NewTextHandler(b, &slog.HandlerOptions{Level: slog.LevelDebug})
-		},
+		"json": func(b *bytes.Buffer) slog.Handler { return slog.NewJSONHandler(b, opts) },
+		"text": func(b *bytes.Buffer) slog.Handler { return slog.NewTextHandler(b, opts) },
 	}
 	for name, newHandler := range handlers {
 		t.Run(name, func(t *testing.T) {
@@ -186,5 +193,77 @@ func TestMaskedParams_NotEvaluatedWhenLevelDisabled(t *testing.T) {
 	logger.Debug("hidden", "params", MaskedParams(sampleParams()))
 	if buf.Len() != 0 {
 		t.Fatalf("debug record written at info level: %s", buf.String())
+	}
+}
+
+func TestMaskLogValue_CyclesTerminate(t *testing.T) {
+	selfMap := map[string]interface{}{"name": testSecret}
+	selfMap["self"] = selfMap
+
+	selfSlice := []interface{}{nil, testAPIKey}
+	selfSlice[0] = selfSlice
+
+	a := map[string]interface{}{"k": testJWT}
+	b := map[string]interface{}{"a": a}
+	a["b"] = b
+
+	var selfPointer interface{}
+	selfPointer = &selfPointer
+
+	tests := []struct {
+		name string
+		in   interface{}
+		want interface{}
+	}{
+		{"map containing itself", selfMap, map[string]interface{}{"name": MaskedLogValue, "self": MaskedLogValue}},
+		{"slice containing itself", selfSlice, []interface{}{MaskedLogValue, MaskedLogValue}},
+		{"maps containing each other", a, map[string]interface{}{
+			"k": MaskedLogValue,
+			"b": map[string]interface{}{"a": MaskedLogValue},
+		}},
+		{"pointer to itself through an interface", selfPointer, MaskedLogValue},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := MaskLogValue(tt.in); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("MaskLogValue() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("cyclic value through a handler", func(t *testing.T) {
+		var buf bytes.Buffer
+		slog.New(slog.NewJSONHandler(&buf, nil)).Info("m", "params", MaskedParams(selfMap))
+		if strings.Contains(buf.String(), testSecret) || !strings.Contains(buf.String(), `"self":"***"`) {
+			t.Fatalf("unexpected log output: %s", buf.String())
+		}
+	})
+}
+
+func TestMaskLogValue_SharedValueThatIsNotACycle(t *testing.T) {
+	shared := map[string]interface{}{"k": testSecret}
+	sharedList := []interface{}{testAPIKey}
+	in := map[string]interface{}{
+		"first":  shared,
+		"second": shared,
+		"lists":  []interface{}{sharedList, sharedList, sharedList[:0]},
+	}
+
+	want := map[string]interface{}{
+		"first":  map[string]interface{}{"k": MaskedLogValue},
+		"second": map[string]interface{}{"k": MaskedLogValue},
+		"lists":  []interface{}{[]interface{}{MaskedLogValue}, []interface{}{MaskedLogValue}, []interface{}{}},
+	}
+	if got := MaskLogValue(in); !reflect.DeepEqual(got, want) {
+		t.Fatalf("MaskLogValue() = %#v, want %#v", got, want)
+	}
+}
+
+func TestMaskLogValue_ByteArrayIsOneValue(t *testing.T) {
+	if got := MaskLogValue([4]byte{1, 2, 3, 4}); got != MaskedLogValue {
+		t.Fatalf("MaskLogValue([4]byte) = %#v, want %q", got, MaskedLogValue)
+	}
+	if got := MaskLogValue([2]string{"a", "b"}); !reflect.DeepEqual(got, []interface{}{MaskedLogValue, MaskedLogValue}) {
+		t.Fatalf("MaskLogValue([2]string) = %#v", got)
 	}
 }
