@@ -20,10 +20,8 @@ package gateway
 
 import (
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -294,7 +292,7 @@ func TestValidateNetrcFile_RefusesFilesOthersCanRead(t *testing.T) {
 }
 
 func TestPrepare_NothingConfigured(t *testing.T) {
-	args, env, cleanup, err := BuilderAccess{}.prepare(t.TempDir(), []string{"PATH=/bin"})
+	args, env, cleanup, err := BuilderAccess{}.prepare(t.TempDir(), []string{"PATH=/bin"}, bindMount(false))
 	defer cleanup()
 	if err != nil || len(args) != 0 || env != nil {
 		t.Fatalf("prepare() = %v, %v, %v; want no args and an inherited environment", args, env, err)
@@ -308,7 +306,7 @@ func TestPrepare_GoEnvTravelsByNameOnly(t *testing.T) {
 	}}
 	base := []string{"PATH=/bin", "GOPRIVATE=github.com/old/*"}
 
-	args, env, cleanup, err := access.prepare(t.TempDir(), base)
+	args, env, cleanup, err := access.prepare(t.TempDir(), base, bindMount(false))
 	defer cleanup()
 	if err != nil {
 		t.Fatalf("prepare() error = %v", err)
@@ -324,27 +322,142 @@ func TestPrepare_GoEnvTravelsByNameOnly(t *testing.T) {
 	}
 }
 
-func TestPrepare_NetrcFileIsMountedReadOnly(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "with,comma")
-	netrc := filepath.Join(dir, "netrc")
-
-	args, _, cleanup, err := BuilderAccess{NetrcFile: netrc}.prepare(t.TempDir(), nil)
-	defer cleanup()
-	if err != nil {
-		t.Fatalf("prepare() error = %v", err)
+// writeTestNetrc writes a 0600 netrc file and returns its path.
+func writeTestNetrc(t *testing.T, dir, content string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
 	}
+	path := filepath.Join(dir, "netrc")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// mountSource returns the src= field of a --mount argument.
+func mountSource(t *testing.T, args []string) string {
+	t.Helper()
 	if len(args) != 2 || args[0] != "--mount" {
 		t.Fatalf("args = %v, want a single --mount", args)
 	}
-
 	// Docker parses --mount as one CSV record.
 	fields, err := csv.NewReader(strings.NewReader(args[1])).Read()
 	if err != nil {
 		t.Fatalf("mount spec %q is not valid CSV: %v", args[1], err)
 	}
-	want := []string{"type=bind", "src=" + netrc, "dst=/root/.netrc", "readonly"}
-	if !slices.Equal(fields, want) {
+	return strings.TrimPrefix(fields[1], "src=")
+}
+
+// The --netrc file is never mounted itself: a private copy is, so podman and
+// buildah relabel only the copy, and the copy is deleted after the build.
+func TestPrepare_NetrcFileIsCopiedAndTheCopyMounted(t *testing.T) {
+	const content = "machine git.acme.com\nlogin ci\npassword secret\n"
+	original := writeTestNetrc(t, t.TempDir(), content)
+	scratch := filepath.Join(t.TempDir(), "with,comma")
+	if err := os.Mkdir(scratch, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	args, _, cleanup, err := BuilderAccess{NetrcFile: original}.prepare(scratch, nil, bindMount(false))
+	if err != nil {
+		t.Fatalf("prepare() error = %v", err)
+	}
+	copied := mountSource(t, args)
+	fields, _ := csv.NewReader(strings.NewReader(args[1])).Read()
+	if want := []string{"type=bind", "src=" + copied, "dst=/root/.netrc", "readonly"}; !slices.Equal(fields, want) {
 		t.Fatalf("mount fields = %v, want %v", fields, want)
+	}
+	if copied == original || filepath.Dir(filepath.Dir(copied)) != scratch ||
+		!strings.HasPrefix(filepath.Base(filepath.Dir(copied)), credentialDirPrefix) {
+		t.Fatalf("mounted %s, want a copy in a new credentials folder under %s", copied, scratch)
+	}
+	if data, err := os.ReadFile(copied); err != nil || string(data) != content {
+		t.Fatalf("copy = %q, %v; want the --netrc contents", data, err)
+	}
+	if runtime.GOOS != "windows" {
+		if info, _ := os.Stat(copied); info.Mode().Perm() != 0o600 {
+			t.Fatalf("copy permissions = %o, want 600", info.Mode().Perm())
+		}
+	}
+
+	cleanup()
+	if _, err := os.Stat(filepath.Dir(copied)); !os.IsNotExist(err) {
+		t.Fatalf("credentials folder still exists after cleanup: %v", err)
+	}
+	if data, err := os.ReadFile(original); err != nil || string(data) != content {
+		t.Fatalf("the --netrc file changed: %q, %v", data, err)
+	}
+}
+
+func TestPrepare_NetrcMountRelabel(t *testing.T) {
+	original := writeTestNetrc(t, t.TempDir(), "machine h\nlogin u\npassword p\n")
+
+	args, _, cleanup, err := BuilderAccess{NetrcFile: original}.prepare(t.TempDir(), nil, bindMount(true))
+	defer cleanup()
+	if err != nil {
+		t.Fatalf("prepare() error = %v", err)
+	}
+	copied := mountSource(t, args)
+	want := []string{"--mount", "type=bind,src=" + copied + ",dst=/root/.netrc,readonly,relabel=private"}
+	if !slices.Equal(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+}
+
+func TestPrepare_NetrcFileErrors(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "gone")
+	if _, _, _, err := (BuilderAccess{NetrcFile: missing}).prepare(t.TempDir(), nil, bindMount(false)); err == nil {
+		t.Fatal("expected an error for a missing --netrc file")
+	}
+
+	large := writeTestNetrc(t, t.TempDir(), strings.Repeat("x", maxNetrcBytes+1))
+	scratch := t.TempDir()
+	_, _, _, err := BuilderAccess{NetrcFile: large}.prepare(scratch, nil, bindMount(false))
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("got %v, want a too-large error", err)
+	}
+	if entries, _ := os.ReadDir(scratch); len(entries) != 0 {
+		t.Fatalf("a failed copy left %v behind", entries)
+	}
+}
+
+func TestVolumeMount(t *testing.T) {
+	// buildah: a comma in the path is fine with --volume, unlike a quoted --mount value.
+	got, err := volumeMount(true)("/home/u/with,comma/netrc", "/root/.netrc")
+	if err != nil {
+		t.Fatalf("volumeMount() error = %v", err)
+	}
+	if want := []string{"--volume", "/home/u/with,comma/netrc:/root/.netrc:ro,Z"}; !slices.Equal(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+	got, err = volumeMount(false)("/home/u/netrc", "/root/.netrc")
+	if err != nil {
+		t.Fatalf("volumeMount() error = %v", err)
+	}
+	if want := []string{"--volume", "/home/u/netrc:/root/.netrc:ro"}; !slices.Equal(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+	if _, err := volumeMount(false)("/home/u/a:b/netrc", "/root/.netrc"); err == nil || !strings.Contains(err.Error(), "colon") {
+		t.Fatalf("expected a colon error, got %v", err)
+	}
+	if _, err := volumeMount(false)("/home/u/a\nb", "/root/.netrc"); err == nil {
+		t.Fatal("expected an error for a line break")
+	}
+}
+
+func TestPrepare_GeneratedNetrcUsesEngineMount(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("buildah does not run on Windows, and volumeMount rejects the drive colon in a Windows path")
+	}
+	access := BuilderAccess{GitCredentials: []GitCredential{{Host: "example.com", Username: "ci", token: "t"}}}
+	args, _, cleanup, err := access.prepare(t.TempDir(), nil, volumeMount(true))
+	defer cleanup()
+	if err != nil {
+		t.Fatalf("prepare() error = %v", err)
+	}
+	if len(args) != 2 || args[0] != "--volume" || !strings.HasSuffix(args[1], ":/root/.netrc:ro,Z") {
+		t.Fatalf("args = %v, want a buildah --volume mount", args)
 	}
 }
 
@@ -355,7 +468,7 @@ func TestPrepare_GitCredentialsBecomeAPrivateNetrc(t *testing.T) {
 		{Host: "gitlab.acme.com", Username: "ci-bot", token: "glpat-xyz"},
 	}}
 
-	args, _, cleanup, err := access.prepare(scratch, nil)
+	args, _, cleanup, err := access.prepare(scratch, nil, bindMount(false))
 	if err != nil {
 		t.Fatalf("prepare() error = %v", err)
 	}
@@ -402,27 +515,6 @@ func TestPrepare_GitCredentialsBecomeAPrivateNetrc(t *testing.T) {
 	cleanup()
 	if _, err := os.Stat(filepath.Dir(netrc)); !os.IsNotExist(err) {
 		t.Fatalf("credentials directory still exists after cleanup: %v", err)
-	}
-}
-
-func TestNetrcMountHint(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses sh to produce exit codes")
-	}
-	exitWith := func(code string) error { return exec.Command("sh", "-c", "exit "+code).Run() }
-	withNetrc := BuilderAccess{NetrcFile: "/elsewhere/netrc"}
-
-	if hint := netrcMountHint(exitWith("125"), withNetrc); !strings.Contains(hint, "home directory") {
-		t.Errorf("exit 125 with --netrc: hint = %q, want the shared-directory hint", hint)
-	}
-	if hint := netrcMountHint(exitWith("1"), withNetrc); hint != "" {
-		t.Errorf("builder failure (exit 1): hint = %q, want none", hint)
-	}
-	if hint := netrcMountHint(exitWith("125"), BuilderAccess{}); hint != "" {
-		t.Errorf("exit 125 without --netrc: hint = %q, want none", hint)
-	}
-	if hint := netrcMountHint(errors.New("not an exit error"), withNetrc); hint != "" {
-		t.Errorf("non-exit error: hint = %q, want none", hint)
 	}
 }
 
@@ -520,14 +612,14 @@ func TestBuilderRunArgs(t *testing.T) {
 	}
 
 	// Not set: no -fetch-timeout, so builder images that predate the flag keep working.
-	if got := builderRunArgs(config, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, base) {
+	if got := builderRunArgs(config, false, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, base) {
 		t.Fatalf("args = %v, want %v", got, base)
 	}
 
 	// Set: passed after the image, where the builder reads its own flags.
 	config.FetchTimeout = 10 * time.Minute
 	want := append(slices.Clone(base), "-fetch-timeout", "10m0s")
-	if got := builderRunArgs(config, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, want) {
+	if got := builderRunArgs(config, false, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
 	}
 }

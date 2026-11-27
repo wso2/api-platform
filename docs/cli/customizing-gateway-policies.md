@@ -26,7 +26,18 @@ ap gateway image build
 
 Use `ap gateway image build --help` to view detailed usage information for this command.
 
-Docker is a prerequisite for executing this command. If Docker is not available, the command will validate this at the beginning and fail immediately.
+A container engine is a prerequisite for executing this command: Docker by default, or Podman or Buildah (1.30 or later). The command checks that the selected engine is available at the beginning and fails immediately if it is not. Older Buildah releases are refused because they do not pass the Go settings, such as `GOPRIVATE`, into the builder container.
+
+To build with Podman or Buildah instead of Docker, pass `--container-engine`, or set the `AP_CONTAINER_ENGINE` environment variable, for example in a CI job. The flag takes precedence over the environment variable.
+
+```shell
+ap gateway image build --container-engine podman
+```
+
+```shell
+export AP_CONTAINER_ENGINE=buildah
+ap gateway image build
+```
 
 A `build.yaml` file is mandatory. By default, the CLI expects this file to be present in the current working directory unless a specific --path is provided.
 
@@ -61,9 +72,10 @@ Even an output directory is not explicitly specified, the built images are cache
 
 - `--name` (`-n`): Sets the gateway name. If not provided, the current directory name is used by default.
 - `--path`: Specifies the directory containing `build.yaml`. By default, this is the current working directory.
-- `push`: Pushes the built images to Docker.
-- `no-cache`: Disables Docker build cache usage.
-- `--platform`: Specifies the target platform. By default, the host platform is used.
+- `push`: Pushes the built images to the image repository.
+- `no-cache`: Disables the container engine's build cache.
+- `--platform`: Specifies the target platform. By default, the host platform is used. With `--platform`, the images are always pushed: Docker uses `docker buildx`, and Podman and Buildah build a manifest list, push it, and then remove the local list and its images.
+- `--container-engine`: Selects the container engine: `docker` (default), `podman` or `buildah`. Can also be set with the `AP_CONTAINER_ENGINE` environment variable.
 - `--netrc`: A netrc file with credentials for private Go module hosts and proxies. See [Policies from Private Go Module Repositories](#policies-from-private-go-module-repositories).
 - `--git-credential`: A username and token for one private Go module host, as `<host>=<username>:<ENV_VAR>`. Repeat it for more hosts. Cannot be combined with `--netrc`.
 - `--go-env`: A Go module setting for the gateway-builder container, as `KEY=VALUE`, or `KEY` to copy the value from your environment. Repeatable.
@@ -93,7 +105,7 @@ Any other variable is rejected, as is a value that carries credentials in a URL 
 Because `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB` are copied automatically, they affect every build, including builds that pass no credentials:
 
 - **Broad patterns reach public policies too.** With `GOPRIVATE=github.com/*`, the public policies from `github.com/wso2/gateway-controllers` are also fetched straight from GitHub, without the module proxy and the public checksum database. Keep the patterns as narrow as your private module paths.
-- **A malformed value stops the build before Docker starts**, for example a URL where a module path pattern belongs. Fix the variable, or keep it out of the build with `--go-env GOPRIVATE=`.
+- **A malformed value stops the build before the builder container starts**, for example a URL where a module path pattern belongs. Fix the variable, or keep it out of the build with `--go-env GOPRIVATE=`.
 - **Values saved with `go env -w` are not copied.** They live in Go's own configuration file, not in your shell environment. Export them, or pass them with `--go-env`.
 
 ### 2. Provide credentials
@@ -136,7 +148,7 @@ ap gateway image build --netrc ~/.netrc-gateway-policies \
 
 `GONOPROXY` defaults to `GOPRIVATE`, so without `GONOPROXY=none` the modules marked private in step 1 skip the proxy and are fetched straight from their repository. Keep `GOPRIVATE` set: it still keeps those modules away from the public checksum database. An empty `--go-env GONOPROXY=` does not help, because Go then falls back to the same default.
 
-The file is mounted read-only into the builder container. The command refuses a netrc file that other users can read. With Docker Desktop or Colima, keep the file under your home directory: other host paths may not be shared with Docker's VM, and the mount then fails with "bind source path does not exist".
+The command refuses a netrc file that other users can read. It copies the file into a private temporary folder under `~/.wso2ap/.tmp`, mounts the copy read-only into the builder container, and deletes it after the build, so the file itself can be anywhere and is never mounted or changed. With Podman and Buildah on Linux, the copy and the build workspace get an SELinux label private to the builder container (`Z`).
 
 Git and the go command both read the netrc file (Go through its default `GOAUTH=netrc`), so it covers direct repository access, module proxies, and the `?go-get=1` lookups that self-hosted Git servers need. If you set `GOAUTH` with `--go-env`, include `netrc` in its list, or Go stops reading the file.
 

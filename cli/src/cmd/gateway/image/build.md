@@ -13,21 +13,23 @@ ap gateway image build \
   [--output-dir <output_dir>] \
   [--netrc <file> | --git-credential <host>=<username>:<ENV_VAR> ...] \
   [--go-env <KEY>[=<VALUE>] ...] \
-  [--fetch-timeout <duration>]
+  [--fetch-timeout <duration>] \
+  [--container-engine <docker|podman|buildah>]
 ```
 
 ### Optional Flags & Defaults
 - `--name`: Gateway name (defaults to directory name)
 - `--path` / `-p`: Current directory (`.`) - Directory containing `build.yaml`
-- `--repository`: `ghcr.io/wso2/api-platform` - Docker image repository
+- `--repository`: `ghcr.io/wso2/api-platform` - Image repository
 - `--platform`: Uses host platform - Target platform (e.g., linux/amd64)
 - `--push`: `false` - Push image to registry after build
 - `--no-cache`: `false` - Build without using cache
 - `--output-dir`: No output (empty) - Output directory for build artifacts
-- `--netrc`: None - netrc file mounted read-only into the gateway-builder container, for private Go module hosts and proxies
+- `--netrc`: None - netrc file for private Go module hosts and proxies; a private copy is mounted read-only into the gateway-builder container
 - `--git-credential`: None - `<host>=<username>:<ENV_VAR>` (repeatable); the token is read from `ENV_VAR` and written to a temporary netrc outside the workspace. Mutually exclusive with `--netrc`
 - `--fetch-timeout`: None (the builder's default, 5m) - how long to wait for each gomodule policy to download, for example `10m`; passed to the builder as `-fetch-timeout` only when set
 - `--go-env`: None - `KEY=VALUE` or `KEY` (repeatable), limited to GOPRIVATE, GONOPROXY, GONOSUMDB, GOPROXY, GOSUMDB, GOVCS, GOINSECURE and GOAUTH. GOPRIVATE, GONOPROXY and GONOSUMDB are also copied from the environment automatically
+- `--container-engine`: `$AP_CONTAINER_ENGINE`, else `docker` - Container engine used to run the gateway builder and build the images: `docker`, `podman` or `buildah` (1.30 or later)
 
 ### Directory Structure Requirements
 The `--path` flag must point to a directory containing:
