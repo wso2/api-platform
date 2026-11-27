@@ -31,6 +31,7 @@ const path = require('node:path');
 const PATHS = {
     driver: path.resolve(__dirname, '../db/driver.js'),
     orgContext: path.resolve(__dirname, '../utils/orgContext.js'),
+    logger: path.resolve(__dirname, '../config/logger.js'),
     dao: path.resolve(__dirname, './subscriptionPlanDao.js'),
 };
 
@@ -38,11 +39,14 @@ function loadDao(statements) {
     const stubs = {
         driver: {
             execute: async (sql, params) => { statements.push({ sql, params }); return { rowCount: 1 }; },
-            // create/update re-read the plan; the shape is irrelevant here.
-            queryOne: async () => null,
+            // The plan tables exist; create/update re-read the plan, whose shape is irrelevant here.
+            queryOne: async (sql) => (/sqlite_master/.test(sql) ? { found: 1 } : null),
             query: async () => [],
+            getDialect: () => 'sqlite',
+            binaryParam: (value) => value,
         },
         orgContext: { getPortalId: () => 'portal-a' },
+        logger: { warn() {}, info() {}, error() {}, debug() {} },
     };
     for (const [k, exports] of Object.entries(stubs)) {
         require.cache[PATHS[k]] = { id: PATHS[k], filename: PATHS[k], loaded: true, exports };

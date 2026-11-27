@@ -184,7 +184,7 @@ const SAMPLES = [
     ['updateLabel', 200, { id: 'premium', displayName: 'Premium APIs' }],
 
     // Subscription Plans — subscriptionPlanDto.js's SubscriptionPlan class shape:
-    // {id, displayName, description, refId, orgId, limits[]}, where each limit is
+    // {id, displayName, description, refId, orgId, limits[], conditions[]}, where each limit is
     // {limitType, timeUnit, timeAmount, limitCount} (limitCount is a number unless
     // it overflows a safe integer, in which case subscriptionPlanDao.js stringifies
     // it). There is no planId/planName/requestCount field — that shape predates the
@@ -194,6 +194,7 @@ const SAMPLES = [
     ['addSubscriptionPlans', 201, {
         id: 'bronze', displayName: 'Bronze', description: 'desc',
         limits: [{ limitType: 'REQUEST_COUNT', timeUnit: 'MONTH', timeAmount: 1, limitCount: 1000 }],
+        conditions: [{ id: 'requests', type: 'request-count', params: { limits: [{ count: 1000, timeAmount: 1, timeUnit: 'MONTH' }], onExceed: 'reject' } }],
         refId: null, orgId: 'org-1',
         createdBy: 'alice@example.com', updatedBy: 'alice@example.com',
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
@@ -201,6 +202,7 @@ const SAMPLES = [
     ['addSubscriptionPlans', 201, [{
         id: 'bronze', displayName: 'Bronze', description: 'desc',
         limits: [{ limitType: 'REQUEST_COUNT', timeUnit: 'MONTH', timeAmount: 1, limitCount: 1000 }],
+        conditions: [{ id: 'requests', type: 'request-count', params: { limits: [{ count: 1000, timeAmount: 1, timeUnit: 'MONTH' }], onExceed: 'reject' } }],
         refId: null, orgId: 'org-1',
         createdBy: 'alice@example.com', updatedBy: 'alice@example.com',
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',

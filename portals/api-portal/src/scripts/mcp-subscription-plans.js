@@ -263,7 +263,7 @@
 
       var UNSUB_DEFAULTS = {
         title: function (planName) { return 'Unsubscribe from <span id="mcpUnsubPlanName">' + planName + '</span> plan?'; },
-        desc: 'Your applications will lose access to this MCP server, and any tokens using this subscription will stop working. You can re-subscribe at any time.',
+        desc: 'You\'ll lose access to this MCP server, and its subscription token will stop working. You can subscribe again at any time.',
         confirm: 'Unsubscribe',
       };
 
@@ -283,8 +283,8 @@
           desc = 'Your subscription will remain active until '
             + (_sub.periodEnd ? formatBillingDate(_sub.periodEnd) : 'the end of the period') + '.';
         } else if (_sub.paid) {
-          desc = 'Your applications will lose access to this MCP server, and any tokens using this subscription will stop '
-            + 'working. Usage up to now is billed on a final invoice. You can re-subscribe at any time.';
+          desc = 'You\'ll lose access to this MCP server, and its subscription token will stop '
+            + 'working. Usage up to now is billed on a final invoice. You can subscribe again at any time.';
         }
         showUnsubDialog(
           UNSUB_DEFAULTS.title(_sub.subscriptionPlanName),
@@ -300,7 +300,7 @@
         showUnsubDialog(
           'End your subscription now?',
           'Your subscription ends immediately instead of on ' + formatBillingDate(_sub.endsAt)
-            + ', and your applications lose access to this MCP server. The rest of the paid period is not refunded.',
+            + ', and you lose access to this MCP server. The rest of the paid period is not refunded.',
           'End now'
         );
       }

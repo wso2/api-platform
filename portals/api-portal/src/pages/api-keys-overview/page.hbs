@@ -27,7 +27,7 @@
   <div class="page-header">
     <div>
       <h1 class="page-title">API Keys</h1>
-      <p class="page-desc">API keys you've generated across all APIs. Manage a key inline — regenerate or revoke it.</p>
+      <p class="page-desc">API keys you've generated across your APIs and MCP servers. Manage a key inline — regenerate or revoke it.</p>
     </div>
   </div>
 
@@ -47,7 +47,7 @@
       <table class="ak-table" id="api-keys-overview-table">
         <thead>
           <tr>
-            <th>API</th><th>Name</th><th>Status</th><th>Expires</th><th>Application</th><th class="ak-th-right">Actions</th>
+            <th>Name</th><th>Type</th><th>Key name</th><th>Status</th><th>Expires</th><th>Application</th><th class="ak-th-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -65,6 +65,7 @@
               <a class="sub-api-link" href="{{@root.baseUrl}}/{{#if (eq (lowercase this.apiType) 'mcp')}}mcp{{else}}api{{/if}}/{{this.apiHandle}}">{{#if this.apiName}}{{this.apiName}}{{else}}{{this.apiHandle}}{{/if}}</a>
               {{#if this.apiVersion}}<span class="ak-app" style="margin-left:0.375rem;color:#8a98a6;">{{this.apiVersion}}</span>{{/if}}
             </td>
+            <td><span class="sub-kind-pill{{#if (isMcpType this.apiType)}} sub-kind-pill--mcp{{/if}}">{{apiTypeLabel this.apiType}}</span></td>
             <td><span class="ak-key-name">{{this.displayName}}</span></td>
             <td>
               <span class="ak-status {{#if (eq (lowercase this.status) 'active')}}ak-status--active{{else}}ak-status--inactive{{/if}}">

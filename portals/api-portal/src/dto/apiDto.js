@@ -86,6 +86,7 @@ class APISubscriptionPlan {
             timeAmount: l.time_amount,
             limitCount: Number(l.limit_count),
         }));
+        this.conditions = (apiSubscriptionPlan.conditions || []).map(c => ({ id: c.id, type: c.type, params: c.params }));
     }
 }
 

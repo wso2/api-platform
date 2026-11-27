@@ -79,6 +79,27 @@ test('a plan created in the portal is sent under its own handle, which becomes i
     assert.deepStrictEqual(opts, { transaction: tx, orgId: 'org-1', aggregateType: 'subscription_plan', aggregateId: 'p1' });
 });
 
+test('a plan\'s conditions are sent as they are, and its request-count windows as REQUEST_COUNT limits', async () => {
+    const { events, calls } = load();
+    const conditions = [
+        { id: 'requests', type: 'request-count', params: { limits: [{ count: 10, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' } },
+        { id: 'tool-calls', type: 'tool-call-count', params: { limits: [{ count: 500, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'allow' } },
+    ];
+    const plan = {
+        uuid: 'p4', handle: 'stream', ref_id: 'stream', display_name: 'Stream', conditions, limits: [
+            { limit_type: 'REQUEST_COUNT', limit_count: 10, time_unit: 'MINUTE', time_amount: 1 },
+        ],
+    };
+
+    await events.publishPlanUpsert(events.EVENT.UPDATED, 'org-1', plan, {});
+
+    const { payload } = calls.published[0];
+    assert.deepStrictEqual(payload.conditions, conditions);
+    assert.deepStrictEqual(payload.limits, [
+        { limit_type: 'REQUEST_COUNT', limit_count: 10, time_unit: 'MINUTE', time_amount: 1 },
+    ]);
+});
+
 // The pricing never changes, so an update carries the same pricing: a Platform API that missed the
 // created event gets it with the update.
 test('a paid plan\'s created and updated events both carry its pricing', async () => {
@@ -135,6 +156,14 @@ test('an unlimited limit keeps -1 and a missing time unit stays null', () => {
         limits: [{ limit_type: 'REQUEST_COUNT', limit_count: -1, time_unit: null, time_amount: null }],
     });
     assert.deepStrictEqual(payload.limits, [{ limit_type: 'REQUEST_COUNT', limit_count: -1, time_unit: null, time_amount: 1 }]);
+});
+
+test('a plan loaded with conditions sends them; one loaded without leaves them out', () => {
+    const { events } = load();
+    const conditions = [{ id: 'tool-calls', type: 'tool-call-count', params: { limits: [{ count: 5, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' } }];
+    assert.deepStrictEqual(events.buildPlanPayload({ handle: 'gold', display_name: 'Gold', limits: [], conditions }).conditions, conditions);
+    assert.deepStrictEqual(events.buildPlanPayload({ handle: 'gold', display_name: 'Gold', limits: [], conditions: [] }).conditions, []);
+    assert.strictEqual('conditions' in events.buildPlanPayload({ handle: 'gold', display_name: 'Gold', limits }), false);
 });
 
 test('a deleted plan is sent with only its Platform API handle', async () => {

@@ -133,7 +133,7 @@ func (u *Steps) restHeaderButtons(ctx context.Context) error {
 		return err
 	}
 	actions := page.Locator(".aov-hero-actions")
-	if err := u.expect.Locator(actions.Locator(`a[href="#subscriptionPlans"]`)).ToContainText("Subscribe"); err != nil {
+	if err := u.expect.Locator(headerPlanPicker(page)).ToContainText("Subscribe"); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(actions.Locator(`a[href$="/docs/specification"]`)).ToContainText("Documentation"); err != nil {
@@ -252,7 +252,7 @@ func (u *Steps) noPlansAPIPage(ctx context.Context) error {
 		return err
 	}
 	actions := page.Locator(".aov-hero-actions")
-	if err := u.expect.Locator(actions.Locator(`a[href="#subscriptionPlans"]`)).ToHaveCount(0); err != nil {
+	if err := u.expect.Locator(headerPlanPicker(page)).ToHaveCount(0); err != nil {
 		return err
 	}
 	return u.expect.Locator(actions.Locator(`a[href$="/api-keys"]`)).ToContainText("API Keys")

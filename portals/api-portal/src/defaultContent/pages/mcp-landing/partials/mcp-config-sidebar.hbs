@@ -11,13 +11,18 @@
       "url": "{{resources.serverDetails.productionURL}}",
       "type": "http",
       "headers": {
-        "Authorization": "Bearer ${token}"
+        {{#if subscriptionPlans.length}}"Subscription-Key": "${subscriptionKey}"{{else}}"Authorization": "Bearer ${token}"{{/if}}
       }
     }
   }
 }</code></pre>
   </div>
+  {{!-- A server that offers subscription plans takes the subscription's key in the Subscription-Key header. --}}
+  {{#if subscriptionPlans.length}}
+  <p class="mc-config-note">Subscribe to a plan, then replace the placeholder with your subscription key.</p>
+  {{else}}
   <p class="mc-config-note">Generate a token using a subscribed application and replace the placeholder.</p>
+  {{/if}}
 
   {{#if subscriptionPlans.length}}
   <div style="margin-top:1.5rem;">

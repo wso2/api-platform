@@ -54,7 +54,7 @@ const { pageAccess } = require('./pageAccess');
 
 registerHelpers();
 // The plan cards use the shared partials the portal registers for every page.
-for (const name of ['plan-price', 'plan-checkout']) {
+for (const name of ['plan-price', 'plan-limits', 'plan-checkout']) {
     Handlebars.registerPartial(name, fs.readFileSync(path.resolve(__dirname, `../defaultContent/partials/${name}.hbs`), 'utf8'));
 }
 const signedIn = () => ({ isAuthenticated: () => true });

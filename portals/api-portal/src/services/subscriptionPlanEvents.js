@@ -44,7 +44,7 @@ function platformHandle(plan) {
 }
 
 function buildPlanPayload(plan) {
-    return {
+    const payload = {
         handle: platformHandle(plan),
         display_name: plan.display_name,
         description: plan.description || null,
@@ -55,6 +55,11 @@ function buildPlanPayload(plan) {
             time_amount: Number(l.time_amount) || 1,
         })),
     };
+    // Left out when the plan wasn't loaded with its conditions: the Platform API then reads the limits.
+    if (plan.conditions) {
+        payload.conditions = plan.conditions.map((c) => ({ id: c.id, type: c.type, params: c.params }));
+    }
+    return payload;
 }
 
 /** A paid plan's pricing (planPricingDao row) as the plan events carry it; null for a free plan. */
