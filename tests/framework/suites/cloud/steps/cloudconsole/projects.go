@@ -42,7 +42,7 @@ const keyScenarioProject = "cloudScenarioProject"
 var suiteProjects = []string{projectOne, projectTwo}
 
 // projectOneFeatures are the feature files that work in projectOne: those of the runners apip-basic,
-// apip-deploy (with the managed gateway runtime and route features), apip-gateway, apip-gateway-config,
+// apip-deploy (with the managed gateway runtime, route and policy features), apip-gateway, apip-gateway-config,
 // apip-graphql, apip-secrets and apip-self-hosted-gateway-runtime.
 var projectOneFeatures = []string{
 	"apip_basic.feature",
@@ -51,6 +51,7 @@ var projectOneFeatures = []string{
 	"apip_gateway_config.feature",
 	"apip_gateway_runtime.feature",
 	"apip_routes.feature",
+	"apip_policies.feature",
 	"apip_graphql.feature",
 	"apip_secrets.feature",
 	"apip_self_hosted_gateway_runtime.feature",

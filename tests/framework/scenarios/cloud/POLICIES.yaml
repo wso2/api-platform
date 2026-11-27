@@ -1,0 +1,193 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# --------------------------------------------------------------------
+
+# Scenario list: APIP Cloud Policies (POLICIES).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. The single layer (cloud) records how the suite covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but the product does not meet it yet, `issue` says why
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: POLICIES
+title: APIP Cloud Policies
+scenarios:
+  - id: ID_APIP_POLICIES_001
+    title: "An API without any policies deploys and serves its operation."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Deploy API without any policies".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "An API without any policies deploys and is served"
+  - id: ID_APIP_POLICIES_002
+    title: "An API with an operation-level CORS policy allowing any origin deploys, and the operation answers a cross-origin request with Access-Control-Allow-Origin: *."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Deploy API with operation-level policy".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "An API with an operation-level CORS policy deploys and allows any origin on that operation"
+  - id: ID_APIP_POLICIES_003
+    title: "An API with an API-level CORS policy deploys, and answers a request from its configured origin with that origin in Access-Control-Allow-Origin."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Deploy API with API-level policy".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "An API with an API-level CORS policy deploys and allows its configured origin"
+  - id: ID_APIP_POLICIES_004
+    title: "A policy added to an API by an update takes effect once the API is redeployed."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Update API to add policies".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy added by an update takes effect once the API is redeployed"
+  - id: ID_APIP_POLICIES_005
+    title: "A policy removed from an API by an update stops applying once the API is redeployed."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Update API to remove policies".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy removed by an update stops applying once the API is redeployed"
+  - id: ID_APIP_POLICIES_006
+    title: "An API-level policy given without a version deploys with its latest version and takes effect."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "Deploy API with API-level policy using empty version
+      # resolves to latest".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "An API-level policy given without a version resolves to its latest version"
+  - id: ID_APIP_POLICIES_007
+    title: "An operation-level policy given without a version deploys with its latest version and takes effect."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "Deploy API with operation-level policy using empty
+      # version resolves to latest".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "An operation-level policy given without a version resolves to its latest version"
+  - id: ID_APIP_POLICIES_008
+    title: "An API with GET, POST, PUT, DELETE and PATCH operations on one path serves each method."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "Deploy API with different HTTP methods".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "An API with GET, POST, PUT, DELETE and PATCH operations serves each method"
+  - id: ID_APIP_POLICIES_009
+    title: "A policy with a method condition runs on POST and not on GET."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Policy executes only on POST requests using a method
+      # condition".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy with a method condition runs only on POST requests"
+  - id: ID_APIP_POLICIES_010
+    title: "A policy with an in condition runs on each listed method and not on GET."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "Policy executes on multiple methods using the in
+      # operator".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy with an in condition runs on each listed method"
+  - id: ID_APIP_POLICIES_011
+    title: "A policy conditioned on a header being present runs only when the request carries it."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Policy executes only when a specific header is
+      # present".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy runs only when a specific header is present"
+  - id: ID_APIP_POLICIES_012
+    title: "A policy conditioned on a header value runs only for that value."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "Policy executes based on a header value".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy runs based on a header value"
+  - id: ID_APIP_POLICIES_013
+    title: "A policy conditioned on a path prefix runs only under that prefix."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "Policy executes based on a path prefix".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy runs based on a path prefix"
+  - id: ID_APIP_POLICIES_014
+    title: "A policy conditioned on both the method and a header runs only when both hold."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "Policy executes only when combined method and header
+      # conditions both hold".
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A policy runs only when combined method and header conditions both hold"
+  - id: ID_APIP_POLICIES_015
+    title: "A secret template in a set-headers value reaches the upstream rendered within the header value, while the API's create and read answers keep the template and never carry the value."
+    priority: P0
+    cloud:
+      # The cloud counterpart of on-premises "secret template in set-headers policy value is
+      # rendered upstream but unrendered in response and stored configuration"; the gateway's stored
+      # configuration cannot be read in the cloud.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A secret template in a set-headers value is rendered for the upstream but stays unrendered in the API"
+  - id: ID_APIP_POLICIES_016
+    title: "A template whose environment value is missing uses the default function's fallback."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises "default function returns fallback when env is
+      # missing".
+      status: known-issue
+      issue: "On development the deployment fails with GATEWAY_PROCESSING_ERROR. The gateway lets operators restrict which environment variables a template may read (a refused read is an error, which default does not catch), which would explain it; not verified, since the data-plane logs are not readable. Seen on 2026-11-27. No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "The default function supplies a fallback when an environment value is missing"
+  - id: ID_APIP_POLICIES_017
+    title: "A $version placeholder in an API's context resolves to the API's version on the gateway, and the literal path is not served."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises "Deploying an API resolves a version placeholder in its
+      # context".
+      status: known-issue
+      issue: "api-platform: the platform refuses a REST API context containing $version (\"Invalid API context format\": isValidContext in platform-api internal/service/api.go allows no \"$\"), although other platform code expects the placeholder and replaces it (internal/service/api.go, graphql_invoke_target.go). Same on main. Seen on development on 2026-11-27. No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_policies.feature
+          scenario: "A version placeholder in an API context resolves to the API version"
