@@ -93,6 +93,9 @@ type ExternalProcessorServer struct {
 	// move it.
 	handleUpstreamFaults bool
 
+	// llmOpenAIErrors renders LLM-route errors in the OpenAI envelope. See WithLLMOpenAIErrors.
+	llmOpenAIErrors bool
+
 	// correlationStore carries captured request/response headers and bodies to
 	// the ALS handler, keyed by a per-stream token, instead of round-tripping them
 	// through Envoy dynamic metadata (see storeInProcess and
@@ -148,6 +151,16 @@ func WithHandleUpstreamFaults(enabled bool) ServerOption {
 	}
 }
 
+// WithLLMOpenAIErrors renders gateway-produced errors on LlmProvider and LlmProxy routes in the
+// OpenAI envelope, from policy_engine.llm_errors.enable_openai_format. It adds the LLM kinds to
+// the formatter's set, leaving Agent unaffected. The kinds are added once every option has run,
+// so the order relative to WithErrorFormatterKinds does not matter.
+func WithLLMOpenAIErrors(enabled bool) ServerOption {
+	return func(s *ExternalProcessorServer) {
+		s.llmOpenAIErrors = enabled
+	}
+}
+
 // NewExternalProcessorServer creates a new ExternalProcessorServer.
 //
 // It takes no resolver registry: resolvers are prepared per route at xDS ingest, so
@@ -188,6 +201,10 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 	}
 	for _, opt := range opts {
 		opt(srv)
+	}
+	// After the loop, so WithErrorFormatterKinds replacing the set cannot drop the LLM kinds.
+	if srv.llmOpenAIErrors {
+		srv.errorFormatterKinds = srv.errorFormatterKinds.With(faultformat.OpenAIErrorKinds()...)
 	}
 	return srv
 }

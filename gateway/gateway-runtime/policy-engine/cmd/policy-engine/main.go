@@ -303,6 +303,7 @@ func main() {
 
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,
 		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults),
+		kernel.WithLLMOpenAIErrors(cfg.PolicyEngine.LLMErrors.EnableOpenAIFormat),
 		kernel.WithHealthRoutes(livenessChecker, readinessChecker))
 
 	// Create listener based on mode (same pattern as gateway-controller)

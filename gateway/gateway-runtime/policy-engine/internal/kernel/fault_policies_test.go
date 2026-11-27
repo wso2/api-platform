@@ -88,6 +88,13 @@ func (p *faultReplacerPolicy) OnFault(_ context.Context, _ *policy.FaultContext,
 
 func faultExecCtx(t *testing.T, faultPolicies []policy.Policy, specs []policy.PolicySpec) *PolicyExecutionContext {
 	t.Helper()
+	return faultExecCtxWithOptions(t, faultPolicies, specs)
+}
+
+// faultExecCtxWithOptions is faultExecCtx with further server options, applied through the real
+// constructor so anything it does after the options run is applied too.
+func faultExecCtxWithOptions(t *testing.T, faultPolicies []policy.Policy, specs []policy.PolicySpec, opts ...ServerOption) *PolicyExecutionContext {
+	t.Helper()
 	k := NewKernel()
 	// A REAL CEL evaluator, not nil. With nil, any fault entry carrying an
 	// executionCondition panicked in the executor, so the whole conditional-skip path was
@@ -103,7 +110,7 @@ func faultExecCtx(t *testing.T, faultPolicies []policy.Policy, specs []policy.Po
 	// about — leaving it off would make every passthrough test in this file silently assert
 	// nothing. The flag's own behaviour, both ways, lives in handle_upstream_faults_config_test.go.
 	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
-		WithHandleUpstreamFaults(true))
+		append([]ServerOption{WithHandleUpstreamFaults(true)}, opts...)...)
 
 	hasConditions := false
 	for _, s := range specs {

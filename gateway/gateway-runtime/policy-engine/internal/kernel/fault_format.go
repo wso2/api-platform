@@ -21,6 +21,7 @@ package kernel
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -67,7 +68,13 @@ func (ec *PolicyExecutionContext) formatFaultResponse(
 	if immResp.Headers == nil {
 		immResp.Headers = make(map[string]string, 1)
 	}
-	// Overwrite rather than add: the existing value describes the body being replaced.
+	// Overwrite rather than add: the existing value describes the body being replaced. Remove
+	// every casing, since Envoy lowercases header names and would receive two.
+	for name := range immResp.Headers {
+		if strings.EqualFold(name, contentTypeHeader) {
+			delete(immResp.Headers, name)
+		}
+	}
 	immResp.Headers[contentTypeHeader] = decision.ContentType
 	return immResp
 }
@@ -103,6 +110,52 @@ func (ec *PolicyExecutionContext) faultFormatInput(
 		ContentType:      ec.requestHeader(headerContentType),
 		Accept:           ec.requestHeader(headerAccept),
 		RequestMethod:    ec.requestMethod(),
+	}
+}
+
+// encodedBody reports whether headers declare a content encoding other than identity, under any
+// casing of the header name.
+func encodedBody(headers map[string]string) bool {
+	for name, value := range headers {
+		if !strings.EqualFold(name, "content-encoding") {
+			continue
+		}
+		if v := strings.TrimSpace(value); v != "" && !strings.EqualFold(v, "identity") {
+			return true
+		}
+	}
+	return false
+}
+
+// actionEncoded reports whether a response action declares a content encoding for its body.
+func actionEncoded(action policy.ResponseAction) bool {
+	switch a := action.(type) {
+	case policy.ImmediateResponse:
+		return encodedBody(a.Headers)
+	case policy.DownstreamResponseModifications:
+		if encodedBody(a.HeadersToSet) {
+			return true
+		}
+		for name, values := range a.HeadersToAppend {
+			for _, v := range values {
+				if encodedBody(map[string]string{name: v}) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// actionBody returns the body a response action carries, or nil.
+func actionBody(action policy.ResponseAction) []byte {
+	switch a := action.(type) {
+	case policy.ImmediateResponse:
+		return a.Body
+	case policy.DownstreamResponseModifications:
+		return a.Body
+	default:
+		return nil
 	}
 }
 
@@ -208,6 +261,45 @@ const (
 	headerAccept      = "accept"
 )
 
+// ─── Error bodies on routes with no response-body policy ─────────────────────
+
+// needsErrorBodyForFormatting reports whether to buffer this response's body for the formatter
+// on an LLM route whose policies do not read it, so a router error such as a 503 can be
+// replaced. Decided per response, so successful responses are never buffered. Only unencoded,
+// router-produced errors qualify; backend errors pass through anyway. False whenever
+// needsResponseBody already buffers the response.
+func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
+	if !ec.llmOpenAIErrors() || ec.policyChain == nil || ec.needsResponseBody() {
+		return false
+	}
+	if ec.responseHeaderCtx == nil || ec.responseHeaderCtx.ResponseStatus < faultMinStatus {
+		return false
+	}
+	if ec.responseHasNoBody() || ec.responseContentEncoding != "" || ec.responseEncodingUnsupported {
+		return false
+	}
+	switch classifyFaultSource(originUpstream, ec.responseCodeDetails) {
+	case sourceRouter, sourceNoRoute:
+		return true
+	default:
+		return false
+	}
+}
+
+// llmOpenAIErrors reports whether the option is on and the route serves an LLM API kind.
+func (ec *PolicyExecutionContext) llmOpenAIErrors() bool {
+	return ec.server != nil && ec.server.llmOpenAIErrors &&
+		slices.Contains(faultformat.OpenAIErrorKinds(), ec.apiKind())
+}
+
+// openAIPolicyBodyFault is faultformat.OpenAIPolicyBodyFault, always false off an OpenAI route.
+func (ec *PolicyExecutionContext) openAIPolicyBodyFault(body []byte) (policy.FaultDetails, bool) {
+	if !ec.llmOpenAIErrors() {
+		return policy.FaultDetails{}, false
+	}
+	return faultformat.OpenAIPolicyBodyFault(body)
+}
+
 // ─── Sterile engine failures ─────────────────────────────────────────────────
 //
 // Two failures reach the client before any policy chain is bound, so neither has a
@@ -283,7 +375,8 @@ func (s *ExternalProcessorServer) formatSterileError(
 		// the engine's own, and the engine is not an author — same rule as its 500s.
 		BodyAuthored: false,
 		// Nor can a policy have described it, so this leaves the sterile body as released
-		// gateways sent it. Kept as an explicit field so the rule is visible here.
+		// gateways sent it, except in the OpenAI shape, which renders it anyway. Kept as an
+		// explicit field so the rule is visible here.
 		PolicyDescribed: false,
 		Err:             err,
 		Status:          status,
@@ -305,6 +398,19 @@ func (s *ExternalProcessorServer) formatSterileError(
 		"error_id", errorID, "api_kind", string(sig.APIKind),
 		"status", status, "reason", decision.Reason)
 	return decision.Body, decision.ContentType
+}
+
+// formatEngineRejection shapes the body of a request or response the engine rejected itself for
+// the caller's protocol, as formatSterileError does for the engine's other errors. The message
+// stays the generic clientError, and the correlation id is kept.
+func (ec *PolicyExecutionContext) formatEngineRejection(
+	ctx context.Context, status int, errorID, clientError string, body []byte,
+) ([]byte, string) {
+	if ec.server == nil {
+		return body, "application/json"
+	}
+	return ec.server.formatSterileError(ctx, ec.shapeSignals(), policy.FaultDetails{Message: clientError},
+		status, errorID, body, "application/json")
 }
 
 // shapeSignals reads the shape signals off an execution context.

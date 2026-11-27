@@ -192,6 +192,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_policy_path_specificity.feature
+      - name: llm-openai-compatible-errors
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
       - name: mcp-deploy
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
@@ -689,3 +693,19 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/fault_policies_upstream.feature
+
+  # The opt-out of OpenAI-compatible LLM errors is a policy-engine setting that the other runners
+  # must not see, so it needs its own overlay.
+  - name: llm-openai-compatible-errors-disabled
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/llm-errors-openai-format-disabled.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: llm-openai-compatible-errors-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_openai_compatible_errors_disabled.feature
