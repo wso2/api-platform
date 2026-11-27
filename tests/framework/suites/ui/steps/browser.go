@@ -235,7 +235,24 @@ func (u *UI) resetBrowserCoverage(ctx context.Context) error {
 // the quickstart intro is marked seen BEFORE app code runs, or its overlay intercepts the
 // first click of every scenario that navigates.
 func newAppPage(bctx playwright.BrowserContext, preserveCoverage bool) (playwright.Page, error) {
-	initScript := `try { localStorage.setItem('qs_intro_seen_v1', '1'); } catch (e) {}`
+	initScript := `try { localStorage.setItem('qs_intro_seen_v1', '1'); } catch (e) {}
+(() => {
+  // Records each MUI snackbar message as it appears, for steps that resume after it has hidden.
+  // A user interaction clears the record, so a check only matches messages its own action caused.
+  const recorded = new WeakMap();
+  const seen = globalThis.__uiTestSnackbars = [];
+  const clear = () => { seen.length = 0; };
+  for (const type of ['pointerdown', 'keydown', 'input']) addEventListener(type, clear, true);
+  new MutationObserver(() => {
+    for (const el of document.querySelectorAll('.MuiSnackbar-root')) {
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text && recorded.get(el) !== text) {
+        recorded.set(el, text);
+        seen.push(text);
+      }
+    }
+  }).observe(document, {childList: true, subtree: true, characterData: true});
+})();`
 	if preserveCoverage {
 		initScript += `
 (() => {
@@ -256,7 +273,7 @@ func newAppPage(bctx playwright.BrowserContext, preserveCoverage bool) (playwrig
 })();`
 	}
 	if err := bctx.AddInitScript(playwright.Script{Content: playwright.String(initScript)}); err != nil {
-		return nil, fmt.Errorf("ui: seeding the intro-seen flag: %w", err)
+		return nil, fmt.Errorf("ui: adding the page init script: %w", err)
 	}
 	return bctx.NewPage()
 }

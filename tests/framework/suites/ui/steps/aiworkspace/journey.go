@@ -588,6 +588,20 @@ func (u *Steps) backOnProxyList(ctx context.Context) error {
 
 // --- generic visibility ---
 
+// takeSnackbar removes and reports the first snackbar message, recorded by the page's init script
+// since the user last interacted with the page, that contains text the way GetByText matches it.
+const takeSnackbar = `(text) => {
+	const want = text.replace(/\s+/g, ' ').trim().toLowerCase();
+	const seen = globalThis.__uiTestSnackbars || [];
+	const i = seen.findIndex((s) => s.toLowerCase().includes(want));
+	if (i < 0) return false;
+	seen.splice(i, 1);
+	return true;
+}`
+
+// seesOnPage passes when text is on the page, or was shown in a snackbar after the user's last
+// interaction. A snackbar hides after 3.5 seconds, so a step that resumes late (#4364) would
+// otherwise miss it. Each match uses up the recorded showing, so one showing satisfies one check.
 func (u *Steps) seesOnPage(ctx context.Context, text string) error {
 	var err error
 	text, err = expandUIValue(ctx, text)
@@ -598,7 +612,14 @@ func (u *Steps) seesOnPage(ctx context.Context, text string) error {
 	if err != nil {
 		return err
 	}
-	return u.expect.Locator(page.GetByText(text).First()).ToBeVisible()
+	if taken, err := page.Evaluate(takeSnackbar, text); err == nil && taken == true {
+		return nil
+	}
+	if err := u.expect.Locator(page.GetByText(text).First()).ToBeVisible(); err != nil {
+		return err
+	}
+	_, _ = page.Evaluate(takeSnackbar, text) // a snackbar matched here must not satisfy a later check
+	return nil
 }
 
 func (u *Steps) noLongerSees(ctx context.Context, text string) error {
