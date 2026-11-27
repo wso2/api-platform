@@ -102,7 +102,8 @@ Feature: APIP cloud access and identity
 
   # The exchange is served without a console token, since a workload has none yet; each refusal
   # is paired with a token issued for the same account's own credentials.
-  @ID_APIP_AUTH_009 @type:negative
+  # Development turns service accounts off (see the scenario list entry).
+  @ID_APIP_AUTH_009 @type:negative @known-issue
   Scenario Outline: The service-account token exchange refuses <case>
     Given I obtain an APIP cloud console token
     And I create a synthetic service account with the role "ap_service_account"
@@ -125,7 +126,8 @@ Feature: APIP cloud access and identity
       | a scope the roles do not grant | client_credentials | ${CTX:cloudServiceAccountClientID}     | ${CTX:cloudServiceAccountClientSecret} | ap:service_account:manage | 400    | SERVICE_ACCOUNT_INVALID_SCOPE | The requested scope is missing, or is not granted to this service account. |
       | another grant type             | password           | ${CTX:cloudServiceAccountClientID}     | ${CTX:cloudServiceAccountClientSecret} | ap:project:read           | 400    | VALIDATION_FAILED             | grant_type must be client_credentials                                      |
 
-  @ID_APIP_AUTH_010 @type:negative
+  # Development turns service accounts off (see the scenario list entry).
+  @ID_APIP_AUTH_010 @type:negative @known-issue
   Scenario: The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret
     Given I obtain an APIP cloud console token
     And I create a synthetic service account with the role "ap_service_account"
@@ -142,7 +144,8 @@ Feature: APIP cloud access and identity
     And the cloud API error message should be "Invalid or expired credentials."
     And the service account's own credentials should be exchanged for a token with the scope "ap:project:read"
 
-  @ID_APIP_AUTH_011 @type:negative
+  # Development turns service accounts off (see the scenario list entry).
+  @ID_APIP_AUTH_011 @type:negative @known-issue
   Scenario: The service-account token exchange refuses a request that leaves out the scope
     Given I obtain an APIP cloud console token
     And I create a synthetic service account with the role "ap_service_account"

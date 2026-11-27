@@ -175,8 +175,8 @@ scenarios:
     title: "Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys."
     priority: P1
     cloud:
-      # The cloud counterpart of on-premises NETAC-PA-014; written, not yet run against a cloud environment.
-      status: planned
+      # The cloud counterpart of on-premises NETAC-PA-014.
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_deploy.feature
           scenario: "Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys"

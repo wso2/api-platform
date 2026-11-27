@@ -22,6 +22,7 @@ blocks:
       #   features:
       #     - features/apip_project.feature
       - name: apip-auth
+        tags: "~@known-issue"
         features:
           - features/apip_auth.feature
       - name: apip-deploy

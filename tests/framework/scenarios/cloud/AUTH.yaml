@@ -95,8 +95,9 @@ scenarios:
     priority: P0
     cloud:
       # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
-      # refuses <case>"; written, not yet run against a cloud environment.
-      status: planned
+      # refuses <case>".
+      status: known-issue
+      issue: "WSO2 Cloud development turns service accounts off (apip_papi_sa_enabled is not set on wso2cloud-deployment's dev branch), so POST /service-accounts answers 404 there (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "The service-account token exchange refuses <case>"
@@ -105,9 +106,9 @@ scenarios:
     priority: P1
     cloud:
       # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
-      # refuses a client that authenticates twice, and a wrong HTTP Basic secret"; written, not yet
-      # run against a cloud environment.
-      status: planned
+      # refuses a client that authenticates twice, and a wrong HTTP Basic secret".
+      status: known-issue
+      issue: "WSO2 Cloud development turns service accounts off (apip_papi_sa_enabled is not set on wso2cloud-deployment's dev branch), so POST /service-accounts answers 404 there (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret"
@@ -116,8 +117,9 @@ scenarios:
     priority: P1
     cloud:
       # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
-      # refuses a request that leaves out the scope"; written, not yet run against a cloud environment.
-      status: planned
+      # refuses a request that leaves out the scope".
+      status: known-issue
+      issue: "WSO2 Cloud development turns service accounts off (apip_papi_sa_enabled is not set on wso2cloud-deployment's dev branch), so POST /service-accounts answers 404 there (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "The service-account token exchange refuses a request that leaves out the scope"

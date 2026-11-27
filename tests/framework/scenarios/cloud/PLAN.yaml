@@ -31,9 +31,8 @@ scenarios:
     priority: P1
     cloud:
       # The cloud counterpart of the on-premises subscription_management.feature scenario of the
-      # same name; its creator is the console user instead of "admin". Written, not yet run
-      # against a cloud environment.
-      status: planned
+      # same name; its creator is the console user instead of "admin".
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_subscription_plan.feature
           scenario: "A subscription plan keeps its limits through list, update and duplicate attempts"
@@ -42,8 +41,8 @@ scenarios:
     priority: P1
     cloud:
       # The cloud counterpart of the on-premises monetization/priced_plans.feature scenario of the
-      # same name. Written, not yet run against a cloud environment.
-      status: planned
+      # same name.
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_subscription_plan.feature
           scenario: "A free plan has no price to read, and a price can't be added later"

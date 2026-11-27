@@ -94,8 +94,8 @@ scenarios:
     title: "A GraphQL API whose SDL URL is the cloud metadata address is refused before the SDL is fetched, while one with an inline SDL is created."
     priority: P1
     cloud:
-      # The cloud counterpart of on-premises NETAC-PA-016; written, not yet run against a cloud environment.
-      status: planned
+      # The cloud counterpart of on-premises NETAC-PA-016.
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_graphql.feature
           scenario: "A GraphQL API whose SDL URL is the cloud metadata address is refused before the SDL is fetched, while one with an inline SDL is created"
@@ -103,8 +103,8 @@ scenarios:
     title: "Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL is fetched."
     priority: P1
     cloud:
-      # The cloud counterpart of on-premises NETAC-PA-020; written, not yet run against a cloud environment.
-      status: planned
+      # The cloud counterpart of on-premises NETAC-PA-020.
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_graphql.feature
           scenario: "Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL is fetched"

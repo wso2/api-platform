@@ -190,8 +190,8 @@ scenarios:
     title: "A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is kept."
     priority: P0
     cloud:
-      # The cloud counterpart of on-premises NETAC-PA-011; written, not yet run against a cloud environment.
-      status: planned
+      # The cloud counterpart of on-premises NETAC-PA-011.
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_basic.feature
           scenario: "A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is kept"
