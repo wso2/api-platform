@@ -267,3 +267,29 @@ func TestMaskLogValue_ByteArrayIsOneValue(t *testing.T) {
 		t.Fatalf("MaskLogValue([2]string) = %#v", got)
 	}
 }
+
+func TestMaskLogValue_SharedAddressWithDifferentTypeIsNotACycle(t *testing.T) {
+	t.Run("pointer to array and pointer to its first element", func(t *testing.T) {
+		a := [2]interface{}{[]string{testSecret}, nil}
+		a[1] = &a[0] // same address as &a, different type
+
+		want := []interface{}{[]interface{}{MaskedLogValue}, []interface{}{MaskedLogValue}}
+		if got := MaskLogValue(&a); !reflect.DeepEqual(got, want) {
+			t.Fatalf("MaskLogValue(&a) = %#v, want %#v", got, want)
+		}
+	})
+
+	t.Run("cycle through a shared address still terminates", func(t *testing.T) {
+		outer := make([][1]interface{}, 1)
+		inner := outer[0][:]
+		outer[0][0] = inner // inner's only element is inner itself
+
+		// outer -> [1]interface{} -> inner -> inner (cycle). inner shares outer's
+		// address and length, so without the type in the key it would be cut
+		// one level early, at outer -> [1]interface{} -> "***".
+		want := []interface{}{[]interface{}{[]interface{}{MaskedLogValue}}}
+		if got := MaskLogValue(outer); !reflect.DeepEqual(got, want) {
+			t.Fatalf("MaskLogValue(outer) = %#v, want %#v", got, want)
+		}
+	})
+}

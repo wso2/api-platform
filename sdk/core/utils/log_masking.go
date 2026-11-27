@@ -61,12 +61,15 @@ func MaskLogValue(v interface{}) interface{} {
 }
 
 // containerRef identifies a map, slice or pointer on the current traversal
-// path. A slice is identified by its backing array and length, so a shorter
-// sub-slice of the same array is not mistaken for a cycle.
+// path. The type is part of the identity because different values can share an
+// address: a pointer to an array and a pointer to its first element, or a
+// slice of arrays and a slice over the first array's elements. A slice is also
+// identified by its length, so a shorter sub-slice of the same backing array is
+// not mistaken for a cycle.
 type containerRef struct {
-	kind reflect.Kind
-	ptr  uintptr
-	len  int
+	typ reflect.Type
+	ptr uintptr
+	len int
 }
 
 func maskValue(rv reflect.Value, path map[containerRef]struct{}) interface{} {
@@ -82,7 +85,7 @@ func maskValue(rv reflect.Value, path map[containerRef]struct{}) interface{} {
 		if rv.IsNil() {
 			return nil
 		}
-		return enter(containerRef{kind: reflect.Pointer, ptr: rv.Pointer()}, path, func() interface{} {
+		return enter(containerRef{typ: rv.Type(), ptr: rv.Pointer()}, path, func() interface{} {
 			return maskValue(rv.Elem(), path)
 		})
 	case reflect.Map:
@@ -92,7 +95,7 @@ func maskValue(rv reflect.Value, path map[containerRef]struct{}) interface{} {
 		if rv.Type().Key().Kind() != reflect.String {
 			return MaskedLogValue
 		}
-		return enter(containerRef{kind: reflect.Map, ptr: rv.Pointer()}, path, func() interface{} {
+		return enter(containerRef{typ: rv.Type(), ptr: rv.Pointer()}, path, func() interface{} {
 			out := make(map[string]interface{}, rv.Len())
 			iter := rv.MapRange()
 			for iter.Next() {
@@ -108,7 +111,7 @@ func maskValue(rv reflect.Value, path map[containerRef]struct{}) interface{} {
 		if rv.Type().Elem().Kind() == reflect.Uint8 {
 			return MaskedLogValue
 		}
-		return enter(containerRef{kind: reflect.Slice, ptr: rv.Pointer(), len: rv.Len()}, path, func() interface{} {
+		return enter(containerRef{typ: rv.Type(), ptr: rv.Pointer(), len: rv.Len()}, path, func() interface{} {
 			return maskElements(rv, path)
 		})
 	case reflect.Array:
