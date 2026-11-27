@@ -40,7 +40,7 @@ export type {
   PublishableApiType,
 } from './apiPublications.endpoints';
 
-export type { ApiPublicationListFilters } from './apiPublications.hooks';
+export type { ApiPublicationListFilters, PortalPlanSelections } from './apiPublications.hooks';
 
 export { GRAPHQL_API_TYPE, REST_API_TYPE } from './apiPublications.endpoints';
 
@@ -56,6 +56,7 @@ export {
   useApiPublicationLandingPage,
   useApiPublicationThumbnail,
   useApiPublications,
+  usePortalPlanSelections,
   useDeprecateApiOnApiPortal,
   usePublishApiToApiPortal,
   useSaveApiPublicationDraft,

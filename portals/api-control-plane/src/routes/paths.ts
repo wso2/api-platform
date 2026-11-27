@@ -189,6 +189,12 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/policies'),
+  // The subscription plans the API offers, and the policies they need.
+  apiDevelopUsagePlans: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler',
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/usage-plans'),
   apiDevelopDocuments: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
@@ -291,6 +297,11 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
   ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'develop/documents'),
+  graphqlApiDevelopUsagePlans: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
+  ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'develop/usage-plans'),
   graphqlApiPublish: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

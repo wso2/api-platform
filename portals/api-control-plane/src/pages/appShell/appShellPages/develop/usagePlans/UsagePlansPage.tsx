@@ -1,0 +1,981 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  ListingTable,
+  PageTitle,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { Shield } from '@wso2/oxygen-ui-icons-react';
+import { type ReactNode, useMemo, useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { useParams } from 'react-router-dom';
+
+import {
+  useGraphQLApi,
+  useGraphQLApiSdl,
+  useUpdateGraphQLApi,
+  type GraphQLApiDetail,
+} from '@/api/resources/graphqlApis';
+import { useMetersById } from '@/api/resources/meters';
+import { GRAPHQL_API_TYPE, REST_API_TYPE, usePortalPlanSelections } from '@/api/resources/apiPublications';
+import { useRestApi, useUpdateRestApi, type Policy, type RestApi } from '@/api/resources/restApis';
+import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
+import { AppPage } from '@/components/AppPage';
+import { SecondaryText } from '@/components/common/SecondaryText';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useNotifications } from '@/components/Notifications';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { useCan } from '@/permissions';
+import { routes } from '@/routes/paths';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { ScopeGate } from '@/scope/ScopeGate';
+import {
+  type EditableOperation,
+  toEditableOperations,
+  withMajorPolicyVersion,
+  withPolicyEdits,
+} from '../../apis/utils/developEdit';
+import { PlanConditionChips, tipSlotProps } from '../../orgManage/components/PlanConditionChips';
+import { pricingSummary, summaryMeterIds } from '../../orgManage/components/pricingFormat';
+import { SelectionSummary } from '../../portals/components/SelectionSummary';
+import {
+  type ApiKind,
+  parsePolicyKey,
+  policyAttachment,
+  policyLabel,
+  requiredPolicies,
+  SUBSCRIPTION_VALIDATION,
+} from './planPolicies';
+import { PolicyName } from '../policies/PolicyChip';
+import { SaveBar } from '../SaveBar';
+import { useDirtyTracking } from '../useDirtyTracking';
+import {
+  attachedPlanIdsOf,
+  customPolicyConditions,
+  defaultPolicy,
+  missingPolicies,
+  policiesToAttach,
+  policiesToRemove,
+  validationMove,
+  validationToMove,
+  withAttachedPlans,
+  withoutOperationValidation,
+  withPoliciesAdded,
+  withPoliciesRemoved,
+} from './usagePlans';
+
+const messages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.title',
+    defaultMessage: 'Usage Plans',
+    description: 'Heading of the page where the subscription plans an API offers are attached. Noun.',
+  },
+  subtitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.subtitle',
+    defaultMessage:
+      'Choose the subscription plans this API offers.',
+  },
+  loading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.loading',
+    defaultMessage: 'Loading API',
+  },
+  notFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.notFound',
+    defaultMessage: 'API not found',
+  },
+  loadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.loadError',
+    defaultMessage: 'Unable to load the API.',
+  },
+  scopePrompt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.scopePrompt',
+    defaultMessage: 'Usage plans are attached to a single API.',
+    description: 'Explains why an API must be picked before this page can render.',
+  },
+  plansLoading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.plansLoading',
+    defaultMessage: 'Loading subscription plans',
+  },
+  plansError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.plansError',
+    defaultMessage: 'Unable to load subscription plans.',
+  },
+  emptyTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.emptyTitle',
+    defaultMessage: 'No subscription plans',
+  },
+  emptyDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.emptyDescription',
+    defaultMessage: 'Create subscription plans in Manage › Subscription Plans to attach them here.',
+  },
+  selectedSummary: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.selectedSummary',
+    defaultMessage: '{count} of {total} plans attached',
+    description: '{count} is a styled number rendered as a React element, not plain text; {total} is a plain number.',
+  },
+  attachedSummary: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachedSummary',
+    defaultMessage: '{count, plural, one {<n>#</n> plan attached} other {<n>#</n> plans attached}}',
+    description: '<n> wraps the number, which is styled.',
+  },
+  lockedPlan: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.lockedPlan',
+    defaultMessage:
+      '{count, plural, one {The API Portal {portals} selects this plan for the API. To detach it, first remove it from the publication and the draft on that portal.} other {The API Portals {portals} select this plan for the API. To detach it, first remove it from the publications and drafts on those portals.}}',
+    description: '{portals} is a comma-separated list of API Portal names.',
+  },
+  missingPolicies: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.missingPolicies',
+    defaultMessage: 'You have not yet attached the following required policies:',
+    description: 'Followed by a bullet list of the policies the attached plans need that the API lacks.',
+  },
+  columnName: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.columnName',
+    defaultMessage: 'Plan',
+  },
+  columnDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.columnDescription',
+    defaultMessage: 'Description',
+  },
+  columnConditions: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.columnConditions',
+    defaultMessage: 'Conditions',
+  },
+  columnPricing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.columnPricing',
+    defaultMessage: 'Pricing',
+  },
+  inactive: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.inactive',
+    defaultMessage: 'Inactive',
+    description: 'Chip after the name of an attached plan that is no longer active.',
+  },
+  selectAll: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.selectAll',
+    defaultMessage: 'Attach all plans',
+  },
+  clearAll: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.clearAll',
+    defaultMessage: 'Detach all plans',
+  },
+  selectRow: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.selectRow',
+    defaultMessage: 'Attach plan',
+  },
+  unselectRow: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.unselectRow',
+    defaultMessage: 'Detach plan',
+  },
+  selectedPlans: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.selectedPlans',
+    defaultMessage: 'The selected plans',
+    description: 'Stands for a plan name in the attach dialog when several plans were attached at once.',
+  },
+  sdlError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.sdlError',
+    defaultMessage: 'Unable to load the API’s schema, so the plans and policies can’t be saved yet.',
+    description: 'GraphQL Usage Plans: the schema is resupplied on save and failed to load.',
+  },
+  sdlRetry: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.sdlRetry',
+    defaultMessage: 'Retry',
+  },
+  attachTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachTitle',
+    defaultMessage: 'Attach required policies?',
+  },
+  attachMessage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachMessage',
+    defaultMessage:
+      '{count, plural, one {{plan} needs} other {{plan} need}} these policies, which this API does not have yet.',
+    description: '{plan} is a plan name (or "The selected plans"); the list of policies follows.',
+  },
+  attachQuestion: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachQuestion',
+    defaultMessage:
+      'They are added to the API’s global policies. Save and deploy the API for them to take effect.',
+  },
+  attachConfirm: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachConfirm',
+    defaultMessage: 'Attach policies',
+  },
+  attachCancel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachCancel',
+    defaultMessage: 'Skip',
+  },
+  attachMoved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachMoved',
+    defaultMessage: 'Moved from the API’s resources to the API',
+    description: 'Under subscription-validation in the attach dialog: it moves rather than being added.',
+  },
+  blockedTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedTitle',
+    defaultMessage: 'Attach the policies on the Policies page',
+  },
+  blockedPartial: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedPartial',
+    defaultMessage:
+      '{count, plural, one {{plan} needs} other {{plan} need}} these policies, which must run after Subscription Validation. Only some of this API’s resources have Subscription Validation, so they can’t be attached to the whole API here.',
+    description: '{plan} is a plan name (or "The selected plans"); the list of policies follows.',
+  },
+  blockedDiffers: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedDiffers',
+    defaultMessage:
+      '{count, plural, one {{plan} needs} other {{plan} need}} these policies, which must run after Subscription Validation. This API’s resources configure Subscription Validation differently, so they can’t be attached to the whole API here.',
+    description: '{plan} is a plan name (or "The selected plans"); the list of policies follows.',
+  },
+  blockedQuestion: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedQuestion',
+    defaultMessage:
+      'Attach them on the Policies page, to the resources that have Subscription Validation. The plans stay selected.',
+  },
+  blockedConfirm: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedConfirm',
+    defaultMessage: 'OK',
+  },
+  blockedCancel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedCancel',
+    defaultMessage: 'Close',
+  },
+  removeTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.removeTitle',
+    defaultMessage: 'Remove unused policies?',
+  },
+  removeMessage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.removeMessage',
+    defaultMessage: 'No plan attached to this API uses these policies any more.',
+    description: 'The list of policies follows.',
+  },
+  removeQuestion: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.removeQuestion',
+    defaultMessage: 'They are removed from the API’s global policies when you save.',
+  },
+  removeConfirm: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.removeConfirm',
+    defaultMessage: 'Remove policies',
+  },
+  removeCancel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.removeCancel',
+    defaultMessage: 'Keep',
+  },
+  policiesAttached: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.policiesAttached',
+    defaultMessage: 'Policies attached. Save and deploy the API to apply them.',
+  },
+  policiesRemoved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.policiesRemoved',
+    defaultMessage: 'Policies removed. Save and deploy the API to apply the change.',
+  },
+  saved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.saved',
+    defaultMessage: 'Usage plans saved. Deploy the API to apply them on the gateway.',
+  },
+});
+
+
+/** A plan this page can render — `id` is optional on the generated type but always present. */
+type DisplayablePlan = SubscriptionPlan & { id: string };
+
+/** The dialog open after plans were ticked or unticked: the policies to attach or remove. */
+type PolicyPrompt = {
+  /** `blocked`: the policies need an operation-level subscription-validation that can't move to API
+   * level (see validationMove); nothing is attached and they are attached on the Policies page. */
+  action: 'attach' | 'remove' | 'blocked';
+  count: number;
+  names: string[];
+  plan: string;
+  /** Why a `blocked` prompt is blocked. */
+  reason?: 'partial' | 'differs';
+  /** The label of the subscription-validation that moves from the resources to API level. */
+  moved?: string;
+} | null;
+
+/** One row of the plan list. */
+type PlanRow = {
+  conditions: SubscriptionPlan['conditions'];
+  description?: string;
+  id: string;
+  inactive: boolean;
+  name: string;
+  pricing: SubscriptionPlan['pricing'];
+};
+
+/** One line of text; the whole text on hover, only when it is cut short. */
+function TruncatedText({ primary = false, text }: { primary?: boolean; text?: string }) {
+  const [cut, setCut] = useState(false);
+  return (
+    <Tooltip disableHoverListener={!cut} slotProps={tipSlotProps} title={text ?? ''}>
+      <Typography
+        color={primary ? 'text.primary' : 'text.secondary'}
+        noWrap
+        onMouseEnter={(event) =>
+          setCut(event.currentTarget.scrollWidth > event.currentTarget.clientWidth)
+        }
+        variant="body2"
+      >
+        {text}
+      </Typography>
+    </Tooltip>
+  );
+}
+
+/** Condition chips a row shows before the rest fold into "+N". */
+const MAX_ROW_CONDITIONS = 2;
+
+/** A policy key's name and version, as `labelOf` reads it ("subscription-validation v2"). */
+const policyParts = (label: string) => {
+  const at = label.lastIndexOf(' ');
+  return at > 0 ? { name: label.slice(0, at), version: label.slice(at + 1) } : { name: label, version: '' };
+};
+
+/** Policies as the Policies page lists them: icon, display name from the Policy Hub, version. */
+function PolicyRows({ labels, moved }: { labels: string[]; moved?: string }) {
+  return (
+    <Stack
+      component="ul"
+      sx={{ border: 1, borderColor: 'divider', borderRadius: 1, listStyle: 'none', m: 0, overflow: 'hidden', p: 0 }}
+      divider={<Box aria-hidden sx={{ borderTop: 1, borderColor: 'divider' }} />}
+    >
+      {labels.map((label) => ({ label, ...policyParts(label) })).map(({ label, name, version }) => (
+        <Stack
+          alignItems="center"
+          aria-label={[name, version].filter(Boolean).join(' ')}
+          component="li"
+          direction="row"
+          key={label}
+          spacing={1.25}
+          sx={{ px: 1.5, py: 1 }}
+        >
+          <Avatar sx={{ borderRadius: 0.75, height: 28, width: 28 }} variant="rounded">
+            <Shield size={14} />
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography noWrap sx={{ fontWeight: 600 }} variant="body2">
+              <PolicyName name={name} />
+            </Typography>
+            <Typography color="text.secondary" noWrap sx={{ fontFamily: 'monospace' }} variant="caption">
+              {name}
+            </Typography>
+            {label === moved && (
+              <Typography color="text.secondary" display="block" variant="caption">
+                <FormattedMessage {...messages.attachMoved} />
+              </Typography>
+            )}
+          </Box>
+          {version && <Chip label={version} size="small" variant="outlined" />}
+        </Stack>
+      ))}
+    </Stack>
+  );
+}
+
+/** The missing policies under the warning: display name and version, one per line. */
+function PolicyBullets({ labels }: { labels: string[] }) {
+  return (
+    <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+      {labels.map(policyParts).map(({ name, version }) => (
+        <Typography
+          aria-label={[name, version].filter(Boolean).join(' ')}
+          component="li"
+          key={name}
+          variant="body2"
+        >
+          <PolicyName name={name} />
+          {version && (
+            <Box component="span" sx={{ color: 'text.secondary', ml: 0.75 }}>
+              {version}
+            </Box>
+          )}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
+/** How many plans and API-level policies differ from what was saved, at least one when dirty. */
+const countChanges = (
+  saved: { planIds: string[]; policies: Policy[] },
+  current: { planIds: string[]; policies: Policy[] },
+) => {
+  const differ = (a: string[], b: string[]) =>
+    a.filter((x) => !b.includes(x)).length + b.filter((x) => !a.includes(x)).length;
+  const names = (policies: Policy[]) => policies.map((policy) => policy.name);
+  return (
+    differ(saved.planIds, current.planIds) + differ(names(saved.policies), names(current.policies))
+  );
+};
+
+/** What the panel needs from an API, whatever its kind. */
+type PlanAttachmentProps = {
+  /** The API's `{apiType}` on the publication endpoints, and its handle: which plans each API
+   * Portal selects for it, in a live listing or a draft. Such a plan can't be detached. */
+  apiType: string;
+  apiHandle?: string;
+  /** Plan ids the API offers now (its `subscriptionPlans`). */
+  attachedPlanIds: string[];
+  /** The API's own (API-level) policies. */
+  apiPolicies: Policy[];
+  /** Per-operation policies (a REST API's resources); they count towards what applies to every
+   * request. They are edited only to move subscription-validation to API level (see validationToMove). */
+  operations?: EditableOperation[];
+  /** The kind of API: plan conditions it never counts ask for no policy. */
+  kind: ApiKind;
+  readOnly: boolean;
+  saving: boolean;
+  /** Save blocked for now (e.g. the API id, or a GraphQL schema not loaded). */
+  saveDisabled?: boolean;
+  /** Shown under the title, e.g. why Save is blocked. */
+  notice?: ReactNode;
+  /** Stores the plans, API-level policies and operations; calls `onSaved` once they are stored. */
+  onSave: (planIds: string[], policies: Policy[], operations: EditableOperation[], onSaved: () => void) => void;
+};
+
+/**
+ * Develop › Usage Plans: which of the organization's subscription plans this API offers.
+ * Ticking a plan offers to attach, at API level, the policies that enforce it that the API lacks
+ * (subscription-validation first); unticking one offers to remove those no remaining plan needs.
+ * A note lists the policies the attached plans need that the API lacks, as edited. One save stores
+ * the plans and the policies on the API; nothing is deployed.
+ */
+function PlanAttachmentPanel({
+  apiHandle,
+  apiPolicies,
+  apiType,
+  attachedPlanIds,
+  kind,
+  onSave,
+  notice,
+  operations = [],
+  readOnly,
+  saveDisabled = false,
+  saving,
+}: PlanAttachmentProps) {
+  const intl = useIntl();
+  const { notify } = useNotifications();
+  const plansQuery = useAllSubscriptionPlans();
+  const portalSelections = usePortalPlanSelections(apiType, apiHandle);
+  /** The portals that select a saved plan, which keeps it attached (the server refuses to detach it). */
+  const lockedBy = (id: string) =>
+    attachedPlanIds.includes(id) ? portalSelections.byPlan.get(id) : undefined;
+
+  const [planIds, setPlanIds] = useState<string[]>(attachedPlanIds);
+  const [policies, setPolicies] = useState<Policy[]>(apiPolicies);
+  const [ops, setOps] = useState<EditableOperation[]>(operations);
+  const [prompt, setPrompt] = useState<PolicyPrompt>(null);
+
+  const { dirty, markSaved, saved } = useDirtyTracking({ planIds, policies });
+  const changeCount = dirty ? Math.max(1, countChanges(saved, { planIds, policies })) : 0;
+
+  const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan =>
+    Boolean(plan.id),
+  );
+  const plansById = new Map(allPlans.map((plan) => [plan.id, plan]));
+  // The active plans, and any attached plan made inactive since, so it can be detached.
+  const shownPlans = allPlans.filter(
+    (plan) => plan.status === 'ACTIVE' || planIds.includes(plan.id),
+  );
+  // The unit a per-unit price counts (call or token) comes from its meter, as on the plans page.
+  const { meters } = useMetersById(shownPlans.flatMap((plan) => summaryMeterIds(plan.pricing)));
+  const attachment = policyAttachment({ operations: ops, policies });
+
+  // Each as `name version`: a custom policy's key carries its version; a built-in one's comes from
+  // the API (when removing) or its default (when attaching).
+  const labelOf = (key: string) => {
+    if (parsePolicyKey(key).version) return policyLabel(key);
+    const version =
+      policies.find((policy) => policy.name === key)?.version ??
+      validationToMove(policies, ops, [key, 'any'])?.version ??
+      defaultPolicy(key).version;
+    return `${key} ${version}`;
+  };
+  const missing = missingPolicies(
+    planIds.flatMap((id) => plansById.get(id) ?? []),
+    kind,
+    attachment,
+    policies,
+  );
+
+  /**
+   * Applies the grid's new selection. A single tick (or a select-all) attaches plans and offers the
+   * policies they need; an untick (or clearing all) detaches them and offers to remove the policies
+   * no remaining plan needs. The grid reports a select-all as "every row but these".
+   */
+  const handleSelection = (tickedIds: ReadonlySet<string>) => {
+    if (readOnly || saving) return;
+    // A plan an API Portal selects stays attached, even when "Detach all plans" is used.
+    const ticked = (id: string) => tickedIds.has(id) || Boolean(lockedBy(id) && planIds.includes(id));
+    const shownIds = new Set(shownPlans.map((plan) => plan.id));
+    // An attached id the list does not show (a deleted plan) is not the grid's to change.
+    const next = [
+      ...planIds.filter((id) => !shownIds.has(id)),
+      ...shownPlans.filter((plan) => ticked(plan.id)).map((plan) => plan.id),
+    ];
+    const added = shownPlans.filter((plan) => ticked(plan.id) && !planIds.includes(plan.id));
+    const removed = shownPlans.filter((plan) => !ticked(plan.id) && planIds.includes(plan.id));
+    setPlanIds(next);
+    const nameOf = (plans: DisplayablePlan[]) =>
+      plans.length === 1 ? plans[0].displayName : intl.formatMessage(messages.selectedPlans);
+    if (added.length > 0) {
+      const needed = policiesToAttach(added, kind, attachment, policies);
+      const move = validationMove(policies, ops, needed);
+      if (move && move.kind !== 'move') {
+        // subscription-validation is on only some resources, or configured differently on them: the
+        // policies that rely on it can't go to API level, so nothing is attached here.
+        const dependents = needed.filter((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION);
+        setPrompt({
+          action: 'blocked',
+          count: added.length,
+          names: dependents,
+          plan: nameOf(added),
+          reason: move.kind,
+        });
+        return;
+      }
+      // subscription-validation that moves from the resources to API level is listed, marked moved.
+      const names =
+        move && !needed.includes(SUBSCRIPTION_VALIDATION) ? [SUBSCRIPTION_VALIDATION, ...needed] : needed;
+      if (names.length > 0) {
+        setPrompt({
+          action: 'attach',
+          count: added.length,
+          names,
+          plan: nameOf(added),
+          moved: move ? labelOf(SUBSCRIPTION_VALIDATION) : undefined,
+        });
+      }
+    } else if (removed.length > 0) {
+      const remaining = next.flatMap((id) => plansById.get(id) ?? []);
+      const names = policiesToRemove(
+        { conditions: removed.flatMap((plan) => plan.conditions ?? []) },
+        remaining,
+        kind,
+        policies,
+      );
+      if (names.length > 0) {
+        setPrompt({ action: 'remove', count: removed.length, names, plan: nameOf(removed) });
+      }
+    }
+  };
+
+  const confirmPrompt = () => {
+    if (!prompt) return;
+    if (prompt.action === 'blocked') {
+      setPrompt(null);
+      return;
+    }
+    if (prompt.action === 'attach') {
+      // subscription-validation goes before the attached policies the ticked plans rely on.
+      const ticked = planIds.flatMap((id) => plansById.get(id) ?? []);
+      const moved = validationToMove(policies, ops, prompt.names);
+      const base = moved ? [moved, ...policies] : policies;
+      if (moved) setOps(withoutOperationValidation(ops));
+      setPolicies(
+        withPoliciesAdded(base, prompt.names, requiredPolicies(ticked, kind), customPolicyConditions(ticked, kind)),
+      );
+      notify(intl.formatMessage(messages.policiesAttached), 'success');
+    } else {
+      setPolicies(withPoliciesRemoved(policies, prompt.names));
+      notify(intl.formatMessage(messages.policiesRemoved), 'success');
+    }
+    setPrompt(null);
+  };
+
+  const dialogText =
+    prompt?.action === 'remove'
+      ? {
+          cancel: messages.removeCancel,
+          confirm: messages.removeConfirm,
+          message: messages.removeMessage,
+          question: messages.removeQuestion,
+          title: messages.removeTitle,
+        }
+      : prompt?.action === 'blocked'
+        ? {
+            cancel: messages.blockedCancel,
+            confirm: messages.blockedConfirm,
+            message: prompt.reason === 'differs' ? messages.blockedDiffers : messages.blockedPartial,
+            question: messages.blockedQuestion,
+            title: messages.blockedTitle,
+          }
+        : {
+            cancel: messages.attachCancel,
+            confirm: messages.attachConfirm,
+            message: messages.attachMessage,
+            question: messages.attachQuestion,
+            title: messages.attachTitle,
+          };
+
+  const cancel = () => {
+    setPlanIds(attachedPlanIds);
+    setPolicies(apiPolicies);
+    setOps(operations);
+    setPrompt(null);
+  };
+
+  const save = () =>
+    onSave(planIds, policies, ops, () => {
+      markSaved();
+      notify(intl.formatMessage(messages.saved), 'success');
+    });
+
+  const rows: PlanRow[] = shownPlans.map((plan) => ({
+    conditions: plan.conditions,
+    description: plan.description,
+    id: plan.id,
+    inactive: plan.status !== 'ACTIVE',
+    name: plan.displayName,
+    pricing: plan.pricing,
+  }));
+  let plansBody;
+  if (plansQuery.isPending) {
+    plansBody = <LoadingState label={intl.formatMessage(messages.plansLoading)} />;
+  } else if (plansQuery.error) {
+    plansBody = <ErrorState message={intl.formatMessage(messages.plansError)} />;
+  } else if (shownPlans.length === 0) {
+    plansBody = (
+      <EmptyState
+        description={intl.formatMessage(messages.emptyDescription)}
+        title={intl.formatMessage(messages.emptyTitle)}
+      />
+    );
+  } else {
+    const shownIds = shownPlans.map((plan) => plan.id);
+    const tickedShown = new Set(planIds.filter((id) => shownIds.includes(id)));
+    const allTicked = tickedShown.size === shownIds.length;
+    const toggle = (id: string) => {
+      const next = new Set(tickedShown);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      handleSelection(next);
+    };
+    plansBody = (
+      <ListingTable.Provider>
+        <ListingTable.Container>
+          <ListingTable>
+            <ListingTable.Head>
+              <ListingTable.Row>
+                <ListingTable.Cell padding="checkbox">
+                  <Checkbox
+                    checked={allTicked}
+                    disabled={readOnly || saving}
+                    indeterminate={tickedShown.size > 0 && !allTicked}
+                    inputProps={{
+                      'aria-label': intl.formatMessage(allTicked ? messages.clearAll : messages.selectAll),
+                    }}
+                    onChange={() => handleSelection(new Set(allTicked ? [] : shownIds))}
+                  />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnName} />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnDescription} />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnConditions} />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnPricing} />
+                </ListingTable.Cell>
+              </ListingTable.Row>
+            </ListingTable.Head>
+            <ListingTable.Body>
+              {rows.map((row) => {
+                const checked = tickedShown.has(row.id);
+                const portals = checked ? lockedBy(row.id) : undefined;
+                const label = intl.formatMessage(checked ? messages.unselectRow : messages.selectRow);
+                return (
+                  <ListingTable.Row key={row.id}>
+                    <ListingTable.Cell padding="checkbox">
+                      <Tooltip
+                        disableHoverListener={!portals}
+                        slotProps={tipSlotProps}
+                        title={
+                          portals
+                            ? intl.formatMessage(messages.lockedPlan, {
+                                count: portals.length,
+                                portals: portals.join(', '),
+                              })
+                            : ''
+                        }
+                      >
+                        <span>
+                          <Checkbox
+                            checked={checked}
+                            disabled={readOnly || saving || Boolean(portals)}
+                            inputProps={{ 'aria-label': `${label} ${row.name}` }}
+                            onChange={() => toggle(row.id)}
+                          />
+                        </span>
+                      </Tooltip>
+                    </ListingTable.Cell>
+                    <ListingTable.Cell sx={{ maxWidth: 240 }}>
+                      <TruncatedText primary text={row.name} />
+                      {row.inactive && (
+                        <Typography color="text.secondary" variant="caption">
+                          <FormattedMessage {...messages.inactive} />
+                        </Typography>
+                      )}
+                    </ListingTable.Cell>
+                    <ListingTable.Cell sx={{ maxWidth: 320 }}>
+                      <TruncatedText text={row.description} />
+                    </ListingTable.Cell>
+                    <ListingTable.Cell>
+                      <PlanConditionChips conditions={row.conditions} max={MAX_ROW_CONDITIONS} singleLine />
+                    </ListingTable.Cell>
+                    <ListingTable.Cell>
+                      <Typography color={row.pricing ? 'text.primary' : 'text.secondary'} noWrap variant="body2">
+                        {pricingSummary(intl, row.pricing, meters)}
+                      </Typography>
+                    </ListingTable.Cell>
+                  </ListingTable.Row>
+                );
+              })}
+            </ListingTable.Body>
+          </ListingTable>
+        </ListingTable.Container>
+      </ListingTable.Provider>
+    );
+  }
+
+  return (
+    <Stack spacing={2}>
+      <Stack alignItems="flex-start" direction="row" justifyContent="space-between" spacing={2}>
+        <PageTitle>
+          <PageTitle.Header>
+            <FormattedMessage {...messages.title} />
+          </PageTitle.Header>
+          <PageTitle.SubHeader>
+            <SecondaryText component="span" variant="inherit">
+              <FormattedMessage {...messages.subtitle} />
+            </SecondaryText>
+          </PageTitle.SubHeader>
+        </PageTitle>
+        {plansQuery.data && shownPlans.length > 0 && (
+          <Box sx={{ flexShrink: 0, pt: 1 }}>
+            <SelectionSummary
+              count={planIds.filter((id) => plansById.has(id)).length}
+              published={messages.attachedSummary}
+              readOnly={readOnly}
+              selected={messages.selectedSummary}
+              total={shownPlans.length}
+            />
+          </Box>
+        )}
+      </Stack>
+
+      {plansQuery.data && missing.length > 0 && (
+        <Alert severity="warning">
+          <FormattedMessage {...messages.missingPolicies} />
+          <PolicyBullets labels={missing.map(labelOf)} />
+        </Alert>
+      )}
+      {notice}
+      {plansBody}
+
+      {!readOnly && (
+        <SaveBar
+          changeCount={changeCount}
+          dirty={dirty}
+          disabled={saveDisabled}
+          onCancel={cancel}
+          onSave={save}
+          saving={saving}
+        />
+      )}
+
+      <ConfirmDialog
+        cancelLabel={intl.formatMessage(dialogText.cancel)}
+        confirmLabel={intl.formatMessage(dialogText.confirm)}
+        maxWidth="sm"
+        message={
+          prompt ? intl.formatMessage(dialogText.message, { count: prompt.count, plan: prompt.plan }) : ''
+        }
+        onCancel={() => setPrompt(null)}
+        onConfirm={confirmPrompt}
+        open={prompt !== null}
+        title={intl.formatMessage(dialogText.title)}
+      >
+        {prompt && (
+          <>
+            <PolicyRows labels={prompt.names.map(labelOf)} moved={prompt.moved} />
+            <Typography color="text.secondary" variant="caption">
+              <FormattedMessage {...dialogText.question} />
+            </Typography>
+          </>
+        )}
+      </ConfirmDialog>
+    </Stack>
+  );
+}
+
+/** Develop › Usage Plans for a REST API: its plans and API-level policies in one update. */
+export function UsagePlansPanel({ api }: { api: RestApi }) {
+  const update = useUpdateRestApi();
+  // As on the Policies page: a gateway-owned API, or a caller who may not update it, sees the
+  // page but cannot change it.
+  const canUpdate = useCan('UpdateRESTAPI');
+  // Resource policies are not edited here; they count towards what applies to every request.
+  const operations = useMemo(() => toEditableOperations(api), [api]);
+  return (
+    <PlanAttachmentPanel
+      apiHandle={api.id}
+      apiPolicies={api.policies ?? []}
+      apiType={REST_API_TYPE}
+      attachedPlanIds={attachedPlanIdsOf(api)}
+      kind="rest"
+      onSave={(planIds, policies, editedOperations, onSaved) => {
+        if (!api.id) return;
+        update.mutate(
+          {
+            restApiId: api.id,
+            body: withAttachedPlans(withPolicyEdits(api, { operations: editedOperations, policies }), planIds),
+          },
+          // No `onError`: the query client's `onMutationError` already notifies.
+          { onSuccess: onSaved },
+        );
+      }}
+      operations={operations}
+      readOnly={api.readOnly === true || !canUpdate}
+      saveDisabled={!api.id}
+      saving={update.isPending}
+    />
+  );
+}
+
+/**
+ * The `metadata` of a GraphQL API update that stores its plans and API-level policies: the whole
+ * API, with the schema resupplied (introspection as is, anything else as the resolved SDL inline)
+ * so the update does not re-derive it.
+ */
+export const graphqlUsagePlansMetadata = (
+  api: GraphQLApiDetail,
+  planIds: string[],
+  policies: Policy[],
+  sdl: string | undefined,
+) => {
+  const needsSdl = api.schemaSource !== 'introspection' && api.schemaSource !== undefined;
+  // Never resupply an empty schema in place of the API's own: no SDL, no update.
+  if (needsSdl && !sdl) return null;
+  return {
+    ...withAttachedPlans(api, planIds),
+    policies: policies.map(withMajorPolicyVersion),
+    ...(needsSdl
+      ? { schemaSource: 'inline' as const, sdl: sdl as string }
+      : { schemaSource: 'introspection' as const }),
+  };
+};
+
+/**
+ * Develop › Usage Plans for a GraphQL API. Saved as the GraphQL Policies page saves: the whole API
+ * as metadata, with the schema resupplied (introspection as is, anything else as the resolved SDL
+ * inline) so the update does not re-derive it.
+ */
+export function GraphqlUsagePlansPanel({ api }: { api: GraphQLApiDetail }) {
+  const update = useUpdateGraphQLApi();
+  const sdlQuery = useGraphQLApiSdl(api.id);
+  const needsSdlForSave = api.schemaSource !== 'introspection' && api.schemaSource !== undefined;
+  const canUpdate = useCan('UpdateGraphQLAPI');
+  const intl = useIntl();
+  return (
+    <PlanAttachmentPanel
+      apiHandle={api.id}
+      apiPolicies={api.policies ?? []}
+      apiType={GRAPHQL_API_TYPE}
+      attachedPlanIds={attachedPlanIdsOf(api)}
+      kind="graphql"
+      notice={
+        needsSdlForSave && sdlQuery.error ? (
+          <Alert
+            action={
+              <Button color="inherit" onClick={() => void sdlQuery.refetch()} size="small">
+                <FormattedMessage {...messages.sdlRetry} />
+              </Button>
+            }
+            severity="error"
+          >
+            {intl.formatMessage(messages.sdlError)}
+          </Alert>
+        ) : undefined
+      }
+      onSave={(planIds, policies, _operations, onSaved) => {
+        if (!api.id) return;
+        const metadata = graphqlUsagePlansMetadata(api, planIds, policies, sdlQuery.data);
+        if (!metadata) return;
+        update.mutate({ graphqlApiId: api.id, body: { metadata } }, { onSuccess: onSaved });
+      }}
+      readOnly={Boolean(api.readOnly) || !canUpdate}
+      // A schema stored inline or from a file is resupplied as SDL: no save until it has loaded.
+      saveDisabled={!api.id || (needsSdlForSave && !sdlQuery.data)}
+      saving={update.isPending}
+    />
+  );
+}
+
+/** The GraphQL route's page: it lives outside the REST API scope, so it reads its own param. */
+export function GraphqlUsagePlansPage() {
+  const intl = useIntl();
+  const { graphqlApiHandler } = useParams();
+  const apiQuery = useGraphQLApi(graphqlApiHandler);
+  const content = apiQuery.isPending ? (
+    <LoadingState label={intl.formatMessage(messages.loading)} />
+  ) : apiQuery.error || !apiQuery.data ? (
+    <ErrorState title={intl.formatMessage(messages.notFound)} />
+  ) : (
+    <GraphqlUsagePlansPanel api={apiQuery.data} key={apiQuery.data.id} />
+  );
+  return <AppPage>{content}</AppPage>;
+}
+
+export function UsagePlansPage() {
+  const intl = useIntl();
+  const { params } = useConsoleScope();
+  const apiQuery = useRestApi(params.apiHandler);
+
+  const content = apiQuery.isPending ? (
+    <LoadingState label={intl.formatMessage(messages.loading)} />
+  ) : apiQuery.error ? (
+    <ErrorState title={intl.formatMessage(messages.loadError)} />
+  ) : !apiQuery.data ? (
+    <ErrorState title={intl.formatMessage(messages.notFound)} />
+  ) : (
+    // Keyed by the API, so moving to another API starts from its own plans and policies.
+    <UsagePlansPanel api={apiQuery.data} key={apiQuery.data.id} />
+  );
+
+  return (
+    <AppPage>
+      <ScopeGate
+        prompt={intl.formatMessage(messages.scopePrompt)}
+        requires="api"
+        to={routes.apiDevelopUsagePlans}
+      >
+        {content}
+      </ScopeGate>
+    </AppPage>
+  );
+}
