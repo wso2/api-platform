@@ -30,6 +30,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 )
 
 // Port is the container port used by the testbench.
@@ -161,7 +163,7 @@ func (s *Service) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 
-	if r.Header.Get(keyHeader) != SubscriptionKey {
+	if !authorized(r) {
 		w.Header().Set("Content-Type", "application/json")
 		writeJSONStatus(w, http.StatusUnauthorized, map[string]string{
 			"error":   "unauthorized",
@@ -233,6 +235,17 @@ func (s *Service) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, resp)
+}
+
+// authorized reports whether the request carries a credential Azure would accept: a Microsoft
+// Entra ID bearer token for Azure AI services, as the testbench Entra mock issues it, or the
+// subscription key. An Authorization header is judged on its own: a key never rescues it.
+func authorized(r *http.Request) bool {
+	if token, ok := entra.BearerToken(r); ok {
+		claims, valid := entra.ParseToken(token)
+		return valid && claims.Aud == entra.CognitiveAudience
+	}
+	return r.Header.Get(keyHeader) == SubscriptionKey
 }
 
 // requestedCategories validates the requested categories; none requested means all of them.
