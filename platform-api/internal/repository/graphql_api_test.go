@@ -61,7 +61,7 @@ func newTestGraphQLAPI(handle, orgUUID, projectUUID string) *model.GraphQLAPI {
 			Policies: []model.Policy{
 				{Name: "jwt-auth", Version: "v1"},
 			},
-			SubscriptionPlans: []string{"Gold", "Silver"},
+			SubscriptionPlans: model.AttachedPlansFromHandles([]string{"Gold", "Silver"}),
 		},
 	}
 }

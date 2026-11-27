@@ -160,7 +160,7 @@ func generateGraphQLAPIDeploymentYAML(apiModel *model.GraphQLAPI, projectHandle 
 			DisplayName:       apiModel.Name,
 			Version:           apiModel.Version,
 			Context:           contextValue,
-			SubscriptionPlans: apiModel.Configuration.SubscriptionPlans,
+			SubscriptionPlans: apiModel.Configuration.SubscriptionPlans.Handles(),
 			Upstream:          upstream,
 			Policies:          policies,
 		},

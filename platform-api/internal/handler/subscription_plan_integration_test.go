@@ -289,7 +289,7 @@ func TestPlanHandler_CreateRefusesAnIdOverFortyCharacters(t *testing.T) {
 // TestPlanHandler_UpdateLocksNameAndLimitWhileInUse: while a subscription uses a plan, a
 // PUT that changes its name or limit is refused, and one that changes only its status
 // goes through, even though the Management Portal sends every field on each save.
-func TestPlanHandler_UpdateLocksNameAndLimitWhileInUse(t *testing.T) {
+func TestPlanHandler_UpdateLocksNameAndConditionsWhileInUse(t *testing.T) {
 	h, db := setupPlanHandlerTestEnvWithDB(t)
 
 	const limits = `"limits":[{"limitType":"REQUEST_COUNT","limitCount":1000,"timeUnit":"MINUTE","timeAmount":1}]`
@@ -311,7 +311,7 @@ func TestPlanHandler_UpdateLocksNameAndLimitWhileInUse(t *testing.T) {
 
 	// A single plan's read says whether it is in use, and by what.
 	usage := decodePlan(t, planRequest(t, h, http.MethodGet, planITPath+"/gold", ""))["usage"]
-	if want := map[string]any{"inUse": false, "restApis": float64(0), "drafts": float64(0), "publications": float64(0),
+	if want := map[string]any{"inUse": false, "restApis": float64(0), "mcpProxies": float64(0), "drafts": float64(0), "publications": float64(0),
 		"subscriptions": float64(0)}; !reflect.DeepEqual(usage, want) {
 		t.Fatalf("unused plan usage = %v, want %v", usage, want)
 	}
@@ -339,7 +339,7 @@ func TestPlanHandler_UpdateLocksNameAndLimitWhileInUse(t *testing.T) {
 	for _, tc := range refused {
 		rec := planRequest(t, h, http.MethodPut, planITPath+"/gold", tc.body)
 		if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "SUBSCRIPTION_PLAN_IN_USE") ||
-			!strings.Contains(rec.Body.String(), "To change its name or limit, create a new plan.") {
+			!strings.Contains(rec.Body.String(), "To change its name or conditions, create a new plan.") {
 			t.Errorf("%s: status %d, body %s", tc.name, rec.Code, rec.Body.String())
 		}
 	}

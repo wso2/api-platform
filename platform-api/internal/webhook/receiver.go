@@ -100,7 +100,7 @@ type applicationService interface {
 // subscriptionPlanService is the subset of *service.SubscriptionPlanService the receiver depends
 // on to copy plans created or changed in the API Portal.
 type subscriptionPlanService interface {
-	UpsertPlanFromWebhook(orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error)
+	UpsertPlanFromWebhook(orgUUID, handle, name, description string, conditions *[]model.SubscriptionPlanCondition, requestWindows []model.ConditionWindow, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error)
 	DeletePlanFromWebhook(orgUUID, handle string, occurredAt time.Time) error
 }
 

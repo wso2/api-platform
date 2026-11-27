@@ -50,7 +50,7 @@ type RestAPIConfig struct {
 	Upstream          UpstreamConfig `json:"upstream,omitempty"`
 	Policies          []Policy       `json:"policies,omitempty"`
 	Operations        []Operation    `json:"operations,omitempty"`
-	SubscriptionPlans []string       `json:"subscriptionPlans,omitempty"`
+	SubscriptionPlans AttachedPlans  `json:"subscriptionPlans,omitempty"`
 }
 
 // TableName returns the table name for the API model
