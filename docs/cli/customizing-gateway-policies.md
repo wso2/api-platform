@@ -148,7 +148,7 @@ ap gateway image build --netrc ~/.netrc-gateway-policies \
 
 `GONOPROXY` defaults to `GOPRIVATE`, so without `GONOPROXY=none` the modules marked private in step 1 skip the proxy and are fetched straight from their repository. Keep `GOPRIVATE` set: it still keeps those modules away from the public checksum database. An empty `--go-env GONOPROXY=` does not help, because Go then falls back to the same default.
 
-The file is mounted read-only into the builder container. The command refuses a netrc file that other users can read. With Docker Desktop, Colima or podman machine, keep the file under your home directory: other host paths may not be shared with the engine's VM, and the mount then fails because the file does not exist ("bind source path does not exist" with Docker, "no such file or directory" with Podman and Buildah). With Podman and Buildah on Linux, the file gets a shared SELinux label (`z`), so it stays readable to other containers, while the build workspace gets a private one (`Z`).
+The command refuses a netrc file that other users can read. It copies the file into a private temporary folder under `~/.wso2ap/.tmp`, mounts the copy read-only into the builder container, and deletes it after the build, so the file itself can be anywhere and is never mounted or changed. With Podman and Buildah on Linux, the copy and the build workspace get an SELinux label private to the builder container (`Z`).
 
 Git and the go command both read the netrc file (Go through its default `GOAUTH=netrc`), so it covers direct repository access, module proxies, and the `?go-get=1` lookups that self-hosted Git servers need. If you set `GOAUTH` with `--go-env`, include `netrc` in its list, or Go stops reading the file.
 

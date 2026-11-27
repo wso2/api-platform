@@ -164,23 +164,3 @@ func terminateWhenReady[T any](t *testing.T, logPath string, done <-chan T) T {
 		}
 	}
 }
-
-// The --netrc hint belongs to the builder run only, not to buildah from/inspect,
-// which also exit 125 on their own errors.
-func TestNetrcHintOnlyForBuilderRun(t *testing.T) {
-	logFile, err := os.CreateTemp(t.TempDir(), "log")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer logFile.Close()
-	access := builderAccessRun{access: BuilderAccess{NetrcFile: "/elsewhere/netrc"}}
-
-	err = runBuilderProcess("sh", []string{"-c", "exit 125"}, access, logFile)
-	if err == nil || !strings.Contains(err.Error(), "home directory") {
-		t.Fatalf("builder run exit 125: err = %v, want the --netrc hint", err)
-	}
-	_, err = runForwarding("sh", []string{"-c", "exit 125"}, access, logFile, true)
-	if err == nil || strings.Contains(err.Error(), "home directory") {
-		t.Fatalf("preliminary command exit 125: err = %v, want no hint", err)
-	}
-}

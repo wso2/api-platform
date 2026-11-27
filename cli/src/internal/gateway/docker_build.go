@@ -20,7 +20,6 @@ package gateway
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -128,9 +127,8 @@ func runGatewayBuilder(config DockerBuildConfig, engine containerEngine, logFile
 	defer cleanup()
 
 	return engine.runBuilder(config, builderAccessRun{
-		args:   accessArgs,
-		env:    env,
-		access: config.BuilderAccess,
+		args: accessArgs,
+		env:  env,
 	}, logFile)
 }
 
@@ -138,20 +136,15 @@ func runGatewayBuilder(config DockerBuildConfig, engine containerEngine, logFile
 // and credentials: extra run arguments and the environment for the engine
 // process (nil to inherit).
 type builderAccessRun struct {
-	args   []string
-	env    []string
-	access BuilderAccess // for the --netrc mount hint
+	args []string
+	env  []string
 }
 
 // runBuilderProcess runs the command that executes the gateway builder, with its
-// output scrolled on a TTY and written to the log file. A failure that means the
-// container could not be created gets the --netrc mount hint.
+// output scrolled on a TTY and written to the log file.
 func runBuilderProcess(name string, args []string, access builderAccessRun, logFile *os.File) error {
 	_, err := runForwarding(name, args, access, logFile, false)
-	if err != nil {
-		return fmt.Errorf("%w%s", err, netrcMountHint(err, access.access))
-	}
-	return nil
+	return err
 }
 
 // runForwarding runs a command with its output scrolled on a TTY and written to
@@ -191,24 +184,6 @@ func runForwarding(name string, args []string, access builderAccessRun, logFile 
 	// Clear the scrolled logs before returning success
 	scroller.ClearDisplay()
 	return stdout.String(), nil
-}
-
-// runCreateFailed is the exit code `docker run`, `podman run` and `buildah run`
-// return when the container cannot be created, for example when a bind mount
-// source does not exist.
-const runCreateFailed = 125
-
-// netrcMountHint explains the usual reason a --netrc mount fails: Docker Desktop,
-// Colima and podman machine share only some host directories (the home directory
-// by default) with their VM, so a file elsewhere does not exist from the engine's side.
-func netrcMountHint(err error, access BuilderAccess) string {
-	var exitErr *exec.ExitError
-	if access.NetrcFile == "" || !errors.As(err, &exitErr) || exitErr.ExitCode() != runCreateFailed {
-		return ""
-	}
-	return "\n\nThe container engine could not create the builder container. If the log says the --netrc file does not exist " +
-		"(\"bind source path does not exist\" or \"no such file or directory\"), move it under your home directory: " +
-		"Docker Desktop, Colima and podman machine share it with their VM by default, but not every other host path."
 }
 
 // forwardSignals passes interrupt, terminate and hangup (terminal closed) signals to
