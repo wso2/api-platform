@@ -64,7 +64,7 @@ var handleBudgetPattern = regexp.MustCompile(`(\d+) characters or fewer`)
 // registerManagedGatewayLifecycleSteps binds the steps that create gateways for a runner to share
 // and check what the platform reports about them while they are built, used, and deleted.
 func (s *Steps) registerManagedGatewayLifecycleSteps(sc stepRegistrar) {
-	sc.Step(`^I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the synthetic environment$`,
+	sc.Step(`^I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the selected environment$`,
 		s.chooseGatewayNameAtLimit)
 	sc.Step(`^I request a synthetic managed APIP gateway that lasts for the runner with:$`, s.requestRunnerManagedGateway)
 	sc.Step(`^the managed gateway request should be accepted$`, s.assertGatewayRequestAccepted)
@@ -1317,7 +1317,7 @@ func restoreDefaultDeleter(topo *frameworkruntime.Topology, client *httpx.Client
 			return client.Do(ctx, httpx.Request{
 				Method:  method,
 				URL:     cloudAPIURL(base, path),
-				Headers: map[string]string{"Authorization": "Bearer " + bearer, "Content-Type": "application/json"},
+				Headers: map[string]string{"Authorization": "Bearer " + liveConsoleToken(bearer), "Content-Type": "application/json"},
 				Body:    payload,
 			}, 0, 0)
 		}, resource.ID)

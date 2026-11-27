@@ -38,9 +38,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 )
 
 type policyRecordingRunner struct {
@@ -247,6 +249,57 @@ func TestComposeRuntimeBoundsItsShutdownDrain(t *testing.T) {
 	require.Equal(t, "30s", runtime["stop_grace_period"],
 		"gateway-runtime must raise stop_grace_period above the drain, so a later increase to "+
 			"ROUTER_DRAIN_TIME_SECONDS cannot silently reintroduce the mid-drain SIGKILL")
+}
+
+// A policy fetching keys from the testbench OIDC provider over HTTPS must verify the provider's
+// certificate, not skip verification, so the runtime has to trust it: the certificate is staged
+// next to the Jev one and mounted into the directory SSL_CERT_DIR names.
+func TestRuntimeTrustsTheTestbenchOIDCCertificate(t *testing.T) {
+	staged := gatewayGeneratedFiles()
+	require.Equal(t, shared.IdentityProviderTLS().CertPEM, staged["testbench-ca/oidc.pem"],
+		"the staged OIDC certificate must be the one the testbench identity provider serves")
+
+	doc := composeFile(t)
+	runtime := doc["services"].(map[string]any)["gateway-runtime"].(map[string]any)
+	require.Contains(t, runtime["volumes"],
+		"./testbench-ca/oidc.pem:/etc/testbench-ca/oidc.pem:ro",
+		"gateway-runtime does not mount the OIDC certificate into /etc/testbench-ca")
+	require.Contains(t, runtime["environment"], "SSL_CERT_DIR=/etc/ssl/certs:/etc/testbench-ca",
+		"gateway-runtime does not read extra trusted certificates from /etc/testbench-ca")
+}
+
+// TestComposeCarriesTheAzureWorkloadIdentity verifies the runtime gets what the AKS Workload
+// Identity webhook gives a pod: the identity, the authority (the testbench Entra mock over the TLS
+// the runtime trusts) and a readable federated token file, with an empty alternative a block can
+// stage instead. It also gets the managed identity endpoint Azure Container Apps gives an app: the
+// mock's identity endpoint under the block's partition, and the identity header the mock requires.
+func TestComposeCarriesTheAzureWorkloadIdentity(t *testing.T) {
+	env := composeServiceEnv(t, "gateway-runtime")
+	require.Equal(t, "7f3c2a10-4b5e-4c6d-8e9f-0a1b2c3d4e5f", env["AZURE_TENANT_ID"])
+	require.Equal(t, "5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e", env["AZURE_CLIENT_ID"])
+	require.Equal(t, "/var/run/secrets/azure/tokens/azure-identity-token", env["AZURE_FEDERATED_TOKEN_FILE"])
+	require.Equal(t, fmt.Sprintf("https://testbench:%d/", entra.TLSPort), env["AZURE_AUTHORITY_HOST"])
+	require.Equal(t, fmt.Sprintf("https://testbench:%d/${BLOCK}/msi/token", entra.TLSPort), env["IDENTITY_ENDPOINT"])
+	require.Equal(t, entra.IdentityHeader, env["IDENTITY_HEADER"])
+	require.NotContains(t, env, "AZURE_IMDS_TOKEN_ENDPOINT")
+
+	services := composeFile(t)["services"].(map[string]any)
+	volumes, ok := services["gateway-runtime"].(map[string]any)["volumes"].([]any)
+	require.True(t, ok, "gateway-runtime has no volumes list")
+	require.Contains(t, volumes, "./azure-identity-token:/var/run/secrets/azure/tokens/azure-identity-token:ro")
+
+	staged := PlatformGateway().Compose.StagedFiles
+	require.Equal(t, azureIdentityTokenFile, staged["azure-identity-token"])
+	// The Azure Identity SDK sends the file's bytes as the client assertion unchanged, so the token
+	// has no trailing newline, as Kubernetes writes a projected token.
+	for file, want := range map[string]string{
+		azureIdentityTokenFile:      "testbench-federated-identity-token",
+		azureIdentityTokenEmptyFile: "",
+	} {
+		raw, err := os.ReadFile(assets.Resolve("", file))
+		require.NoError(t, err, "%s must be embedded", file)
+		require.Equal(t, want, string(raw), file)
+	}
 }
 
 func TestPlatformGatewayCoverageEnvironmentFollowsRunMode(t *testing.T) {
@@ -539,7 +592,7 @@ func TestTwoControllerComposeOverride(t *testing.T) {
 	require.Contains(t, xds["ports"], fmt.Sprint(xdsControllerAdminPort))
 	require.Contains(t, xds["env_file"], "api-platform.env", "both controllers must read the same database settings")
 	require.Contains(t, xds["image"], "${"+EnvImagePGController)
-	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/health", xdsControllerAdminPort))
+	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/ready", xdsControllerAdminPort))
 
 	base := composeServiceEnv(t, svcController)
 	replica := composeServiceEnvIn(t, doc, svcXDSController)

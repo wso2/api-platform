@@ -39,7 +39,7 @@ import (
 // no database write, keyed by the full "METHOD /path" route pattern exactly as
 // it is registered on the mux. They stay available in read-only mode.
 // validate-openapi only parses the uploaded spec; fetch-server-info,
-// fetch-agent-card and a REST API's gateway invoke only call an upstream (the
+// fetch-agent-card and the gateway relay's invoke only call an upstream (the
 // Agent Card fetch goes through an in-process cache) — none of them writes to
 // the database.
 //

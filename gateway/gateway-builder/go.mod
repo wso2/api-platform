@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/gateway/gateway-builder
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/stretchr/testify v1.11.1

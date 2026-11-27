@@ -36,7 +36,7 @@ import SwaggerUI from 'swagger-ui-react';
 import '@/components/SwaggerSpecViewer/specViewerStyles';
 import './TestConsoleSpecViewer.css';
 
-import { useInvokeRestApiOnGateway } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import { useInvokeApiOnGateway } from '@/api/resources/gatewayRelay';
 import { useTrackFeature } from '@/featureUsage';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { TestCallMode } from '../utils/callMode';
@@ -232,7 +232,7 @@ export default function TestConsoleSpecViewer({
    * keeps only the first `plugins` value, so a captured gateway id would stay
    * pinned to whichever gateway was selected at mount.
    */
-  const { mutateAsync: invoke } = useInvokeRestApiOnGateway({ orgId: orgHandle });
+  const { mutateAsync: invoke } = useInvokeApiOnGateway({ orgId: orgHandle });
   const trackFeature = useTrackFeature();
   const onExecuted: RelayContext['onExecuted'] = (mode, outcome) =>
     trackFeature('apip.manage-apis.test-console-execute', {

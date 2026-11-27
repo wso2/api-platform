@@ -679,7 +679,10 @@ ap gateway image build \
   [--no-cache] \
   [--platform <platform>] \
   [--offline] \
-  [--output-dir <output_dir>]
+  [--output-dir <output_dir>] \
+  [--netrc <file> | --git-credential <host>=<username>:<ENV_VAR> ...] \
+  [--go-env <KEY>[=<VALUE>] ...] \
+  [--fetch-timeout <duration>]
 ```
 
 Example:
@@ -688,7 +691,7 @@ Example:
 ap gateway image build
 ```
 
-For more information about customizing gateway policies during a build, refer to [this document](../customizing-gateway-policies.md).
+For more information about customizing gateway policies during a build, refer to [this document](../customizing-gateway-policies.md). For policies in private Go module repositories, see [Policies from Private Go Module Repositories](../customizing-gateway-policies.md#policies-from-private-go-module-repositories).
 
 ## Related Commands
 

@@ -38,8 +38,16 @@ body {
   z-index: 2;
 }
 
+.auth-logo-name {
+  font-size: 2.0625rem;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  color: #fff;
+}
+
 .auth-logo-svg {
-  height: 2.25rem;
+  height: 2.75rem;
   width: auto;
   display: block;
   opacity: .95;

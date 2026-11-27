@@ -71,6 +71,15 @@ export type CloudHostPort = {
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /**
+   * Tells the host that APIs' gateways and deployments changed. Deploying writes
+   * through `apiFetch`, which the host's cache cannot see, so without this the host
+   * keeps showing what it read before (the Test page saying "not deployed"). Optional:
+   * a host that caches nothing omits it.
+   */
+  resources?: {
+    invalidate: (resource: 'apiDeployments') => void;
+  };
   /** Gateway releases from the host's config; the first `regular` entry is the latest. */
   gatewayVersions?: GatewayVersionEntry[];
   /** `host:port` a self-hosted gateway's controller dials; falls back to this page's own host. */

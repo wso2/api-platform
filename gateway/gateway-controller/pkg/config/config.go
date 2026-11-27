@@ -329,9 +329,9 @@ type ServerConfig struct {
 	GatewayID                       string        `koanf:"gateway_id"`
 	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
 
-	// TLS starts a second, TLS-only listener on TLS.Port serving the same
-	// REST management API as the plaintext listener on APIPort. Off by
-	// default.
+	// TLS serves the REST management API over TLS on TLS.Port instead of
+	// plaintext on APIPort: when enabled, the plaintext listener is not
+	// started. Off by default.
 	TLS ServerTLSConfig `koanf:"tls"`
 
 	// XDSTLS switches the main xDS gRPC server (serving Envoy, on XDSPort)
@@ -360,17 +360,17 @@ type ServerConfig struct {
 	MaxCertificateUploadBytes int64 `koanf:"max_certificate_upload_bytes"`
 }
 
-// ServerTLSConfig holds configuration for an additional TLS listener for the
-// REST management API. It is served alongside — not instead of — the
-// plaintext listener on ServerConfig.APIPort, so enabling it never breaks an
-// existing plaintext deployment. Same shape and naming conventions as
+// ServerTLSConfig holds configuration for the TLS listener of the REST
+// management API. When enabled, it replaces the plaintext listener on
+// ServerConfig.APIPort, so management traffic, which carries credentials, never
+// keeps flowing in plaintext once TLS is configured. Same shape and naming conventions as
 // policy-engine's AdminTLSConfig (gateway-runtime/policy-engine/internal/config) —
 // keep the two in sync if either changes, they are independent implementations
 // (different Go modules) of the same pattern.
 type ServerTLSConfig struct {
-	// Enabled starts the TLS listener on Port. Off by default: no
-	// certificate is provisioned by default, and the plaintext listener
-	// keeps working either way.
+	// Enabled starts the TLS listener on Port in place of the plaintext
+	// listener. Off by default, since no certificate is provisioned by
+	// default.
 	Enabled bool `koanf:"enabled"`
 
 	// Port is the port for the TLS REST API listener. Must differ from every
@@ -842,6 +842,9 @@ type HTTPListenerConfig struct {
 	DisablePathNormalization      bool        `koanf:"disable_path_normalization"`
 	ReturnRequestIDInResponse     bool        `koanf:"return_request_id_in_response"`    // Return x-request-id in responses
 	PathWithEscapedSlashesAction  string      `koanf:"path_with_escaped_slashes_action"` // Options: "KEEP_UNCHANGED", "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD"
+	// AllowPathCaseVariants turns off the 404 for a path that matches a route only when compared
+	// case-insensitively, letting such a request fall through to a broader route as before.
+	AllowPathCaseVariants bool `koanf:"allow_path_case_variants"`
 }
 
 // HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
@@ -1623,6 +1626,7 @@ func defaultConfig() *Config {
 				DisablePathNormalization:      false,                          // Path normalization enabled by default
 				ReturnRequestIDInResponse:     true,                           // x-request-id returned by default
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
+				AllowPathCaseVariants:         false,                          // Case variants of a route's path get a 404 by default
 			},
 		},
 		Analytics: AnalyticsConfig{

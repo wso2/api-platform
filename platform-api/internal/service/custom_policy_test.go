@@ -229,12 +229,12 @@ func TestSyncCustomPolicy(t *testing.T) {
 	}{
 		// gateway validation
 		{
-			name:        "gateway not found - repo error",
+			name:        "gateway lookup fails - internal error, not not-found",
 			gatewayErr:  errors.New("db error"),
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "GATEWAY_NOT_FOUND",
+			errContains: "failed to get gateway",
 		},
 		{
 			name:        "gateway not found - nil returned",
@@ -330,6 +330,46 @@ func TestSyncCustomPolicy(t *testing.T) {
 			version:     "1.2.1",
 			wantErr:     true,
 			errContains: "POLICY_VERSION_CONFLICT",
+		},
+		{
+			name:     "minor version bump - record moved off the replaced version",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest: sampleManifest("rate-limit", "1.3.0"),
+			existingPolicies: []*model.CustomPolicy{
+				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
+			},
+			updateErr:   repository.ErrCustomPolicyVersionChanged,
+			policyName:  "rate-limit",
+			version:     "1.3.0",
+			wantErr:     true,
+			errContains: "POLICY_VERSION_CONFLICT",
+			wantUpdate:  true,
+		},
+		{
+			name:             "database refuses the text as too long on insert",
+			gateway:          &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest:         sampleManifest("rate-limit", "1.0.0"),
+			existingPolicies: []*model.CustomPolicy{},
+			insertErr:        errors.Join(repository.ErrCustomPolicyTextTooLong, errors.New("value too long")),
+			policyName:       "rate-limit",
+			version:          "1.0.0",
+			wantErr:          true,
+			errContains:      "VALIDATION_FAILED",
+			wantInsert:       true,
+		},
+		{
+			name:     "database refuses the text as too long on a minor version bump",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest: sampleManifest("rate-limit", "1.3.0"),
+			existingPolicies: []*model.CustomPolicy{
+				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
+			},
+			updateErr:   errors.Join(repository.ErrCustomPolicyTextTooLong, errors.New("value too long")),
+			policyName:  "rate-limit",
+			version:     "1.3.0",
+			wantErr:     true,
+			errContains: "VALIDATION_FAILED",
+			wantUpdate:  true,
 		},
 		{
 			name:     "downgrade is not allowed",
@@ -487,6 +527,122 @@ func TestSyncCustomPolicy_MinorUpdatePreservesUUID(t *testing.T) {
 	}
 	if cpRepo.updateOldVersion != "1.1.0" {
 		t.Errorf("UpdateCustomPolicy() called with oldVersion = %q, want %q", cpRepo.updateOldVersion, "1.1.0")
+	}
+}
+
+// TestSyncCustomPolicy_TextLongerThanRecord verifies that a gateway policy whose
+// name, display name, version or description does not fit its record is refused
+// with a 400 before anything is written, and that text at the limit is synced.
+func TestSyncCustomPolicy_TextLongerThanRecord(t *testing.T) {
+	const (
+		orgID = "org-uuid-0001"
+		gwID  = "gw-uuid-0001"
+	)
+	longName := "hmac-" + strings.Repeat("n", 251)
+	longVersion := "1.0." + strings.Repeat("0", 26) + "1"
+	manifestWith := func(name, version, displayName, description string) []byte {
+		return makeManifest([]GatewayPolicyDefinition{{
+			Name:        name,
+			Version:     version,
+			DisplayName: displayName,
+			Description: &description,
+			ManagedBy:   constants.PolicyManagedByOrganization,
+		}})
+	}
+
+	tests := []struct {
+		name             string
+		manifest         []byte
+		policyName       string
+		version          string
+		existingPolicies []*model.CustomPolicy
+		wantMsg          string
+		wantInsert       bool
+	}{
+		{
+			name:       "description longer than the record holds",
+			manifest:   manifestWith("hmac-signer", "1.0.0", "HMAC Signer", strings.Repeat("d", 1024)),
+			policyName: "hmac-signer",
+			version:    "1.0.0",
+			wantMsg:    "The description of policy 'hmac-signer' version '1.0.0' must be at most 1023 characters.",
+		},
+		{
+			name:       "description longer than the record holds on a minor version bump",
+			manifest:   manifestWith("hmac-signer", "1.1.0", "HMAC Signer", strings.Repeat("d", 1024)),
+			policyName: "hmac-signer",
+			version:    "1.1.0",
+			existingPolicies: []*model.CustomPolicy{
+				makeCustomPolicy("pol-uuid-0001", orgID, "hmac-signer", "1.0.0"),
+			},
+			wantMsg: "The description of policy 'hmac-signer' version '1.1.0' must be at most 1023 characters.",
+		},
+		{
+			name:       "display name longer than the record holds",
+			manifest:   manifestWith("hmac-signer", "1.0.0", strings.Repeat("n", 256), "Signs requests."),
+			policyName: "hmac-signer",
+			version:    "1.0.0",
+			wantMsg:    "The display name of policy 'hmac-signer' version '1.0.0' must be at most 255 characters.",
+		},
+		{
+			name:       "name longer than the record holds",
+			manifest:   manifestWith(longName, "1.0.0", "HMAC Signer", "Signs requests."),
+			policyName: longName,
+			version:    "1.0.0",
+			wantMsg:    "The name of policy '" + longName + "' version '1.0.0' must be at most 255 characters.",
+		},
+		{
+			name:       "version longer than the record holds",
+			manifest:   manifestWith("hmac-signer", longVersion, "HMAC Signer", "Signs requests."),
+			policyName: "hmac-signer",
+			version:    longVersion,
+			wantMsg:    "The version of policy 'hmac-signer' version '" + longVersion + "' must be at most 30 characters.",
+		},
+		{
+			name:       "every field at the limit",
+			manifest:   manifestWith(longName[:255], "1.0."+strings.Repeat("0", 25)+"1", strings.Repeat("n", 255), strings.Repeat("d", 1023)),
+			policyName: longName[:255],
+			version:    "1.0." + strings.Repeat("0", 25) + "1",
+			wantInsert: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gwRepo := &mockGatewayRepoForPolicy{
+				gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
+				manifest: tt.manifest,
+			}
+			cpRepo := &mockCustomPolicyRepo{
+				getPoliciesByName:      tt.existingPolicies,
+				getPolicyByNameVersion: makeCustomPolicy("pol-uuid-0002", orgID, tt.policyName, tt.version),
+			}
+
+			svc := newTestGatewayService(gwRepo, cpRepo)
+			_, err := svc.SyncCustomPolicy(gwID, orgID, tt.policyName, tt.version, testActorUUID)
+
+			if tt.wantMsg == "" {
+				if err != nil {
+					t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
+				}
+			} else {
+				var appErr *apperror.Error
+				if !errors.As(err, &appErr) {
+					t.Fatalf("SyncCustomPolicy() error = %v, want an *apperror.Error", err)
+				}
+				if appErr.Code != apperror.CodeCommonValidationFailed || appErr.HTTPStatus != 400 {
+					t.Errorf("SyncCustomPolicy() error = %s/%d, want %s/400", appErr.Code, appErr.HTTPStatus, apperror.CodeCommonValidationFailed)
+				}
+				if !strings.HasPrefix(appErr.Message, tt.wantMsg) {
+					t.Errorf("SyncCustomPolicy() message = %q, want it to start with %q", appErr.Message, tt.wantMsg)
+				}
+			}
+			if cpRepo.insertCalled != tt.wantInsert {
+				t.Errorf("InsertCustomPolicy() called = %v, want %v", cpRepo.insertCalled, tt.wantInsert)
+			}
+			if cpRepo.updateCalled {
+				t.Error("UpdateCustomPolicy() called, want no update")
+			}
+		})
 	}
 }
 

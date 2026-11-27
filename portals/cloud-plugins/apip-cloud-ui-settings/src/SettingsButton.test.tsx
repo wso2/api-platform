@@ -21,7 +21,9 @@ import { describe, expect, it } from "vitest";
 
 import SettingsButton from "./SettingsButton";
 
-describe("SettingsButton", () => {
+// TODO: skipped while the header settings icon is hidden (see hosts/api-control-plane.tsx);
+// un-skip when it returns.
+describe.skip("SettingsButton", () => {
   it("is a plain link to the Cloud console organization pages", () => {
     render(<SettingsButton consoleUrl="https://cloud-console.example" />);
 

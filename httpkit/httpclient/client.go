@@ -119,6 +119,17 @@ type TLSConfig struct {
 	InsecureSkipVerify             bool
 	InsecureSkipVerifyAcknowledged bool
 
+	// InsecureSkipHostnameVerify skips only the check that the certificate
+	// names the host being dialed. The certificate chain is still verified
+	// against RootCAs/RootCAFile (or the system roots), as are validity
+	// dates and the server-auth key usage, so a certificate no trusted CA
+	// signed is still refused. It suits a private CA whose certificates do
+	// not carry the names clients dial. It is off by default, cannot be
+	// combined with InsecureSkipVerify (which skips every check and would
+	// make this setting meaningless) or with VerifyPeerCertificate or
+	// VerifyConnection: New rejects each combination.
+	InsecureSkipHostnameVerify bool
+
 	// VerifyPeerCertificate and VerifyConnection are run IN ADDITION TO,
 	// never instead of, Go's own default verification — New rejects either
 	// one being set alongside InsecureSkipVerify == true, since a custom

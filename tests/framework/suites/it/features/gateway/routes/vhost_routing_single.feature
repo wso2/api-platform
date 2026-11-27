@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@vhost-routing-single
+@SVR @vhost-routing-single
 Feature: Single-domain vhost routing
   As an API user
   I want gateway routing behavior to follow the configured rules
@@ -27,6 +27,7 @@ Feature: Single-domain vhost routing
     And I authenticate using basic auth as "admin"
 
 
+  @SVR-006
   Scenario: Route requests using single-domain gateway defaults
     Given I generate a unique value from "vhost-routing-single-1" and store it as "apiName1"
     And I generate a unique API context from "/vhost-routing-single-1" and store it as "apiContext1"
@@ -72,6 +73,7 @@ Feature: Single-domain vhost routing
     Then the response status code should be 404
 
 
+  @SVR-009
   Scenario: API vhost override should take precedence over gateway defaults
     Given I generate a unique value from "vhost-routing-single-2" and store it as "apiName2"
     And I generate a unique API context from "/vhost-routing-single-2" and store it as "apiContext2"
@@ -111,6 +113,11 @@ Feature: Single-domain vhost routing
     And I set request host to "api.wso2.com"
     And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami"
     Then the response status code should be 404
+
+    When I clear all headers
+    And I set request host to "api-sandbox.wso2.com"
+    And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami"
+    Then the response status code should be 404
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName2}"
     Then the response should be successful
@@ -120,6 +127,7 @@ Feature: Single-domain vhost routing
     Then the response status code should be 404
 
 
+  @SVR-011
   Scenario: Sentinel vhost resolves to gateway defaults at deploy time
     Given I generate a unique value from "vhost-routing-single-3" and store it as "apiName3"
     And I generate a unique API context from "/vhost-routing-single-3" and store it as "apiContext3"
@@ -165,3 +173,76 @@ Feature: Single-domain vhost routing
     And I set request host to "api.wso2.com"
     And I send a "GET" request to "${CTX:apiContext3}/v1.0/whoami" until status 404
     Then the response status code should be 404
+
+  @SVR-014
+  Scenario: An API created on the gateway without vhosts stores the gateway's default vhosts
+    Given I generate a unique value from "vhost-routing-single-14" and store it as "apiName14"
+    And I generate a unique API context from "/vhost-routing-single-14" and store it as "apiContext14"
+    # No sandbox upstream: the sandbox default is stored all the same.
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}           |
+      | name                   | ${CTX:apiName14}                    |
+      | spec.displayName       | VHost-Single-Stored-Defaults        |
+      | spec.version           | v1.0                                |
+      | spec.context           | ${CTX:apiContext14}/$version        |
+      | spec.upstream.main.url | http://testbench:3000               |
+      | spec.operations        | [{"method":"GET","path":"/whoami"}] |
+    Then the response should be successful
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName14}"
+    Then the response status code should be 200
+    And the JSON response field "spec.vhosts.main" should be "*.wso2.com"
+    And the JSON response field "spec.vhosts.sandbox" should be "*-sandbox.wso2.com"
+    When I set request host to "api.wso2.com"
+    And I send a "GET" request to "${CTX:apiContext14}/v1.0/whoami" until status 200
+    Then the JSON response field "path" should be "/whoami"
+
+  # An update stores _gateway_default_ literally and stores no vhosts when they are left out:
+  # https://github.com/wso2/api-platform/issues/4167
+  @SVR-029 @known-issue
+  Scenario: Updating an API on the gateway with the default placeholder or without vhosts keeps the gateway's default vhosts
+    Given I generate a unique value from "vhost-routing-single-29" and store it as "apiName29"
+    And I generate a unique API context from "/vhost-routing-single-29" and store it as "apiContext29"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}           |
+      | name                   | ${CTX:apiName29}                    |
+      | spec.displayName       | VHost-Single-Updated-Defaults       |
+      | spec.version           | v1.0                                |
+      | spec.context           | ${CTX:apiContext29}/$version        |
+      | spec.upstream.main.url | http://testbench:3000               |
+      | spec.operations        | [{"method":"GET","path":"/whoami"}] |
+    Then the response should be successful
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName29}"
+    Then the JSON response field "spec.vhosts.main" should be "*.wso2.com"
+
+    When I update API "${CTX:apiName29}" from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}           |
+      | name                   | ${CTX:apiName29}                    |
+      | spec.displayName       | VHost-Single-Updated-Defaults       |
+      | spec.version           | v1.0                                |
+      | spec.context           | ${CTX:apiContext29}/$version        |
+      | spec.vhosts            | {"main":"_gateway_default_"}        |
+      | spec.upstream.main.url | http://testbench:3000               |
+      | spec.operations        | [{"method":"GET","path":"/whoami"}] |
+    Then the response should be successful
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName29}"
+    Then the JSON response field "spec.vhosts.main" should be "*.wso2.com"
+    And the JSON response field "spec.vhosts.sandbox" should be "*-sandbox.wso2.com"
+    When I set request host to "api.wso2.com"
+    And I send a "GET" request to "${CTX:apiContext29}/v1.0/whoami" until status 200
+
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I update API "${CTX:apiName29}" from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}           |
+      | name                   | ${CTX:apiName29}                    |
+      | spec.displayName       | VHost-Single-Updated-Defaults       |
+      | spec.version           | v1.0                                |
+      | spec.context           | ${CTX:apiContext29}/$version        |
+      | spec.upstream.main.url | http://testbench:3000               |
+      | spec.operations        | [{"method":"GET","path":"/whoami"}] |
+    Then the response should be successful
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName29}"
+    Then the JSON response field "spec.vhosts.main" should be "*.wso2.com"
+    And the JSON response field "spec.vhosts.sandbox" should be "*-sandbox.wso2.com"
+    When I set request host to "api.wso2.com"
+    And I send a "GET" request to "${CTX:apiContext29}/v1.0/whoami" until status 200

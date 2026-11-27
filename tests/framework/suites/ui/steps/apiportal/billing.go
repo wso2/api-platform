@@ -33,6 +33,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 )
@@ -358,7 +359,7 @@ func (u *Steps) setUpBillingInSettings(ctx context.Context) error {
 		return err
 	}
 
-	if err := u.saveAndReload(page, save, "Billing is set up."); err != nil {
+	if err := u.saveAndReload(ctx, page, save, "Billing is set up."); err != nil {
 		return err
 	}
 	if err := u.registerBilling(ctx); err != nil {
@@ -408,7 +409,7 @@ func (u *Steps) moveWebhookHostAndRemoveBilling(ctx context.Context) error {
 	if err := input.Fill(portalBase); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, save, "Webhook host changed."); err != nil {
+	if err := u.saveAndReload(ctx, page, save, "Webhook host changed."); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#cfg-billing-webhook-edit-btn")).ToHaveAttribute("data-base-url", portalBase); err != nil {
@@ -443,7 +444,7 @@ func (u *Steps) moveWebhookHostAndRemoveBilling(ctx context.Context) error {
 	if err := removeBtn.Click(); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-billing-remove-confirm"), "Billing removed."); err != nil {
+	if err := u.saveAndReload(ctx, page, page.Locator("#cfg-billing-remove-confirm"), "Billing removed."); err != nil {
 		return err
 	}
 	return u.expect.Locator(page.Locator("#cfg-billing-setup-btn")).ToBeVisible()
@@ -577,7 +578,7 @@ func (u *Steps) addMeterInSettings(ctx context.Context) error {
 	if err := u.expect.Locator(rows).ToHaveCount(2); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, save, "Meter created."); err != nil {
+	if err := u.saveAndReload(ctx, page, save, "Meter created."); err != nil {
 		return err
 	}
 	row := meterRow(page, name)
@@ -653,7 +654,7 @@ func (u *Steps) editAndDeleteMeter(ctx context.Context) error {
 	if err := u.expect.Locator(page.Locator("#mtr-token-row")).ToBeHidden(); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-meter-modal-save"), "Meter updated."); err != nil {
+	if err := u.saveAndReload(ctx, page, page.Locator("#cfg-meter-modal-save"), "Meter updated."); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(row).ToContainText("Tokens counted for billing"); err != nil {
@@ -671,7 +672,7 @@ func (u *Steps) editAndDeleteMeter(ctx context.Context) error {
 	if err := row.Locator(".cfg-meter-delete-btn").Click(); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-del-meter-confirm"), "Meter deleted."); err != nil {
+	if err := u.saveAndReload(ctx, page, page.Locator("#cfg-del-meter-confirm"), "Meter deleted."); err != nil {
 		return err
 	}
 	return u.expect.Locator(row).ToHaveCount(0)
@@ -796,16 +797,69 @@ func (u *Steps) saveExpecting(page playwright.Page, save, text string) error {
 // saveAndReload clicks a control whose success the page reports in a toast before reloading, and
 // waits until the reloaded page has loaded: its scripts have bound the controls the next action
 // clicks, and what is asserted next is asserted against it, not the page it replaces.
-func (u *Steps) saveAndReload(page playwright.Page, control playwright.Locator, toast string) error {
-	if _, err := page.ExpectNavigation(func() error {
-		if err := control.Click(); err != nil {
-			return err
-		}
-		return u.expectToast(page, toast)
-	}, playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+func (u *Steps) saveAndReload(ctx context.Context, page playwright.Page, control playwright.Locator, toast string) error {
+	if err := reloadingSave(ctx, page, toast, func() error { return control.Click() }); err != nil {
 		return fmt.Errorf("saving should say %q and reload the page: %w", toast, err)
 	}
 	return nil
+}
+
+// recordToasts copies each message the page's toast shows into session storage, which outlives
+// the reload, and marks the current document so a reloaded one can be told apart.
+const recordToasts = `() => {
+	sessionStorage.removeItem('uiTestToasts');
+	window.uiTestBeforeReload = true;
+	const message = document.querySelector('#alertToast .alert-toast-message');
+	if (!message) return false;
+	new MutationObserver(() => {
+		const text = message.textContent.trim();
+		if (!text) return;
+		const seen = JSON.parse(sessionStorage.getItem('uiTestToasts') || '[]');
+		seen.push(text);
+		sessionStorage.setItem('uiTestToasts', JSON.stringify(seen));
+	}).observe(message, {childList: true, characterData: true, subtree: true});
+	return true;
+}`
+
+// reloadingSave runs action, which saves something the page confirms in a toast and then reloads
+// for, and waits for both. The page shows the toast for under three seconds before reloading, so
+// the toast is recorded inside the page and the reload is read from the page itself: a test that
+// resumes late, or never sees the load event, cannot miss either.
+func reloadingSave(ctx context.Context, page playwright.Page, toast string, action func() error) error {
+	installed, err := page.Evaluate(recordToasts)
+	if err != nil {
+		return fmt.Errorf("recording the page's toasts: %w", err)
+	}
+	if ok, _ := installed.(bool); !ok {
+		return fmt.Errorf("the page has no toast to record")
+	}
+	if err := action(); err != nil {
+		return err
+	}
+	var shown string
+	if err := retry.Await(ctx, retry.Options{Fast: true}, func(context.Context) (string, error) {
+		seen, err := page.Evaluate(`() => JSON.parse(sessionStorage.getItem('uiTestToasts') || '[]')`)
+		if err != nil {
+			return "", retry.Transient(fmt.Errorf("reading the recorded toasts: %w", err))
+		}
+		if list, _ := seen.([]any); len(list) > 0 {
+			shown, _ = list[0].(string)
+		}
+		return shown, nil
+	}, func(text string) bool { return text != "" }, "waiting for the toast"); err != nil {
+		return err
+	}
+	if !strings.Contains(shown, toast) {
+		return fmt.Errorf("the page said %q", shown)
+	}
+	return retry.Await(ctx, retry.Options{Fast: true}, func(context.Context) (bool, error) {
+		reloaded, err := page.Evaluate(`() => window.uiTestBeforeReload === undefined && document.readyState === 'complete'`)
+		if err != nil {
+			return false, retry.Transient(fmt.Errorf("reading the page's state: %w", err))
+		}
+		done, _ := reloaded.(bool)
+		return done, nil
+	}, func(done bool) bool { return done }, "waiting for the page to reload")
 }
 
 // openNewPlan opens the plan form with a unique name, and returns the name.
@@ -1015,7 +1069,7 @@ func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 	if err := fillAndCheck(page, "#pol-flat-amount", "49.00"); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#pol-save"), "Plan created."); err != nil {
+	if err := u.saveAndReload(ctx, page, page.Locator("#pol-save"), "Plan created."); err != nil {
 		return err
 	}
 	return u.registerPlan(ctx, page, name)
@@ -1044,7 +1098,7 @@ func (u *Steps) editAndDeletePlan(ctx context.Context) error {
 	if err := fillAndCheck(page, "#pol-desc", "A flat yearly fee"); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#pol-save"), "Plan updated."); err != nil {
+	if err := u.saveAndReload(ctx, page, page.Locator("#pol-save"), "Plan updated."); err != nil {
 		return err
 	}
 	if err := row.Locator(".cfg-plan-delete-btn").Click(); err != nil {
@@ -1059,7 +1113,7 @@ func (u *Steps) editAndDeletePlan(ctx context.Context) error {
 	if err := u.expect.Locator(page.Locator("#cfg-del-plan-name-txt")).ToHaveText(name); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-del-plan-confirm"), "Plan deleted."); err != nil {
+	if err := u.saveAndReload(ctx, page, page.Locator("#cfg-del-plan-confirm"), "Plan deleted."); err != nil {
 		return err
 	}
 	return u.expect.Locator(row).ToHaveCount(0)
@@ -1332,7 +1386,7 @@ func (u *Steps) priceUsagePlanInSettings(ctx context.Context) error {
 	if err := u.expect.Locator(page.Locator("#pol-prices-list .cfg-price-box")).ToHaveCount(2); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator(save), "Plan created."); err != nil {
+	if err := u.saveAndReload(ctx, page, page.Locator(save), "Plan created."); err != nil {
 		return err
 	}
 	return u.registerPlan(ctx, page, name)

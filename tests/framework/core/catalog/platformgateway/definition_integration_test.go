@@ -113,8 +113,9 @@ func bootPlatformGatewayWithOverlay(
 	})
 
 	stack, err = runtime.LaunchCompose(ctx, gw, spec, runtime.Options{
-		Network:  nw,
-		RepoRoot: repoRoot,
+		Network:   nw,
+		RepoRoot:  repoRoot,
+		Partition: block,
 	})
 	if err != nil {
 		// Without the service logs a compose readiness failure says only "context

@@ -1,0 +1,112 @@
+{{- /*
+APIGateway CRD conversion webhook: the Service the API server calls, and the RBAC the
+operator needs to manage the webhook's certificate Secret (in the release namespace)
+and to point the APIGateway CRD at the Service. These apply in cluster-wide and
+watchNamespaces modes alike: the release namespace need not be watched, and the CRD is
+cluster-scoped.
+*/ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway-operator.conversionWebhookServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: webhook
+      port: 443
+      protocol: TCP
+      targetPort: webhook-server
+  selector:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    control-plane: controller-manager
+    # Only pods that serve the webhook (see the Deployment's pod labels).
+    {{ include "gateway-operator.conversionWebhookPodLabel" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-conversion-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+rules:
+# create cannot be limited by resourceNames; get and update are.
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  resourceNames:
+  - {{ include "gateway-operator.conversionWebhookSecretName" . }}
+  verbs:
+  - get
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-conversion-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "gateway-operator.fullname" . }}-conversion-webhook
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-conversion-webhook
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+rules:
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  resourceNames:
+  - apigateways.gateway.api-platform.wso2.com
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-conversion-webhook
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gateway-operator.fullname" . }}-conversion-webhook
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}

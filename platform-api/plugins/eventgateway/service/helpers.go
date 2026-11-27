@@ -178,6 +178,11 @@ func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
 	}
 }
 
+// mapUpstreamAuthModelToAPI maps a stored upstream auth block to its API
+// representation. Type and Header identify the scheme and survive the trip;
+// Value is declared writeOnly in the OpenAPI contract and is never returned,
+// matching mapUpstreamConfigToDTO, which backs the LLM, MCP and GraphQL
+// upstream responses.
 func mapUpstreamAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
 	if in == nil {
 		return nil
@@ -190,8 +195,87 @@ func mapUpstreamAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
 	return &api.UpstreamAuth{
 		Type:   authType,
 		Header: utils.StringPtrIfNotEmpty(in.Header),
-		Value:  utils.StringPtrIfNotEmpty(in.Value),
+		Value:  nil, // writeOnly: supplied on configure, never returned
 	}
+}
+
+// preserveWebSubUpstreamAuth backfills the auth value of each endpoint in
+// updated from the stored configuration whenever the request leaves it empty.
+// Reads redact the value, so a client that round-trips a GET response sends an
+// auth block with no value and means "leave it as it is"; without this the
+// stored credential would be overwritten with an empty string on every save
+// that did not retype it.
+//
+// It mirrors preserveUpstreamAuthOnAPIUpdate, the REST API counterpart.
+// updated is taken by value, but Sandbox and both Auth blocks are pointers
+// into the caller's request. Every write below replaces a pointer rather than
+// writing through one, so a credential restored from storage never lands back
+// on the request object the caller still holds.
+func preserveWebSubUpstreamAuth(existing model.UpstreamConfig, updated api.Upstream) api.Upstream {
+	updated.Main.Auth = preserveWebSubEndpointAuth(existing.Main, updated.Main.Auth)
+	if updated.Sandbox != nil {
+		sandbox := *updated.Sandbox
+		sandbox.Auth = preserveWebSubEndpointAuth(existing.Sandbox, sandbox.Auth)
+		updated.Sandbox = &sandbox
+	}
+	return updated
+}
+
+// preserveWebSubEndpointAuth returns the auth block to store for one endpoint.
+// A request that omits the auth block entirely, or sends one with an empty
+// value, keeps the stored credential. An explicit auth type change does not:
+// the stored secret belongs to the previous scheme and must not be silently
+// reattached to a different one.
+//
+// An omitted type and an omitted header are likewise "leave it as it is":
+// mapUpstreamAuthAPIToModel stores an empty string for a nil field, so without
+// restoring the stored ones here a save that did not retype them would keep
+// the credential but blank the scheme it belongs to and the header it is sent
+// in. A header the request does supply always wins.
+func preserveWebSubEndpointAuth(existing *model.UpstreamEndpoint, updated *api.UpstreamAuth) *api.UpstreamAuth {
+	if existing == nil || existing.Auth == nil {
+		return updated
+	}
+	storedType := normalizeUpstreamAuthType(existing.Auth.Type)
+
+	if updated == nil {
+		// The request omits the block entirely, so the whole stored one stays.
+		// A stored block with no credential is still configuration -- a scheme
+		// (including "none") and a header name -- and is restored rather than
+		// dropped.
+		restored := &api.UpstreamAuth{
+			Header: utils.StringPtrIfNotEmpty(existing.Auth.Header),
+			Value:  utils.StringPtrIfNotEmpty(existing.Auth.Value),
+		}
+		if storedType != "" {
+			authType := api.UpstreamAuthType(storedType)
+			restored.Type = &authType
+		}
+		return restored
+	}
+
+	// Copy before merging: the block belongs to the caller's request.
+	merged := *updated
+	typeChanged := merged.Type != nil &&
+		normalizeUpstreamAuthType(string(*merged.Type)) != storedType
+	if merged.Type == nil && storedType != "" {
+		restoredType := api.UpstreamAuthType(storedType)
+		merged.Type = &restoredType
+	}
+	if typeChanged {
+		// The stored header and credential belong to the previous scheme and
+		// must not be reattached to a different one.
+		return &merged
+	}
+	// Same scheme: an omitted header and an omitted value both mean "leave it
+	// as it is". A header supplied by the request always wins.
+	if merged.Header == nil {
+		merged.Header = utils.StringPtrIfNotEmpty(existing.Auth.Header)
+	}
+	if merged.Value == nil || *merged.Value == "" {
+		merged.Value = utils.StringPtrIfNotEmpty(existing.Auth.Value)
+	}
+	return &merged
 }
 
 func normalizeUpstreamAuthType(authType string) string {

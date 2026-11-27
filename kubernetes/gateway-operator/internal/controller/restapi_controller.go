@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -68,6 +69,9 @@ type APITrackingEntry struct {
 	RetryCount    int
 	LastRetryTime time.Time
 	NextRetryTime time.Time
+	// GatewayObserved is the target gateway's Programmed state when the latest
+	// deployment attempt called it (see gatewayReprogrammedSinceFailure).
+	GatewayObserved gatewayObservation
 }
 
 // APITracker manages in-memory tracking of API deployment states
@@ -253,6 +257,33 @@ func (r *RestApiReconciler) decideAndProcess(
 				slog.Int64("generation", crGeneration))
 			return ctrl.Result{}, nil
 		}
+
+		// A terminal failure at the current generation is otherwise never retried. Retry
+		// it once when the target gateway has become Programmed since the failure, for
+		// example after an admin credential rotation rolled out or a missing admin Secret
+		// was created.
+		if programmedCond != nil && programmedCond.Status == metav1.ConditionFalse &&
+			programmedCond.Reason == apiv1.APIProgrammedReasonDeploymentFailed {
+			var observed gatewayObservation
+			if hasTrackingEntry && trackingEntry != nil && trackingEntry.Generation == crGeneration {
+				observed = trackingEntry.GatewayObserved
+			}
+			if gw := r.findTargetGateway(apiConfig); gw != nil &&
+				gatewayReprogrammedSinceFailure(ctx, r.Client, gw, observed, apiConfig.Status.LastUpdateTime) {
+				log.Info("Target gateway was programmed after this API failed; retrying deployment",
+					slog.String("name", apiConfig.Name),
+					slog.String("gateway", gw.Namespace+"/"+gw.Name),
+					slog.Int64("generation", crGeneration))
+				// Keeps the failed attempt's observation until the retry calls the gateway,
+				// so a retry whose initial status write fails is not lost.
+				r.apiTracker.Set(trackingKey, &APITrackingEntry{
+					Generation:      crGeneration,
+					Status:          TrackingStatusRetrying,
+					GatewayObserved: observed,
+				})
+				return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
+			}
+		}
 	}
 
 	// Case 2: CR generation > status observed generation
@@ -325,11 +356,13 @@ func (r *RestApiReconciler) processDeployment(
 
 	gatewayKey := fmt.Sprintf("%s/%s", gateway.Namespace, gateway.Name)
 
-	// Get existing entry to preserve retry count if retrying same generation
+	// Get existing entry to preserve retry count and gateway observation if retrying same generation
 	existingEntry, hasExisting := r.apiTracker.Get(trackingKey)
 	retryCount := 0
+	var previouslyObserved gatewayObservation
 	if hasExisting && existingEntry.Generation == generation {
 		retryCount = existingEntry.RetryCount
+		previouslyObserved = existingEntry.GatewayObserved
 
 		// Respect backoff if set
 		if !existingEntry.NextRetryTime.IsZero() {
@@ -345,10 +378,11 @@ func (r *RestApiReconciler) processDeployment(
 
 	// Update tracker to Processing
 	entry := &APITrackingEntry{
-		Generation: generation,
-		Status:     TrackingStatusProcessing,
-		GatewayKey: gatewayKey,
-		RetryCount: retryCount,
+		Generation:      generation,
+		Status:          TrackingStatusProcessing,
+		GatewayKey:      gatewayKey,
+		RetryCount:      retryCount,
+		GatewayObserved: previouslyObserved,
 	}
 	r.apiTracker.Set(trackingKey, entry)
 
@@ -358,6 +392,16 @@ func (r *RestApiReconciler) processDeployment(
 			return ctrl.Result{}, err
 		}
 	}
+
+	// The gateway is observed once the attempt can proceed, right before the call, so a
+	// gateway that recovers while this attempt fails still counts as re-programmed
+	// afterwards. Until then the entry keeps the previous attempt's observation: a failed
+	// initial status write neither consumes nor forgets a gateway transition, so the
+	// retry after it is not lost.
+	observed := *entry
+	observed.GatewayObserved = observeGateway(ctx, r.Client, gateway)
+	entry = &observed
+	r.apiTracker.Set(trackingKey, entry)
 
 	// Execute deployment (executeDeployment will check existence and decide POST vs PUT)
 	fp, err := r.executeDeployment(ctx, apiConfig, gateway)
@@ -741,16 +785,24 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 	registryInstance := registry.GetGatewayRegistry()
 	matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
 
+	// Try every matched gateway, then report all failures so the finalizer stays and the
+	// deletion is retried: removing it would leave the API live on the gateway with no
+	// object left to retry from. A gateway that no longer holds the API answers 404,
+	// which counts as deleted, and a deleted gateway is unregistered and no longer
+	// matched, so neither blocks deletion.
+	var deleteErrs []error
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
 			log.Error("failed to delete API from gateway",
 				slog.Any("error", err),
 				slog.String("api", handle),
 				slog.String("gateway", gateway.Name))
-			// Continue with other gateways even if one fails
+			deleteErrs = append(deleteErrs, fmt.Errorf("%s/%s: %w", gateway.Namespace, gateway.Name, err))
 		}
 	}
-
+	if len(deleteErrs) > 0 {
+		return fmt.Errorf("cleanupAPIDeployments: %w", errors.Join(deleteErrs...))
+	}
 	return nil
 }
 
@@ -794,29 +846,9 @@ func payloadMetadataForRestAPI(apiConfig *apiv1.RestApi) gatewayclient.RestAPIPa
 
 // addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config
 func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Request, gatewayInfo *registry.GatewayInfo) error {
-	log := r.Logger.With(slog.String("controller", "RestApi"))
-
-	authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gatewayInfo)
+	username, password, err := auth.ResolveBasicCredentials(ctx, r.Client, gatewayInfo)
 	if err != nil {
-		return fmt.Errorf("retrieve auth config for gateway %q: %w", gatewayInfo.Name, err)
-	}
-
-	var username, password string
-	if authConfig != nil {
-		// Try to get credentials from the auth config
-		var ok bool
-		username, password, ok = auth.GetBasicAuthCredentials(authConfig)
-		if !ok {
-			// Auth config exists but no valid basic auth, use default
-			log.Debug("No valid basic auth in config, using default credentials",
-				slog.String("gateway", gatewayInfo.Name))
-			username, password = auth.GetDefaultBasicAuthCredentials()
-		}
-	} else {
-		// No auth config, use default
-		log.Debug("No auth config found, using default credentials",
-			slog.String("gateway", gatewayInfo.Name))
-		username, password = auth.GetDefaultBasicAuthCredentials()
+		return fmt.Errorf("resolve admin credentials for gateway %q: %w", gatewayInfo.Name, err)
 	}
 
 	// Encode and set the Authorization header

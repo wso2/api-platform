@@ -161,6 +161,15 @@ export type RuntimeConfig = {
   /** Footer "Documentation" link. */
   documentationLink: string;
   privacyPolicyLink: string;
+  /** Footer "Cookie Policy" link. Empty hides it; only an `https://` URL is shown. */
+  cookiePolicyLink: string;
+  /**
+   * CookiePro domain script id and GTM container id, set by the cloud deployment. Read here only
+   * to tell whether the cookie banner is loaded, which decides the footer's "Cookie Settings" link;
+   * the cloud tracking plugin validates them and loads the scripts.
+   */
+  cookieProDomainScript: string;
+  gtmContainerId: string;
   projectApiBaseUrl: string;
   /** Footer "Support" link. */
   supportLink: string;
@@ -234,6 +243,7 @@ type LegacyWindowConfig = Partial<{
   API_DESIGNER_DOCS_URL: string;
   DOCUMENTATION_LINK: string;
   PRIVACY_POLICY_LINK: string;
+  COOKIE_POLICY_LINK: string;
   PROJECT_API_BASE_URL: string;
   SUPPORT_LINK: string;
   TERMS_OF_USE_LINK: string;
@@ -262,6 +272,9 @@ type LegacyWindowConfig = Partial<{
   organizationApiUrl: string;
   documentationLink: string;
   privacyPolicyLink: string;
+  cookiePolicyLink: string;
+  cookieProDomainScript: string;
+  gtmContainerId: string;
   projectApiBaseUrl: string;
   supportLink: string;
   termsOfUseLink: string;
@@ -289,6 +302,23 @@ const fromWindow = (): LegacyWindowConfig => ({
   ...(window.__RUNTIME_CONFIG__ ?? {}),
   ...(window.config ?? {}),
 });
+
+/**
+ * The formats the cloud tracking plugin accepts for the cookie banner's two ids
+ * (portals/cloud-plugins/apip-cloud-ui-tracking/src/config.ts keeps the same patterns). The footer's
+ * "Cookie Settings" link must agree with that plugin about whether the banner is loaded, so it
+ * applies the same checks rather than only testing for non-empty values.
+ */
+const COOKIE_PRO_DOMAIN_SCRIPT = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(-test)?$/i;
+const GTM_CONTAINER_ID = /^GTM-[A-Z0-9]{4,12}$/;
+
+/** Whether the cookie banner is loaded: both ids set and in the formats the tracking plugin accepts. */
+export const isCookieConsentConfigured = (config: {
+  cookieProDomainScript: string;
+  gtmContainerId: string;
+}): boolean =>
+  COOKIE_PRO_DOMAIN_SCRIPT.test(config.cookieProDomainScript) &&
+  GTM_CONTAINER_ID.test(config.gtmContainerId);
 
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
@@ -547,12 +577,19 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().DOCUMENTATION_LINK ||
     fromWindow().documentationLink ||
     import.meta.env.VITE_DOCUMENTATION_LINK ||
-    'https://wso2.com/api-platform/docs/',
+    'https://choreolabs.com/documentation/api-management/cloud/',
   privacyPolicyLink:
     fromWindow().PRIVACY_POLICY_LINK ||
     fromWindow().privacyPolicyLink ||
     import.meta.env.VITE_PRIVACY_POLICY_LINK ||
-    'https://wso2.com/privacy-policy',
+    'https://choreolabs.com/privacy-policy',
+  cookiePolicyLink:
+    fromWindow().COOKIE_POLICY_LINK ||
+    fromWindow().cookiePolicyLink ||
+    import.meta.env.VITE_COOKIE_POLICY_LINK ||
+    '',
+  cookieProDomainScript: String(fromWindow().cookieProDomainScript ?? '').trim(),
+  gtmContainerId: String(fromWindow().gtmContainerId ?? '').trim(),
   projectApiBaseUrl:
     fromWindow().PROJECT_API_BASE_URL ||
     fromWindow().projectApiBaseUrl ||
@@ -562,12 +599,12 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().SUPPORT_LINK ||
     fromWindow().supportLink ||
     import.meta.env.VITE_SUPPORT_LINK ||
-    'https://discord.com/invite/wso2',
+    'https://choreolabs.com/subscription',
   termsOfUseLink:
     fromWindow().TERMS_OF_USE_LINK ||
     fromWindow().termsOfUseLink ||
     import.meta.env.VITE_TERMS_OF_USE_LINK ||
-    'https://wso2.com/api-platform/terms-of-use/',
+    'https://choreolabs.com/cloud/terms-of-use/',
   toSServiceName:
     fromWindow().TOS_SERVICE_NAME ||
     fromWindow().toSServiceName ||

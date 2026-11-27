@@ -29,6 +29,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/testutils"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
+	"gopkg.in/yaml.v3"
 )
 
 func TestCreateBuildInfo_EmptyPolicies(t *testing.T) {
@@ -703,4 +704,128 @@ func TestBuildInfo_ToJSON_Success(t *testing.T) {
 	err = json.Unmarshal([]byte(jsonStr), &parsed)
 	require.NoError(t, err)
 	assert.Equal(t, info.BuilderVersion, parsed.BuilderVersion)
+}
+
+// Two majors of one policy, as gateway-controllers publishes them: v1 at the module
+// root and v2 in its /v2 subdirectory, both named backend-jwt. Each build-file entry
+// must record its own major's version, whichever order discovery returned them in.
+func TestWriteBuildManifestWithVersions_GomoduleTwoMajorsOfOnePolicy(t *testing.T) {
+	const (
+		v1Module = "github.com/example/policies/backend-jwt"
+		v2Module = "github.com/example/policies/backend-jwt/v2"
+	)
+	buildFileContent := `version: "1.0"
+policies:
+  - name: backend-jwt
+    gomodule: ` + v1Module + `@v1
+  - name: backend-jwt
+    gomodule: ` + v2Module + `@v2
+`
+	v1 := testutils.NewRemoteDiscoveredPolicy("backend-jwt", "v1.2.0", v1Module, "v1.2.0")
+	v2 := testutils.NewRemoteDiscoveredPolicy("backend-jwt", "v2.0.0", v2Module, "v2.0.0")
+	// Discovery hands back module directories, which are absolute paths.
+	v1.Path, v2.Path = "/go/pkg/mod/backend-jwt@v1.2.0", "/go/pkg/mod/backend-jwt/v2@v2.0.0"
+
+	for _, tc := range []struct {
+		name       string
+		discovered []*types.DiscoveredPolicy
+	}{
+		{"v1 discovered first", []*types.DiscoveredPolicy{v1, v2}},
+		{"v2 discovered first", []*types.DiscoveredPolicy{v2, v1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			buildFilePath := filepath.Join(tmpDir, "build.yaml")
+			testutils.WriteFile(t, buildFilePath, buildFileContent)
+
+			require.NoError(t, WriteBuildManifestWithVersions(buildFilePath, tc.discovered))
+
+			lock := readLockEntries(t, filepath.Join(tmpDir, "build-manifest.yaml"))
+			require.Len(t, lock, 2)
+			assert.Equal(t, v1Module+"@v1", lock[0].Gomodule)
+			assert.Equal(t, "v1.2.0", lock[0].Version)
+			assert.Equal(t, v2Module+"@v2", lock[1].Gomodule)
+			assert.Equal(t, "v2.0.0", lock[1].Version)
+		})
+	}
+}
+
+// A candidate of the same name but another module, or another major of the same
+// module, is never taken for an entry: the entry fails instead of recording the
+// other candidate's version. The positive control resolves the same entry once the
+// matching candidate is discovered.
+func TestWriteBuildManifestWithVersions_GomoduleRejectsOtherModuleOrMajor(t *testing.T) {
+	v1 := testutils.NewRemoteDiscoveredPolicy("backend-jwt", "v1.2.0", "github.com/example/policies/backend-jwt", "v1.2.0")
+	v1.Path = "/go/pkg/mod/backend-jwt@v1.2.0"
+	v1other := testutils.NewRemoteDiscoveredPolicy("backend-jwt", "v1.3.0", "github.com/other/backend-jwt", "v1.3.0")
+	v1other.Path = "/go/pkg/mod/other/backend-jwt@v1.3.0"
+	v2 := testutils.NewRemoteDiscoveredPolicy("backend-jwt", "v2.0.0", "github.com/example/policies/backend-jwt/v2", "v2.0.0")
+	v2.Path = "/go/pkg/mod/backend-jwt/v2@v2.0.0"
+
+	for _, tc := range []struct {
+		name       string
+		gomodule   string
+		discovered []*types.DiscoveredPolicy
+		want       string
+	}{
+		{"v2 entry with only another module and v1 discovered", "github.com/example/policies/backend-jwt/v2@v2",
+			[]*types.DiscoveredPolicy{v1other, v1}, ""},
+		{"v1 module asked at v2", "github.com/example/policies/backend-jwt@v2",
+			[]*types.DiscoveredPolicy{v1, v2}, ""},
+		{"positive control: v2 entry with v2 discovered", "github.com/example/policies/backend-jwt/v2@v2",
+			[]*types.DiscoveredPolicy{v1other, v1, v2}, "v2.0.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			buildFilePath := filepath.Join(tmpDir, "build.yaml")
+			testutils.WriteFile(t, buildFilePath, "version: \"1.0\"\npolicies:\n  - name: backend-jwt\n    gomodule: "+tc.gomodule+"\n")
+
+			err := WriteBuildManifestWithVersions(buildFilePath, tc.discovered)
+			if tc.want == "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "failed to determine version for policy 'backend-jwt'")
+				return
+			}
+			require.NoError(t, err)
+			lock := readLockEntries(t, filepath.Join(tmpDir, "build-manifest.yaml"))
+			require.Len(t, lock, 1)
+			assert.Equal(t, tc.want, lock[0].Version)
+		})
+	}
+}
+
+func TestVersionSelectorMatches(t *testing.T) {
+	for _, tc := range []struct {
+		selector, version string
+		want              bool
+	}{
+		{"v2", "v2.0.0", true},
+		{"v2", "v1.2.0", false},
+		{"v1", "v10.0.0", false},
+		{"v1.2", "v1.2.3", true},
+		{"v1.2", "v1.20.0", false},
+		{"v1.2.0", "v1.2.0", true},
+		{"1.2.0", "v1.2.0", true},
+		{"v1.2.0", "v1.2.1", false},
+		{"latest", "v1.2.0", true},
+	} {
+		assert.Equal(t, tc.want, versionSelectorMatches(tc.selector, tc.version), "%s against %s", tc.selector, tc.version)
+	}
+}
+
+type lockEntryForTest struct {
+	Name     string `yaml:"name"`
+	Version  string `yaml:"version"`
+	Gomodule string `yaml:"gomodule"`
+}
+
+func readLockEntries(t *testing.T, path string) []lockEntryForTest {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var lock struct {
+		Policies []lockEntryForTest `yaml:"policies"`
+	}
+	require.NoError(t, yaml.Unmarshal(data, &lock))
+	return lock.Policies
 }

@@ -25,6 +25,15 @@ const (
 	// EndpointAPIPPlatformAPI is the apip-platform-api control-plane endpoint,
 	// reached through the external CP gateway.
 	EndpointAPIPPlatformAPI = "apip-platform-api"
+
+	// EndpointGatewayControlPlane is where a self-hosted gateway's controller connects: the cloud
+	// console's public host followed by /api-management/connect, the address the console's
+	// gateway setup steps give a customer as APIP_GW_CONTROLLER_CONTROLPLANE_HOST.
+	EndpointGatewayControlPlane = "gateway-control-plane"
+
+	// gatewayConnectPath is the path on the cloud console host that the platform's route forwards,
+	// with the prefix stripped, to apip-platform-api's gateway endpoints.
+	gatewayConnectPath = "/api-management/connect"
 )
 
 // CloudConsole returns the externally hosted APIP cloud target.
@@ -35,6 +44,7 @@ func CloudConsole() *components.Definition {
 		External: &components.ExternalSpec{
 			Endpoints: []components.ExternalEndpoint{
 				{Name: EndpointAPIPPlatformAPI},
+				{Name: EndpointGatewayControlPlane},
 			},
 			RequiredParameters: []string{EnvironmentParameter},
 			Resolve:            resolveEndpoints,

@@ -26,7 +26,7 @@ import (
 )
 
 // DefaultGoVersion is the default Go version used in generated go.mod files.
-const DefaultGoVersion = "1.26.10"
+const DefaultGoVersion = "1.26.11"
 
 // WriteGoMod creates a go.mod file in the specified directory with the given module name.
 // Uses DefaultGoVersion for the Go version.

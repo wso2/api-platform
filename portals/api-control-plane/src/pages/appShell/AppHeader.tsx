@@ -37,7 +37,7 @@ import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
 import { useSlot } from '@/slots';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
-const BRAND_LOGO_HEIGHT = 26;
+const BRAND_LOGO_HEIGHT = '2rem';
 /** Matches Oxygen's own Header.Toggle icon size, so swapping the glyph doesn't resize the button. */
 const TOGGLE_ICON_SIZE = 20;
 

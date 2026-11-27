@@ -152,8 +152,15 @@ func runBlock(
 ) {
 	t.Helper()
 
-	bootCtx, cancel := context.WithTimeout(context.Background(), resolved.Timeouts.Boot)
-	defer cancel()
+	// The containers' log streams run on this context, and the runners are parallel subtests
+	// that start only after runBlock returns. Cancelling it on return, or on a deadline, stops
+	// the block's log capture at the end of boot, so the boot timeout is a timer stopped once
+	// boot finishes, and the context ends with the block's cleanup.
+	bootCtx, cancel := context.WithCancelCause(context.Background())
+	t.Cleanup(func() { cancel(nil) })
+	bootTimer := time.AfterFunc(resolved.Timeouts.Boot, func() {
+		cancel(fmt.Errorf("boot timed out after %s", resolved.Timeouts.Boot))
+	})
 
 	var logWriter *logcapture.Writer
 	if deps.Logs != nil {
@@ -178,7 +185,11 @@ func runBlock(
 
 	start := time.Now()
 	topo, err := BootBlock(bootCtx, block, deps.RepoRoot, logWriter, deps.Logs)
+	bootTimer.Stop()
 	if err != nil {
+		if cause := context.Cause(bootCtx); cause != nil {
+			err = fmt.Errorf("%w (%v)", err, cause)
+		}
 		t.Fatalf("block %q failed to boot after %s: %v",
 			block.Name, time.Since(start).Round(time.Millisecond), err)
 	}

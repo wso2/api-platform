@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -74,6 +75,10 @@ type Options struct {
 	// gives, for an instance started beside the block's own.
 	InstanceSuffix string
 
+	// Partition is the block's testbench partition (its PartitionKey), substituted into a
+	// compose instance's staged files as ${BLOCK}, the name config overlays use for it.
+	Partition string
+
 	// Env is merged over the definition's static Env. This is where a resolved DSN
 	// and any wiring-derived values arrive.
 	Env map[string]string
@@ -116,6 +121,9 @@ type Container struct {
 	Instance  *components.Instance
 	container testcontainers.Container
 	def       *components.Definition
+	// stoppedAt holds the exit time Docker recorded when Halt last stopped the container on
+	// purpose, so only an exit that differs from it is reported. Empty when none is recorded.
+	stoppedAt atomic.Value
 }
 
 // Launch starts one instance and waits for its container-level readiness strategy.
@@ -387,10 +395,125 @@ func (c *Container) Stop(ctx context.Context) error {
 		return nil
 	}
 	inner := c.container
+	warnIfExited(ctx, c.def.Name, inner, recorded(&c.stoppedAt))
 	if err := inner.Terminate(ctx); err != nil {
 		return fmt.Errorf("runtime: terminating %s: %w", c.def, err)
 	}
 	c.container = nil
+	return nil
+}
+
+// exitTime is the exit time Docker records for the container's latest execution, or "" when it
+// cannot be read. Recording "" leaves nothing to match, so a later exit is reported, not hidden.
+func exitTime(ctx context.Context, c testcontainers.Container) string {
+	state, err := c.State(ctx)
+	if err != nil {
+		return ""
+	}
+	return state.FinishedAt
+}
+
+// recorded returns the exit time a deliberate stop stored in v, or "" when none was stored.
+func recorded(v *atomic.Value) string {
+	s, _ := v.Load().(string)
+	return s
+}
+
+// warnIfExited logs a container that is no longer running, with its exit code and whether it
+// was killed for running out of memory, unless its exit is the deliberate stop whose exit time
+// is deliberate. Without it, a container that died mid-run leaves only connection errors in the
+// scenarios that called it. A container whose state cannot be read is not reported, and it
+// returns whether the state could be read.
+func warnIfExited(ctx context.Context, name string, c testcontainers.Container, deliberate string) bool {
+	state, err := c.State(ctx)
+	if err != nil {
+		return false
+	}
+	if state.Running || deliberate != "" && state.FinishedAt == deliberate {
+		return true
+	}
+	slog.Warn("container had exited before teardown", "container", name, "status", state.Status,
+		"exitCode", state.ExitCode, "oomKilled", state.OOMKilled, "finishedAt", state.FinishedAt, "error", state.Error)
+	return true
+}
+
+// Halt stops the container's processes without removing the container, so Resume can start
+// it again with its filesystem intact. The container stays owned by the block and is still
+// removed at teardown.
+func (c *Container) Halt(ctx context.Context) error {
+	if c == nil || c.container == nil {
+		return fmt.Errorf("runtime: no container to halt")
+	}
+	// Stopping an already exited container succeeds, so an exit of its own is reported before
+	// the deliberate stop is recorded over it.
+	readBefore := warnIfExited(ctx, c.def.Name, c.container, recorded(&c.stoppedAt))
+	if err := c.container.Stop(ctx, nil); err != nil {
+		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
+	}
+	// When the state before the stop could not be read, the container may already have exited
+	// on its own, so the stop is not recorded and the earlier record, if any, stands.
+	if readBefore {
+		c.stoppedAt.Store(exitTime(ctx, c.container))
+	}
+	return nil
+}
+
+// Resume starts a halted container, waits for its readiness strategy and re-reads its host
+// ports, which Docker may reassign when a container starts again.
+func (c *Container) Resume(ctx context.Context) error {
+	if c == nil || c.container == nil {
+		return fmt.Errorf("runtime: no container to resume")
+	}
+	if err := c.container.Start(ctx); err != nil {
+		return fmt.Errorf("runtime: resuming %s: %w", c.def, err)
+	}
+	if c.Instance == nil || c.def == nil {
+		return nil
+	}
+	mapped := make(map[int]int, len(c.def.Endpoints))
+	for _, e := range c.def.Endpoints {
+		p, err := c.container.MappedPort(ctx, strconv.Itoa(e.Port)+"/tcp")
+		if err != nil {
+			// Publishing a map without this port would make later calls to it fail with a
+			// misleading missing-port error.
+			return fmt.Errorf("runtime: resolving port %d of resumed %s: %w", e.Port, c.def, err)
+		}
+		mapped[e.Port] = int(p.Num())
+	}
+	c.Instance.RefreshPorts(mapped)
+	return nil
+}
+
+// Pause freezes every process in the container. Open connections stay established but get no
+// answer until Unpause.
+func (c *Container) Pause(ctx context.Context) error { return c.setPaused(ctx, true) }
+
+// Unpause thaws a container frozen by Pause.
+func (c *Container) Unpause(ctx context.Context) error { return c.setPaused(ctx, false) }
+
+func (c *Container) setPaused(ctx context.Context, paused bool) error {
+	verb := "unpause"
+	if paused {
+		verb = "pause"
+	}
+	if c == nil || c.container == nil {
+		return fmt.Errorf("runtime: no container to %s", verb)
+	}
+	docker, err := testcontainers.NewDockerClientWithOpts(ctx)
+	if err != nil {
+		return fmt.Errorf("runtime: docker client to %s %s: %w", verb, c.def, err)
+	}
+	defer func() { _ = docker.Close() }()
+
+	id := c.container.GetContainerID()
+	if paused {
+		_, err = docker.ContainerPause(ctx, id, client.ContainerPauseOptions{})
+	} else {
+		_, err = docker.ContainerUnpause(ctx, id, client.ContainerUnpauseOptions{})
+	}
+	if err != nil {
+		return fmt.Errorf("runtime: %s %s: %w", verb, c.def, err)
+	}
 	return nil
 }
 

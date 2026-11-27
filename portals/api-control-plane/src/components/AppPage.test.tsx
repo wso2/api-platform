@@ -27,7 +27,7 @@ describe('AppPage', () => {
     renderWithProviders(<AppPage>Page body</AppPage>);
 
     expect(screen.getByText('Page body')).toBeInTheDocument();
-    expect(screen.getByText(/WSO2 LLC/)).toBeInTheDocument();
+    expect(screen.getByText(/Choreo/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Terms of Use' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Privacy Policy' })).toBeInTheDocument();
   });
@@ -35,6 +35,6 @@ describe('AppPage', () => {
   it('leaves the footer off when a page passes footer={null}', () => {
     renderWithProviders(<AppPage footer={null}>Page body</AppPage>);
 
-    expect(screen.queryByText(/WSO2 LLC/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Choreo/)).not.toBeInTheDocument();
   });
 });

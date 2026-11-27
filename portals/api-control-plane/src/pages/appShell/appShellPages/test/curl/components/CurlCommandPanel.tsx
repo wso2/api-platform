@@ -17,13 +17,13 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Box, Button, CodeBlock, Stack, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, CodeBlock, Stack, Typography } from '@wso2/oxygen-ui';
 import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useTrackFeature } from '@/featureUsage';
 import { CopyButton } from './CopyButton';
-import { curlSummary, toCurl } from '../utils/toCurl';
+import { curlSummary, toCurl, unrepresentableFileName } from '../utils/toCurl';
 import type { ConsoleRequest } from '../../utils/types';
 
 const messages = defineMessages({
@@ -44,10 +44,17 @@ const messages = defineMessages({
     description:
       'State of the toggle when the credential is visible in the displayed command. An adjective, not a command.',
   },
+  unsupportedFile: {
+    id: 'apiControlPlane.pages.test.console.CurlCommandPanel.unsupportedFile',
+    defaultMessage:
+      'A cURL command cannot name the file “{name}” in a URL-encoded body, because its name contains “=”. Rename the file, or send the request from the console instead.',
+    description:
+      'Shown in place of the cURL command when it could not be written correctly. {name} is the file name the user chose and is not translated.',
+  },
   summary: {
     id: 'apiControlPlane.pages.test.console.CurlCommandPanel.summary',
     defaultMessage:
-      '{method} · {headerCount, plural, =0 {no headers} one {# header} other {# headers}}{bodyKind, select, json { · JSON body} xml { · XML body} text { · text body} formData { · form data} urlEncoded { · URL-encoded body} other {}}',
+      '{method} · {headerCount, plural, =0 {no headers} one {# header} other {# headers}}{bodyKind, select, json { · JSON body} xml { · XML body} text { · text body} formData { · form data} urlEncoded { · URL-encoded body} binary { · binary body} other {}}',
     description:
       'One-line description of the command. {method} is an HTTP verb and is not translated. {bodyKind} selects how the body is encoded, or "none" for no body.',
   },
@@ -99,6 +106,9 @@ export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
   );
 
   // API keys may be in headers or query params; keep masking and reveal in sync.
+  // A request curl cannot express correctly gets a warning in place of a misleading command.
+  const unsupportedFile = useMemo(() => unrepresentableFileName(request), [request]);
+
   const hasSecret = [...request.headers, ...request.queryParams].some(
     (row) => row.secret && row.enabled,
   );
@@ -118,19 +128,21 @@ export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
           <Typography variant="subtitle2">
             <FormattedMessage {...messages.title} />
           </Typography>
-          <Typography color="text.secondary" variant="caption">
-            <FormattedMessage
-              {...messages.summary}
-              values={{
-                bodyKind: ICU_BODY_KIND[summary.bodyKind] ?? summary.bodyKind,
-                headerCount: summary.headerCount,
-                method: summary.method,
-              }}
-            />
-          </Typography>
+          {unsupportedFile === undefined && (
+            <Typography color="text.secondary" variant="caption">
+              <FormattedMessage
+                {...messages.summary}
+                values={{
+                  bodyKind: ICU_BODY_KIND[summary.bodyKind] ?? summary.bodyKind,
+                  headerCount: summary.headerCount,
+                  method: summary.method,
+                }}
+              />
+            </Typography>
+          )}
         </Stack>
 
-        {hasSecret && (
+        {hasSecret && unsupportedFile === undefined && (
           <Button
             onClick={() => setRevealed((current) => !current)}
             size="small"
@@ -142,30 +154,36 @@ export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
         )}
       </Stack>
 
-      <Box
-        sx={{
-          position: 'relative',
-          '&& pre': {
-            maxHeight: CODE_MAX_HEIGHT,
-            overflowX: 'hidden',
-            overflowY: 'auto',
-            overflowWrap: 'anywhere',
-            pr: 6,
-            whiteSpace: 'pre-wrap',
-          },
-        }}
-      >
-        <CodeBlock code={displayed} language="bash" />
-        <Box sx={{ position: 'absolute', right: 8, top: 8, zIndex: 1 }}>
-          <CopyButton
-            getValue={() => toCurl(request, { revealSecrets: true })}
-            label={intl.formatMessage(messages.copyCommand)}
-            onCopy={() =>
-              trackFeature('apip.manage-apis.test-console-curl-copy', { api_type: 'rest-api' })
-            }
-          />
+      {unsupportedFile !== undefined ? (
+        <Alert severity="warning">
+          <FormattedMessage {...messages.unsupportedFile} values={{ name: unsupportedFile }} />
+        </Alert>
+      ) : (
+        <Box
+          sx={{
+            position: 'relative',
+            '&& pre': {
+              maxHeight: CODE_MAX_HEIGHT,
+              overflowX: 'hidden',
+              overflowY: 'auto',
+              overflowWrap: 'anywhere',
+              pr: 6,
+              whiteSpace: 'pre-wrap',
+            },
+          }}
+        >
+          <CodeBlock code={displayed} language="bash" />
+          <Box sx={{ position: 'absolute', right: 8, top: 8, zIndex: 1 }}>
+            <CopyButton
+              getValue={() => toCurl(request, { revealSecrets: true })}
+              label={intl.formatMessage(messages.copyCommand)}
+              onCopy={() =>
+                trackFeature('apip.manage-apis.test-console-curl-copy', { api_type: 'rest-api' })
+              }
+            />
+          </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   );
 }

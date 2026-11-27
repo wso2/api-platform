@@ -1,0 +1,25 @@
+{
+  // Same options as tsconfig.json plus vitest and Testing Library, so the tests typecheck.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "react": ["../../api-control-plane/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../api-control-plane/node_modules/@types/react/jsx-runtime.d.ts"],
+      "react-dom": ["../../api-control-plane/node_modules/@types/react-dom/index.d.ts"],
+      "react-router-dom": ["../../api-control-plane/node_modules/react-router-dom/dist/index.d.ts"],
+      "vitest": ["../../api-control-plane/node_modules/vitest/dist/index.d.ts"],
+      "@testing-library/react": [
+        "../../api-control-plane/node_modules/@testing-library/react/types/index.d.ts"
+      ],
+      "@testing-library/jest-dom": [
+        "../../api-control-plane/node_modules/@testing-library/jest-dom/types/index.d.ts"
+      ],
+      "@testing-library/dom": [
+        "../../api-control-plane/node_modules/@testing-library/dom/types/index.d.ts"
+      ]
+    },
+    "typeRoots": ["../../api-control-plane/node_modules"],
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
+  },
+  "exclude": []
+}

@@ -18,15 +18,24 @@
 
 // Package openai provides a deterministic, stateless mock upstream for several LLM providers.
 // Responses preserve the provider-specific shapes and usage fields consumed by gateway policies.
+//
+// POST /openai-azure/openai/deployments/{deployment}/chat/completions?api-version=... is an Azure
+// OpenAI resource. It requires the api-key header carrying ValidAPIKey, or a Microsoft Entra ID
+// bearer token the testbench Entra mock issued for either Azure audience, and its reply is the
+// deployment's name, so a test chooses what a classifier calling it answers. Deployment paths
+// without the prefix keep the default completion and take no credential.
 package openai
 
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 )
 
 // Port is the container port used by the testbench.
@@ -60,6 +69,9 @@ const (
 // Authorization bearer token (OpenAI). Its refusal never repeats the presented key.
 const KeyedPathPrefix = "/openai-keyed/v1"
 
+// AzurePathPrefix starts the Azure OpenAI chat route, which checks credentials as Azure does.
+const AzurePathPrefix = "/openai-azure"
+
 // ValidAPIKey is the only credential the keyed upstream accepts.
 const ValidAPIKey = "sk-testbench-valid-key"
 
@@ -89,7 +101,42 @@ func presentedKey(r *http.Request) string {
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.route)
+	mux.HandleFunc(AzurePathPrefix+"/openai/deployments/{deployment}/chat/completions", s.azureChat)
 	return mux
+}
+
+// azureChat answers an Azure OpenAI chat completion whose reply is the deployment's name, after the
+// credential check and then the api-version check that Azure makes. It allows only POST.
+func (s *Service) azureChat(w http.ResponseWriter, r *http.Request) {
+	if strings.ToUpper(r.Method) != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	defer func() { _ = r.Body.Close() }()
+	if err != nil {
+		http.Error(w, "could not read request body", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if !entra.AcceptsAzureCredential(r, ValidAPIKey) {
+		writeAzureError(w, http.StatusUnauthorized, "Access denied due to missing or invalid credentials.")
+		return
+	}
+	if r.URL.Query().Get("api-version") == "" {
+		writeAzureError(w, http.StatusBadRequest, "api-version is required")
+		return
+	}
+	deployment := r.PathValue("deployment")
+	writeJSON(w, openAIChatEnvelope("chatcmpl-azure-testbench", orElse(requestModel(body), deployment), deployment,
+		"default", nil, openAIUsage(defaultPromptTokens, 0, defaultCompletionTokens, 0, defaultTotalTokens)))
+}
+
+// writeAzureError answers in Azure's error envelope.
+func writeAzureError(w http.ResponseWriter, status int, message string) {
+	w.WriteHeader(status)
+	writeJSON(w, map[string]any{"error": map[string]string{"code": fmt.Sprint(status), "message": message}})
 }
 
 // route selects a response by request path. Unknown paths use the default chat completion.

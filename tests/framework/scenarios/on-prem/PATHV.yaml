@@ -1,0 +1,72 @@
+# Scenario list: Path Variants (PATHV).
+#
+# Envoy matches paths case-sensitively, so a case variant of an operation's path could fall
+# through to a broader operation (such as GET /*) and run without the policies of the operation
+# it names. Unless router.http_listener.allow_path_case_variants is true, the gateway refuses
+# such a variant with 404.
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: PATHV
+title: Path Variants
+scenarios:
+  - id: PATHV-001
+    title: "Deploy a REST API with GET /* and GET /secure/data, then call /secure/data, /Secure/data, /SECURE/DATA and /other; /secure/data and /other reach the upstream (200), and both case variants get 404 instead of reaching the wildcard operation."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Refusing a case variant is gateway routing, checked with gateway traffic; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/path_variants.feature
+          scenario: "A case variant of an operation's path gets 404 instead of reaching the wildcard operation"
+  - id: PATHV-002
+    title: "Deploy a REST API with GET /*, three literal operations and GET /items/{id}, then call each operation, a case variant of each, and /items/ABC; every operation and /items/ABC reach the upstream (200), and every case variant of an operation's literal segments gets 404."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a case variant is gateway routing, checked with gateway traffic; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/path_variants.feature
+          scenario: "Case variants of several operations are all refused while their parameters keep any case"
+  - id: PATHV-003
+    title: "Deploy a REST API with GET /*, GET /users and GET /Users, each setting a different response header, then call /users, /Users and /USERS; /users and /Users each reach their own operation (200 with its header), and /USERS gets 404."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a case variant is gateway routing, checked with gateway traffic; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/path_variants.feature
+          scenario: "An operation spelt with capitals keeps its own route next to a lowercase one"
+  - id: PATHV-004
+    title: "Deploy a REST API with GET /*, GET /secure/data and POST /* (which sets a response header), then send GET and POST to /Secure/data; the GET gets 404, and the POST reaches POST /* (200 with its header)."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a case variant is gateway routing, checked with gateway traffic; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/path_variants.feature
+          scenario: "A case variant is refused only for the methods of the operation it names"
+  - id: PATHV-005
+    title: "Deploy a REST API with GET /* and a second API whose context is nested under it with GET /secure/data, then call /other on the first and /Secure/data on the second; /other reaches the first API's wildcard operation (200 with its header), and /Secure/data gets 404."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a case variant is gateway routing, checked with gateway traffic; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/path_variants.feature
+          scenario: "A case variant is refused when another API's wildcard operation would catch it"

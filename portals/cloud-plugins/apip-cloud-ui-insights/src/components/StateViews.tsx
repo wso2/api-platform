@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { Alert, Box, Button, CircularProgress, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Typography } from '@wso2/oxygen-ui';
+import { ChoreoLoader } from './ChoreoLoader';
 
 export function LoadingState({
   label = 'Loading',
@@ -24,20 +25,7 @@ export function LoadingState({
   label?: string;
 }) {
   return (
-    <Box
-      sx={{
-        alignItems: 'center',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
-        justifyContent: 'center',
-        minHeight: 240,
-        width: '100%',
-      }}
-    >
-      <CircularProgress size={32} />
-      <Typography color="text.secondary">{label}</Typography>
-    </Box>
+    <ChoreoLoader label={label} />
   );
 }
 

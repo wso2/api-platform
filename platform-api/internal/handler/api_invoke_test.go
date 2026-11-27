@@ -33,6 +33,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
@@ -101,18 +102,25 @@ func newRelay(t *testing.T, allowHosts ...string) *gatewayrelay.Relay {
 }
 
 // serveInvoke sends body to the invoke route as the caller would, with the
-// caller's own bearer token, and returns the recorded response.
+// caller's own bearer token, and returns the recorded response. targets answer
+// for both API kinds, and authorization is off.
 func serveInvoke(t *testing.T, targets invokeTargets, relay relayer, contentType, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	return serveInvokeAs(t, targets, relay, config.Authorization{}, "", contentType, body)
+}
+
+// serveInvokeAs is serveInvoke with authorization authz and a token carrying scope.
+func serveInvokeAs(t *testing.T, targets invokeTargets, relay relayer, authz config.Authorization, scope, contentType, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	mux := http.NewServeMux()
-	NewAPIInvokeHandler(targets, relay, 1<<10, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	NewAPIInvokeHandler(targets, targets, relay, authz, 1<<10, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
 
 	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(body))
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
 	req.Header.Set("Authorization", "Bearer caller-token")
-	req = middleware.WithOrganization(req, invokeOrg)
+	req = middleware.WithScope(middleware.WithOrganization(req, invokeOrg), scope)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	return rec
@@ -121,9 +129,9 @@ func serveInvoke(t *testing.T, targets invokeTargets, relay relayer, contentType
 // invokeBody is a request naming pizza-api on prod-gw, plus fields (JSON members, or "").
 func invokeBody(fields string) string {
 	if fields == "" {
-		return `{"restApiId": "pizza-api", "gatewayId": "prod-gw"}`
+		return `{"apiType": "rest-api", "apiId": "pizza-api", "gatewayId": "prod-gw"}`
 	}
-	return `{"restApiId": "pizza-api", "gatewayId": "prod-gw", ` + fields + `}`
+	return `{"apiType": "rest-api", "apiId": "pizza-api", "gatewayId": "prod-gw", ` + fields + `}`
 }
 
 func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
@@ -152,7 +160,8 @@ func TestInvokeRelaysTheRequestAndReturnsTheGatewayResponse(t *testing.T) {
 
 	targets := &fakeInvokeTargets{apiContext: "/pizza/v1", endpoints: []string{gateway.URL}}
 	rec := serveInvoke(t, targets, newRelay(t, "*"), "application/json", `{
-		"restApiId": "pizza-api",
+		"apiType": "rest-api",
+		"apiId": "pizza-api",
 		"gatewayId": "prod-gw",
 		"method": "post",
 		"path": "/orders",
@@ -218,7 +227,7 @@ func TestInvokeStartsTheRequestTimeoutBeforeTheRelay(t *testing.T) {
 	relay := &deadlineRelay{}
 	mux := http.NewServeMux()
 	targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}, delay: 2 * time.Second}
-	NewAPIInvokeHandler(targets, relay, 1<<10, 30*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	NewAPIInvokeHandler(targets, targets, relay, config.Authorization{}, 1<<10, 30*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
 	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(invokeBody(`"path": "/"`)))
 	req.Header.Set("Content-Type", "application/json")
 	req = middleware.WithOrganization(req, invokeOrg)
@@ -261,8 +270,8 @@ func TestInvokeAcceptsAnEscapedTextBodyWithinTheLimit(t *testing.T) {
 	})
 	require.NoError(t, err)
 	mux := http.NewServeMux()
-	NewAPIInvokeHandler(&fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}},
-		relay, maxRequestBytes, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}}
+	NewAPIInvokeHandler(targets, targets, relay, config.Authorization{}, maxRequestBytes, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
 
 	quotes := strings.Repeat(`\"`, maxRequestBytes-1<<10) // each decodes to one byte
 	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(invokeBody(`"method": "POST", "path": "/", "body": "`+quotes+`"`)))
@@ -303,7 +312,11 @@ func TestInvokeRefusesAMalformedOrOversizedBody(t *testing.T) {
 		code   string
 	}{
 		"unknown field":        {invokeBody(`"url": "https://evil.example.com"`), http.StatusBadRequest, apperror.CodeCommonValidationFailed},
-		"no gateway named":     {`{"restApiId": "pizza-api"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"the old restApiId":    {`{"restApiId": "pizza-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"no gateway named":     {`{"apiType": "rest-api", "apiId": "pizza-api"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"no API named":         {`{"apiType": "rest-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"no API type":          {`{"apiId": "pizza-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"unknown API type":     {`{"apiType": "mcp-proxy", "apiId": "pizza-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
 		"not JSON":             {`not json`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
 		"over the limit":       {invokeBody(`"body": "` + strings.Repeat("a", 64<<10) + `"`), http.StatusRequestEntityTooLarge, apperror.CodeCommonPayloadTooLarge},
 		"forbidden header":     {invokeBody(`"headers": [{"name": "Cookie", "value": "a=1"}]`), http.StatusBadRequest, apperror.CodeRESTAPIInvokeRequestInvalid},
@@ -380,4 +393,179 @@ func TestInvokeMapsRelayFailures(t *testing.T) {
 			assert.NotContains(t, rec.Body.String(), "10.0.0.7")
 		})
 	}
+}
+
+// graphqlInvokeBody is a GraphQL request naming countries on prod-gw, plus fields (JSON members, or "").
+func graphqlInvokeBody(fields string) string {
+	body := `{"apiType": "graphql-api", "apiId": "countries", "gatewayId": "prod-gw", "body": "{\"query\":\"{ __typename }\"}"`
+	if fields != "" {
+		body += ", " + fields
+	}
+	return body + "}"
+}
+
+// A GraphQL API has one route on the gateway: a POST to its context, with no trailing slash.
+func TestInvokeGraphQLPostsToTheAPIContext(t *testing.T) {
+	var gotMethod, gotURI, gotBody, gotHost string
+	var gotHeaders http.Header
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotURI, gotHost = r.Method, r.URL.RequestURI(), r.Host
+		gotHeaders = r.Header.Clone()
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"__typename":"Query"}}`))
+	}))
+	defer gateway.Close()
+
+	targets := &fakeInvokeTargets{apiContext: "/countries/v1/graphql", endpoints: []string{gateway.URL}}
+	rec := serveInvoke(t, targets, newRelay(t, "*"), "application/json", graphqlInvokeBody(
+		`"query": [{"name": "apikey", "value": "query-key"}], "headers": [{"name": "Content-Type", "value": "application/json"}, {"name": "X-API-Key", "value": "test-key"}]`))
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	assert.Equal(t, invokeOrg, targets.gotOrg)
+	assert.Equal(t, "countries", targets.gotAPI)
+	assert.Equal(t, "prod-gw", targets.gotGateway)
+
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Equal(t, "/countries/v1/graphql?apikey=query-key", gotURI)
+	assert.Equal(t, `{"query":"{ __typename }"}`, gotBody)
+	assert.Equal(t, "test-key", gotHeaders.Get("X-API-Key"))
+	assert.Equal(t, "application/json", gotHeaders.Get("Content-Type"))
+	assert.Empty(t, gotHeaders.Get("Authorization"), "the caller's token must never reach the gateway")
+	assert.Equal(t, strings.TrimPrefix(gateway.URL, "http://"), gotHost, "a GraphQL API is served on the gateway's default vhost")
+	assert.Contains(t, rec.Body.String(), `"status":200`)
+	assert.Contains(t, rec.Body.String(), `__typename`)
+}
+
+func TestInvokeRoutesEachKindToItsOwnTargets(t *testing.T) {
+	gateway := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer gateway.Close()
+	restTargets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}}
+	graphqlTargets := &fakeInvokeTargets{apiContext: "/countries", endpoints: []string{gateway.URL}}
+	mux := http.NewServeMux()
+	NewAPIInvokeHandler(restTargets, graphqlTargets, newRelay(t, "*"), config.Authorization{}, 1<<10, 5*time.Second,
+		slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+
+	for _, body := range []string{invokeBody(""), graphqlInvokeBody("")} {
+		req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, middleware.WithOrganization(req, invokeOrg))
+		require.Equal(t, http.StatusOK, rec.Code, "%s: %s", body, rec.Body.String())
+	}
+
+	assert.Equal(t, "pizza-api", restTargets.gotAPI)
+	assert.Equal(t, "countries", graphqlTargets.gotAPI)
+}
+
+func TestInvokeGraphQLRefusesAMalformedRequest(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		code string
+	}{
+		"a method of its own": {graphqlInvokeBody(`"method": "POST"`), apperror.CodeCommonValidationFailed},
+		"a path of its own":   {graphqlInvokeBody(`"path": "/"`), apperror.CodeCommonValidationFailed},
+		"no body":             {`{"apiType": "graphql-api", "apiId": "countries", "gatewayId": "prod-gw"}`, apperror.CodeCommonValidationFailed},
+		"forbidden header":    {graphqlInvokeBody(`"headers": [{"name": "Cookie", "value": "a=1"}]`), apperror.CodeGraphQLAPIInvokeRequestInvalid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			targets := &fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}
+			rec := serveInvoke(t, targets, newRelay(t, "*"), "application/json", tc.body)
+			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			assert.Equal(t, tc.code, errorCode(t, rec))
+		})
+	}
+}
+
+func TestInvokeGraphQLMapsFailuresToItsOwnCodes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		targets *fakeInvokeTargets
+		relay   relayer
+		status  int
+		code    string
+	}{
+		"GraphQL API not found": {
+			&fakeInvokeTargets{err: apperror.GraphQLAPINotFound.New()}, failingRelay{},
+			http.StatusNotFound, apperror.CodeGraphQLAPINotFound,
+		},
+		"not deployed to the gateway": {
+			&fakeInvokeTargets{err: apperror.GraphQLAPIInvokeGatewayNotDeployed.New()}, failingRelay{},
+			http.StatusNotFound, apperror.CodeGraphQLAPIInvokeGatewayNotDeployed,
+		},
+		"gateway without an endpoint": {
+			&fakeInvokeTargets{apiContext: "/countries"}, failingRelay{},
+			http.StatusUnprocessableEntity, apperror.CodeGraphQLAPIInvokeGatewayNoEndpoint,
+		},
+		"gateway endpoint not http": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"wss://gw.example.com"}}, failingRelay{},
+			http.StatusUnprocessableEntity, apperror.CodeGraphQLAPIInvokeGatewayUnsupportedScheme,
+		},
+		"outside the allow list": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://internal.example.com:9443"}}, newRelay(t, "https://gw.example.com"),
+			http.StatusForbidden, apperror.CodeGraphQLAPIInvokeTargetNotAllowed,
+		},
+		"busy": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}, failingRelay{err: gatewayrelay.ErrBusy},
+			http.StatusServiceUnavailable, apperror.CodeGraphQLAPIInvokeBusy,
+		},
+		"timeout": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}, failingRelay{err: fmt.Errorf("relay: %w", context.DeadlineExceeded)},
+			http.StatusGatewayTimeout, apperror.CodeGraphQLAPIInvokeUpstreamTimeout,
+		},
+		"unreachable": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}, failingRelay{err: fmt.Errorf("dial tcp 10.0.0.7:9443: connection refused")},
+			http.StatusBadGateway, apperror.CodeGraphQLAPIInvokeUpstreamUnreachable,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := serveInvoke(t, tc.targets, tc.relay, "application/json", graphqlInvokeBody(""))
+			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
+			assert.Equal(t, tc.code, errorCode(t, rec))
+			assert.NotContains(t, rec.Body.String(), "10.0.0.7")
+			assert.NotContains(t, rec.Body.String(), "internal.example.com")
+		})
+	}
+}
+
+// The route admits either kind's read or manage scope; each request needs its own kind's.
+func TestInvokeNeedsTheReadOrManageScopeOfTheAPIsKind(t *testing.T) {
+	gateway := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer gateway.Close()
+	enforced := config.Authorization{Enabled: true, Mode: middleware.ValidationModeScope}
+
+	for name, tc := range map[string]struct {
+		scope  string
+		body   string
+		status int
+	}{
+		"REST API, its read scope":        {"ap:rest_api:read", invokeBody(""), http.StatusOK},
+		"REST API, its manage scope":      {"ap:rest_api:manage", invokeBody(""), http.StatusOK},
+		"REST API, GraphQL scopes only":   {"ap:graphql_api:read ap:graphql_api:manage", invokeBody(""), http.StatusForbidden},
+		"GraphQL API, its read scope":     {"ap:graphql_api:read", graphqlInvokeBody(""), http.StatusOK},
+		"GraphQL API, its manage scope":   {"ap:graphql_api:manage", graphqlInvokeBody(""), http.StatusOK},
+		"GraphQL API, REST scopes only":   {"ap:rest_api:read ap:rest_api:manage", graphqlInvokeBody(""), http.StatusForbidden},
+		"GraphQL API, an unrelated scope": {"ap:gateway:read", graphqlInvokeBody(""), http.StatusForbidden},
+	} {
+		t.Run(name, func(t *testing.T) {
+			targets := &fakeInvokeTargets{apiContext: "/api", endpoints: []string{gateway.URL}}
+			rec := serveInvokeAs(t, targets, newRelay(t, "*"), enforced, tc.scope, "application/json", tc.body)
+			require.Equal(t, tc.status, rec.Code, rec.Body.String())
+			if tc.status == http.StatusForbidden {
+				assert.Equal(t, apperror.CodeCommonForbidden, errorCode(t, rec))
+				assert.Empty(t, targets.gotAPI, "a refused caller learns nothing about the API")
+			}
+		})
+	}
+}
+
+func TestInvokeChecksNoScopeWhileAuthorizationIsOff(t *testing.T) {
+	gateway := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer gateway.Close()
+	targets := &fakeInvokeTargets{apiContext: "/countries", endpoints: []string{gateway.URL}}
+
+	rec := serveInvokeAs(t, targets, newRelay(t, "*"), config.Authorization{Enabled: false}, "", "application/json", graphqlInvokeBody(""))
+
+	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }

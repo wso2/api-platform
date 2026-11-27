@@ -44,7 +44,7 @@ import (
 // service. Defined as a local interface so the handler does not import the
 // concrete implementation (which lives in the event-gateway plugin).
 type hmacSecretDecrypter interface {
-	ListByArtifactUUID(artifactUUID string) ([]*model.WebSubAPIHmacSecret, error)
+	ListByArtifactUUID(artifactUUID, orgUUID string) ([]*model.WebSubAPIHmacSecret, error)
 	DecryptSecret(s *model.WebSubAPIHmacSecret) (string, error)
 }
 
@@ -1027,8 +1027,13 @@ func (h *GatewayInternalAPIHandler) CheckArtifactsExist(w http.ResponseWriter, r
 
 // GetWebSubAPIHmacSecrets handles GET /api/internal/v1/websub-apis/:apiId/secrets
 // Returns decrypted plaintext HMAC secrets for the gateway-controller to load into its webhook secret store.
+//
+// The API is resolved under the calling gateway's organization, as every other
+// artifact read on this handler does (see GetWebSubAPI). An apiId that does not
+// resolve under that organization answers 404 — the same answer an unknown
+// apiId gets, so the response does not distinguish the two.
 func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(w http.ResponseWriter, r *http.Request) {
-	_, _, ok := h.authenticateRequest(w, r)
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
 	if !ok {
 		return
 	}
@@ -1045,9 +1050,15 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(w http.ResponseWrite
 		return
 	}
 
-	secrets, err := h.hmacSecretService.ListByArtifactUUID(apiID)
+	secrets, err := h.hmacSecretService.ListByArtifactUUID(apiID, orgID)
 	if err != nil {
-		h.slogger.Error("Failed to list HMAC secrets for WebSub API", "apiID", apiID, "error", err)
+		if apperror.WebSubAPINotFound.Is(err) {
+			h.slogger.Warn("HMAC secret fetch for a WebSub API that does not resolve for this gateway",
+				"apiID", apiID, "orgID", orgID, "gatewayID", gatewayID)
+			httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found", "WebSub API not found"))
+			return
+		}
+		h.slogger.Error("Failed to list HMAC secrets for WebSub API", "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to get HMAC secrets"))
 		return
 	}
@@ -1056,7 +1067,7 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPIHmacSecrets(w http.ResponseWrite
 	for _, s := range secrets {
 		plaintext, err := h.hmacSecretService.DecryptSecret(s)
 		if err != nil {
-			h.slogger.Error("Failed to decrypt HMAC secret", "apiID", apiID, "secretName", s.Handle, "error", err)
+			h.slogger.Error("Failed to decrypt HMAC secret", "apiID", apiID, "orgID", orgID, "secretName", s.Handle, "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to decrypt HMAC secret"))
 			return
 		}

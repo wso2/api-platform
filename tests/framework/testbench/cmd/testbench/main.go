@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/faultinjection"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
@@ -106,7 +107,9 @@ func services() ([]testbench.Service, error) {
 		return nil, fmt.Errorf("building oauth2 service: %w", err)
 	}
 	jevSvc := jev.New()
+	entraSvc := entra.New()
 	specsSvc := specs.New()
+	interceptorSvc := interceptor.New()
 	stripeSvc := stripe.New()
 	moesifSvc, err := moesif.New(stripeSvc)
 	if err != nil {
@@ -118,7 +121,7 @@ func services() ([]testbench.Service, error) {
 		backend.New(),
 		aws.NewBedrock(),
 		openai.New(),
-		interceptor.New(),
+		interceptorSvc,
 		mcp.New(),
 		mcp.NewLegacy(),
 		embeddings.New(),
@@ -139,6 +142,7 @@ func services() ([]testbench.Service, error) {
 		specsSvc,
 		aws.New(),
 		faultinjection.New(),
+		entraSvc,
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))
@@ -146,6 +150,22 @@ func services() ([]testbench.Service, error) {
 			return nil, fmt.Errorf("building jev TLS service: %w", err)
 		}
 		services = append(services, jevTLS)
+	}
+	// The gateway runtime trusts the Jev certificate, so the interceptor mock serves HTTPS with it
+	// too: a policy can then call it at https://testbench with a certificate the runtime trusts.
+	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
+		interceptorTLS, err := interceptorSvc.OverTLS([]byte(cert), []byte(key))
+		if err != nil {
+			return nil, fmt.Errorf("building interceptor TLS service: %w", err)
+		}
+		services = append(services, interceptorTLS)
+	}
+	if cert, key := os.Getenv(entra.EnvTLSCert), os.Getenv(entra.EnvTLSKey); cert != "" || key != "" {
+		entraTLS, err := entraSvc.OverTLS([]byte(cert), []byte(key))
+		if err != nil {
+			return nil, fmt.Errorf("building entra TLS service: %w", err)
+		}
+		services = append(services, entraTLS)
 	}
 	if cert, key := os.Getenv(specs.EnvTLSCert), os.Getenv(specs.EnvTLSKey); cert != "" || key != "" {
 		specsTLS, err := specsSvc.OverTLS([]byte(cert), []byte(key))

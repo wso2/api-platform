@@ -34,7 +34,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { BodyEditor } from './components/BodyEditor';
 import { CurlCommandPanel } from './components/CurlCommandPanel';
-import { requestBodySample } from './utils/jsonSample';
+import { requestBodySample } from '@/components/ApiTestConsole/spec/jsonSample';
 import { KeyValueEditor } from './components/KeyValueEditor';
 import { STANDARD_REQUEST_HEADERS } from './components/standardHeaders';
 import { activeRows, HTTP_METHODS, type ConsoleRequest, type HttpMethod } from '../utils/types';
@@ -144,7 +144,9 @@ export function CurlBuilder({
         ? request.body.trim() === ''
           ? 0
           : 1
-        : activeRows(request.formFields).length;
+        : request.bodyMode === 'binary'
+          ? 1
+          : activeRows(request.formFields).length;
 
   /** A count badge, or nothing — a "0" badge is noise. */
   const withBadge = (label: React.ReactNode, count: number) =>
@@ -257,6 +259,7 @@ export function CurlBuilder({
 
         {tab === 'body' && (
           <BodyEditor
+            binaryFile={request.binaryFile}
             fields={request.formFields}
             mode={request.bodyMode}
             onChange={(body) => onChange({ ...request, body })}
