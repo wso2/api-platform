@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -388,6 +387,12 @@ func (r *GenericReconciler) processDeployment(ctx context.Context, obj client.Ob
 		}
 	}
 
+	// Record the gateway before deploying to it, and before marking the tracker Processing so a
+	// failed write is retried rather than skipped as an in-flight deployment.
+	if err := recordGatewayDeployment(ctx, r.Client, obj, gateway); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	entry := &ResourceTrackingEntry{
 		Generation: generation,
 		Status:     ResourceStatusProcessing,
@@ -691,9 +696,13 @@ func (r *GenericReconciler) reconcileDeletion(ctx context.Context, obj client.Ob
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.cleanupAllGateways(ctx, obj); err != nil {
+	waiting, err := r.cleanupAllGateways(ctx, obj)
+	if err != nil {
 		log.Error("failed to clean up deployments", slog.Any("error", err))
 		return ctrl.Result{}, err
+	}
+	if waiting {
+		return ctrl.Result{RequeueAfter: requeueGatewayNotRegistered}, nil
 	}
 
 	r.Tracker.Delete(r.trackingKey(ctrl.Request{NamespacedName: types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}}))
@@ -706,26 +715,20 @@ func (r *GenericReconciler) reconcileDeletion(ctx context.Context, obj client.Ob
 	return ctrl.Result{}, nil
 }
 
-func (r *GenericReconciler) cleanupAllGateways(ctx context.Context, obj client.Object) error {
+// cleanupAllGateways removes the resource from every gateway it was recorded as deployed to and
+// every registered gateway that selects it. waiting is true while a recorded gateway exists but
+// has not registered with the operator yet.
+func (r *GenericReconciler) cleanupAllGateways(ctx context.Context, obj client.Object) (waiting bool, err error) {
 	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
-	registryInstance := registry.GetGatewayRegistry()
 	ns, labels := r.Adapter.GatewaySelectionKey(obj)
-	matched := registryInstance.FindMatchingGateways(ns, labels)
+	matched := registry.GetGatewayRegistry().FindMatchingGateways(ns, labels)
+	targets := deletionGatewayTargets(readGatewayRecord(obj), matched)
 
-	var deleteErrs []error
-	for _, gateway := range matched {
-		authFn := r.buildAuthFn(gateway)
-		if err := r.Adapter.Delete(ctx, gateway.GetGatewayServiceEndpoint(), obj, authFn); err != nil {
-			log.Error("failed to delete from gateway",
-				slog.Any("error", err),
-				slog.String("gateway", gateway.Name))
-			deleteErrs = append(deleteErrs, fmt.Errorf("%s/%s: %w", gateway.Namespace, gateway.Name, err))
-		} else {
-			log.Info("resource deleted from gateway", slog.String("gateway", gateway.Name))
-		}
+	waiting, err = cleanupGatewayTargets(ctx, r.Client, r.Config, log, targets, func(gateway *registry.GatewayInfo) error {
+		return r.Adapter.Delete(ctx, gateway.GetGatewayServiceEndpoint(), obj, r.buildAuthFn(gateway))
+	})
+	if err != nil {
+		return waiting, fmt.Errorf("cleanupAllGateways: %w", err)
 	}
-	if len(deleteErrs) > 0 {
-		return fmt.Errorf("cleanupAllGateways: %w", errors.Join(deleteErrs...))
-	}
-	return nil
+	return waiting, nil
 }

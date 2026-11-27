@@ -126,6 +126,15 @@ type RestApiReconciler struct {
 	valueFromRefIndex   map[string]map[types.NamespacedName]struct{}
 	restAPIValueFromRef map[types.NamespacedName]map[string]struct{}
 	Logger              *slog.Logger
+	// restAPI calls the gateway-controller REST API; nil uses the real client.
+	restAPI restAPIClient
+}
+
+func (r *RestApiReconciler) rest() restAPIClient {
+	if r.restAPI == nil {
+		return gatewayRESTClient{}
+	}
+	return r.restAPI
 }
 
 // NewRestApiReconciler creates a new RestApiReconciler
@@ -343,6 +352,12 @@ func (r *RestApiReconciler) processDeployment(
 		}
 	}
 
+	// Record the gateway before deploying to it, and before marking the tracker Processing so a
+	// failed write is retried rather than skipped as an in-flight deployment.
+	if err := recordGatewayDeployment(ctx, r.Client, apiConfig, gateway); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Update tracker to Processing
 	entry := &APITrackingEntry{
 		Generation: generation,
@@ -430,13 +445,13 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 	}
 
 	ep := gateway.GetGatewayServiceEndpoint()
-	exists, err := gatewayclient.RestAPIExists(ctx, ep, handle, auth)
+	exists, err := r.rest().Exists(ctx, ep, handle, auth)
 	if err != nil {
 		return "", err
 	}
 
 	log.Info("Deploying API to gateway", slog.String("api", apiConfig.Name), slog.Bool("exists", exists))
-	if err := gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth); err != nil {
+	if err := r.rest().Deploy(ctx, ep, handle, apiYAML, exists, auth); err != nil {
 		return "", err
 	}
 	return fp, nil
@@ -709,9 +724,13 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 	}
 
 	// Clean up from gateway
-	if err := r.cleanupAPIDeployments(ctx, apiConfig); err != nil {
+	waiting, err := r.cleanupAPIDeployments(ctx, apiConfig)
+	if err != nil {
 		log.Error("failed to clean up API deployments", slog.Any("error", err))
 		return ctrl.Result{}, err
+	}
+	if waiting {
+		return ctrl.Result{RequeueAfter: requeueGatewayNotRegistered}, nil
 	}
 
 	// Remove from tracker
@@ -729,50 +748,31 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 	return ctrl.Result{}, nil
 }
 
-// cleanupAPIDeployments removes the API from all gateways
-func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig *apiv1.RestApi) error {
+// cleanupAPIDeployments removes the API from every gateway it was recorded as deployed to and
+// every registered gateway that selects it. waiting is true while a recorded gateway exists but
+// has not registered with the operator yet.
+func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig *apiv1.RestApi) (waiting bool, err error) {
 	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
 
 	handle := apiConfig.Name
 	if handle == "" {
-		return nil
+		return false, nil
 	}
 
-	registryInstance := registry.GetGatewayRegistry()
-	matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
-
-	for _, gateway := range matched {
-		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
-			log.Error("failed to delete API from gateway",
-				slog.Any("error", err),
-				slog.String("api", handle),
-				slog.String("gateway", gateway.Name))
-			// Continue with other gateways even if one fails
-		}
-	}
-
-	return nil
+	matched := registry.GetGatewayRegistry().FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
+	targets := deletionGatewayTargets(readGatewayRecord(apiConfig), matched)
+	return cleanupGatewayTargets(ctx, r.Client, r.Config, log, targets, func(gateway *registry.GatewayInfo) error {
+		return r.deleteAPIFromGateway(ctx, handle, gateway)
+	})
 }
 
-// deleteAPIFromGateway removes an API from a specific gateway
+// deleteAPIFromGateway removes an API from a specific gateway. A 404 from the gateway counts as
+// removed.
 func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle string, gateway *registry.GatewayInfo) error {
-	log := r.Logger.With(slog.String("controller", "RestApi"))
-
 	auth := func(c context.Context, req *http.Request) error {
-		if err := r.addAuthToRequest(c, req, gateway); err != nil {
-			return err
-		}
-		return nil
+		return r.addAuthToRequest(c, req, gateway)
 	}
-
-	if err := gatewayclient.DeleteRestAPI(ctx, gateway.GetGatewayServiceEndpoint(), handle, auth); err != nil {
-		log.Error("failed to delete API from gateway", slog.Any("error", err), slog.String("gateway", gateway.Name))
-		return err
-	}
-	log.Info("API deleted from gateway",
-		slog.String("api", handle),
-		slog.String("gateway", gateway.Name))
-	return nil
+	return r.rest().Delete(ctx, gateway.GetGatewayServiceEndpoint(), handle, auth)
 }
 
 func payloadMetadataForRestAPI(apiConfig *apiv1.RestApi) gatewayclient.RestAPIPayloadMetadata {
@@ -783,9 +783,9 @@ func payloadMetadataForRestAPI(apiConfig *apiv1.RestApi) gatewayclient.RestAPIPa
 			md.Labels[k] = v
 		}
 	}
-	if len(apiConfig.Annotations) > 0 {
-		md.Annotations = make(map[string]string, len(apiConfig.Annotations))
-		for k, v := range apiConfig.Annotations {
+	if ann := payloadAnnotations(apiConfig.Annotations); len(ann) > 0 {
+		md.Annotations = make(map[string]string, len(ann))
+		for k, v := range ann {
 			md.Annotations[k] = v
 		}
 	}
