@@ -44,15 +44,18 @@ const (
 )
 
 // testbenchURL reads the https base URL of a testbench service from the environment, falling
-// back to the given default, without a trailing slash.
+// back to the given default, without a trailing slash. With CLOUD_IT_LOCAL_DATA_PLANE on, the
+// testbench of a cloud on the developer's machine is accepted as well: http on a .localhost host.
 func testbenchURL(env, fallback string) (string, error) {
 	value := strings.TrimSpace(os.Getenv(env))
 	if value == "" {
 		value = fallback
 	}
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return "", fmt.Errorf("%s must be an https URL with a host", env)
+	if err != nil || parsed.Host == "" ||
+		(parsed.Scheme != "https" && !(localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed))) {
+		return "", fmt.Errorf("%s must be an https URL with a host, or http on a .localhost host with %s on",
+			env, cloudLocalDataPlaneEnv)
 	}
 	return strings.TrimRight(value, "/"), nil
 }
@@ -648,6 +651,56 @@ func (s *Steps) assertDeploymentReportsEchoEndpoint(ctx context.Context) error {
 	}
 	if got, _ := entry["endpointUrl"].(string); got != want {
 		return fmt.Errorf("the deployment reports production endpoint %q, want %q", got, want)
+	}
+	return nil
+}
+
+// assertDeploymentOnGatewayHost checks that a deployment made with no main host of its own is
+// reported on the public host its gateway lists, and with no sandbox host.
+func (s *Steps) assertDeploymentOnGatewayHost(ctx context.Context) error {
+	host, err := requiredValue(ctx, keyGatewayHost)
+	if err != nil {
+		return fmt.Errorf("the active gateway lists no public host: %w", err)
+	}
+	return s.assertDeploymentHosts(ctx, host, "")
+}
+
+// assertDeploymentHosts checks the main and sandbox hosts the deployment response reports for the
+// active gateway. An empty sandbox host means the response must report none.
+func (s *Steps) assertDeploymentHosts(ctx context.Context, mainHost, sandboxHost string) error {
+	response, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	gatewayID, err := requiredValue(ctx, keyGatewayID)
+	if err != nil {
+		return err
+	}
+	entry, err := deploymentEntry(response, gatewayID)
+	if err != nil {
+		return err
+	}
+	wantMain, err := expandCloudValue(ctx, mainHost)
+	if err != nil {
+		return err
+	}
+	wantSandbox, err := expandCloudValue(ctx, sandboxHost)
+	if err != nil {
+		return err
+	}
+	gotMain, _ := entry["vhostMain"].(string)
+	gotSandbox, hasSandbox := entry["vhostSandbox"]
+	if gotMain != wantMain {
+		return fmt.Errorf("the deployment reports main host %q, want %q (%s)", gotMain, wantMain, response.Describe())
+	}
+	if wantSandbox == "" {
+		if hasSandbox {
+			return fmt.Errorf("the deployment reports sandbox host %v, want none (%s)", gotSandbox, response.Describe())
+		}
+		return nil
+	}
+	if gotSandbox != wantSandbox {
+		return fmt.Errorf("the deployment reports sandbox host %v, want %q (%s)", gotSandbox, wantSandbox, response.Describe())
 	}
 	return nil
 }

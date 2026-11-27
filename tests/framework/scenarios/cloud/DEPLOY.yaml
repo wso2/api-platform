@@ -171,3 +171,30 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_deploy.feature
           scenario: "A build or deployment request that is not JSON, or a deployment that names no environment, is refused and creates nothing"
+  - id: ID_APIP_DEPLOY_019
+    title: "Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises NETAC-PA-014.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys"
+  - id: ID_APIP_DEPLOY_020
+    title: "Deploying with an invalid virtual host (an underscore, a leading hyphen, a 64-character label) is refused naming vhostMain and deploys nothing, while the gateway-default placeholder deploys and is reported on the gateway's public host."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises SVR-020.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying with an invalid virtual host is refused and deploys nothing, while the gateway-default placeholder deploys"
+  - id: ID_APIP_DEPLOY_021
+    title: "A deployment that names no virtual host is reported on its gateway's public host with no sandbox host and is served there, and a deployment that names its own main and sandbox hosts reports them."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises SVR-018.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A deployment that names no virtual host is reported and served on its gateway's public host, and one that names its own hosts reports them"

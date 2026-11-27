@@ -314,3 +314,90 @@ Feature: APIP cloud builds and deployments
       | gatewayId   | ${CTX:cloudGatewayID}          |
     Then the cloud API response status code should be 201
     And the synthetic REST API deployment should become DEPLOYED
+
+  # The cloud's deployment route answers a refusal with the platform's code and message only, so
+  # the refused parameter is not named in the answer.
+  @ID_APIP_DEPLOY_019 @type:negative
+  Scenario: Deploying with a production endpoint at the cloud metadata address is refused, while a permitted endpoint deploys
+    Given I obtain an APIP cloud console token
+    And I find the APIP test project
+    And I find an active APIP gateway
+    And an echo backend is available for deployment overrides
+    When I create a synthetic REST API in the APIP test project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                         |
+      | gatewayId   | ${CTX:cloudGatewayID}                                  |
+      | parameters  | {"productionEndpoint":"http://169.254.169.254/latest"} |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
+    And the cloud API response body should not contain "169.254"
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                      |
+      | gatewayId   | ${CTX:cloudGatewayID}                               |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}"} |
+    Then the cloud API response status code should be 201
+    And the synthetic REST API deployment should become DEPLOYED
+
+  # The cloud counterpart of on-premises SVR-020. The cloud checks a host before anything is built
+  # and names the parameter it refused.
+  @ID_APIP_DEPLOY_020 @type:negative
+  Scenario: Deploying with an invalid virtual host is refused and deploys nothing, while the gateway-default placeholder deploys
+    Given I obtain an APIP cloud console token
+    And I find the APIP test project
+    And I find an active APIP gateway
+    And an echo backend is available for deployment overrides
+    When I create a synthetic REST API in the APIP test project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                                              |
+      | gatewayId   | ${CTX:cloudGatewayID}                                                       |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}","vhostMain":"bad_host"} |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "invalid_request"
+    And the cloud API response body should contain "vhostMain"
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                                                      |
+      | gatewayId   | ${CTX:cloudGatewayID}                                                               |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}","vhostMain":"-api.example.com"} |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "invalid_request"
+    And the cloud API response body should contain "vhostMain"
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                                                                                                     |
+      | gatewayId   | ${CTX:cloudGatewayID}                                                                                                              |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}","vhostMain":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com"} |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "invalid_request"
+    And the cloud API response body should contain "vhostMain"
+    And the deployment stage of the active gateway's environment should show the active gateway as NOT_DEPLOYED
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                                                       |
+      | gatewayId   | ${CTX:cloudGatewayID}                                                                |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}","vhostMain":"_gateway_default_"} |
+    Then the cloud API response status code should be 201
+    And the deployment response should report the active gateway's public host as the main host, and no sandbox host
+    And the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
+
+  # The cloud counterpart of on-premises SVR-018. The cloud does not report the gateway-default
+  # placeholder: a deployment that names no main host is reported on its gateway's public host.
+  @ID_APIP_DEPLOY_021
+  Scenario: A deployment that names no virtual host is reported and served on its gateway's public host, and one that names its own hosts reports them
+    Given I obtain an APIP cloud console token
+    And I find the APIP test project
+    And I find an active APIP gateway
+    And an echo backend is available for deployment overrides
+    When I create a synthetic REST API in the APIP test project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                      |
+      | gatewayId   | ${CTX:cloudGatewayID}                               |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}"} |
+    Then the cloud API response status code should be 201
+    And the deployment response should report the active gateway's public host as the main host, and no sandbox host
+    And the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                                                                                                                    |
+      | gatewayId   | ${CTX:cloudGatewayID}                                                                                                                             |
+      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}","vhostMain":"${CTX:cloudAPIID}.example.com","vhostSandbox":"${CTX:cloudAPIID}-sandbox.example.com"} |
+    Then the cloud API response status code should be 201
+    And the deployment response should report the main host "${CTX:cloudAPIID}.example.com" and the sandbox host "${CTX:cloudAPIID}-sandbox.example.com"
