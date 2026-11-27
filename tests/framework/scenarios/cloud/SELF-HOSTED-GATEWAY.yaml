@@ -54,8 +54,9 @@ scenarios:
     title: "A self-hosted gateway registered with endpoints and properties reads back inactive with those endpoints and properties and its environment, and is listed."
     priority: P1
     cloud:
-      # The cloud counterpart of on-premises "A registered gateway round-trips its endpoints and properties and starts inactive"; written, not yet run against a cloud environment.
-      status: planned
+      # The cloud counterpart of on-premises "A registered gateway round-trips its endpoints and
+      # properties and starts inactive".
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_self_hosted_gateway.feature
           scenario: "A self-hosted gateway keeps the endpoints and properties it is registered with, starts inactive, and is listed"
@@ -63,8 +64,8 @@ scenarios:
     title: "A self-hosted gateway's registration tokens are issued and revoked independently: revoking one, twice, leaves the other active."
     priority: P1
     cloud:
-      # The cloud counterpart of on-premises "Gateway tokens are rotated and revoked independently"; written, not yet run against a cloud environment.
-      status: planned
+      # The cloud counterpart of on-premises "Gateway tokens are rotated and revoked independently".
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_self_hosted_gateway.feature
           scenario: "A self-hosted gateway's registration tokens are revoked one at a time"
