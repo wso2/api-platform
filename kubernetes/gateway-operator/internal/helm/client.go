@@ -630,7 +630,59 @@ func (c *Client) parseValues(opts InstallOrUpgradeOptions) (map[string]interface
 		}
 	}
 
+	if err := stripOperatorOnlyControllerAuth(values); err != nil {
+		return nil, err
+	}
+
 	return values, nil
+}
+
+// stripOperatorOnlyControllerAuth removes password_secret_ref from every controller user in
+// gateway.config.controller.auth.basic.users before Helm renders config.toml. The key is read
+// only by the operator (internal/auth.ResolveControllerAuthHeader), which sends the plaintext
+// from the Secret; the controller authenticates that user against the bcrypt hash in password.
+// A user with password_secret_ref must therefore carry password_hashed: true and a hash, or the
+// controller would be rendered with a user it cannot check, and the deploy is refused.
+func stripOperatorOnlyControllerAuth(values map[string]interface{}) error {
+	cur := values
+	for _, k := range []string{"gateway", "config", "controller", "auth", "basic"} {
+		next, ok := cur[k].(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		cur = next
+	}
+	users, ok := cur["users"].([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]interface{}, len(users))
+	for i, raw := range users {
+		user, ok := raw.(map[string]interface{})
+		if !ok {
+			out[i] = raw
+			continue
+		}
+		if _, hasRef := user["password_secret_ref"]; !hasRef {
+			out[i] = user
+			continue
+		}
+		hashed, _ := user["password_hashed"].(bool)
+		password, _ := user["password"].(string)
+		if !hashed || password == "" {
+			return fmt.Errorf("gateway.config.controller.auth.basic.users[%d] (%v): password_secret_ref needs password set to "+
+				"the bcrypt hash of the Secret's password and password_hashed: true", i, user["username"])
+		}
+		copied := make(map[string]interface{}, len(user))
+		for k, v := range user {
+			if k != "password_secret_ref" {
+				copied[k] = v
+			}
+		}
+		out[i] = copied
+	}
+	cur["users"] = out
+	return nil
 }
 
 // convertToStringMap recursively converts map[interface{}]interface{} to map[string]interface{}
