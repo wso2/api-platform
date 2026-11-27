@@ -18,7 +18,11 @@
 
 package controlplane
 
-import "time"
+import (
+	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+)
 
 // DeploymentAckMessage represents the acknowledgement message sent back to the control plane
 // after a gateway has processed a deployment or undeployment event.
@@ -443,6 +447,8 @@ type SubscriptionPlanCreatedEventPayload struct {
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
 	Status             string     `json:"status"`
+	// Conditions are the plan's conditions; absent from control planes that predate them.
+	Conditions []models.SubscriptionPlanCondition `json:"conditions"`
 }
 
 // SubscriptionPlanCreatedEvent represents the complete subscriptionPlan.created event.
@@ -463,6 +469,8 @@ type SubscriptionPlanUpdatedEventPayload struct {
 	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
 	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
 	Status             string     `json:"status"`
+	// Conditions are the plan's conditions; absent from control planes that predate them.
+	Conditions []models.SubscriptionPlanCondition `json:"conditions"`
 }
 
 // SubscriptionPlanUpdatedEvent represents the complete subscriptionPlan.updated event.

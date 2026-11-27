@@ -19,6 +19,8 @@
 package eventlistener
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -145,4 +147,116 @@ func TestHandleEvent_MCPDelete_RemovesLocalStateAndPolicy(t *testing.T) {
 
 	_, exists := runtimeStore.Get(runtimeKey)
 	assert.False(t, exists)
+}
+
+// Deploying an MCP proxy refreshes the subscription snapshot, so a subscription that arrived before
+// the proxy was known here takes effect without waiting for another refresh.
+func TestHandleEvent_MCPUpdate_RefreshesSubscriptions(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	cfg := testMCPStoredConfig("mcp-refresh-id", "refresh-mcp", "Refresh MCP", "v1.0.0", models.StateDeployed, nil)
+	require.NoError(t, db.SaveConfig(cfg))
+	snapshots := &mockSubscriptionSnapshotUpdater{}
+	listener := &EventListener{
+		store: store, db: db, subscriptionManager: snapshots,
+		policyManager: policyxds.NewPolicyManager(policyxds.NewSnapshotManager(newTestLogger()), newTestLogger()),
+		routerConfig:  &config.RouterConfig{VHosts: config.VHostsConfig{Main: config.VHostEntry{Default: "api.example.com"}}},
+		systemConfig:  &config.Config{},
+		logger:        newTestLogger(),
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeMCPProxy, Action: "UPDATE", EntityID: cfg.UUID, EventID: "corr-mcp-refresh",
+	})
+
+	assert.Equal(t, 1, snapshots.callCount)
+}
+
+// Deleting an MCP proxy removes only its subscriptions, including one keyed by its control-plane ID,
+// and refreshes the subscription snapshot.
+func TestHandleEvent_MCPDelete_RemovesSubscriptions(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	cfg := testMCPStoredConfig("mcp-subs-id", "subs-mcp", "Subs MCP", "v1.0.0", models.StateDeployed, nil)
+	cfg.CPArtifactID = "mcp-cp-id"
+	require.NoError(t, store.Add(cfg))
+	for _, sub := range []*models.Subscription{
+		{ID: "sub-mcp", APIID: cfg.UUID, SubscriptionToken: "mcp-token", Status: models.SubscriptionStatusActive},
+		{ID: "sub-mcp-cp", APIID: "mcp-cp-id", SubscriptionToken: "mcp-cp-token", Status: models.SubscriptionStatusActive},
+		{ID: "sub-other", APIID: "other-api", SubscriptionToken: "other-token", Status: models.SubscriptionStatusActive},
+	} {
+		require.NoError(t, db.SaveSubscription(sub))
+	}
+	snapshots := &mockSubscriptionSnapshotUpdater{}
+	listener := &EventListener{store: store, db: db, subscriptionManager: snapshots, logger: newTestLogger()}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeMCPProxy, Action: "DELETE", EntityID: cfg.UUID, EventID: "corr-mcp-subs",
+	})
+
+	left, err := db.ListSubscriptionsByAPI(cfg.UUID, "", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, left)
+	leftByCP, err := db.ListSubscriptionsByAPI("mcp-cp-id", "", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, leftByCP)
+	other, err := db.ListSubscriptionsByAPI("other-api", "", nil, nil)
+	require.NoError(t, err)
+	assert.Len(t, other, 1)
+	assert.Equal(t, 1, snapshots.callCount)
+}
+
+type failingSnapshotUpdater struct{ calls int }
+
+func (f *failingSnapshotUpdater) UpdateSnapshot(context.Context) error {
+	f.calls++
+	return errors.New("snapshot unavailable")
+}
+
+// A failed delete is only logged and the snapshot is still refreshed; a failed refresh is only logged.
+func TestDeleteSubscriptionsOf_Failures(t *testing.T) {
+	(&EventListener{logger: newTestLogger()}).deleteSubscriptionsOf(nil, "api-1", "evt")
+
+	closed := setupSQLiteDBForEventListenerTests(t)
+	snapshots := &mockSubscriptionSnapshotUpdater{}
+	require.NoError(t, closed.Close())
+	(&EventListener{db: closed, subscriptionManager: snapshots, logger: newTestLogger()}).deleteSubscriptionsOf(nil, "api-1", "evt")
+	assert.Equal(t, 1, snapshots.callCount)
+
+	failing := &failingSnapshotUpdater{}
+	(&EventListener{db: setupSQLiteDBForEventListenerTests(t), subscriptionManager: failing, logger: newTestLogger()}).deleteSubscriptionsOf(nil, "api-1", "evt")
+	assert.Equal(t, 1, failing.calls)
+}
+
+// failFirstSubscriptionDelete fails deleting the subscriptions of one API and passes the rest through.
+type failFirstSubscriptionDelete struct {
+	storage.Storage
+	failFor string
+}
+
+func (f failFirstSubscriptionDelete) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	if apiID == f.failFor {
+		return errors.New("delete failed")
+	}
+	return f.Storage.DeleteSubscriptionsForAPINotIn(apiID, ids)
+}
+
+// When deleting by the gateway ID fails, the control-plane ID's subscriptions are still deleted
+// and the snapshot is refreshed, so their tokens are dropped.
+func TestDeleteSubscriptionsOf_ContinuesPastAFailedDelete(t *testing.T) {
+	db := setupSQLiteDBForEventListenerTests(t)
+	require.NoError(t, db.SaveSubscription(&models.Subscription{
+		ID: "sub-cp", APIID: "api-cp", SubscriptionToken: "cp-token", Status: models.SubscriptionStatusActive,
+	}))
+	snapshots := &mockSubscriptionSnapshotUpdater{}
+	listener := &EventListener{
+		db: failFirstSubscriptionDelete{Storage: db, failFor: "api-1"}, subscriptionManager: snapshots, logger: newTestLogger(),
+	}
+
+	listener.deleteSubscriptionsOf(&models.StoredConfig{UUID: "api-1", CPArtifactID: "api-cp"}, "api-1", "evt")
+
+	left, err := db.ListSubscriptionsByAPI("api-cp", "", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, left)
+	assert.Equal(t, 1, snapshots.callCount)
 }
