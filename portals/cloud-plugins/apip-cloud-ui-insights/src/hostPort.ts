@@ -47,4 +47,10 @@ export type InsightsHostPort = {
   /** Present on host Ports; unused by this plugin today. */
   notify?: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /**
+   * Reports one use of an API Platform console feature, by its taxonomy code
+   * (`apip.analytics.insights-open`) and declared dimensions. Optional: a host
+   * that reports no feature usage omits it, and nothing is reported.
+   */
+  trackFeature?: (code: string, dimensions?: Readonly<Record<string, string>>) => void;
 };

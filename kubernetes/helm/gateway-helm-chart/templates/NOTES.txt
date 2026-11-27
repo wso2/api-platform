@@ -34,6 +34,34 @@ To access the Controller REST API:
   $ kubectl port-forward svc/{{ include "gateway-operator.fullname" . }}-controller {{ $restPort }}:{{ $restPort }} -n {{ .Release.Namespace }}
 
 Then visit: {{ if $restTls }}https{{ else }}http{{ end }}://localhost:{{ $restPort }}
+{{- $ac := include "gateway-operator.adminCredentials" . | fromYaml }}
+{{- if eq $ac.mode "generated" }}
+{{- if $ac.offline }}
+
+WARNING: this was rendered without cluster access, so a NEW admin credential was
+generated for the management API. Every render without cluster access (helm template,
+Argo CD) generates another one and replaces the previous one. Set
+gateway.controller.adminCredentials.existingSecret to keep a fixed credential.
+{{- else if $ac.new }}
+
+A new admin credential was generated for the management API and stored in Secret
+{{ $ac.secretName }}. The Secret is kept on helm uninstall, and upgrades reuse it.
+{{- else }}
+
+The management API admin credential is unchanged (Secret {{ $ac.secretName }}).
+{{- end }}
+Read it with:
+  $ kubectl get secret {{ $ac.secretName }} -n {{ .Release.Namespace }} -o jsonpath='{.data.username}' | base64 -d; echo
+  $ kubectl get secret {{ $ac.secretName }} -n {{ .Release.Namespace }} -o jsonpath='{.data.password}' | base64 -d; echo
+{{- else if eq $ac.mode "existing" }}
+
+The management API admin user {{ $ac.username | quote }} reads its password from Secret {{ $ac.secretName }} (key {{ $ac.key | quote }}).
+{{- else if eq $ac.mode "legacy" }}
+
+WARNING: this release was installed by an earlier chart version, so the management API
+keeps its default admin/admin credential. Set gateway.controller.adminCredentials.existingSecret
+or gateway.config.controller.auth.basic.users to replace it.
+{{- end }}
 {{- end }}
 
 {{- if .Values.gateway.gatewayRuntime.deployment.enabled }}

@@ -23,6 +23,7 @@ import EnvironmentCard from './components/EnvironmentCard';
 import PipelineConnector from './components/PipelineConnector';
 import NoGatewayState from './components/NoGatewayState';
 import DeployDialog from './components/DeployDialog';
+import type { DeployMode } from './featureUsage';
 import { NO_PERMISSION_TOOLTIP } from './permissions';
 import { undeletableBuildReasons } from './utils/status';
 import type { ApiOwnership, Build, Environment } from './types';
@@ -81,6 +82,8 @@ export type DeployPageProps = {
   onStopGateway: (environment: Environment, gatewayId: string) => void;
   /** Deletes a build, freeing a slot when the API is at its build limit. */
   onDeleteBuild: (buildId: string) => void;
+  /** The deploy or promote dialog opened, in this mode; for usage analytics. */
+  onDialogOpen?: (mode: DeployMode) => void;
 };
 
 /**
@@ -123,6 +126,7 @@ const DeployPage: FC<DeployPageProps> = ({
   onDeploy,
   onStopGateway,
   onDeleteBuild,
+  onDialogOpen,
 }) => {
   const [dialog, setDialog] = useState<DialogState>(null);
   // Why deploy, promote and stop are unavailable for this API as a whole;
@@ -244,9 +248,10 @@ const DeployPage: FC<DeployPageProps> = ({
                 busy={busy}
                 lockedReason={deployLockedReason}
                 canDeleteBuild={canDeleteBuild}
-                onDeployClick={(buildId, createBuild) =>
-                  setDialog({ targetIndex: 0, buildId, createBuild })
-                }
+                onDeployClick={(buildId, createBuild) => {
+                  onDialogOpen?.(createBuild ? 'build-and-deploy' : 'deploy');
+                  setDialog({ targetIndex: 0, buildId, createBuild });
+                }}
                 onDeleteBuild={onDeleteBuild}
               />
             )}
@@ -261,9 +266,10 @@ const DeployPage: FC<DeployPageProps> = ({
                   lockedReason={deployLockedReason}
                   stopDisabledReason={stopLockedReason}
                   takesEndpoint={takesEndpoint}
-                  onPromoteClick={() =>
-                    setDialog({ targetIndex: index + 1, sourceIndex: index })
-                  }
+                  onPromoteClick={() => {
+                    onDialogOpen?.('promote');
+                    setDialog({ targetIndex: index + 1, sourceIndex: index });
+                  }}
                   onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
                 />
               </Fragment>

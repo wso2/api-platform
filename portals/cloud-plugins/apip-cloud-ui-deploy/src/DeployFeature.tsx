@@ -17,14 +17,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { ChoreoLoader } from './components/ChoreoLoader';
 import DeployPage from './DeployPage';
 import { createDeployClient, gatewayTypeForKind, takesEndpointUrl, type ArtifactKind } from './deployApi';
 import {
   API_DEPLOY_CLICK,
+  API_DEPLOY_OPEN,
+  BUILD_DELETE_CLICK,
   DEPLOYMENT_UNDEPLOY_CLICK,
   featureArtifactKind,
   GATEWAY_REGISTER_CLICK,
+  type DeployMode,
 } from './featureUsage';
 import { createManagedGatewaysClient } from './managedGatewaysApi';
 import {
@@ -79,8 +83,16 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost, trackFeature } =
-    port;
+  const {
+    apiFetch,
+    projectHandle,
+    apiHandle,
+    notify,
+    gatewayVersions,
+    gatewayControlPlaneHost,
+    trackFeature,
+    resources,
+  } = port;
   const artifactKind = featureArtifactKind(kind);
   const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
@@ -266,6 +278,8 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       setBusy(true);
       try {
         await action();
+        // The host caches this API's gateways and deployments, and this call went around it.
+        resources?.invalidate('apiDeployments');
         notify(success, 'success');
         await load({ quiet: true });
       } catch (actionError) {
@@ -274,7 +288,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         setBusy(false);
       }
     },
-    [client, load, notify]
+    [client, load, notify, resources]
   );
 
   /**
@@ -290,9 +304,15 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
-    // A promotion is a deploy to the next environment, so it counts as one too.
+    // A promotion is a deploy to the next environment, so it counts as one too;
+    // `deploy_mode` tells the three apart. No build named means the server builds one.
     if (artifactKind) {
-      trackFeature?.(API_DEPLOY_CLICK, { artifact_kind: artifactKind, gateway_type: gatewayType });
+      const deployMode: DeployMode = from ? 'promote' : buildId ? 'deploy' : 'build-and-deploy';
+      trackFeature?.(API_DEPLOY_CLICK, {
+        artifact_kind: artifactKind,
+        gateway_type: gatewayType,
+        deploy_mode: deployMode,
+      });
     }
     void runAction(
       () =>
@@ -315,6 +335,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
    */
   const handleDeleteBuild = (buildId: string) => {
     if (!client) return;
+    if (artifactKind) trackFeature?.(BUILD_DELETE_CLICK, { artifact_kind: artifactKind });
     void runAction(
       () => client.deleteBuild(buildId),
       `Deleted build ${buildId}.`,
@@ -492,9 +513,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         <PageTitle sx={{ mb: 2 }}>
           <PageTitle.Header>Deploy</PageTitle.Header>
         </PageTitle>
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <ChoreoLoader />
       </PageContent>
     );
   }
@@ -548,6 +567,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onDeleteBuild={handleDeleteBuild}
+      onDialogOpen={(mode) => {
+        if (artifactKind) trackFeature?.(API_DEPLOY_OPEN, { artifact_kind: artifactKind, deploy_mode: mode });
+      }}
     />
     {setupDrawer}
     </>

@@ -50,6 +50,7 @@ export {
   useCreateRestApi,
   useDeleteRestApi,
   useImportOpenApi,
+  useInvalidateApiDeployments,
   usePutRestApiOpenApi,
   useRestApi,
   useRestApiCounts,

@@ -196,19 +196,29 @@ func (u *Steps) opensProviderFromTemplateCard(ctx context.Context, templateName 
 	if err := cyid(page, "add-new-provider-button").Click(); err != nil {
 		return nil, fmt.Errorf("starting provider creation: %w", err)
 	}
-	// The template picker collapses to its first 8 (alphabetical) entries behind a "See
-	// more" toggle once more templates exist than that, which any organization-created
-	// template can fall past. Expanding it is a no-op when every template already fits.
-	seeMore := page.GetByText("See more", playwright.PageGetByTextOptions{Exact: playwright.Bool(true)})
-	_ = seeMore.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(5000)})
 	// Matching the display name's own text node, not the card's aggregate text: a template
 	// with no bundled logo renders a fallback initials avatar (e.g. "EC") alongside the
 	// name, and that initials text is a sibling within the same card container, so a
 	// HasText filter against the whole card would need to account for it. An exact match
 	// also avoids picking the wrong card when one name is a substring of another's ("OpenAI"
 	// inside "Azure OpenAI").
-	if err := page.GetByText(templateName, playwright.PageGetByTextOptions{
-		Exact: playwright.Bool(true)}).First().Click(); err != nil {
+	template := page.GetByText(templateName, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).First()
+	// The template picker collapses to its first 8 (alphabetical) entries behind a "See
+	// more" toggle once more templates exist than that, which any organization-created
+	// template can fall past. Wait for the picker to show the template or the toggle, and
+	// expand it only when the template is not among the entries shown.
+	seeMore := page.GetByText("See more", playwright.PageGetByTextOptions{Exact: playwright.Bool(true)})
+	if err := template.Or(seeMore).First().WaitFor(); err != nil {
+		return nil, fmt.Errorf("waiting for the template picker: %w", err)
+	}
+	if shown, err := template.IsVisible(); err != nil {
+		return nil, fmt.Errorf("finding the %q template: %w", templateName, err)
+	} else if !shown {
+		if err := seeMore.Click(); err != nil {
+			return nil, fmt.Errorf("showing every template: %w", err)
+		}
+	}
+	if err := template.Click(); err != nil {
 		return nil, fmt.Errorf("picking the %q template: %w", templateName, err)
 	}
 

@@ -42,7 +42,7 @@ const titleAt = (route: string, scope = makeConsoleScope()) => {
 describe('usePageTitle', () => {
   it('names a page from its sidebar item', () => {
     expect(titleAt(`/organizations/${ORG}/projects/${PROJECT}/apis/${API}/deploy`)).toBe(
-      'Deploy | WSO2 API Platform',
+      'Deploy | Choreo API Management',
     );
   });
 
@@ -52,12 +52,12 @@ describe('usePageTitle', () => {
     const scope = makeConsoleScope({ component: aRestApi({ id: API, kind: 'RestApi' }) });
     expect(
       titleAt(`/organizations/${ORG}/projects/${PROJECT}/apis/${API}/develop/policies`, scope),
-    ).toBe('Policies | WSO2 API Platform');
+    ).toBe('Policies | Choreo API Management');
   });
 
   it('names a page the sidebar does not list', () => {
     expect(titleAt(`/organizations/${ORG}/projects/${PROJECT}/apis`)).toBe(
-      'APIs | WSO2 API Platform',
+      'APIs | Choreo API Management',
     );
   });
 
@@ -65,11 +65,11 @@ describe('usePageTitle', () => {
   // explicit route title has to win or the wizard reads "Overview".
   it('names the create wizard, not the Overview item whose pattern it matches', () => {
     expect(titleAt(`/organizations/${ORG}/projects/${PROJECT}/apis/new`)).toBe(
-      'Create API | WSO2 API Platform',
+      'Create API | Choreo API Management',
     );
   });
 
   it('falls back to the bare product name when nothing names the page', () => {
-    expect(titleAt(`/organizations/${ORG}/nothing-here`)).toBe('WSO2 API Platform');
+    expect(titleAt(`/organizations/${ORG}/nothing-here`)).toBe('Choreo API Management');
   });
 });

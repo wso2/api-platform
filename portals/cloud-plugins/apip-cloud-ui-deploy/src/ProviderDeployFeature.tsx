@@ -17,7 +17,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { ChoreoLoader } from './components/ChoreoLoader';
 import ProviderDeployPage from './ProviderDeployPage';
 import { createProviderDeployClient, withValuePrefix, type ProviderUpstream } from './providerDeployApi';
 import { isSettling } from './utils/status';
@@ -295,9 +296,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
         <PageTitle sx={{ mb: 2 }}>
           <PageTitle.Header>Deploy</PageTitle.Header>
         </PageTitle>
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <ChoreoLoader />
       </PageContent>
     );
   }

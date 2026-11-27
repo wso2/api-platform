@@ -31,6 +31,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -64,6 +65,24 @@ const (
 
 var maxComponentDBFileBytes = defaultMaxComponentDBFileBytes
 
+// composeSubstitutions returns the values substituted into a stack's staged compose files: the
+// network name, which the definition's and the options' env may override, then the instance suffix
+// and the block's testbench partition, which they cannot. The partition is substituted as ${BLOCK},
+// the name config overlays use for the same value, so a service can address a block-partitioned
+// testbench route such as https://testbench:3029/${BLOCK}/….
+func composeSubstitutions(spec *components.ComposeSpec, opts Options, suffix string) map[string]string {
+	substitutions := map[string]string{EnvComposeNetwork: opts.Network.Name()}
+	for k, v := range spec.Env {
+		substitutions[k] = v
+	}
+	for k, v := range opts.Env {
+		substitutions[k] = v
+	}
+	substitutions[EnvInstanceSuffix] = suffix
+	substitutions[components.VarBlock] = opts.Partition
+	return substitutions
+}
+
 func instanceSuffix(ordinal, replicas int) string {
 	if replicas <= 1 {
 		return ""
@@ -84,6 +103,11 @@ type ComposeStack struct {
 	// stopLogProducers stops each service's attached log producer, populated only when
 	// the block is capturing container output.
 	stopLogProducers []func() error
+
+	// stopped maps each service StopService stopped on purpose, such as for coverage collection
+	// before teardown, to the exit time Docker recorded for that stop, so only an exit that
+	// differs from it is reported.
+	stopped sync.Map
 }
 
 // LaunchCompose starts a compose-backed component and presents it as one instance.
@@ -103,15 +127,7 @@ func LaunchCompose(
 	if suffix == "" {
 		suffix = instanceSuffix(opts.Ordinal, opts.Replicas)
 	}
-	// Values substituted into the staged compose file.
-	substitutions := map[string]string{EnvComposeNetwork: opts.Network.Name()}
-	for k, v := range spec.Env {
-		substitutions[k] = v
-	}
-	for k, v := range opts.Env {
-		substitutions[k] = v
-	}
-	substitutions[EnvInstanceSuffix] = suffix
+	substitutions := composeSubstitutions(spec, opts, suffix)
 
 	stageDir, err := stageComposeFiles(def, spec, opts.RepoRoot, substitutions)
 	if err != nil {
@@ -514,6 +530,11 @@ func interpolateStagedFile(path string, values map[string]string) error {
 		text = replaceDefaulted(text, key, value)
 		text = strings.ReplaceAll(text, "${"+key+"}", value)
 	}
+	// Without the block's partition, Compose would fill ${BLOCK} in from its own environment.
+	if block, ok := values[components.VarBlock]; ok && block == "" && strings.Contains(text, "${"+components.VarBlock+"}") {
+		return fmt.Errorf("runtime: staged compose file %q uses ${%s}, but the stack has no block partition",
+			path, components.VarBlock)
+	}
 
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		return fmt.Errorf("runtime: writing staged compose file %q: %w", path, err)
@@ -581,6 +602,13 @@ func uniqueStackID(block, component string) (string, error) {
 func (c *ComposeStack) Stop(ctx context.Context) error {
 	if c == nil {
 		return nil
+	}
+	if c.stack != nil {
+		for _, svc := range c.services() {
+			if container, err := c.stack.ServiceContainer(ctx, svc); err == nil {
+				warnIfExited(ctx, svc, container, c.stoppedAt(svc))
+			}
+		}
 	}
 	for _, stop := range c.stopLogProducers {
 		_ = stop()
@@ -735,11 +763,26 @@ func (c *ComposeStack) StopService(ctx context.Context, service string) error {
 	if err != nil {
 		return err
 	}
+	// Stopping an already exited service succeeds, so an exit of its own is reported before the
+	// deliberate stop is recorded over it.
+	readBefore := warnIfExited(ctx, service, container, c.stoppedAt(service))
 	timeout := 30 * time.Second
 	if err := container.Stop(ctx, &timeout); err != nil {
 		return fmt.Errorf("runtime: stopping service %q: %w", service, err)
 	}
+	// When the state before the stop could not be read, the service may already have exited on
+	// its own, so the stop is not recorded and the earlier record, if any, stands.
+	if readBefore {
+		c.stopped.Store(service, exitTime(ctx, container))
+	}
 	return nil
+}
+
+// stoppedAt returns the exit time recorded when StopService last stopped service, or "".
+func (c *ComposeStack) stoppedAt(service string) string {
+	v, _ := c.stopped.Load(service)
+	s, _ := v.(string)
+	return s
 }
 
 // StartService starts a stopped service and refreshes its published ports.

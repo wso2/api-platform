@@ -18,6 +18,14 @@
 
 // Package embeddings provides a deterministic OpenAI-compatible embedding service
 // for integration tests.
+//
+// It serves two routes with the same embeddings. POST /v1/embeddings is the OpenAI shape and
+// takes no credential check, since OpenAI and Mistral clients send their key as a Bearer token.
+// POST /openai/deployments/{deployment}/embeddings?api-version=... is the Azure OpenAI shape
+// and requires a credential Azure would accept: the api-key header carrying APIKey, or a
+// Microsoft Entra ID bearer token issued by the testbench Entra mock for the Azure AI services
+// or Azure AI Foundry audience. A bearer token is judged on its own, so a rejected token is not
+// rescued by a key.
 package embeddings
 
 import (
@@ -30,10 +38,15 @@ import (
 	"math"
 	"net/http"
 	"strings"
+
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 )
 
 // Port is the container port used by the testbench.
 const Port = 3004
+
+// APIKey is the key the Azure route accepts in the api-key header.
+const APIKey = "test-api-key"
 
 // Dimension is the length of each embedding vector.
 const Dimension = 1536
@@ -82,6 +95,7 @@ func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/v1/embeddings", s.embeddings)
+	mux.HandleFunc("POST /openai/deployments/{deployment}/embeddings", s.azureEmbeddings)
 	mux.HandleFunc("/debug/similarity", s.debugSimilarity)
 	mux.HandleFunc("/debug/embedding", s.debugEmbedding)
 	return mux
@@ -106,6 +120,34 @@ func (s *Service) embeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeEmbeddings(w, r)
+}
+
+// azureEmbeddings serves the Azure OpenAI route: credential first, then api-version, then the
+// same embeddings as the OpenAI route.
+func (s *Service) azureEmbeddings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if !entra.AcceptsAzureCredential(r, APIKey) {
+		writeAzureError(w, http.StatusUnauthorized, "Access denied due to missing or invalid credentials.")
+		return
+	}
+	if r.URL.Query().Get("api-version") == "" {
+		writeAzureError(w, http.StatusBadRequest, "api-version is required")
+		return
+	}
+
+	writeEmbeddings(w, r)
+}
+
+// writeAzureError answers in Azure's error envelope.
+func writeAzureError(w http.ResponseWriter, status int, message string) {
+	w.WriteHeader(status)
+	writeJSON(w, map[string]any{"error": map[string]string{"code": fmt.Sprint(status), "message": message}})
+}
+
+// writeEmbeddings decodes the request body and answers with the embeddings of its input.
+func writeEmbeddings(w http.ResponseWriter, r *http.Request) {
 	var req request
 	if err := decodeJSON(r.Body, &req); err != nil {
 		respondToDecodeError(w, err)

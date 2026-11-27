@@ -115,3 +115,59 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_deploy.feature
           scenario: "Deploying to a gateway that belongs to another environment is refused and leaves the API undeployed"
+  - id: ID_APIP_DEPLOY_012
+    title: "Deploying a build serves that build and not a later edit, and the edit is served once it is built and deployed."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying a build serves that build and not a later edit, and the edit is served once it is built and deployed"
+  - id: ID_APIP_DEPLOY_013
+    title: "Deploying an earlier build again serves it again."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying an earlier build again serves it again"
+  - id: ID_APIP_DEPLOY_014
+    title: "A build a gateway is serving cannot be deleted, and once it is undeployed it can be."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A build a gateway is serving cannot be deleted, and once it is undeployed it can be"
+  - id: ID_APIP_DEPLOY_015
+    title: "Preparing builds past the limit removes the oldest free build, keeps the one a gateway serves, and never reuses an identifier."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Preparing builds past the limit removes the oldest free build, keeps the one a gateway serves, and never reuses an identifier"
+  - id: ID_APIP_DEPLOY_016
+    title: "Undeploying from an environment the deployment is not in, or a second time, is refused and changes nothing."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Undeploying from an environment the deployment is not in, or a second time, is refused and changes nothing"
+  - id: ID_APIP_DEPLOY_017
+    title: "A build is deleted only through its own API and kind, and through another it is not found and stays listed."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A build is deleted only through its own API and kind, and through another it is not found and stays listed"
+  - id: ID_APIP_DEPLOY_018
+    title: "A build or deployment request that is not JSON, or a deployment that names no environment, is refused and creates nothing."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A build or deployment request that is not JSON, or a deployment that names no environment, is refused and creates nothing"

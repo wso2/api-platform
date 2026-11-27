@@ -58,8 +58,8 @@ const messages = defineMessages({
   },
   modeManaged: {
     id: 'gatewayCard.mode.managed',
-    defaultMessage: 'WSO2-managed',
-    description: 'Chip for a gateway WSO2 runs on the customer’s behalf.',
+    defaultMessage: 'Cloud gateway',
+    description: 'Chip for a cloud gateway, one the platform runs on the customer’s behalf.',
   },
   modeSelfHosted: {
     id: 'gatewayCard.mode.selfHosted',

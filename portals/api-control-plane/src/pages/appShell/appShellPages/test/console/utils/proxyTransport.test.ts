@@ -20,23 +20,25 @@ import { createIntl, createIntlCache } from 'react-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type ApiErrorKind } from '@/api/core/errors';
-import type { InvokeRestApiOnGatewayVariables } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import type { InvokeApiOnGatewayVariables } from '@/api/resources/gatewayRelay';
 import {
+  createGraphqlRelayFetch,
   createRelayFetch,
   encodeRequestBody,
   testConsoleRelayPlugin,
   toResponseLike,
+  type GraphqlRelayContext,
   type RelayContext,
 } from './proxyTransport';
 
 const intl = createIntl({ locale: 'en', messages: {} }, createIntlCache());
 
 /** What the transport asked to invoke, and how the invoke answers. */
-let sent: InvokeRestApiOnGatewayVariables | undefined;
+let sent: InvokeApiOnGatewayVariables | undefined;
 let answer: () => Promise<unknown>;
 
-/** Stands in for `useInvokeRestApiOnGateway`'s `mutateAsync`. */
-const invoke = async (variables: InvokeRestApiOnGatewayVariables) => {
+/** Stands in for `useInvokeApiOnGateway`'s `mutateAsync`. */
+const invoke = async (variables: InvokeApiOnGatewayVariables) => {
   sent = variables;
   if (variables.signal?.aborted) throw new ApiError('Request was canceled', { kind: 'aborted' });
   return answer();
@@ -107,7 +109,8 @@ describe('createRelayFetch — what reaches the Platform API', () => {
 
     expect(sent).toEqual({
       body: {
-        restApiId: 'api-1',
+        apiType: 'rest-api',
+        apiId: 'api-1',
         gatewayId: 'gw-prod',
         method: 'GET',
         path: '/order',
@@ -548,5 +551,107 @@ describe('createRelayFetch — a reply that is not a relay envelope', () => {
     });
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('createGraphqlRelayFetch', () => {
+  const ENDPOINT = 'https://gw.example.com/countries/v1/graphql';
+  let graphqlSent: InvokeApiOnGatewayVariables | undefined;
+  const graphqlInvoke = async (variables: InvokeApiOnGatewayVariables) => {
+    graphqlSent = variables;
+    return answer() as ReturnType<GraphqlRelayContext['invoke']>;
+  };
+  const relayFetch = (overrides: Partial<GraphqlRelayContext> = {}) =>
+    createGraphqlRelayFetch({
+      endpointUrl: ENDPOINT,
+      gatewayId: 'gw-prod',
+      graphqlApiId: 'countries',
+      intl,
+      invoke: graphqlInvoke,
+      ...overrides,
+    });
+  const post = (url = ENDPOINT, init: RequestInit = {}) =>
+    relayFetch()(url, {
+      body: '{"query":"{ __typename }"}',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'k' },
+      method: 'POST',
+      ...init,
+    });
+
+  beforeEach(() => {
+    graphqlSent = undefined;
+  });
+
+  it('relays the POST GraphiQL built, with its query string, headers and body', async () => {
+    await post(`${ENDPOINT}?apikey=query-key`);
+
+    expect(graphqlSent?.body).toEqual({
+      apiType: 'graphql-api',
+      apiId: 'countries',
+      gatewayId: 'gw-prod',
+      query: [{ name: 'apikey', value: 'query-key' }],
+      headers: [
+        { name: 'content-type', value: 'application/json' },
+        { name: 'x-api-key', value: 'k' },
+      ],
+      body: '{"query":"{ __typename }"}',
+    });
+  });
+
+  it('answers with a real Response carrying the gateway’s status, headers and body', async () => {
+    respondWith(relayed({ status: 400, statusText: 'Bad Request', body: '{"errors":[]}' }));
+
+    const response = await post();
+
+    expect(response).toBeInstanceOf(Response);
+    expect(response.status).toBe(400);
+    expect(response.statusText).toBe('Bad Request');
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(await response.json()).toEqual({ errors: [] });
+  });
+
+  it('decodes a base64 body, and builds a bodiless status without one', async () => {
+    respondWith(relayed({ body: btoa('{"data":{}}'), bodyEncoding: 'base64' }));
+    expect(await (await post()).text()).toBe('{"data":{}}');
+
+    respondWith(relayed({ status: 204, statusText: 'No Content', body: '' }));
+    expect((await post()).status).toBe(204);
+  });
+
+  it.each([
+    ['another origin', 'https://evil.example.com/countries/v1/graphql', {}],
+    ['another path', 'https://gw.example.com/admin', {}],
+    ['a GET', ENDPOINT, { method: 'GET' }],
+    ['a body that is not text', ENDPOINT, { body: new Blob(['{}']) }],
+  ])('refuses %s, and relays nothing', async (_name, url, init) => {
+    await expect(post(url, init)).rejects.toThrow(/cannot be sent as written/);
+    expect(graphqlSent).toBeUndefined();
+  });
+
+  it('asks for a gateway before relaying anything', async () => {
+    await expect(
+      relayFetch({ gatewayId: '' })(ENDPOINT, { method: 'POST', body: '{}' }),
+    ).rejects.toThrow(/Select a deployed gateway/);
+    expect(graphqlSent).toBeUndefined();
+  });
+
+  it('says why a request was not relayed', async () => {
+    failWith('http', 'GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED');
+    await expect(post()).rejects.toThrow(/not deployed to the selected gateway/);
+
+    failWith('network');
+    await expect(post()).rejects.toThrow(/could not reach this gateway/);
+  });
+
+  it('reports a cancelled request as an AbortError', async () => {
+    failWith('aborted');
+
+    await expect(post()).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('refuses a reply that is not a relay envelope', async () => {
+    respondWith({ hello: 'proxy page' });
+
+    await expect(post()).rejects.toThrow(/could not be sent/);
   });
 });

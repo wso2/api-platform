@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/event-gateway/gateway-runtime
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/envoyproxy/go-control-plane/envoy v1.40.0

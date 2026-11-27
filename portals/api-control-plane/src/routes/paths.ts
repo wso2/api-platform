@@ -153,6 +153,8 @@ export const routes = {
   serverError: '/server-error',
   organizations: '/organizations',
   organizationHome: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/home`,
+  // Where a user first lands in an organization: sends them on to a project's home.
+  organizationLanding: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/landing`,
   projects: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/projects`,
   // `new` sits where a project handle would; `RESERVED_HANDLE_SEGMENTS` keeps it from
   // being read back as a project.

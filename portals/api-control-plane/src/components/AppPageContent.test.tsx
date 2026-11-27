@@ -16,7 +16,10 @@
  * under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { runtimeConfig } from '@/config/runtime';
 
 import { renderWithProviders, screen } from '@/test/utils';
 
@@ -31,7 +34,7 @@ describe('AppPageContent', () => {
     );
 
     const page = screen.getByText('Page body');
-    const footer = screen.getByText(/WSO2 LLC/);
+    const footer = screen.getByText(/Choreo/);
     expect(page.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -39,10 +42,10 @@ describe('AppPageContent', () => {
     renderWithProviders(<AppPageContent>Page body</AppPageContent>);
 
     const expected: Record<string, string> = {
-      Documentation: 'https://wso2.com/api-platform/docs/',
-      Support: 'https://discord.com/invite/wso2',
-      'Terms of Use': 'https://wso2.com/api-platform/terms-of-use/',
-      'Privacy Policy': 'https://wso2.com/privacy-policy',
+      Documentation: 'https://choreolabs.com/documentation/api-management/cloud/',
+      Support: 'https://choreolabs.com/subscription',
+      'Terms of Use': 'https://choreolabs.com/cloud/terms-of-use/',
+      'Privacy Policy': 'https://choreolabs.com/privacy-policy',
     };
     Object.entries(expected).forEach(([name, href]) => {
       const link = screen.getByRole('link', { name });
@@ -52,16 +55,74 @@ describe('AppPageContent', () => {
     });
   });
 
+  describe('Cookie Settings link', () => {
+    afterEach(() => {
+      runtimeConfig.cookieProDomainScript = '';
+      runtimeConfig.gtmContainerId = '';
+      delete (window as Window & { OneTrust?: unknown }).OneTrust;
+    });
+
+    it('is hidden unless the cookie banner is configured', () => {
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      expect(screen.queryByRole('link', { name: 'Cookie Settings' })).not.toBeInTheDocument();
+    });
+
+    it('is hidden when an id is not in the format the tracking plugin accepts', () => {
+      runtimeConfig.cookieProDomainScript = '0198a8a4-0000-7000-8000-000000000000';
+      runtimeConfig.gtmContainerId = 'not-a-gtm-id';
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      expect(screen.queryByRole('link', { name: 'Cookie Settings' })).not.toBeInTheDocument();
+    });
+
+    it('opens the cookie preference center when clicked', async () => {
+      const toggle = vi.fn();
+      (window as Window & { OneTrust?: unknown }).OneTrust = { ToggleInfoDisplay: toggle };
+      runtimeConfig.cookieProDomainScript = '0198a8a4-0000-7000-8000-000000000000';
+      runtimeConfig.gtmContainerId = 'GTM-ABCD123';
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      await userEvent.click(screen.getByRole('link', { name: 'Cookie Settings' }));
+      expect(toggle).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Cookie Policy link', () => {
+    afterEach(() => {
+      runtimeConfig.cookiePolicyLink = '';
+    });
+
+    it('is hidden unless a deployment sets one', () => {
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      expect(screen.queryByRole('link', { name: 'Cookie Policy' })).not.toBeInTheDocument();
+    });
+
+    it('shows the https link in a new tab', () => {
+      runtimeConfig.cookiePolicyLink = 'https://choreolabs.com/cookie-policy/';
+      renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+      const link = screen.getByRole('link', { name: 'Cookie Policy' });
+      expect(link).toHaveAttribute('href', 'https://choreolabs.com/cookie-policy/');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it.each(['javascript:alert(1)', 'http://choreolabs.com/cookie-policy/', 'https://', 'https://exa mple.com'])(
+      'leaves out %s, which is not a usable https URL',
+      (value) => {
+        runtimeConfig.cookiePolicyLink = value;
+        renderWithProviders(<AppPageContent>Page body</AppPageContent>);
+        expect(screen.queryByRole('link', { name: 'Cookie Policy' })).not.toBeInTheDocument();
+      }
+    );
+  });
+
   it('replaces or removes the footer through the footer prop', () => {
     const { unmount } = renderWithProviders(
       <AppPageContent footer={<span>Custom footer</span>}>Page body</AppPageContent>,
     );
     expect(screen.getByText('Custom footer')).toBeInTheDocument();
-    expect(screen.queryByText(/WSO2 LLC/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Choreo/)).not.toBeInTheDocument();
     unmount();
 
     renderWithProviders(<AppPageContent footer={null}>Page body</AppPageContent>);
-    expect(screen.queryByText(/WSO2 LLC/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Choreo/)).not.toBeInTheDocument();
   });
 
   it('shows one footer when page containers are nested', () => {
@@ -72,6 +133,6 @@ describe('AppPageContent', () => {
     );
 
     expect(screen.getByText('Inner page')).toBeInTheDocument();
-    expect(screen.getAllByText(/WSO2 LLC/)).toHaveLength(1);
+    expect(screen.getAllByText(/Choreo/)).toHaveLength(1);
   });
 });

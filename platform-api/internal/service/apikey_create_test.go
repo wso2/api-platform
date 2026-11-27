@@ -21,12 +21,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"net/http"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -203,11 +206,28 @@ func TestCreateAPIKey_RejectsBlankSuppliedKey(t *testing.T) {
 	}
 }
 
+// TestCreateAPIKey_RejectsShortSuppliedKey covers the weak-key case: a supplied value shorter
+// than the minimum is refused with a 400 and nothing is persisted.
+func TestCreateAPIKey_RejectsShortSuppliedKey(t *testing.T) {
+	svc, keyRepo := newCreateAPIKeyTestService(t, nil)
+
+	supplied := "aaaa"
+	_, err := svc.CreateAPIKey(context.Background(), testAPIHandle, constants.RestApi, testOrgID, testUserID,
+		&api.CreateAPIKeyRequest{DisplayName: "Weak Key", ApiKey: &supplied})
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) || appErr.HTTPStatus != http.StatusBadRequest {
+		t.Fatalf("CreateAPIKey with a 4-character key = %v, want a 400 validation error", err)
+	}
+	if len(keyRepo.created) != 0 {
+		t.Errorf("persisted %d key(s) despite the short supplied apiKey", len(keyRepo.created))
+	}
+}
+
 // TestCreateAPIKey_UsesSuppliedKeyAndNeverEchoesIt covers the inject path external platforms
 // use. The supplied value must be what gets hashed, and must NOT come back in the response —
 // echoing a caller's secret adds a disclosure surface for no benefit.
 func TestCreateAPIKey_UsesSuppliedKeyAndNeverEchoesIt(t *testing.T) {
-	injected := "sk_example_1234567890abcdef"
+	injected := "sk_example_1234567890abcdef1234567890abcdef"
 
 	svc, keyRepo := newCreateAPIKeyTestService(t, nil)
 

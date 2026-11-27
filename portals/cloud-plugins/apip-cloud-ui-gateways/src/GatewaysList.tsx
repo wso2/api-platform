@@ -55,6 +55,7 @@ import NoGatewayState from './components/NoGatewayState';
 import type { AIWorkspaceHostPort } from './hostPort';
 import { hostingBlocked } from './utils/limits';
 import { NO_PERMISSION_TOOLTIP } from './permissions';
+import { GATEWAY_SETTINGS_OPEN, type GatewayAddEntryPoint } from './featureUsage';
 import type { Environment, Gateway, GatewayHosting } from './types';
 
 /**
@@ -156,8 +157,8 @@ export type GatewaysListProps = {
   canReadConfiguration: boolean;
   /** Whether the user may change a gateway's configuration; the drawer is read-only otherwise. */
   canWriteConfiguration: boolean;
-  /** Opens the Add Gateway form; `hosting` preselects its Hosting option. */
-  onAddClick: (hosting?: GatewayHosting) => void;
+  /** Opens the Add Gateway form: `entryPoint` says from where, for usage analytics; `hosting` preselects its Hosting option. */
+  onAddClick: (entryPoint: GatewayAddEntryPoint, hosting?: GatewayHosting) => void;
   onEditClick: (gatewayId: string) => void;
   /** A self-hosted gateway's row opens its overview (Quick Start, connection setup) there. */
   onViewClick: (gatewayId: string) => void;
@@ -521,7 +522,10 @@ const GatewaysList: FC<GatewaysListProps> = ({
         >
           <IconButton
             size="small"
-            onClick={() => setSettingsGateway(gateway)}
+            onClick={() => {
+              port.trackFeature?.(GATEWAY_SETTINGS_OPEN);
+              setSettingsGateway(gateway);
+            }}
             disabled={gateway.status === 'deleting'}
             aria-label={`Configure ${gateway.name}`}
           >
@@ -559,7 +563,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
             <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
               {gateways.length > 0 ? (
-                <AddGatewayButton onClick={() => onAddClick()} port={port} canCreate={canCreate} />
+                <AddGatewayButton onClick={() => onAddClick('gateways-list')} port={port} canCreate={canCreate} />
               ) : null}
             </Stack>
           </Box>
@@ -569,7 +573,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
           <Grid size={{ xs: 12 }}>
             {/* No create scope blocks both kinds; otherwise each kind answers for its own quota. */}
             <NoGatewayState
-              onAdd={onAddClick}
+              onAdd={(hosting) => onAddClick('gateways-empty-state', hosting)}
               blocked={
                 canCreate
                   ? hostingBlocked(port)
@@ -582,8 +586,8 @@ const GatewaysList: FC<GatewaysListProps> = ({
             <Box sx={{ display: 'flex', '& > button + button': { ml: '-1px' } }}>
               <HostingTab
                 icon={<Cloud size={20} />}
-                title="WSO2 managed API gateways"
-                description="Hosted and operated by WSO2 in the cloud."
+                title="Cloud API gateways"
+                description="Hosted and operated by Choreo in the cloud."
                 active={managedSummary.active}
                 inactive={managedSummary.inactive}
                 selected={activeHosting === 'managed'}

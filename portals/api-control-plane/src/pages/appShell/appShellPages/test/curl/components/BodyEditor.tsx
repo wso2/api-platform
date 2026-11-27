@@ -141,6 +141,19 @@ const messages = defineMessages({
     defaultMessage: 'Text',
     description: 'Raw body format option for plain text.',
   },
+  binaryUpload: {
+    id: 'apiControlPlane.pages.test.console.BodyEditor.binaryUpload',
+    defaultMessage:
+      'The request uploads the file {name} as its whole body. Choose another body type to send something else instead.',
+    description:
+      'Explains a binary body carried over from the console. {name} is the file name the user chose and is not translated.',
+  },
+  binary: {
+    id: 'apiControlPlane.pages.test.console.BodyEditor.binary',
+    defaultMessage: 'Binary file',
+    description:
+      'Body type option shown while the body is a single file upload carried over from the console.',
+  },
   urlEncoded: {
     id: 'apiControlPlane.pages.test.console.BodyEditor.urlEncoded',
     defaultMessage: 'URL encoded',
@@ -185,6 +198,8 @@ const FORMAT_LABELS: Record<RawFormat, string> = {
 };
 
 type BodyEditorProps = {
+  /** The file of a mirrored binary upload, named while the mode is `binary`. */
+  binaryFile?: string;
   fields: KeyValueRow[];
   mode: BodyMode;
   onChange: (body: string) => void;
@@ -209,6 +224,7 @@ type BodyEditorProps = {
  * `validateBody`, since Monaco provides no XML language service.
  */
 export function BodyEditor({
+  binaryFile,
   fields,
   mode,
   onChange,
@@ -274,6 +290,12 @@ export function BodyEditor({
               <MenuItem value="url-encoded">
                 <FormattedMessage {...messages.urlEncoded} />
               </MenuItem>
+              {/* Offered only while a mirrored upload is the body; it is left by choosing another. */}
+              {mode === 'binary' && (
+                <MenuItem value="binary">
+                  <FormattedMessage {...messages.binary} />
+                </MenuItem>
+              )}
             </Select>
           </FormControl>
 
@@ -324,6 +346,12 @@ export function BodyEditor({
           </Stack>
         )}
       </Stack>
+
+      {mode === 'binary' && binaryFile && (
+        <Typography color="text.secondary" variant="body2">
+          <FormattedMessage {...messages.binaryUpload} values={{ name: binaryFile }} />
+        </Typography>
+      )}
 
       {mode === 'raw' && (
         <>

@@ -87,7 +87,7 @@ export default function MarketingConsentGate({
     setOpen(false);
     port.notify?.(
       status === 'Confirmed'
-        ? 'Thanks — you are subscribed to WSO2 updates.'
+        ? 'Thanks — you are subscribed to Choreo updates.'
         : 'Got it — you will not receive marketing emails.',
       'success'
     );
@@ -107,7 +107,7 @@ export default function MarketingConsentGate({
       aria-labelledby={TITLE_ID}
     >
       <DialogTitle id={TITLE_ID} sx={{ fontWeight: 700 }}>
-        Welcome to WSO2 API Platform
+        Welcome to Choreo API Management
       </DialogTitle>
       <DialogContent>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>

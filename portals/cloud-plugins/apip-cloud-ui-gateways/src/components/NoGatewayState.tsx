@@ -257,8 +257,8 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd, blocked }) => (
       />
       <Option
         icon={<Cloud size={20} />}
-        title="WSO2 managed API gateway"
-        description="An API gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
+        title="Cloud gateway"
+        description="An API gateway hosted and maintained by Choreo. Ready in one click and bound to your development environment."
         action="Add Cloud API gateway"
         onClick={() => onAdd('managed')}
         disabled={Boolean(blocked?.managed)}

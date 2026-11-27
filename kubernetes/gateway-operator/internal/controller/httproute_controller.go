@@ -838,20 +838,12 @@ func forEachBounded(n, limit int, fn func(i int)) {
 
 func httprouteAuthFunc(c client.Client, log *slog.Logger, info *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
 	return func(ctx context.Context, req *http.Request) error {
-		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, c, info)
+		username, password, err := auth.ResolveBasicCredentials(ctx, c, info)
 		if err != nil {
 			if log != nil {
-				log.Warn("auth config lookup failed", slog.Any("error", err))
+				log.Warn("admin credentials lookup failed", slog.Any("error", err))
 			}
 			return err
-		}
-		var username, password string
-		var ok bool
-		if authConfig != nil {
-			username, password, ok = auth.GetBasicAuthCredentials(authConfig)
-		}
-		if !ok {
-			username, password = auth.GetDefaultBasicAuthCredentials()
 		}
 		req.Header.Set("Authorization", "Basic "+auth.EncodeBasicAuth(username, password))
 		return nil

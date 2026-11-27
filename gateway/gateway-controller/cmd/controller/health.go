@@ -513,6 +513,23 @@ func serveHealthWhileWaiting(cfg *config.Config, log *slog.Logger, checker *heal
 	return admin, 0, true
 }
 
+// withManagementHealth answers the management API's health and readiness paths with
+// the controller's health handler, ahead of the management middlewares: probes and
+// load balancers carry no credentials, and a probe every few seconds would otherwise
+// fill the access log and the API metrics. Paths match exactly, as on the admin
+// server, so no other path can be mistaken for a probe; everything else goes to next.
+func withManagementHealth(next, healthHandler http.Handler) http.Handler {
+	healthPath := managementAPIBasePath + "/health"
+	readyPath := managementAPIBasePath + "/ready"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == healthPath || r.URL.Path == readyPath {
+			healthHandler.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // startAdminServer starts the controller admin server, when enabled, serving the health
 // probe at once; its debug endpoints become available once SetAPIServer is called. It
 // returns nil when the admin server is disabled.

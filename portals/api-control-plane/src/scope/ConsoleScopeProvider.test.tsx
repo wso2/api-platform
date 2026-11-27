@@ -27,6 +27,7 @@ import { OrganizationSwitchError, type AuthState } from '../contexts/auth/authTy
 import { authStatePresets, makeAuthState } from '../test/mockAuthState';
 import { server } from '../test/server';
 import { act, renderWithProviders, screen, waitFor } from '../test/utils';
+import { OrganizationLandingPage } from '../pages/appShell/appShellPages/system/OrganizationLandingPage';
 import { OrganizationRedirectPage } from '../pages/appShell/appShellPages/system/SystemPages';
 import { ConsoleScopeProvider, useConsoleScope } from './ConsoleScopeProvider';
 
@@ -260,6 +261,7 @@ describe('ConsoleScopeProvider and the organization picker after a refused switc
           }
         >
           <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
+          <Route path={routes.organizationLanding()} element={<OrganizationLandingPage />} />
           <Route path={routes.organizationHome()} element={<OrganizationProbe />} />
         </Route>
       </Routes>,

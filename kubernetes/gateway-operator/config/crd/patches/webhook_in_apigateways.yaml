@@ -1,0 +1,22 @@
+# The APIGateway CRD serves versions with different schemas (v2alpha1 adds
+# spec.adminCredentials), so the API server converts between them through the
+# operator's conversion webhook. The Service below is a placeholder: kustomize
+# rewrites it for config/default, and the operator sets the real namespace, name and
+# caBundle at runtime (internal/conversionwebhook). `make helm-crds` copies this
+# spec.conversion into the operator chart's APIGateway CRD.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: apigateways.gateway.api-platform.wso2.com
+spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          namespace: system
+          name: webhook
+          path: /convert
+          port: 443
+      conversionReviewVersions:
+      - v1

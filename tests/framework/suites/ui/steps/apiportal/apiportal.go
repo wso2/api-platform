@@ -1221,6 +1221,11 @@ func (u *Steps) seedApplicationFixture(ctx context.Context) error {
 	if err := u.expect.Locator(page.Locator("#app-create-modal")).ToBeVisible(); err != nil {
 		return err
 	}
+	// The modal focuses the name field 60 ms after it opens. Filling the description before then
+	// can land its text in the name field, so the fields are filled only once the focus has moved.
+	if err := u.expect.Locator(page.Locator("#app-name-input")).ToBeFocused(); err != nil {
+		return fmt.Errorf("waiting for the create form to focus its name field: %w", err)
+	}
 	if err := page.Locator("#app-name-input").Fill(name); err != nil {
 		return fmt.Errorf("entering application name: %w", err)
 	}

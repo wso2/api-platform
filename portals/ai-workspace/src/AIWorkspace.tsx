@@ -20,10 +20,9 @@ import React, { useEffect } from "react";
 import { BrowserRouter } from "react-router-dom";
 import { IntlProvider } from "react-intl";
 import {
-  AcrylicOrangeTheme,
-  AcrylicPurpleTheme,
   ClassicTheme,
   HighContrastTheme,
+  OxygenTheme,
   OxygenUIThemeProvider,
   Box,
   LinearProgress,
@@ -127,16 +126,7 @@ export default function AIWorkspace({
     <BrandLogoProvider brandLogo={brandLogo}>
       <OxygenUIThemeProvider
         themes={[
-          {
-            key: "acrylicOrange",
-            label: "Acrylic Orange Theme",
-            theme: AcrylicOrangeTheme,
-          },
-          {
-            key: "acrylicPurple",
-            label: "Acrylic Purple Theme",
-            theme: AcrylicPurpleTheme,
-          },
+          { key: "oxygen", label: "Oxygen Theme", theme: OxygenTheme },
           {
             key: "highContrast",
             label: "High Contrast Theme",
@@ -144,7 +134,7 @@ export default function AIWorkspace({
           },
           { key: "classic", label: "Classic Theme", theme: ClassicTheme },
         ]}
-        initialTheme="acrylicOrange"
+        initialTheme="oxygen"
       >
         <BrowserRouter basename={BASE_PATH}>
           <BFFAuthProvider>

@@ -223,7 +223,8 @@ func (s *Steps) assertCloudResponseClientError(ctx context.Context) error {
 	return nil
 }
 
-func (s *Steps) assertCloudResponseContains(ctx context.Context, want string) error {
+// assertCloudResponseContains checks whether the published response body contains a text.
+func (s *Steps) assertCloudResponseContains(ctx context.Context, presence, want string) error {
 	want, err := expandCloudValue(ctx, want)
 	if err != nil {
 		return err
@@ -232,8 +233,8 @@ func (s *Steps) assertCloudResponseContains(ctx context.Context, want string) er
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(string(response.Body), want) {
-		return fmt.Errorf("expected the response body to contain %q, got %s", want, response.Describe())
+	if strings.Contains(string(response.Body), want) != (presence == "contain") {
+		return fmt.Errorf("expected the response body to %s %q, got %s", presence, want, response.Describe())
 	}
 	return nil
 }

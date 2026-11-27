@@ -22,7 +22,7 @@ import { isReadOnly, toResourceLimits } from './entitlementLimits';
 import { getEntitlementSummary } from './entitlementStore';
 import type { EntitlementsHostPort } from './hostPort';
 import ReadOnlyNotice from './ReadOnlyNotice';
-import { upgradeUrl } from './runtimeConfig';
+import { subscriptionsUrl } from './subscriptionsUrl';
 
 /**
  * Shortest gap between two focus-triggered reads, so alt-tabbing repeatedly
@@ -61,6 +61,8 @@ const UNCHANGED_RETRY_DELAYS_MS = [1_200, 3_000, 6_000];
 
 export type EntitlementsGateProps = {
   port: EntitlementsHostPort;
+  /** Cloud Console's origin, for the banner's subscriptions link; this page's own origin when unset. */
+  consoleUrl?: string;
 };
 
 /**
@@ -80,7 +82,7 @@ export type EntitlementsGateProps = {
  * while a wrong "denied" would deny a user their own product. The control plane
  * refuses an over-limit create regardless, so this is a courtesy, not the guard.
  */
-export default function EntitlementsGate({ port }: EntitlementsGateProps) {
+export default function EntitlementsGate({ port, consoleUrl }: EntitlementsGateProps) {
   const organization = port.orgHandle;
   const projectHandle = port.projectHandle;
   const setLimits = port.resourceLimits.set;
@@ -120,7 +122,7 @@ export default function EntitlementsGate({ port }: EntitlementsGateProps) {
       setReadOnly(
         readOnly,
         'Your organization is read-only because it has no active plan.',
-        readOnly ? <ReadOnlyNotice upgradeHref={upgradeUrl(organization)} /> : undefined
+        readOnly ? <ReadOnlyNotice upgradeHref={subscriptionsUrl(consoleUrl)} /> : undefined
       );
 
       // Did this read actually show us anything new? The first read of a
@@ -146,7 +148,7 @@ export default function EntitlementsGate({ port }: EntitlementsGateProps) {
       cancelled = true;
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
-  }, [organization, projectHandle, refresh, refreshSignal, setLimits, setReadOnly]);
+  }, [consoleUrl, organization, projectHandle, refresh, refreshSignal, setLimits, setReadOnly]);
 
   // A navigation is also a cheap signal that counts may be stale, so ask for a
   // re-read when the project changes. This bumps the same counter everything
