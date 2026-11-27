@@ -17,13 +17,14 @@
  */
 
 import { PageContent } from '@wso2/oxygen-ui';
-import { useEffect, useMemo, useState, type FC, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
 
 import { resolveProjectScope } from './api/analyticsApi';
 import ComingSoon from './components/ComingSoon';
 import { ErrorState, LoadingState } from './components/StateViews';
 import { ENABLE_ACP_PROJECT_FILTER } from './config/acpProjectFilter';
 import { SHOW_INSIGHTS_COMING_SOON } from './config/comingSoon';
+import { INSIGHTS_OPEN } from './featureUsage';
 import type { InsightsHostPort } from './hostPort';
 import InsightsEmbed from './InsightsEmbed';
 import type { InsightsEmbedProfile, InsightsScopeLevel } from './types';
@@ -165,6 +166,17 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     projectHandle,
     scopeKey,
   ]);
+
+  // Once per visit to each Insights page, for the scope the user opened. Not
+  // while the page only says Insights is coming soon: there is nothing to use.
+  const { trackFeature } = port;
+  const reportedScope = useRef<string | null>(null);
+  useEffect(() => {
+    if (!orgHandle || SHOW_INSIGHTS_COMING_SOON) return;
+    if (reportedScope.current === scopeKey) return;
+    reportedScope.current = scopeKey;
+    trackFeature?.(INSIGHTS_OPEN, { scope: requestedScopeLevel });
+  }, [orgHandle, requestedScopeLevel, scopeKey, trackFeature]);
 
   if (!orgHandle) {
     return withHostPageChrome(

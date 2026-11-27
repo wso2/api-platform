@@ -809,47 +809,54 @@ paths:
 
   /gateway-relay/invoke:
     post:
-      summary: Send a test request to a REST API through a gateway
+      summary: Send a test request to an API through a gateway
       description: |
-        Sends one request to the REST API (`restApiId`) as deployed on the gateway (`gatewayId`),
-        for the console's Test console, and returns the gateway's response as data. The request goes to the gateway's
-        endpoint plus the context of the REST API's deployment there, with that deployment's main
-        vhost as `Host` when it has one of its own, only if the REST API is deployed there and the
-        endpoint is on the control plane's allow list (`gateway_relay.egress.allow_hosts`).
-        Redirects are not followed, and the caller's own credentials never reach the gateway.
+        Sends one request to the REST or GraphQL API (`apiType`, `apiId`) as deployed on the
+        gateway (`gatewayId`), for the console's Test console, and returns the gateway's response
+        as data. The request goes to the gateway's endpoint plus the context of the API's
+        deployment there, only if the API is deployed there and the endpoint is on the control
+        plane's allow list (`gateway_relay.egress.allow_hosts`). A REST API's deployment sends its
+        main vhost as `Host` when it has one of its own; a GraphQL API is always a `POST` to its
+        context, on the gateway's default vhost. Redirects are not followed, and the caller's own
+        credentials never reach the gateway.
 
         Any answer from the gateway is a `200` carrying its status, headers and body; an error
-        status means the request was not relayed. A test can change data behind the REST API
-        and reaches gateways the caller may not reach directly, so it needs a manage scope.
-      operationId: InvokeRESTAPIOnGateway
+        status means the request was not relayed. The gateway applies the API's own security to
+        the request, so reading the API is enough to send one: the caller needs the read or
+        manage scope of the API's own kind.
+      operationId: InvokeAPIOnGateway
       security:
         - OAuth2Security:
-            - ap:rest_api:gateway:manage
+            - ap:rest_api:read
+            - ap:graphql_api:read
             - ap:rest_api:manage
+            - ap:graphql_api:manage
       tags:
         - REST APIs
+        - GraphQL APIs
         - Gateways
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RESTAPIInvokeRequest'
+              $ref: '#/components/schemas/APIInvokeRequest'
       responses:
         '200':
           description: The gateway answered; its response is in `response`
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RESTAPIInvokeResponse'
+                $ref: '#/components/schemas/APIInvokeResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            Forbidden. Either the token lacks the scopes, or the gateway's endpoint is not on the
-            control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`).
+            Forbidden. The token lacks the read or manage scope of the API's kind, or the gateway's
+            endpoint is not on the control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`,
+            `GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED`).
           content:
             application/json:
               schema:
@@ -860,9 +867,9 @@ paths:
                 message: This gateway cannot be reached from the control plane.
         '404':
           description: |
-            Not Found. The REST API does not exist in the caller's organization
-            (`REST_API_NOT_FOUND`), or it is not deployed to the gateway
-            (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
+            Not Found. The API does not exist in the caller's organization (`REST_API_NOT_FOUND`,
+            `GRAPHQL_API_NOT_FOUND`), or it is not deployed to the gateway
+            (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`, `GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
           content:
             application/json:
               schema:
@@ -877,8 +884,10 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           description: |
-            Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`),
-            or its endpoint is not an http or https address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
+            Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`,
+            `GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT`), or its endpoint is not an http or https
+            address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`,
+            `GRAPHQL_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
           content:
             application/json:
               schema:
@@ -890,7 +899,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
-          description: Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`).
+          description: |
+            Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`,
+            `GRAPHQL_API_INVOKE_UPSTREAM_UNREACHABLE`).
           content:
             application/json:
               schema:
@@ -903,7 +914,7 @@ paths:
         '503':
           description: |
             Service Unavailable. Too many test requests are in flight on this replica
-            (`REST_API_INVOKE_BUSY`); retry shortly.
+            (`REST_API_INVOKE_BUSY`, `GRAPHQL_API_INVOKE_BUSY`); retry shortly.
           content:
             application/json:
               schema:
@@ -914,7 +925,9 @@ paths:
                 message: Too many test requests are in flight; try again shortly.
                 trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
         '504':
-          description: Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`).
+          description: |
+            Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`,
+            `GRAPHQL_API_INVOKE_UPSTREAM_TIMEOUT`).
           content:
             application/json:
               schema:
@@ -972,7 +985,7 @@ paths:
                 value:
                   id: "production-key-01"
                   displayName: "Production API Key"
-                  apiKey: "sk_example_1234567890abcdef"
+                  apiKey: "sk_example_1234567890abcdef1234567890abcdef"
                   externalRefId: "ext-ref-12345"
                   expiresAt: "2026-12-31T23:59:59Z"
                   expiresIn:
@@ -10959,7 +10972,7 @@ components:
           description: Handle (URL-friendly slug) of the gateway to associate with the REST API
           example: prod-gateway-01
 
-    RESTAPIInvokeHeader:
+    APIInvokeHeader:
       type: object
       description: One header or query parameter. A list keeps repeated names.
       required:
@@ -10973,56 +10986,66 @@ components:
           type: string
           example: 3f2a9c
 
-    RESTAPIInvokeRequest:
+    APIInvokeRequest:
       type: object
       additionalProperties: false
       description: |
-        The test request to send. Hop-by-hop headers, `Host`, `Content-Length`, `Expect`,
-        `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are
-        refused; `Authorization` is allowed, for the API under test.
+        The test request to send, to the API named by `apiType` and `apiId`. A GraphQL API takes
+        no `method` or `path`: its request is a `POST` to its context, and `body` is required.
+        Hop-by-hop headers, `Host`, `Content-Length`, `Expect`, `Cookie` and the forwarding
+        headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are refused; `Authorization` is
+        allowed, for the API under test.
       required:
-        - restApiId
+        - apiType
+        - apiId
         - gatewayId
       properties:
-        restApiId:
+        apiType:
           type: string
-          description: Handle of the REST API to test
+          description: The API's type, which names the API with `apiId`, since a handle is unique only within its type
+          enum:
+            - rest-api
+            - graphql-api
+          example: rest-api
+        apiId:
+          type: string
+          description: Handle of the API to test
           example: pizza-api
         gatewayId:
           type: string
-          description: Handle of a gateway the REST API is deployed to
+          description: Handle of a gateway the API is deployed to
           example: prod-gateway-01
         method:
           type: string
-          description: One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case
-          default: GET
+          description: |
+            REST APIs only. One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case;
+            `GET` when omitted.
           example: POST
         path:
           type: string
           description: |
-            Path relative to the REST API's invoke URL, starting with `/`. It may not leave the
-            REST API's context, or carry a query or fragment.
-          default: /
+            REST APIs only. Path relative to the REST API's invoke URL, starting with `/`; `/` when
+            omitted. It may not leave the REST API's context, or carry a query or fragment.
           example: /orders
         query:
           type: array
           maxItems: 100
           items:
-            $ref: '#/components/schemas/RESTAPIInvokeHeader'
+            $ref: '#/components/schemas/APIInvokeHeader'
         headers:
           type: array
           maxItems: 50
           description: At most 50 headers, 16 KiB across all names and values
           items:
-            $ref: '#/components/schemas/RESTAPIInvokeHeader'
+            $ref: '#/components/schemas/APIInvokeHeader'
         body:
           type: string
           description: The request body, at most `gateway_relay.max_request_bytes` once decoded
           example: '{"item":"pizza"}'
         bodyEncoding:
-          $ref: '#/components/schemas/RESTAPIInvokeBodyEncoding'
+          $ref: '#/components/schemas/APIInvokeBodyEncoding'
 
-    RESTAPIInvokeBodyEncoding:
+    APIInvokeBodyEncoding:
       type: string
       description: How `body` is written; `base64` carries binary data
       enum:
@@ -11030,7 +11053,7 @@ components:
         - base64
       default: utf8
 
-    RESTAPIInvokeResponse:
+    APIInvokeResponse:
       type: object
       required:
         - outcome
@@ -11042,9 +11065,9 @@ components:
             - response
           description: Always `response`
         response:
-          $ref: '#/components/schemas/RESTAPIInvokeResult'
+          $ref: '#/components/schemas/APIInvokeResult'
 
-    RESTAPIInvokeResult:
+    APIInvokeResult:
       type: object
       description: The gateway's response
       required:
@@ -11067,12 +11090,12 @@ components:
           type: array
           description: Every response header, sorted, repeated names kept
           items:
-            $ref: '#/components/schemas/RESTAPIInvokeHeader'
+            $ref: '#/components/schemas/APIInvokeHeader'
         body:
           type: string
           description: The response body; base64 when it is not valid UTF-8
         bodyEncoding:
-          $ref: '#/components/schemas/RESTAPIInvokeBodyEncoding'
+          $ref: '#/components/schemas/APIInvokeBodyEncoding'
         truncated:
           type: boolean
           description: The body exceeded `gateway_relay.max_response_bytes` and was clipped
@@ -12483,10 +12506,12 @@ components:
         apiKey:
           type: string
           description: Optional. A pre-minted plain text API key to inject (used by external
-            platforms pushing a key to hybrid gateways). Omit it to have the server
-            generate one, the generated value is returned once in the response and
-            is never retrievable afterwards.
-          example: "sk_example_1234567890abcdef"
+            platforms pushing a key to hybrid gateways), 36 to 128 characters long. Omit it
+            to have the server generate one, the generated value is returned once in the
+            response and is never retrievable afterwards.
+          minLength: 36
+          maxLength: 128
+          example: "sk_example_1234567890abcdef1234567890abcdef"
         externalRefId:
           type: string
           description: Optional reference ID for tracing purposes (from external platforms)
@@ -12555,8 +12580,11 @@ components:
           example: "Production API Key (Updated)"
         apiKey:
           type: string
-          description: The new plain text API key value that will be hashed before storage
-          example: "sk_example_new1234567890abcdef"
+          description: The new plain text API key value that will be hashed before storage,
+            36 to 128 characters long
+          minLength: 36
+          maxLength: 128
+          example: "sk_example_new1234567890abcdef1234567890abcdef"
         externalRefId:
           type: string
           description: Optional reference ID for tracing purposes (from external platforms)
@@ -13144,7 +13172,11 @@ components:
           example: "my-app-handle"
         subscriptionToken:
           type: string
-          description: Opaque subscription token for API invocation via Subscription-Key header
+          description: |
+            Opaque subscription token for API invocation via the Subscription-Key header.
+            Returned when the subscription is created, and on a read (get, list, update)
+            only to the subscriber the subscription belongs to. A read by any other user
+            returns the subscription without this field.
         subscriptionPlanId:
           type: string
           description: Handle (slug) of the subscription plan

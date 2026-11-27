@@ -30,6 +30,14 @@ export const DEPLOYMENT_UNDEPLOY_CLICK = 'apip.lifecycle.deployment-undeploy-cli
 export const GATEWAY_REGISTER_CLICK = 'apip.gateway.gateway-register-click';
 export const GATEWAY_TOKEN_REGENERATE_CLICK = 'apip.gateway.gateway-token-regenerate-click';
 export const GATEWAY_SETUP_COMMAND_COPY = 'apip.gateway.gateway-setup-command-copy';
+export const API_DEPLOY_OPEN = 'apip.lifecycle.api-deploy-open';
+export const BUILD_DELETE_CLICK = 'apip.lifecycle.build-delete-click';
+
+/**
+ * The taxonomy's `deploy_mode`: ship an existing build, build and deploy in one
+ * step, or promote the build running in the previous environment.
+ */
+export type DeployMode = 'deploy' | 'build-and-deploy' | 'promote';
 
 /**
  * The taxonomy's `artifact_kind` for an artifact this page deploys. Only the

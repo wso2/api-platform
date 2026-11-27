@@ -1,0 +1,411 @@
+# Scenario list: Health and readiness endpoints (HEALTH).
+#
+# The liveness and readiness endpoints of the gateway controller, gateway runtime, Platform API and
+# API Portal, which orchestrators and uptime monitors probe.
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: HEALTH
+title: Health and readiness endpoints
+scenarios:
+  - id: HEALTH-001
+    title: Probe the gateway controller liveness and readiness endpoints; each answers 200 with every check up.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "The controller <role> endpoint reports every check up"
+  - id: HEALTH-002
+    title: Probe gateway controller readiness with HEAD; it answers the status with no body.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "A HEAD probe of controller readiness gets the status without a body"
+  - id: HEALTH-003
+    title: Send a method other than GET or HEAD to gateway controller readiness; it is refused with 405.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Controller readiness refuses the <method> method"
+  - id: HEALTH-004
+    title: Probe the legacy gateway controller /health path; it answers 200, marked deprecated with a Link to its successor /api/admin/v1/health.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "The legacy controller liveness path still answers and points at its successor"
+  - id: HEALTH-005
+    title: Probe a bare /ready on the gateway controller; it is not found, since readiness has no legacy path.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "The controller has no legacy readiness path"
+  - id: HEALTH-006
+    title: Probe gateway runtime readiness; it answers 200 and reports the policy engine and its xDS connection up.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Runtime readiness reports the policy engine and its control-plane connection"
+  - id: HEALTH-007
+    title: Probe gateway runtime liveness; it answers 200 and reports no dependency check, so the controller link never restarts the runtime.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Runtime liveness reports only the policy engine"
+  - id: HEALTH-008
+    title: Probe the gateway runtime health routes with any Host header; they answer on every virtual host.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Runtime health routes answer on any virtual host"
+  - id: HEALTH-009
+    title: Request another path under /_gateway-health; it answers 404 with no health result.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "A path under the runtime health namespace that is not a health route is not answered as one"
+  - id: HEALTH-010
+    title: Create an API whose context or operation resolves into the reserved /_gateway-health namespace; it is refused with a client error and the health route keeps answering.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "An API cannot claim a route in the reserved health namespace (<case>)"
+  - id: HEALTH-011
+    title: Probe a gateway runtime health route from a client outside router.health.allowed_clients; it is refused with 403.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/health_access.feature
+          scenario: "A client outside the allowed list is refused on <path>"
+  - id: HEALTH-012
+    title: Probe a gateway runtime health route from a refused client with a forged forwarding header; it is still refused.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/health_access.feature
+          scenario: "A forged <header> header does not admit a refused client"
+  - id: HEALTH-013
+    title: Probe the gateway runtime health routes from a refused client under any Host header; it is refused on every virtual host.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/health_access.feature
+          scenario: "A refused client is refused on every virtual host"
+  - id: HEALTH-014
+    title: Call an API while the health routes are restricted; API traffic is served as usual.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/health_access.feature
+          scenario: "API traffic is not affected by the health restriction"
+  - id: HEALTH-015
+    title: Restrict the gateway runtime health routes only; the gateway controller health endpoints keep their own allowed list and still answer.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/health_access.feature
+          scenario: "The controller health endpoints keep their own allowed list"
+  - id: HEALTH-016
+    title: Stop the gateway controller briefly; the runtime stays ready within the grace window, keeps serving its routes, and reconnects when the controller returns.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_controller_outage.feature
+          scenario: "The runtime stays ready and keeps serving its routes while the controller is down"
+  - id: HEALTH-017
+    title: Probe Platform API, API Portal and the gateway controller while their database is reachable; each is ready.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/health/database_outage.feature
+          scenario: "Every component is ready while the database is reachable"
+  - id: HEALTH-018
+    title: Stop the shared database; every component that uses it answers 503 with the database check down and no connection details, and each recovers when the database returns.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/health/database_outage.feature
+          scenario: "A stopped database fails every component that uses it, and each recovers when it returns"
+  - id: HEALTH-019
+    title: Hang the database; readiness fails within the check timeout instead of hanging the probe.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/health/database_outage.feature
+          scenario: "A hung database fails readiness within the check timeout instead of hanging the probe"
+  - id: HEALTH-020
+    title: Probe the Platform API liveness and readiness endpoints; each answers 200 with every check up.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/core/health.feature
+          scenario: "The Platform API <role> endpoint reports every check up"
+  - id: HEALTH-021
+    title: Probe Platform API readiness with HEAD; it answers the status with no body.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/core/health.feature
+          scenario: "A HEAD probe of Platform API readiness gets the status without a body"
+  - id: HEALTH-022
+    title: Send a method other than GET or HEAD to Platform API readiness; it is refused with 405 and an Allow header naming GET and HEAD.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/core/health.feature
+          scenario: "Platform API readiness refuses the <method> method and names the allowed ones"
+  - id: HEALTH-023
+    title: Probe Platform API readiness with a bearer token it cannot verify; it still answers 200, since health needs no authentication.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/core/health.feature
+          scenario: "Platform API health ignores credentials it cannot verify"
+  - id: HEALTH-024
+    title: Probe each API Portal health path; it answers 200 and reports its database up.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/core/health.feature
+          scenario: "The API Portal health path <path> reports its database up"
+  - id: HEALTH-025
+    title: Probe API Portal readiness with HEAD; it answers the status with no body.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/core/health.feature
+          scenario: "A HEAD probe of API Portal readiness gets the status without a body"
+  - id: HEALTH-026
+    title: Send a method other than GET or HEAD to API Portal readiness; it is refused with 405 and an Allow header naming GET and HEAD.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/core/health.feature
+          scenario: "API Portal readiness refuses the <method> method and names the allowed ones"
+  - id: HEALTH-027
+    title: Probe API Portal health; the response sets no session cookie.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/core/health.feature
+          scenario: "An API Portal health probe starts no session"
+  - id: HEALTH-028
+    title: Probe an API Portal health path from a client outside its allowed list; it is refused with 403 and no check result.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/security/health_access.feature
+          scenario: "A client outside the allowed list is refused on <path> without any check result"
+  - id: HEALTH-029
+    title: Probe API Portal health from a refused client with a forged forwarding header; it is still refused.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/security/health_access.feature
+          scenario: "A forged <header> header does not admit a refused client"
+  - id: HEALTH-030
+    title: Send POST to API Portal readiness from a refused client; it gets 403 with no Allow header, not 405.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/security/health_access.feature
+          scenario: "A refused client is refused before its method is considered"
+  - id: HEALTH-031
+    title: Probe API Portal health with HEAD from a refused client; it is refused.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/security/health_access.feature
+          scenario: "A HEAD probe from a refused client is refused too"
+  - id: HEALTH-032
+    title: Restrict API Portal health only; the Platform API health endpoints keep their own allowed list and still answer.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/security/health_access.feature
+          scenario: "The Platform API health endpoints keep their own allowed list"
+  - id: HEALTH-033
+    title: Send a method other than GET or HEAD to a gateway runtime health route; it is refused with 405 and Allow GET, HEAD, and a GET still answers.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Runtime health routes refuse the <method> method on <path>"
+  - id: HEALTH-034
+    title: Probe the gateway controller liveness and readiness endpoints on the management API port without credentials; each answers 200 with every check up.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "The controller <role> endpoint on the management API reports every check up without credentials"
+  - id: HEALTH-035
+    title: Call another management API path without credentials while the management health endpoints answer; it is refused with 401.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Other management API paths still require credentials"
+  - id: HEALTH-036
+    title: Probe the unprefixed /health and /ready paths on the management API port; neither is answered as a health endpoint.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "The management API has no unprefixed <path> health path"

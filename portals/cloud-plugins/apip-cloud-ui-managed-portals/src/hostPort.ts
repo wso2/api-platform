@@ -65,4 +65,11 @@ export type CloudHostPort = {
    * in `permissions.ts`.
    */
   permissions?: PermissionsPort;
+  /**
+   * Reports one use of an API Platform console feature, by its taxonomy code
+   * (`apip.developer-portal.portal-create-click`) and declared dimensions.
+   * Optional: a host that reports no feature usage omits it, and nothing is
+   * reported.
+   */
+  trackFeature?: (code: string, dimensions?: Readonly<Record<string, string>>) => void;
 };

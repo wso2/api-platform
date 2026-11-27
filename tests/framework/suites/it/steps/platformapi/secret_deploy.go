@@ -131,6 +131,8 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createRestAPIPlain)
 	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and API key authentication$`,
 		s.createRestAPIKeyAuth)
+	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and a sandbox upstream$`,
+		s.createRestAPISandbox)
 	sc.Step(`^I create a GraphQL API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
 		s.createGraphQLAPI)
 	sc.Step(`^I create a deployable "([^"]*)" "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
@@ -782,8 +784,21 @@ func (s *Steps) createRestAPIKeyAuth(ctx context.Context, id, projectHandle, api
 		{"name": "api-key-auth", "version": "v1", "params": map[string]any{"key": apiKeyHeader, "in": "header"}},
 	}
 	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{
-		"url": "http://testbench:3000",
+		"main": map[string]any{"url": "http://testbench:3000"},
 	}, policies)
+}
+
+// createRestAPISandbox creates a REST API with main and sandbox upstreams and one GET /whoami
+// operation: testbench answers it with path /whoami on main, and with environment sandbox and
+// path /sandbox/whoami on the sandbox upstream.
+func (s *Steps) createRestAPISandbox(ctx context.Context, id, projectHandle, apiContext string) error {
+	operations := []map[string]any{
+		{"request": map[string]any{"method": "GET", "path": "/whoami"}},
+	}
+	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{
+		"main":    map[string]any{"url": "http://testbench:3000"},
+		"sandbox": map[string]any{"url": "http://testbench:3000/sandbox"},
+	}, nil)
 }
 
 // createRestAPIWithSecret creates a REST API via platform-api with the given upstream block
@@ -792,12 +807,13 @@ func (s *Steps) createRestAPIKeyAuth(ctx context.Context, id, projectHandle, api
 func (s *Steps) createRestAPIWithSecret(
 	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstreamMain map[string]any,
 ) error {
-	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, upstreamMain, nil)
+	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{"main": upstreamMain}, nil)
 }
 
-// createRestAPI is createRestAPIWithSecret with optional API-level policies.
+// createRestAPI is createRestAPIWithSecret with optional API-level policies, taking the whole
+// upstream block (main, and sandbox when the API has one).
 func (s *Steps) createRestAPI(
-	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstreamMain map[string]any,
+	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstream map[string]any,
 	policies []map[string]any,
 ) error {
 	resolvedID, err := stepscommon.Expand(ctx, id)
@@ -822,7 +838,7 @@ func (s *Steps) createRestAPI(
 		"context":     resolvedContext,
 		"version":     "v1",
 		"projectId":   resolvedProject,
-		"upstream":    map[string]any{"main": upstreamMain},
+		"upstream":    upstream,
 	}
 	if operations != nil {
 		payload["operations"] = operations

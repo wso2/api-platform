@@ -11,7 +11,7 @@ The Gateway Operator is responsible for:
 - Reconciling gateway state with desired configuration
 - Optionally reconciling Kubernetes Gateway API resources (Gateway, HTTPRoute) for managed gateway classes
 
-All operator CRDs live in the API group **`gateway.api-platform.wso2.com`**, served at `v1alpha1` and `v1` (v1 is the storage version; the two schemas are identical and bridged with conversion `strategy: None`).
+All operator CRDs live in the API group **`gateway.api-platform.wso2.com`**, served at `v1alpha1` and `v1` (v1 is the storage version; the two schemas are identical and bridged with conversion `strategy: None`). `APIGateway` is also served at `v2alpha1`, which adds `spec.adminCredentials`; the operator converts between `APIGateway` versions with a conversion webhook (see [APIGateway versions and the conversion webhook](#apigateway-versions-and-the-conversion-webhook)).
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ helm install apip-operator ./operator-helm-chart --namespace gateway-operator-sy
 ```bash
 helm install apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system --create-namespace \
-  --set image.tag=0.10.1 \
+  --set image.tag=0.13.0 \
   --set gateway.controlPlaneHost=http://my-control-plane:3001
 ```
 
@@ -50,10 +50,13 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `replicaCount` | Number of operator replicas | `1` |
+| `replicaCount` | Number of operator replicas. APIGateway requests through `v1alpha1` or `v2alpha1` need a ready operator pod (conversion webhook), so consider `2` or more where those versions are used | `1` |
+| `conversionWebhook.port` | Container port of the APIGateway conversion webhook (the `<fullname>-webhook` Service exposes it on 443) | `9443` |
+| `conversionWebhook.maxRequestBytes` | Largest conversion request body accepted, in bytes (a list through `v1alpha1`/`v2alpha1` converts every object in one request) | `67108864` |
+| `conversionWebhook.pqcKeyExchange` | Prefer the hybrid post-quantum `X25519MLKEM768` TLS key exchange on the webhook; classical groups stay as fallback | `true` |
 | `watchNamespaces` | Namespaces to watch (cluster-wide if empty) | `[]` |
 | `image.repository` | Operator image repository | `ghcr.io/wso2/api-platform/gateway-operator` |
-| `image.tag` | Operator image tag | `0.10.1` |
+| `image.tag` | Operator image tag | `0.13.0` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `serviceAccount.create` | Create service account | `true` |
 | `serviceAccount.name` | Service account name | `controller-manager` |
@@ -66,7 +69,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 |-----------|-------------|---------|
 | `gateway.controlPlaneHost` | Control plane API endpoint | `http://platform-api:3001` |
 | `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://ghcr.io/wso2/api-platform/helm-charts/gateway` |
-| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.0` |
+| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `2026.11.26-r1` |
 | `gateway.helm.chartPath` | Local chart dir or `.tgz` path **inside the operator pod**; when non-empty, remote chart lookup (`chartName`/`chartVersion`) and registry auth are ignored | `""` |
 | `gateway.helm.valuesFilePath` | Path to gateway values file | `/config/gateway_values.yaml` |
 | `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
@@ -77,6 +80,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `gatewayApi.enabled` | Reconcile Kubernetes Gateway API resources (GatewayClass, Gateway, HTTPRoute). Set `false` where gateways are deployed only through `APIGateway`: the operator then watches no Gateway API resources, gets no Gateway API RBAC, runs without the Gateway API CRDs, and caches only the gateway chart's own Services and Deployments (by their `app.kubernetes.io/component` label; with gateway chart 2026.11.26-r1 or earlier, do not override it in the gateway's `deployment.labels`). The upgrade fails while a Gateway of a managed class, or an HTTPRoute with this operator's finalizer, still exists. Independent of `installStandardCRDs` | `true` |
 | `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
 | `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
 | `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |
@@ -99,6 +103,9 @@ Component container image tags come from the gateway chart; do not hardcode them
 | `reconciliation.maxRetryAttempts` | Maximum retry attempts for gateway operations | `10` |
 | `reconciliation.initialBackoff` | Initial retry backoff (Go duration) | `1s` |
 | `reconciliation.maxBackoffDuration` | Maximum exponential backoff (Go duration) | `60s` |
+| `cache.syncTimeout` | How long each controller waits for the informer cache's initial list at startup before the operator fails and restarts (Go duration). Raise it on clusters with many gateways if the leader logs `timed out waiting for cache to be synced` | `2m` |
+| `cache.excludeHelmReleaseSecrets` | Keep Secrets labeled `owner=helm` (Helm release storage) out of the operator's cache. A reference to such a Secret resolves as not found | `true` |
+| `cache.excludeGatewayChartConfigMaps` | Keep ConfigMaps labeled `app.kubernetes.io/name=gateway` (rendered by the gateway chart) out of the operator's cache. A reference to such a ConfigMap resolves as not found | `true` |
 
 ### Logging Configuration
 
@@ -139,11 +146,33 @@ The chart does not create Routes for API traffic. The hostnames a gateway serves
 
 ## Custom Resource Definitions (CRDs)
 
-The chart ships all operator CRDs (group `gateway.api-platform.wso2.com`, served at `v1alpha1` and `v1`, with `v1` as the storage version) in the Helm-native `crds/` directory. Helm installs everything under `crds/` automatically on `helm install`.
+The chart ships all operator CRDs (group `gateway.api-platform.wso2.com`, served at `v1alpha1` and `v1`, with `v1` as the storage version; `APIGateway` is also served at `v2alpha1`) in the Helm-native `crds/` directory. Helm installs everything under `crds/` automatically on `helm install`.
 
 > **Important — CRDs are install-only.** Helm applies `crds/` only when a CRD does not already exist, and **never updates or deletes** CRDs on `helm upgrade`, `helm uninstall`, or a re-`helm install` on a cluster where they already exist. This operator **requires the `v1` version to be served**, so:
 > - **Fresh clusters** (no pre-existing `gateway.api-platform.wso2.com` CRDs) get the correct v1+v1alpha1 CRDs and work out of the box.
 > - **Clusters that already have older (v1alpha1-only) CRDs** will NOT be upgraded by Helm. To move them to v1, delete the old CRDs first (`kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs kubectl delete`) then reinstall, or apply the updated CRDs manually with `kubectl apply -f crds/`.
+
+### APIGateway versions and the conversion webhook
+
+`APIGateway` is served at three versions:
+
+| Version | Schema |
+|---|---|
+| `v1` (storage) | The released schema. |
+| `v1alpha1` | Identical to `v1`. |
+| `v2alpha1` | `v1` plus `spec.adminCredentials`. |
+
+Because the versions differ, the API server converts `APIGateway` objects through the operator's conversion webhook (all other operator CRDs keep `strategy: None`):
+
+- **What a `v1` read shows.** A gateway is always stored as `v1`. On the stored object, `spec.adminCredentials` lives in the annotation `gateway.api-platform.wso2.com/conversion-data`. A `v2alpha1` read turns it back into `spec.adminCredentials` and hides the annotation. `kubectl get apigateway` reads `v1`, so it shows the annotation. Use `kubectl get apigateways.v2alpha1.gateway.api-platform.wso2.com` to see the field. Set or change `adminCredentials` through `v2alpha1`, not by editing the annotation.
+- **Older versions keep the field.** Reading and updating a gateway through `v1` or `v1alpha1` keeps its `adminCredentials`: those clients carry the annotation along. The operator re-validates the annotation and refuses to deploy a gateway whose value is invalid.
+- **The webhook needs a ready operator.** Requests through `v1` never call the webhook. Requests through `v1alpha1` or `v2alpha1` fail while no operator pod is ready, so run 2 or more replicas (`replicaCount`) where clients use those versions.
+- **The operator manages the webhook.** It creates and renews the webhook's TLS certificate itself (Secret `<fullname>-webhook-cert` in the release namespace: a 10-year self-signed CA and a 1-year serving certificate, renewed 90 days before expiry). No cert-manager is needed.
+- **A deleted certificate Secret is recreated.** The operator notices within about a minute and recreates it, with a new CA. The pods keep serving the old certificate in the meantime. When the CA changes, the CRD trusts the old and the new CA together for 15 minutes. A pod serves a certificate from the new CA only once the CRD trusts it, so no request is rejected. It points the `APIGateway` CRD's `spec.conversion` at the `<fullname>-webhook` Service with that CA.
+- **Rolling upgrades.** Every operator pod does this itself, without waiting for the leader lease. A rolling upgrade from a release without the webhook therefore completes even while an old pod still holds the lease. The Service selects only pods labelled `gateway.api-platform.wso2.com/conversion-webhook-server: "true"`, so conversion requests never reach an old pod that doesn't serve the webhook.
+- **The shipped CRD carries a placeholder.** The CRD in `crds/` has a placeholder Service, because Helm does not template `crds/`. The operator replaces it within seconds of starting, and again whenever `kubectl apply`, Helm or a GitOps tool puts the placeholder back. For this it has `get`/`list`/`watch`/`patch` on that one CRD only.
+- **Only while the CRD serves `v2alpha1`.** The operator points the CRD at its webhook only when the CRD serves `v2alpha1`, the version that needs conversion. An older chart's CRD, which serves only `v1` and `v1alpha1` with identical schemas, stays on `strategy: None`. If such a CRD still points at this operator's webhook, the operator sets it back to `None`. A rolled-back install is therefore never left converting through a webhook that is gone.
+- **TLS.** The webhook prefers the hybrid `X25519MLKEM768` key exchange, with classical groups as fallback (`conversionWebhook.pqcKeyExchange`). The certificates are ECDSA P-256, because the API server cannot verify post-quantum certificate signatures.
 
 The two most commonly used kinds:
 
@@ -166,6 +195,9 @@ spec:
     type: sqlite
   # controlPlane: { host: "...", tls: { enabled: true } }
   # configRef: { name: my-gateway-values }   # ConfigMap with gateway Helm values
+  # adminCredentials:                         # apiVersion v2alpha1 only; admin password from a Secret, see "Admin Credentials from a Secret"
+  #   username: gw-admin
+  #   passwordSecretRef: { name: gw-admin, key: password }
 ```
 
 ### 2. RestApi
@@ -253,6 +285,80 @@ data:
 EOF
 ```
 
+### Admin Credentials from a Secret
+
+Every gateway's management API admin user comes from one of these, in this order:
+
+| Source | Admin user |
+|---|---|
+| `spec.adminCredentials` | The username and the password in the Secret it references (below). |
+| Basic-auth users in the gateway's `configRef` values, or in `gateway.values` of this chart | The first listed user. |
+| Neither, on the gateway's first deployment | A password the operator generates (below). |
+| Neither, for a gateway an earlier operator version deployed | The `admin`/`admin` user it was deployed with, kept so its credential does not change. The operator logs a warning and emits a `DefaultAdminCredentials` Event on each deployment; set `spec.adminCredentials` to replace it. |
+
+The operator chart no longer ships a default `admin`/`admin` user in `gateway.values`.
+
+To keep the admin password out of ConfigMaps and Helm values, reference a Secret with `spec.adminCredentials`. It is served by `apiVersion: gateway.api-platform.wso2.com/v2alpha1`:
+
+```bash
+kubectl create namespace gw1
+
+kubectl create secret generic gateway-1-admin -n gw1 \
+  --from-literal=password="$(openssl rand -base64 24)"
+
+kubectl apply -f - <<EOF
+apiVersion: gateway.api-platform.wso2.com/v2alpha1
+kind: APIGateway
+metadata:
+  name: gateway-1
+  namespace: gw1
+spec:
+  apiSelector:
+    scope: LabelSelector
+    matchLabels:
+      gateway.api-platform.wso2.com/target: gateway-1
+  adminCredentials:
+    username: gw1-admin          # default "admin"
+    passwordSecretRef:
+      name: gateway-1-admin      # Secret in the APIGateway's namespace
+      key: password
+EOF
+```
+
+| Field | Description |
+|---|---|
+| `username` | Admin username. Defaults to `admin`. |
+| `passwordSecretRef` | `name` and `key` of the plain-text password in a Secret in the APIGateway's namespace. |
+
+- The operator passes only the Secret reference to the gateway chart (`gateway.config.controller.auth.basic.users[].passwordSecretRef`). The password never appears in Helm values, the gateway ConfigMap, or the Helm release.
+- The gateway-controller reads the password from the Secret key mounted read-only as a file, so it never enters the pod environment. There is no option to deliver it as an environment variable.
+- **Several users:** the `adminCredentials` user is listed first. Any other basic-auth users in the `configRef` values are kept after it, each with its own `password` or `passwordSecretRef`. A `configRef` user with the same username is replaced, and the operator's default `admin`/`admin` user is not kept. IDP settings in the `configRef` still apply.
+- **Without `adminCredentials`:** the operator signs in as the first `configRef` user, so list a user with the `admin` role first. Admin-only resources such as LLM providers and LLM provider templates fail with 403 for a `developer` user.
+- The operator fails closed: if the Secret or key is missing or empty, the gateway is not deployed and no request is sent to it with `admin`/`admin`. Creating or fixing the Secret triggers a redeploy.
+- Changing the Secret rolls the gateway-controller pod, which reads the password only at startup. The same applies to a Secret referenced by a `passwordSecretRef` in the `configRef` values, with or without `adminCredentials`. (A Kubernetes Gateway API `Gateway` is not rolled: restart its controller after rotating such a Secret.)
+- The API server rejects an empty `passwordSecretRef.name` or `key`, a `key` containing `..`, and a `username` containing `:` or control characters.
+- Trailing spaces, tabs and newlines are trimmed from the Secret value, as the gateway trims the mounted file, so a Secret created with `--from-file` works.
+- `adminCredentials` is declared by `v2alpha1` only; `v1` and `v1alpha1` keep their released schemas, so `kubectl` rejects a `v1` or `v1alpha1` manifest that sets it (`unknown field "spec.adminCredentials"`). Reading or updating the gateway through `v1` or `v1alpha1` keeps it (see [APIGateway versions and the conversion webhook](#apigateway-versions-and-the-conversion-webhook)). Changing `adminCredentials` through `v2alpha1` redeploys the gateway like any other spec change. Editing the `conversion-data` annotation directly through `v1` or `v1alpha1` does not change `metadata.generation`, but the operator still redeploys the gateway, because the annotation is part of its configuration hash.
+- **Needs a gateway chart that renders `passwordSecretRef`.** The operator passes the admin password only as a Secret reference, which gateway charts from wso2/api-platform#4423 on render (first released as `2026.11.26-r1`, the default `gateway.helm.chartVersion`); they list `basicAuthPasswordSecretRef` in the `Chart.yaml` annotation `gateway.api-platform.wso2.com/features`. Before installing or upgrading, the operator checks the configured chart for it whenever a basic-auth user reads its password from a Secret: the `adminCredentials` user, the generated admin user (below), or a `configRef` user with `passwordSecretRef`. With an older chart (published charts up to and including `2026.11.19-r1`) it leaves the Helm release unchanged and reports `Programmed=False` with an error naming the chart version. A gateway an earlier operator deployed with `admin`/`admin` keeps it and does not need the newer chart.
+
+#### Generated admin credential
+
+An `APIGateway` (or a Kubernetes Gateway API `Gateway`) with no admin user of its own gets one generated by the operator on its first deployment:
+
+- The operator creates the Secret `<gateway>-admin-credentials` in the gateway's namespace, with keys `username` (`admin`) and `password` (32 random letters and digits from `crypto/rand`). It is labelled `gateway.api-platform.wso2.com/admin-credentials: generated` and owned by the gateway, so deleting the gateway deletes it.
+- The gateway-controller reads the password from the Secret mounted as a file, never an environment variable or the Helm values. The operator also turns off the gateway chart's own credential generation (`gateway.controller.adminCredentials.generate: false`), so the chart never generates a password the operator does not know.
+- The operator annotates the gateway with `gateway.api-platform.wso2.com/admin-credentials-secret: <gateway>-admin-credentials`, so the gateway object shows where its password is. The annotation is informational: it is not part of the gateway's spec (GitOps tools that apply the spec leave it alone), and the operator removes it when the gateway stops using a generated credential, for example once `spec.adminCredentials` is set.
+- The operator emits an `AdminCredentialsGenerated` Event on the gateway. Read the credential with:
+
+  ```bash
+  kubectl get secret <gateway>-admin-credentials -n <namespace> -o jsonpath='{.data.password}' | base64 -d; echo
+  ```
+
+- Upgrades and redeployments reuse the Secret. Changing its `password` rolls the gateway-controller pod of an `APIGateway`; restart a Gateway API gateway's controller yourself.
+- If the Secret is deleted after the gateway was deployed with it, the operator does not generate a different credential: it reports `Programmed=False` (and an `AdminCredentialsUnavailable` Event) until the Secret is restored or `spec.adminCredentials` is set.
+- A Secret with that name that the operator did not create (no label) is neither used nor overwritten; the gateway is not deployed until it is renamed or referenced from `spec.adminCredentials`.
+- The generated credential needs a gateway chart from wso2/api-platform#4423 on (see "Needs a gateway chart that renders `passwordSecretRef`" above); with an older chart the gateway is not deployed.
+
 ### Deploy an API
 
 ```bash
@@ -300,7 +406,7 @@ Debug mode runs the operator under the Delve debugger for remote debugging:
 debug:
   enabled: true
   port: 2345
-  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.10.1-debug"
+  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.13.0-debug"
 ```
 
 Connect your debugger to the debug port:
@@ -389,10 +495,14 @@ resources:
 ```bash
 helm upgrade apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system \
-  --reuse-values
+  --reset-then-reuse-values
 ```
 
+`--reset-then-reuse-values` (Helm 3.14 or later) keeps the values you set on the release and takes every other value from the new chart. Do not use `--reuse-values` for this upgrade: it also keeps the previous chart's defaults, including the `admin`/`admin` user earlier charts shipped in `gateway.values`, so every new gateway would keep getting that shared credential instead of a generated one. Gateways an earlier operator already deployed with `admin`/`admin` keep it either way; the operator recognises them from their Helm release.
+
 > **Note:** CRDs in `crds/` are **not** re-applied on `helm upgrade` (a Helm limitation). If a chart upgrade includes CRD schema changes, apply the updated CRDs manually with `kubectl apply -f crds/`. Because the operator requires the `v1` version to be served, do this **before** rolling out an operator image that expects it.
+>
+> **Upgrading to the release that adds `APIGateway` `v2alpha1`:** upgrade the chart first, then apply the CRDs with `kubectl apply --server-side --force-conflicts -f crds/`. `--force-conflicts` is needed because the operator owns the live `APIGateway` CRD's `spec.conversion` webhook Service and `caBundle`: without it the apply fails with field-ownership conflicts. The apply puts back the shipped placeholder (a `system/webhook` Service that does not exist), and the operator restores its own Service and CA as soon as it sees the change. Until then, requests through `v1alpha1` or `v2alpha1` that need conversion fail; requests through `v1` are not affected. This interruption is accepted: it is the same one Flux `crds: CreateReplace` causes on every chart upgrade, and in a test on kind no request failed at a one-second probe interval, because the operator restored the CRD first. Clients retry such failures, as OpenChoreo and Flux do on their next reconcile. The new `APIGateway` CRD converts through the operator's webhook, which only the new operator serves. Applying it before the upgrade makes `v1alpha1` requests fail until the new operator is ready. Requests through `v1` are not affected. The operator replaces the CRD's placeholder webhook Service within seconds.
 
 ### Upgrade with New Values
 
@@ -402,6 +512,16 @@ helm upgrade apip-operator ./operator-helm-chart \
   --set image.tag=<image-tag>
 ```
 
+### Roll Back to an Operator Without `APIGateway` `v2alpha1`
+
+Roll the chart back first. Then, once the new-version operator pods have terminated, replace the CRDs with the older chart's: `kubectl replace -f <older chart>/crds/`. Use `replace` rather than a server-side apply, which keeps the `spec.conversion` fields the operator owns. Replacing the CRDs sets the APIGateway CRD back to `strategy: None` and removes `v2alpha1`. Objects are stored as `v1`, so nothing is lost. Flux with `crds: CreateReplace` replaces the CRDs as part of the rollback; a new-version pod that is still running sees the older CRD and leaves it on `None` instead of pointing it at the webhook.
+
+What changes on a rollback:
+
+- Requests through `v1` keep working throughout. Requests through `v1alpha1` fail from when the webhook stops until the older CRD is in place. `v2alpha1` manifests stop working once it is.
+- Gateways using `spec.adminCredentials` or a generated credential are redeployed by the older operator with the `admin`/`admin` user from its base values; it cannot read the `conversion-data` annotation or Secret references. Other gateways are not redeployed.
+- The annotation, the generated `<gateway>-admin-credentials` Secrets and the webhook certificate Secret are left in place. Upgrading again restores each gateway's credential.
+
 ## Uninstallation
 
 ### Uninstall the Release
@@ -410,7 +530,7 @@ helm upgrade apip-operator ./operator-helm-chart \
 helm uninstall apip-operator --namespace gateway-operator-system
 ```
 
-**Note:** This does not delete the CRDs (Helm never removes CRDs installed from `crds/`). To delete them manually:
+**Note:** This does not delete the CRDs (Helm never removes CRDs installed from `crds/`). The `APIGateway` CRD then still points at the removed conversion webhook: requests through `v1` keep working (including the chart's finalizer cleanup job), while `v1alpha1` and `v2alpha1` requests fail until the operator is reinstalled or the CRDs are deleted. To delete them manually:
 
 ```bash
 kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs -r kubectl delete

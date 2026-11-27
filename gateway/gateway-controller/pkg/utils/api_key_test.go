@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -771,6 +772,61 @@ func TestUpdateAPIKey_ConfigLookup(t *testing.T) {
 	}
 	if updatedKey.Name != existingKey.Name {
 		t.Fatalf("expected database key name %q, got %q", existingKey.Name, updatedKey.Name)
+	}
+}
+
+// TestCreateAndUpdateAPIKey_RejectShortSuppliedKey covers the weak-key case: a supplied value
+// shorter than api_key.min_key_length is refused on create and on update, and nothing is stored.
+func TestCreateAndUpdateAPIKey_RejectShortSuppliedKey(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("weak-key", "payments-api")
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+	existingKey := newTestStoredAPIKey(cfg.UUID, "external-key", "creator-user", "external")
+	if err := db.SaveAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in database: %v", err)
+	}
+
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	user := &commonmodels.AuthContext{UserID: "creator-user", Roles: []string{"developer"}}
+	weakKey := "aaaa"
+
+	_, err := service.CreateAPIKey(APIKeyCreationParams{
+		Handle:  cfg.Handle,
+		Request: api.APIKeyCreationRequest{ApiKey: &weakKey},
+		User:    user,
+		Logger:  logger,
+	})
+	if !errors.Is(err, ErrInvalidAPIKeyValue) {
+		t.Fatalf("CreateAPIKey with a 4-character key = %v, want ErrInvalidAPIKeyValue", err)
+	}
+	savedKeys, err := db.GetAPIKeysByAPI(cfg.UUID)
+	if err != nil {
+		t.Fatalf("failed to read saved API keys from database: %v", err)
+	}
+	if len(savedKeys) != 1 {
+		t.Fatalf("expected only the seeded API key, got %d", len(savedKeys))
+	}
+
+	_, err = service.UpdateAPIKey(APIKeyUpdateParams{
+		Handle:     cfg.Handle,
+		APIKeyName: existingKey.Name,
+		Request:    api.APIKeyCreationRequest{ApiKey: &weakKey},
+		User:       user,
+		Logger:     logger,
+	})
+	if !errors.Is(err, ErrInvalidAPIKeyValue) {
+		t.Fatalf("UpdateAPIKey with a 4-character key = %v, want ErrInvalidAPIKeyValue", err)
+	}
+	updatedKey, err := db.GetAPIKeysByAPIAndName(cfg.UUID, existingKey.Name)
+	if err != nil {
+		t.Fatalf("failed to read API key from database: %v", err)
+	}
+	if updatedKey.APIKey != existingKey.APIKey {
+		t.Fatal("a rejected update changed the stored key")
 	}
 }
 

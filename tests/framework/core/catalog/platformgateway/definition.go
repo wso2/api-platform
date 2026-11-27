@@ -40,11 +40,20 @@ const (
 	svcRuntime    = "gateway-runtime"
 )
 
+// The fixture federated service account tokens of the gateway runtime's Azure Workload Identity.
+const (
+	azureIdentityTokenFile      = "tests/framework/core/catalog/platformgateway/resources/azure/identity-token"
+	azureIdentityTokenEmptyFile = "tests/framework/core/catalog/platformgateway/resources/azure/identity-token-empty"
+)
+
 // PlatformGateway returns the Platform Gateway component definition.
 func PlatformGateway() *components.Definition {
 	env := map[string]string{
 		EnvImagePGController: shared.Image(shared.EnvImageGatewayController, shared.GatewayControllerRunImage()).Ref,
 		EnvImagePGRuntime:    shared.Image(shared.EnvImageGatewayRuntime, shared.GatewayRuntimeRunImage()).Ref,
+		// The controller reads both: the router value shapes the runtime's health routes.
+		envControllerHealthAllowedClients: shared.HealthAllowedClients,
+		envRouterHealthAllowedClients:     shared.HealthAllowedClients,
 	}
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
@@ -63,6 +72,10 @@ func PlatformGateway() *components.Definition {
 				// A block overrides this with resources/aws/workload-credentials to give the
 				// runtime AWS workload credentials.
 				"aws-credentials": "tests/framework/core/catalog/platformgateway/resources/aws/credentials",
+				// The federated service account token the azure-authentication policy reads through
+				// AZURE_FEDERATED_TOKEN_FILE. A block overrides this with
+				// resources/azure/identity-token-empty to give the runtime an empty token.
+				"azure-identity-token": azureIdentityTokenFile,
 			},
 			GeneratedFiles: gatewayGeneratedFiles(),
 			Env:            env,
@@ -204,5 +217,8 @@ func gatewayGeneratedFiles() map[string][]byte {
 		// The testbench Jev service's certificate, which the runtime trusts through
 		// SSL_CERT_DIR so a Jev policy can call the mock over HTTPS.
 		"testbench-ca/jev.pem": shared.JevTLS().CertPEM,
+		// The testbench OIDC identity provider's certificate, trusted the same way so a policy
+		// can fetch the provider's keys over HTTPS without disabling certificate verification.
+		"testbench-ca/oidc.pem": shared.IdentityProviderTLS().CertPEM,
 	}
 }

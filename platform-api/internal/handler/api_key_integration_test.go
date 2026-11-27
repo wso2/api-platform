@@ -205,7 +205,7 @@ func TestAPIKeyHandler_CreateWithSuppliedValueOmitsApiKey(t *testing.T) {
 	r, _, cleanup := setupAPIKeyHandlerTestEnv(t)
 	t.Cleanup(cleanup)
 
-	rec := postAPIKey(t, r, `{"displayName": "Injected Key", "apiKey": "sk_example_1234567890abcdef"}`)
+	rec := postAPIKey(t, r, `{"displayName": "Injected Key", "apiKey": "sk_example_1234567890abcdef1234567890abcdef"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}

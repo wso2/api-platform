@@ -518,3 +518,129 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A deprecated API is still served by the portal"
+  - id: ID_APIP_PORTAL_059
+    title: "A consumer creates an application, reads it, sees it listed, renames it and deletes it on the portal."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A consumer creates an application, renames it and deletes it"
+  - id: ID_APIP_PORTAL_060
+    title: "A consumer subscribes to a published API with a plan the API offers, is refused a plan it does not offer, and cannot subscribe twice."
+    priority: P0
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A consumer subscribes with a plan the API offers, not with one it does not offer, and only once"
+  - id: ID_APIP_PORTAL_061
+    title: "A consumer moves a subscription to another plan the API offers."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A consumer moves a subscription to another plan the API offers"
+  - id: ID_APIP_PORTAL_062
+    title: "A consumer suspends a subscription and resumes it."
+    priority: P2
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A consumer suspends a subscription and resumes it"
+  - id: ID_APIP_PORTAL_063
+    title: "Regenerating a subscription's token replaces it, and the subscription keeps the new token."
+    priority: P2
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Regenerating a subscription's token replaces it"
+  - id: ID_APIP_PORTAL_064
+    title: "A consumer unsubscribes, the subscription is gone, and the consumer can subscribe again."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A consumer unsubscribes, the subscription is gone, and the consumer can subscribe again"
+  - id: ID_APIP_PORTAL_065
+    title: "The gateway accepts a consumer's API key from the portal until the consumer revokes it."
+    priority: P0
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The gateway accepts a consumer's API key from the portal, then only its regenerated value, and none once it is revoked"
+  - id: ID_APIP_PORTAL_066
+    title: "Regenerating a consumer's API key makes the gateway accept the new value and refuse the old one."
+    priority: P1
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The gateway accepts a consumer's API key from the portal, then only its regenerated value, and none once it is revoked"
+  - id: ID_APIP_PORTAL_067
+    title: "A consumer's API key is listed for the API and for the consumer, and for an application only while it is associated with it; a revoked key is listed as revoked."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A consumer's API key is listed for the API and the consumer, and for an application only while associated with it"
+  - id: ID_APIP_PORTAL_068
+    title: "An API that validates subscriptions refuses a request without a subscription token and accepts the token of the consumer's subscription from the portal."
+    priority: P0
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The gateway serves an API that validates subscriptions only to the current token of an active subscription"
+  - id: ID_APIP_PORTAL_069
+    title: "A subscription the consumer suspends on the portal is refused by the gateway, and accepted again once resumed."
+    priority: P1
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The gateway serves an API that validates subscriptions only to the current token of an active subscription"
+  - id: ID_APIP_PORTAL_070
+    title: "After the consumer regenerates a subscription's token on the portal, the gateway accepts the new token and refuses the old one."
+    priority: P1
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The gateway serves an API that validates subscriptions only to the current token of an active subscription"
+  - id: ID_APIP_PORTAL_071
+    title: "After the consumer unsubscribes on the portal, the gateway refuses the subscription's token."
+    priority: P0
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The gateway serves an API that validates subscriptions only to the current token of an active subscription"
+  - id: ID_APIP_PORTAL_072
+    title: "The gateway accepts an access token issued with a consumer's OAuth2 keys from the portal, and refuses a request without a token or with a forged one; the keys are listed for an application only while associated with it."
+    priority: P0
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The gateway accepts an access token issued with a consumer's OAuth2 keys from the portal, and refuses a request without one or with a forged one"

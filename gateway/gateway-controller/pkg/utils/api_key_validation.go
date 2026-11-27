@@ -39,9 +39,11 @@ var (
 )
 
 // ValidateAPIKeyValue validates a plain API key value for creation or update.
-// Use this for both REST create/update and external events (apikey.created, apikey.updated).
+// It applies to plain-text keys supplied through the REST API. Keys from platform API events
+// (apikey.created, apikey.updated) arrive only as hashes, so platform-api checks their length
+// before hashing.
 // Min and max length are read from the service's APIKeyConfig; defaults are used if not configured.
-// Returns a descriptive error if the key is empty, too short, or too long.
+// Returns a descriptive error wrapping ErrInvalidAPIKeyValue if the key is empty, too short, or too long.
 // Note: Expects the caller to trim whitespace before validation.
 func (s *APIKeyService) ValidateAPIKeyValue(plainKey string) error {
 	minLength := constants.DefaultMinAPIKeyLength
@@ -55,13 +57,13 @@ func (s *APIKeyService) ValidateAPIKeyValue(plainKey string) error {
 		}
 	}
 	if plainKey == "" {
-		return fmt.Errorf("API key cannot be empty")
+		return fmt.Errorf("%w: API key cannot be empty", ErrInvalidAPIKeyValue)
 	}
 	if len(plainKey) < minLength {
-		return fmt.Errorf("API key is too short (minimum %d characters required)", minLength)
+		return fmt.Errorf("%w: API key is too short (minimum %d characters required)", ErrInvalidAPIKeyValue, minLength)
 	}
 	if len(plainKey) > maxLength {
-		return fmt.Errorf("API key is too long (maximum %d characters allowed)", maxLength)
+		return fmt.Errorf("%w: API key is too long (maximum %d characters allowed)", ErrInvalidAPIKeyValue, maxLength)
 	}
 	return nil
 }

@@ -129,6 +129,55 @@ func TestEnsureStopsWaitingWhenTheContextEnds(t *testing.T) {
 	require.ErrorIs(t, starter.Ensure(ctx, "org", prerequisites), context.DeadlineExceeded)
 }
 
+func TestEnsurePreparesAgainAfterAPreparationThatItsCallersContextEnded(t *testing.T) {
+	starter := New(nil)
+	var attempts atomic.Int32
+	prerequisites := []Prerequisite{{Name: "slow", Ensure: func(ctx context.Context) error {
+		if attempts.Add(1) == 1 {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		return nil
+	}}}
+
+	expiring, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, starter.Ensure(expiring, "org", prerequisites), context.DeadlineExceeded)
+
+	require.NoError(t, starter.Ensure(context.Background(), "org", prerequisites),
+		"a failure of the first caller's own budget does not say the prerequisite cannot be prepared")
+	require.EqualValues(t, 2, attempts.Load())
+	require.NoError(t, starter.Ensure(context.Background(), "org", prerequisites))
+	require.EqualValues(t, 2, attempts.Load(), "a preparation that succeeded is still shared")
+}
+
+func TestEnsureLetsAWaiterPrepareAgainWhenTheFirstCallersContextEnds(t *testing.T) {
+	starter := New(nil)
+	var attempts atomic.Int32
+	started := make(chan struct{})
+	prerequisites := []Prerequisite{{Name: "slow", Ensure: func(ctx context.Context) error {
+		if attempts.Add(1) == 1 {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		return nil
+	}}}
+
+	first, cancelFirst := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- starter.Ensure(first, "org", prerequisites) }()
+	<-started
+
+	waiterDone := make(chan error, 1)
+	go func() { waiterDone <- starter.Ensure(context.Background(), "org", prerequisites) }()
+	cancelFirst()
+
+	require.ErrorIs(t, <-firstDone, context.Canceled)
+	require.NoError(t, <-waiterDone, "the waiter's own context is alive, so it prepares the organisation itself")
+	require.EqualValues(t, 2, attempts.Load())
+}
+
 func TestEnsureRejectsInvalidInput(t *testing.T) {
 	starter := New(nil)
 	require.Error(t, starter.Ensure(context.Background(), "", nil), "a blank key")

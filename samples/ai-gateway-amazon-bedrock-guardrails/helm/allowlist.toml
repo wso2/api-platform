@@ -1,0 +1,6 @@
+# Gateway-wide allowlist for the aws-bedrock-guardrail policy. Root-level keys, so they must stay above
+# the first [table] in config.toml. helm/add-allowlist.sh fills in the values and adds them.
+awsbedrock_allowed_regions       = ["${AWS_REGION}"]
+awsbedrock_allowed_guardrail_ids = ["${BASELINE_GUARDRAIL_ID}", "${SUPPORT_GUARDRAIL_ID}"]
+awsbedrock_allowed_role_arns     = []
+awsbedrock_allowed_auth_types    = ["default-credential-chain"]

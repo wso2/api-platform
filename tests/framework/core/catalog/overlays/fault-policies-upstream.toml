@@ -1,0 +1,4 @@
+# For the gateway-fault-policies-upstream block: backend error statuses and router failures run an
+# API's fault policies instead of its response policies.
+[policy_engine.fault_policies]
+handle_upstream_faults = true

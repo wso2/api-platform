@@ -6,6 +6,11 @@ port = '{{ env "APIP_AP_SERVER_PORT" "9543" }}'
 [api_portal.logging]
 console_only = true
 
+[api_portal.health]
+# The test suites call /health and /ready from the compose network or the host,
+# never from loopback inside the container, so allow the private ranges too.
+allowed_clients = ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+
 [api_portal.database]
 driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "postgres" }}'
 host     = '{{ env "APIP_AP_DATABASE_HOST" "" }}'

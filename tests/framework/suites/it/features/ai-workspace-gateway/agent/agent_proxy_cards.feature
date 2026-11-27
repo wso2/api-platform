@@ -536,7 +536,7 @@ Feature: Agent Cards are previewed through the control plane and served by the g
   Scenario: A protected card requires authentication on both bindings
     Given I generate a unique resource name from "card-protected" and store it as "agentHandle"
     And I generate a unique API context from "/card-protected" and store it as "agentContext"
-    And I generate a unique value from "card-protected-key" and store it as "keyValue"
+    And I generate a unique value from "card-protected-key-api-key-0123456789" and store it as "keyValue"
     And I generate a unique resource name from "card-protected-key-id" and store it as "keyId"
     # No authentication policy is attached, so the protected card must refuse every caller.
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:

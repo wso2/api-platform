@@ -18,7 +18,7 @@
 
 import { ReactElement, ReactNode, type ComponentProps } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { OxygenUIThemeProvider, WSO2Theme } from '@wso2/oxygen-ui';
+import { OxygenTheme, OxygenUIThemeProvider } from '@wso2/oxygen-ui';
 import { render, type RenderOptions } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider, ReactIntlErrorCode } from 'react-intl';
@@ -44,6 +44,10 @@ const handleTestIntlError: NonNullable<ComponentProps<typeof IntlProvider>['onEr
   if (err.code === ReactIntlErrorCode.MISSING_TRANSLATION) return;
   console.error(err);
 };
+
+// Module scope: the provider keys a theme-resolving effect on the array's identity.
+const TEST_THEMES = [{ key: 'choreoLabs', label: 'Choreo Labs', theme: OxygenTheme }];
+const TEST_THEME = TEST_THEMES[0].key;
 
 /** Test QueryClient: no retries/refetch so failures surface immediately. */
 export function makeTestQueryClient(): QueryClient {
@@ -101,7 +105,7 @@ export function renderWithProviders(
       timeZone={DISPLAY_TIME_ZONE}
       onError={handleTestIntlError}
     >
-      <OxygenUIThemeProvider theme={WSO2Theme}>
+      <OxygenUIThemeProvider initialTheme={TEST_THEME} themes={TEST_THEMES}>
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={routerEntries ?? [route]}>
             <AuthStateContext.Provider value={authState}>

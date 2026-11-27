@@ -141,3 +141,127 @@ test('without a configured connect timeout, the pool waits longer than the drive
     assert.strictEqual(pool.acquireTimeoutMillis, 20000);
     assert.strictEqual(pool.createTimeoutMillis, 20000);
 });
+
+test('require and verify-ca are rejected for SQL Server; disable and verify-full are accepted', () => {
+    const { buildConnectionConfig } = require(ADAPTER_PATH);
+    assert.throws(
+        () => buildConnectionConfig({ database: { sslMode: 'require' } }),
+        /ssl_mode.*not supported for SQL Server/
+    );
+    assert.throws(
+        () => buildConnectionConfig({ database: { sslMode: 'verify-ca' } }),
+        /ssl_mode.*not supported for SQL Server/
+    );
+    assert.doesNotThrow(() => buildConnectionConfig({ database: { sslMode: 'disable' } }));
+    assert.doesNotThrow(() => buildConnectionConfig({ database: { sslMode: 'verify-full' } }));
+});
+
+test('queryOne returns null when the query produces no rows', async () => {
+    const { adapter } = loadAdapter(); // fake pool returns recordset: []
+    assert.strictEqual(await adapter.queryOne('SELECT 1', []), null);
+});
+
+test('queryOne returns the first row when results exist', async () => {
+    const fakeMssql = {
+        MAX: 'MAX',
+        VarChar: (len) => ({ type: 'VarChar', len }),
+        VarBinary: (len) => ({ type: 'VarBinary', len }),
+        ConnectionPool: class {
+            connect() { return Promise.resolve(); }
+            on() {}
+            request() {
+                return {
+                    input: () => {},
+                    query: async () => ({ recordset: [{ id: 1 }, { id: 2 }] }),
+                };
+            }
+        },
+    };
+    require.cache[MSSQL_PATH] = { id: MSSQL_PATH, filename: MSSQL_PATH, loaded: true, exports: fakeMssql };
+    delete require.cache[ADAPTER_PATH];
+    let adapter;
+    try {
+        adapter = require(ADAPTER_PATH).createMssqlAdapter({ database: {} });
+    } finally {
+        delete require.cache[MSSQL_PATH];
+        delete require.cache[ADAPTER_PATH];
+    }
+    assert.deepStrictEqual(await adapter.queryOne('SELECT id FROM t', []), { id: 1 });
+});
+
+function loadAdapterForTransactions() {
+    const events = [];
+    const fakeMssql = {
+        MAX: 'MAX',
+        VarChar: (len) => ({ type: 'VarChar', len }),
+        VarBinary: (len) => ({ type: 'VarBinary', len }),
+        ConnectionPool: class {
+            connect() { return Promise.resolve(); }
+            on() {}
+        },
+        Transaction: class {
+            begin()    { events.push('begin');    return Promise.resolve(); }
+            commit()   { events.push('commit');   return Promise.resolve(); }
+            rollback() { events.push('rollback'); return Promise.resolve(); }
+        },
+        Request: class {
+            input() {}
+            query() { return Promise.resolve({ recordset: [], rowsAffected: [1] }); }
+        },
+    };
+    require.cache[MSSQL_PATH] = { id: MSSQL_PATH, filename: MSSQL_PATH, loaded: true, exports: fakeMssql };
+    delete require.cache[ADAPTER_PATH];
+    try {
+        const { createMssqlAdapter } = require(ADAPTER_PATH);
+        return { adapter: createMssqlAdapter({ database: {} }), events };
+    } finally {
+        delete require.cache[MSSQL_PATH];
+        delete require.cache[ADAPTER_PATH];
+    }
+}
+
+test('withTransaction commits and returns the result on success', async () => {
+    const { adapter, events } = loadAdapterForTransactions();
+    const result = await adapter.withTransaction(async () => 'ok');
+    assert.strictEqual(result, 'ok');
+    assert.deepStrictEqual(events, ['begin', 'commit']);
+});
+
+test('withTransaction rolls back and rethrows on error', async () => {
+    const { adapter, events } = loadAdapterForTransactions();
+    const boom = new Error('DB error');
+    await assert.rejects(() => adapter.withTransaction(async () => { throw boom; }), boom);
+    assert.deepStrictEqual(events, ['begin', 'rollback']);
+});
+
+test('withTransaction swallows a rollback error and still rethrows the original', async () => {
+    const fakeMssql = {
+        MAX: 'MAX',
+        VarChar: (len) => ({ type: 'VarChar', len }),
+        VarBinary: (len) => ({ type: 'VarBinary', len }),
+        ConnectionPool: class {
+            connect() { return Promise.resolve(); }
+            on() {}
+        },
+        Transaction: class {
+            begin()    { return Promise.resolve(); }
+            commit()   { return Promise.resolve(); }
+            rollback() { return Promise.reject(new Error('already aborted')); }
+        },
+        Request: class {
+            input() {}
+            query() { return Promise.resolve({ recordset: [], rowsAffected: [1] }); }
+        },
+    };
+    require.cache[MSSQL_PATH] = { id: MSSQL_PATH, filename: MSSQL_PATH, loaded: true, exports: fakeMssql };
+    delete require.cache[ADAPTER_PATH];
+    let adapter;
+    try {
+        adapter = require(ADAPTER_PATH).createMssqlAdapter({ database: {} });
+    } finally {
+        delete require.cache[MSSQL_PATH];
+        delete require.cache[ADAPTER_PATH];
+    }
+    const boom = new Error('original error');
+    await assert.rejects(() => adapter.withTransaction(async () => { throw boom; }), boom);
+});

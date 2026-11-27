@@ -16,20 +16,17 @@
  * under the License.
  */
 
-// Package capture provides a partitioned upstream that remembers the last request it received
-// per path. It exists for policies that rewrite a request on the way in and rewrite the
-// response back on the way out (masking, redaction): the client-visible response can never show
-// what the upstream actually received, because the response-side rewrite has already reversed
-// it by the time a test observes that response. This service lets a test ask the upstream
-// directly, in a second call, independent of any response rewriting.
 package capture
 
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/wso2/api-platform/tests/framework/testbench"
@@ -43,6 +40,12 @@ const maxCaptureBodyBytes = 10 << 20
 const defaultMaxCapturedPaths = 1024
 
 const maxPartitionBodyBytes = 32 << 20
+
+// maxScriptDocumentBytes bounds one PUT /test/responses document.
+const maxScriptDocumentBytes = 1 << 20
+
+// controlPathPrefix is where the service's own control routes live; they cannot be scripted.
+const controlPathPrefix = "/test/"
 
 // requestInfo is the shape returned by both the reflecting upstream and the capture lookup.
 type requestInfo struct {
@@ -61,9 +64,18 @@ type Service struct {
 }
 
 type partition struct {
-	mu       sync.RWMutex
-	captured map[string]requestInfo
-	bytes    int
+	mu          sync.RWMutex
+	captured    map[string]requestInfo
+	bytes       int
+	scripts     map[string]scriptedResponse
+	scriptBytes int
+}
+
+// scriptedResponse is the answer stored for one path by PUT /test/responses.
+type scriptedResponse struct {
+	Status      int    `json:"status"`
+	ContentType string `json:"contentType"`
+	Body        string `json:"body"`
 }
 
 // New returns a new capture service.
@@ -96,6 +108,7 @@ func (s *Service) Handler() http.Handler {
 	routes.HandleFunc("GET /test/captured", s.scoped(s.readCaptured))
 	routes.HandleFunc("POST /test/reset", s.scoped(s.reset))
 	routes.HandleFunc("GET /test/health", s.scoped(s.health))
+	routes.HandleFunc("PUT /test/responses", s.scoped(s.storeResponse))
 	routes.HandleFunc("/", s.scoped(s.reflect))
 
 	return testbench.NormalizeMethod(testbench.PartitionRouter(routes))
@@ -114,10 +127,10 @@ func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) ht
 	}
 }
 
-// reflect records the incoming request under its own path, then echoes it back as JSON — the
-// same response an ordinary caller sees. A later call to readCaptured for the same path returns
-// exactly what was recorded here, regardless of what a response-side policy does to this
-// response afterward.
+// reflect records the incoming request under its own path, then answers with the path's
+// scripted response or, when there is none, echoes the record back as JSON. A later call to
+// readCaptured for the same path returns exactly what was recorded here, regardless of what a
+// response-side policy does to this response afterward.
 func (s *Service) reflect(key string, w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = r.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxCaptureBodyBytes+1))
@@ -155,8 +168,158 @@ func (s *Service) reflect(key string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if script, ok := s.script(key, r.URL.Path); ok {
+		writeScripted(w, script)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, info)
+}
+
+// storeResponse is PUT /<block>/test/responses?path=<path>: it stores the answer every later
+// request to <path> receives, replacing an earlier script for the same path.
+func (s *Service) storeResponse(key string, w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if err := validScriptPath(path); err != nil {
+		http.Error(w, "capture: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var script scriptedResponse
+	if err := decodeScript(w, r, &script); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "capture: script too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "capture: invalid script: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if script.Status == 0 {
+		script.Status = http.StatusOK
+	}
+	if err := validScript(script); err != nil {
+		http.Error(w, "capture: invalid script: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !s.storeScript(key, path, script) {
+		http.Error(w, "capture: script budget exhausted for this block", http.StatusInsufficientStorage)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, map[string]any{"path": path, "status": script.Status})
+}
+
+// storeScript reports whether the partition's script limits accepted the script.
+func (s *Service) storeScript(key, path string, script scriptedResponse) bool {
+	p := s.getPartition(key)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	existing, exists := p.scripts[path]
+	if !exists {
+		limit := s.maxCapturedPaths
+		if limit <= 0 {
+			limit = defaultMaxCapturedPaths
+		}
+		if len(p.scripts) >= limit {
+			return false
+		}
+	}
+	retained := p.scriptBytes - len(existing.Body) + len(script.Body)
+	if retained > maxPartitionBodyBytes {
+		return false
+	}
+	p.scriptBytes = retained
+	p.scripts[path] = script
+	return true
+}
+
+// script returns the answer scripted for path in the block, if any.
+func (s *Service) script(key, path string) (scriptedResponse, bool) {
+	s.mu.RLock()
+	p := s.partitions[key]
+	s.mu.RUnlock()
+	if p == nil {
+		return scriptedResponse{}, false
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	script, ok := p.scripts[path]
+	return script, ok
+}
+
+// writeScripted writes a scripted answer verbatim. An empty contentType sends no Content-Type,
+// rather than one net/http would guess from the body.
+func writeScripted(w http.ResponseWriter, script scriptedResponse) {
+	if script.ContentType != "" {
+		w.Header().Set("Content-Type", script.ContentType)
+	} else {
+		w.Header()["Content-Type"] = nil
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(script.Body)))
+	w.WriteHeader(script.Status)
+	if _, err := io.WriteString(w, script.Body); err != nil {
+		log.Printf("capture: failed to write scripted response: %v", err)
+	}
+}
+
+func validScriptPath(path string) error {
+	switch {
+	case path == "":
+		return fmt.Errorf(`query parameter "path" is required`)
+	case !strings.HasPrefix(path, "/"):
+		return fmt.Errorf(`path must start with "/"`)
+	case path == strings.TrimSuffix(controlPathPrefix, "/") || strings.HasPrefix(path, controlPathPrefix):
+		return fmt.Errorf("path %q is a control route and cannot be scripted", path)
+	}
+	return nil
+}
+
+func validScript(script scriptedResponse) error {
+	if script.Status < 200 || script.Status > 599 {
+		return fmt.Errorf("status must be 200-599, got %d", script.Status)
+	}
+	if script.Body != "" && (script.Status == http.StatusNoContent || script.Status == http.StatusNotModified) {
+		return fmt.Errorf("status %d cannot carry a body", script.Status)
+	}
+	if !validHeaderValue(script.ContentType) {
+		return fmt.Errorf("contentType must be a header value without control characters")
+	}
+	return nil
+}
+
+// validHeaderValue reports whether value holds no control character other than a tab, as
+// RFC 9110 requires of a field value. Clients refuse a header that carries one.
+func validHeaderValue(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if b := value[i]; (b < ' ' && b != '\t') || b == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// decodeScript reads exactly one JSON object, refusing unknown fields.
+func decodeScript(w http.ResponseWriter, r *http.Request, dst *scriptedResponse) error {
+	body := http.MaxBytesReader(w, r.Body, maxScriptDocumentBytes)
+	defer func() { _ = body.Close() }()
+	decoder := json.NewDecoder(body)
+	var document json.RawMessage
+	if err := decoder.Decode(&document); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return err
+		}
+		return fmt.Errorf("the body must contain a single JSON document")
+	}
+	if !strings.HasPrefix(string(document), "{") {
+		return fmt.Errorf("the body must be a JSON object")
+	}
+	fields := json.NewDecoder(strings.NewReader(string(document)))
+	fields.DisallowUnknownFields()
+	return fields.Decode(dst)
 }
 
 // record reports whether the partition's byte budget accepted the capture. A full path table
@@ -195,7 +358,7 @@ func (s *Service) getPartition(key string) *partition {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if p = s.partitions[key]; p == nil {
-		p = &partition{captured: map[string]requestInfo{}}
+		p = &partition{captured: map[string]requestInfo{}, scripts: map[string]scriptedResponse{}}
 		s.partitions[key] = p
 	}
 	return p
@@ -230,7 +393,7 @@ func (s *Service) readCaptured(key string, w http.ResponseWriter, r *http.Reques
 	writeJSON(w, info)
 }
 
-// reset clears the captured requests for one block.
+// reset clears the captured requests and scripted responses for one block.
 func (s *Service) reset(key string, w http.ResponseWriter, _ *http.Request) {
 	s.mu.Lock()
 	delete(s.partitions, key)

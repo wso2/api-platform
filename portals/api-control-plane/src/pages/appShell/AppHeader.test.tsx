@@ -66,8 +66,9 @@ const renderHeader = ({ route, brandLogo }: { route?: string; brandLogo?: BrandL
  */
 const brandControl = () => screen.getByRole('button', { name: 'Go to organization overview' });
 
-/** The brand's logo image; decorative (`alt=""`), as the lockup's name is set beside it in text. */
-const brandLogoSrc = () => within(brandControl()).getByRole('presentation').getAttribute('src');
+/** The brand's logo image: the wordmark itself, named for assistive technology by its alt text. */
+const brandLogoSrc = () =>
+  within(brandControl()).getByRole('img', { name: 'Choreo API Management' }).getAttribute('src');
 
 /** Surfaces the router's location so a brand click can be asserted on. */
 function CurrentPath() {

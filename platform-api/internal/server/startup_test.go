@@ -146,6 +146,47 @@ func TestBindListenersServesAndSwapsHandler(t *testing.T) {
 	}
 }
 
+func TestBindListenersCapsRequestBody(t *testing.T) {
+	// The handler reads with no limit of its own, as an uncapped decoder does.
+	readAll := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.ReadAll(r.Body); err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				w.WriteHeader(http.StatusRequestEntityTooLarge)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	post := func(t *testing.T, url string, size int) int {
+		t.Helper()
+		resp, err := http.Post(url, "application/json", bytes.NewReader(make([]byte, size)))
+		if err != nil {
+			t.Fatalf("POST %d bytes: %v", size, err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	capped := httpOnly(0)
+	capped.MaxRequestBodyBytes = 16
+	ls := bindForTest(t, capped, nil, readAll)
+	url := fmt.Sprintf("http://%s/anything", ls.addrs[0])
+	if got := post(t, url, 16); got != http.StatusOK {
+		t.Errorf("body at the cap: status = %d, want 200", got)
+	}
+	if got := post(t, url, 17); got != http.StatusRequestEntityTooLarge {
+		t.Errorf("body over the cap: status = %d, want 413", got)
+	}
+
+	uncapped := bindForTest(t, httpOnly(0), nil, readAll)
+	if got := post(t, fmt.Sprintf("http://%s/anything", uncapped.addrs[0]), 1<<20); got != http.StatusOK {
+		t.Errorf("no cap configured: status = %d, want 200", got)
+	}
+}
+
 func TestBindListenersServesTLS(t *testing.T) {
 	certDir := t.TempDir()
 	writeTestCertPair(t, certDir)

@@ -231,8 +231,8 @@ Feature: Agent API Key Management Operations
     Given I generate a unique resource name from "agent-key-update" and store it as "agentName"
     And I generate a unique API context from "/agent-key-update" and store it as "agentContext"
     And I generate a unique value from "rotating-key" and store it as "keyName"
-    And I generate a unique value from "agent-key-before-rotation" and store it as "keyBefore"
-    And I generate a unique value from "agent-key-after-rotation" and store it as "keyAfter"
+    And I generate a unique value from "agent-key-before-rotation-api-key-0123456789" and store it as "keyBefore"
+    And I generate a unique value from "agent-key-after-rotation-api-key-0123456789" and store it as "keyAfter"
     When I create Agent from "resources/templates/agent.yaml" with values:
       | apiVersion                         | ${CTX:gatewaySpecVersion}                                                         |
       | name                               | ${CTX:agentName}                                                                  |
