@@ -10971,3 +10971,19 @@ func TestPlanReadsListsAndUpdates(t *testing.T) {
 	require.NoError(t, steps.assertCloudErrorCode(ctx, "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"))
 	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "not a subscription plan")
 }
+
+func TestSelfHostedGatewayNestedPropertiesAreComparedStructurally(t *testing.T) {
+	steps, ctx, _, platform := selfHostedSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.createSelfHostedGatewayWith(ctx, valuesTable(t,
+		[]string{"endpoints", `["http://a.example.com"]`},
+		[]string{"properties", `{"limits": {"rps": 10}, "zones": ["a", "b"]}`})))
+	require.NotPanics(t, func() {
+		require.NoError(t, steps.assertSelfHostedGatewayKeepsItsValues(ctx), "nested values that round-trip match")
+	})
+	gateway := platform.gateways[optionalValue(ctx, keySelfHostedGatewayID)]
+	properties := gateway["properties"].(map[string]any)
+	properties["zones"] = []any{"a"}
+	require.NotPanics(t, func() {
+		require.ErrorContains(t, steps.assertSelfHostedGatewayKeepsItsValues(ctx), `property "zones"`)
+	})
+}

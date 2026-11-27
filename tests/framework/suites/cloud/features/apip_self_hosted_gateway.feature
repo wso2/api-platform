@@ -82,7 +82,10 @@ Feature: APIP cloud self-hosted gateway lifecycle
     And I generate another registration token for the self-hosted APIP gateway
     Then the self-hosted APIP gateway should have exactly 2 active registration tokens
     When I revoke the first registration token of the self-hosted APIP gateway
-    And I revoke the first registration token of the self-hosted APIP gateway again
+    Then the self-hosted APIP gateway should have exactly 1 active registration token
+    And the revoked registration tokens should no longer be active
+    And the last registration token of the self-hosted APIP gateway should still be active
+    When I revoke the first registration token of the self-hosted APIP gateway again
     Then the self-hosted APIP gateway should have exactly 1 active registration token
     And the revoked registration tokens should no longer be active
     And the last registration token of the self-hosted APIP gateway should still be active

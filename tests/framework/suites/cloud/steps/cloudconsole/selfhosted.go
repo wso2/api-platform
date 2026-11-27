@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -300,17 +301,18 @@ func (s *Steps) assertSelfHostedGatewayKeepsItsValues(ctx context.Context) error
 		return fmt.Errorf("self-hosted gateway %q endpoints = %v, want %v", id, document["endpoints"], wantEndpoints)
 	}
 	for i, want := range wantEndpoints {
-		if endpoints[i] != want {
+		if !reflect.DeepEqual(endpoints[i], want) {
 			return fmt.Errorf("self-hosted gateway %q endpoints = %v, want %v", id, document["endpoints"], wantEndpoints)
 		}
 	}
 	properties, _ := document["properties"].(map[string]any)
 	for key, want := range wantProperties {
-		if got, present := properties[key]; !present || got != want {
+		// Structurally: a property may hold an object or an array, which != cannot compare.
+		if got, present := properties[key]; !present || !reflect.DeepEqual(got, want) {
 			return fmt.Errorf("self-hosted gateway %q property %q = %v, want %v", id, key, properties[key], want)
 		}
 	}
-	if got := properties[selfHostedEnvironmentProperty]; got != environment {
+	if got, _ := properties[selfHostedEnvironmentProperty].(string); got != environment {
 		return fmt.Errorf("self-hosted gateway %q property %q = %v, want its environment %q",
 			id, selfHostedEnvironmentProperty, got, environment)
 	}
