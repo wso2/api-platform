@@ -21,7 +21,7 @@
 // policies that authenticate to Azure with a workload identity or a managed identity.
 //
 // The gateway runtime is configured the way the AKS Workload Identity webhook configures a pod:
-// AZURE_AUTHORITY_HOST is https://testbench:3028/ (this service over TLS, with the certificate the
+// AZURE_AUTHORITY_HOST is https://testbench:3029/ (this service over TLS, with the certificate the
 // runtime already trusts), and AZURE_FEDERATED_TOKEN_FILE holds a fixture service account token.
 // The routes, each after a tenant that is also the partition, are:
 //
@@ -69,7 +69,7 @@
 //
 // The managed identity endpoint stands in for the one Azure Container Apps (and App Service) runs
 // beside an app with a managed identity. The runtime's IDENTITY_ENDPOINT is
-// https://testbench:3028/${BLOCK}/msi/token and its IDENTITY_HEADER is IdentityHeader, so the Azure
+// https://testbench:3029/${BLOCK}/msi/token and its IDENTITY_HEADER is IdentityHeader, so the Azure
 // Identity SDK sends every managed identity token request there, under its own block's partition:
 //
 //	GET  /<block>/msi/token?api-version=2019-08-01&resource=<r>[&client_id=<id>]

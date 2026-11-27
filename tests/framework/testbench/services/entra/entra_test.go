@@ -242,13 +242,13 @@ func TestOpenIDConfigurationNamesTheTenantsEndpoints(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			svc := New()
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/t1/v2.0/.well-known/openid-configuration", nil)
-			req.Host = "testbench:3028"
+			req.Host = "testbench:3029"
 			if c.tls {
 				req.TLS = &tls.ConnectionState{}
 			}
 			rec := serve(t, svc.Handler(), req)
 			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-			base := c.scheme + "://testbench:3028/t1"
+			base := c.scheme + "://testbench:3029/t1"
 			require.JSONEq(t, `{"issuer":"`+base+`/v2.0","token_endpoint":"`+base+`/oauth2/v2.0/token",`+
 				`"authorization_endpoint":"`+base+`/oauth2/v2.0/authorize"}`, rec.Body.String())
 			require.Equal(t, requestLog{Requests: []Request{}}, recorded(t, svc, "t1"))

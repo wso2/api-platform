@@ -183,13 +183,13 @@ func Testbench() *components.Definition {
 			// http://testbench:3026/<block>/<id>. See testbench/services/faultinjection.
 			{Name: "fault-injection", Port: faultinjection.Port, Scheme: "http", AwaitListening: true},
 			// entra is STATEFUL: a Microsoft Entra ID token endpoint and two token-protected
-			// resources, addressed as http://testbench:3027/<tenant>/..., where the tenant a
+			// resources, addressed as http://testbench:3028/<tenant>/..., where the tenant a
 			// scenario names is its partition, and a managed identity endpoint, as Azure Container
 			// Apps serves one, under the block's partition, /<block>/msi/token. See
 			// testbench/services/entra.
 			{Name: "entra", Port: entra.Port, Scheme: "http", AwaitListening: true},
 			// The same entra service over HTTPS with shared.JevTLS, which the gateway runtime
-			// trusts: the authority host the runtime is given, https://testbench:3028/.
+			// trusts: the authority host the runtime is given, https://testbench:3029/.
 			{Name: "entra-tls", Port: entra.TLSPort, Scheme: "https", AwaitListening: true},
 		},
 		Env: map[string]string{

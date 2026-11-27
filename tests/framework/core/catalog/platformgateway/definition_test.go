@@ -278,8 +278,8 @@ func TestComposeCarriesTheAzureWorkloadIdentity(t *testing.T) {
 	require.Equal(t, "7f3c2a10-4b5e-4c6d-8e9f-0a1b2c3d4e5f", env["AZURE_TENANT_ID"])
 	require.Equal(t, "5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e", env["AZURE_CLIENT_ID"])
 	require.Equal(t, "/var/run/secrets/azure/tokens/azure-identity-token", env["AZURE_FEDERATED_TOKEN_FILE"])
-	require.Equal(t, "https://testbench:3028/", env["AZURE_AUTHORITY_HOST"])
-	require.Equal(t, "https://testbench:3028/${BLOCK}/msi/token", env["IDENTITY_ENDPOINT"])
+	require.Equal(t, fmt.Sprintf("https://testbench:%d/", entra.TLSPort), env["AZURE_AUTHORITY_HOST"])
+	require.Equal(t, fmt.Sprintf("https://testbench:%d/${BLOCK}/msi/token", entra.TLSPort), env["IDENTITY_ENDPOINT"])
 	require.Equal(t, entra.IdentityHeader, env["IDENTITY_HEADER"])
 	require.NotContains(t, env, "AZURE_IMDS_TOKEN_ENDPOINT")
 

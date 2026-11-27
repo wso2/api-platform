@@ -1254,7 +1254,7 @@ func TestStagingAStackThatNamesBLOCKNeedsThePartition(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	staged, err := os.ReadFile(filepath.Join(dir, gateway.Compose.StagingName()))
 	require.NoError(t, err)
-	require.Contains(t, string(staged), "https://testbench:3028/azure-authentication-sqlite/msi/token")
+	require.Contains(t, string(staged), "https://testbench:3029/azure-authentication-sqlite/msi/token")
 	require.NotContains(t, string(staged), "${BLOCK}")
 }
 

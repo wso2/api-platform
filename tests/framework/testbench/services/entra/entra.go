@@ -33,11 +33,11 @@ import (
 
 // Port is the container port the service answers every route on over plain HTTP: the token and
 // managed identity endpoints, their request logs and the protected resources.
-const Port = 3027
+const Port = 3028
 
 // TLSPort is the port the same service answers on over HTTPS, for a token client that requires an
 // https authority, as the azure-authentication policy does.
-const TLSPort = 3028
+const TLSPort = 3029
 
 // EnvTLSCert and EnvTLSKey name the variables holding the PEM certificate and key the service
 // serves HTTPS with on TLSPort. When both are unset only the plain HTTP port is served.
