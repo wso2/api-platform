@@ -118,14 +118,23 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 			return err
 		}
 	}
+	// Nor the public host of an earlier choice.
+	tcontext.Remove(ctx, keyGatewayHost)
+	if choice.host != "" {
+		if err := tcontext.Set(ctx, keyGatewayHost, choice.host); err != nil {
+			return err
+		}
+	}
 	return tcontext.Set(ctx, keyGatewayEndpoint, choice.endpoint)
 }
 
-// gatewayChoice is a listed gateway a scenario can deploy to and send traffic through.
+// gatewayChoice is a listed gateway a scenario can deploy to and send traffic through. The host is
+// the public host the gateway lists, empty when it lists none.
 type gatewayChoice struct {
 	id          string
 	environment string
 	endpoint    string
+	host        string
 }
 
 // gatewayFilter returns why a listed gateway must not be chosen, or "" when it may be.
@@ -266,7 +275,9 @@ func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any,
 			continue
 		}
 		environment, _ := item["environment"].(string)
-		return gatewayChoice{id: id, environment: strings.TrimSpace(environment), endpoint: endpoint}, nil
+		host, _ := item["host"].(string)
+		return gatewayChoice{id: id, environment: strings.TrimSpace(environment), endpoint: endpoint,
+			host: strings.TrimSpace(host)}, nil
 	}
 	if len(items) == 0 {
 		return gatewayChoice{}, fmt.Errorf("the organization has no %ss", label)

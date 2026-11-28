@@ -186,3 +186,30 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_basic.feature
           scenario: "A changed context and version are kept, and a redeploy serves the API at the new context and no longer at the old one"
+  - id: ID_APIP_BASIC_021
+    title: "A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is kept."
+    priority: P0
+    cloud:
+      # The cloud counterpart of on-premises NETAC-PA-011.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_basic.feature
+          scenario: "A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is kept"
+  - id: ID_APIP_BASIC_022
+    title: "Validating a URL that serves no OpenAPI definition lists its errors and returns no content, while a valid definition validates."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises APIDEF-011.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_basic.feature
+          scenario: "Validating a URL that serves no OpenAPI definition lists its errors and returns no content, while a valid definition validates"
+  - id: ID_APIP_BASIC_023
+    title: "A REST API create over the cloud's 10 MiB request body cap is refused with VALIDATION_FAILED and creates nothing, while one under it is created."
+    priority: P2
+    cloud:
+      # The cloud counterpart of on-premises CPLIM-001.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_basic.feature
+          scenario: "A REST API create over the cloud's request body cap is refused, and one under it is created"

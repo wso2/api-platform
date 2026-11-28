@@ -88,6 +88,7 @@ func (s *Steps) registerGraphQLSteps(sc stepRegistrar) {
 	sc.Step(`^the (synthetic|submitted) GraphQL API should have an empty schema$`, s.assertEmptyGraphQLSchema)
 	sc.Step(`^the submitted GraphQL API should (exist|not exist)$`, s.assertSubmittedGraphQL)
 	sc.Step(`^I validate the GraphQL schema "([^"]*)"$`, s.validateGraphQLSchema)
+	sc.Step(`^I validate a GraphQL schema with:$`, s.validateGraphQLSchemaWith)
 	sc.Step(`^the GraphQL schema should be reported as (resolved|not resolved)$`, s.assertGraphQLValidation)
 	sc.Step(`^I create (an|another) API key for the synthetic GraphQL API$`, s.createGraphQLAPIKey)
 	sc.Step(`^I revoke the API key of the synthetic GraphQL API$`, s.revokeGraphQLAPIKey)
@@ -588,6 +589,53 @@ func (s *Steps) assertSubmittedGraphQL(ctx context.Context, presence string) err
 		return fmt.Errorf("reading GraphQL API %s returned the API %q", id, got)
 	}
 	return nil
+}
+
+// graphQLValidateKeys are the values a schema validation request may take from a table:
+// schemaSource, the SDL URL, and the upstream URL an introspection reads.
+var graphQLValidateKeys = map[string]bool{"schemaSource": true, "sdlUrl": true, "upstreamUrl": true}
+
+// validateGraphQLSchemaWith asks the platform to resolve a schema from the source the table names,
+// without creating an API. Only an unresolved outcome can be asserted after it: the schema text
+// a URL serves is not known to the scenario.
+func (s *Steps) validateGraphQLSchemaWith(ctx context.Context, table *godog.Table) error {
+	// A request that fails before it is sent must not leave an earlier answer to be asserted.
+	httpx.ClearPublished(ctx)
+	values, err := tableValues(table)
+	if err != nil {
+		return err
+	}
+	request := map[string]any{}
+	for key, raw := range values {
+		if !graphQLValidateKeys[key] {
+			return fmt.Errorf("unsupported GraphQL schema validation value %q", key)
+		}
+		value, err := expandCloudValue(ctx, raw)
+		if err != nil {
+			return err
+		}
+		if key == "upstreamUrl" {
+			request["upstream"] = map[string]any{"main": map[string]string{"url": value}}
+			continue
+		}
+		request[key] = value
+	}
+	if request["schemaSource"] == nil {
+		return fmt.Errorf("a schema validation request names its schemaSource")
+	}
+	described, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyValidatedGraphQLText, string(described)); err != nil {
+		return err
+	}
+	body, contentType, err := graphQLForm(request)
+	if err != nil {
+		return err
+	}
+	_, err = s.doAuthenticatedContent(ctx, http.MethodPost, graphQLAPIsCollection+"/validate-schema", contentType, body)
+	return err
 }
 
 // validateGraphQLSchema asks the platform to resolve an inline schema without creating an API.

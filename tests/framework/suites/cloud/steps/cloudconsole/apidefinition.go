@@ -79,7 +79,8 @@ func (s *Steps) registerAPIDefinitionSteps(sc stepRegistrar) {
 	sc.Step(`^I import the deleted synthetic REST API again from the spec fixture "([^"]*)"$`, s.reimportAPI)
 	sc.Step(`^I submit a synthetic REST API import with:$`, s.submitAPIImport)
 	sc.Step(`^I validate the spec fixture "([^"]*)"$`, s.validateSpecFixture)
-	sc.Step(`^the OpenAPI validation should (list the errors and return the definition|find no errors)$`, s.assertValidation)
+	sc.Step(`^I validate the OpenAPI definition at the testbench backend URL$`, s.validateBackendURL)
+	sc.Step(`^the OpenAPI validation should (list the errors and return the definition|list the errors and return no content|find no errors)$`, s.assertValidation)
 	sc.Step(`^I replace the definition of the synthetic REST API with the spec fixture "([^"]*)"$`, s.replaceDefinition)
 	sc.Step(`^I add a header policy to the "([^"]*)" operation of the synthetic REST API$`, s.addOperationPolicy)
 	sc.Step(`^I read the synthetic REST API$`, s.readAPI)
@@ -375,8 +376,30 @@ func (s *Steps) validateSpecFixture(ctx context.Context, fixture string) error {
 	return err
 }
 
-// assertValidation checks the validation answer for the fixture last validated: an invalid one
-// lists its errors and returns the bytes that were validated, a valid one lists none.
+// validateBackendURL asks the platform to fetch and validate the testbench backend's URL, which
+// serves JSON that is no OpenAPI definition. The platform answers a URL it cannot fetch with 400,
+// so a validation result proves it fetched this one. The cloud fetches tenant URLs only from
+// public addresses, so the backend URL has to be a public one.
+func (s *Steps) validateBackendURL(ctx context.Context) error {
+	httpx.ClearPublished(ctx)
+	backend, err := testbenchURL(backendEnv, defaultBackend)
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyValidatedFixture, ""); err != nil {
+		return err
+	}
+	body, contentType, err := documentForm([][2]string{{"url", backend + "/"}})
+	if err != nil {
+		return err
+	}
+	_, err = s.doAuthenticatedContent(ctx, http.MethodPost, validateOpenAPIPath, contentType, body)
+	return err
+}
+
+// assertValidation checks the validation answer for what was last validated: an invalid file
+// lists its errors and returns the bytes that were validated, an invalid URL lists its errors and
+// returns no content, and a valid definition lists none.
 func (s *Steps) assertValidation(ctx context.Context, outcome string) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
@@ -408,6 +431,12 @@ func (s *Steps) assertValidation(ctx context.Context, outcome string) error {
 		if strings.TrimSpace(problem.Message) == "" {
 			return fmt.Errorf("validation error %d has no message: %s", i+1, response.Describe())
 		}
+	}
+	if outcome == "list the errors and return no content" {
+		if answer.Content != nil {
+			return fmt.Errorf("the validation of a URL returned the content it fetched: %s", response.Describe())
+		}
+		return nil
 	}
 	fixture, err := requiredValue(ctx, keyValidatedFixture)
 	if err != nil {
