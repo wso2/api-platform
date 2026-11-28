@@ -13,7 +13,7 @@ changes the schema ships the DDL that brings an older database forward.
 | `1.1.0` | `artifacts` cp_sync columns + index, `subscriptions` billing columns |
 | `1.2.0` | `artifacts.data_version`. SQL Server support introduced |
 | `2026.09.24` | `agents` |
-| `2026.10.0.1` | `graphql_apis`, `certificates` mutual TLS columns |
+| `2026.10.0` | `graphql_apis`, `certificates` mutual TLS columns |
 
 Start at any release, apply every later one in order, and you end up with what
 the current schema file declares. That is the whole contract.

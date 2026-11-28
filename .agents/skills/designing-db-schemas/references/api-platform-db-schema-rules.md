@@ -448,9 +448,9 @@ A schema change is **two edits in the same PR**. Either one alone is wrong.
 
 ```
 <component>/migrations/
-  1.2.0/           released - never edit, never add to
-  2026.09.24/
-  2026.10.0.1/
+  1.0.0/           released - never edit, never add to
+  1.1.0/
+  1.2.0/
   next/            put your change here
 ```
 

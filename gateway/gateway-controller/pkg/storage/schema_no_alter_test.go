@@ -35,7 +35,7 @@ var alterStatement = regexp.MustCompile(`(?i)^\s*ALTER\s+TABLE\b`)
 // knownAlters records schema files still carrying an ALTER. It is empty: the
 // certificate columns that used to sit at the bottom of the Postgres and SQL
 // Server files now live in
-// migrations/2026.10.0.1/020_certificate_tls_columns.{postgres,sqlserver}.sql.
+// migrations/2026.10.0/020_certificate_tls_columns.{postgres,sqlserver}.sql.
 //
 // Keep it empty. An entry here is a violation waiting to be cleaned up, not a
 // place to park a new one.
