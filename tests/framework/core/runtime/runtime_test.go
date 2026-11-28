@@ -1235,6 +1235,39 @@ func TestContainedSourceSkipsTheCheckWithoutARepositoryRoot(t *testing.T) {
 	require.Equal(t, "/anywhere/compose.yaml", resolved)
 }
 
+// A stack that names ${BLOCK} cannot be staged without its block's partition: Compose would
+// otherwise fill the name in from its own environment, or leave it empty.
+func TestStagingAStackThatNamesBLOCKNeedsThePartition(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	gateway := platformgateway.PlatformGateway()
+	network := &Network{name: "apip-net", block: "a network label"}
+
+	_, err := stageComposeFiles(gateway, gateway.Compose, t.TempDir(),
+		composeSubstitutions(gateway.Compose, Options{Network: network}, ""))
+	require.ErrorContains(t, err, "${BLOCK}")
+
+	dir, err := stageComposeFiles(gateway, gateway.Compose, t.TempDir(),
+		composeSubstitutions(gateway.Compose, Options{Network: network, Partition: "azure-authentication-sqlite"}, ""))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	staged, err := os.ReadFile(filepath.Join(dir, gateway.Compose.StagingName()))
+	require.NoError(t, err)
+	require.Contains(t, string(staged), "https://testbench:3029/azure-authentication-sqlite/msi/token")
+	require.NotContains(t, string(staged), "${BLOCK}")
+}
+
+// A stack that doesn't name ${BLOCK} needs no partition.
+func TestInterpolateStagedFileNeedsNoPartitionWithoutBLOCK(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "docker-compose.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("image: ${IMAGE}\n"), 0o644))
+	require.NoError(t, interpolateStagedFile(path, map[string]string{"IMAGE": "img:1", components.VarBlock: ""}))
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "image: img:1\n", string(got))
+}
+
 // A project that imports the framework has no api-platform checkout, so the gateway stack must
 // stage from the framework's embedded copies and generated key material alone.
 func TestStageComposeFilesStagesTheGatewayWithoutACheckout(t *testing.T) {
@@ -1545,6 +1578,26 @@ func TestFlushRunnerOutputRestoresABlockingPipe(t *testing.T) {
 	require.True(t, pipeNonblock(t, w), "precondition: the os.Pipe write end is non-blocking")
 	require.NoError(t, flushRunnerOutput(w, "block/runner", bytes.NewBufferString("report")))
 	require.False(t, pipeNonblock(t, w), "flushRunnerOutput must restore blocking mode")
+}
+
+// A compose stack's staged files are filled with ${BLOCK}, the block's testbench partition the
+// options carry, so a service can address a block-partitioned testbench route the way a config
+// overlay does. Neither the definition nor the options' env can override it.
+func TestComposeSubstitutionsCarryTheBlockPartition(t *testing.T) {
+	spec := &components.ComposeSpec{Env: map[string]string{"IMAGE": "img:1", components.VarBlock: "spoofed"}}
+	opts := Options{
+		Network:   &Network{name: "apip-net", block: "a network label that is not the partition"},
+		Partition: "azure-authentication-sqlite",
+		Env:       map[string]string{"EXTRA": "x", components.VarBlock: "spoofed"},
+	}
+
+	got := composeSubstitutions(spec, opts, "-2")
+
+	require.Equal(t, "apip-net", got[EnvComposeNetwork])
+	require.Equal(t, "-2", got[EnvInstanceSuffix])
+	require.Equal(t, "img:1", got["IMAGE"])
+	require.Equal(t, "x", got["EXTRA"])
+	require.Equal(t, "azure-authentication-sqlite", got[components.VarBlock])
 }
 
 // fakeExitContainer stands in for a Docker container in the teardown-warning tests: it records

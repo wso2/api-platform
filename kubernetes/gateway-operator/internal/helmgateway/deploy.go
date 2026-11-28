@@ -48,6 +48,10 @@ type DeployInput struct {
 	// the gateway registry keeps for the same purpose.
 	Client         client.Reader
 	FromGatewayAPI bool
+
+	// RequiredChartFeatures lists gateway chart features the values depend on; the
+	// release is left untouched when the chart does not declare one of them.
+	RequiredChartFeatures []string
 }
 
 // legacyCleanupInput is what deciding the fate of a legacy release needs, shared
@@ -71,20 +75,21 @@ func InstallOrUpgrade(ctx context.Context, in DeployInput) error {
 
 	releaseName := helm.GetReleaseName(in.GatewayName)
 	if err := helmClient.InstallOrUpgrade(ctx, helm.InstallOrUpgradeOptions{
-		ReleaseName:     releaseName,
-		Namespace:       in.Namespace,
-		ChartPath:       in.Config.Gateway.HelmChartPath,
-		ChartName:       in.Config.Gateway.HelmChartName,
-		ValuesYAML:      in.ValuesYAML,
-		ValuesFilePath:  in.ValuesFilePath,
-		Version:         in.Config.Gateway.HelmChartVersion,
-		CreateNamespace: false,
-		Wait:            true,
-		Timeout:         300,
-		Username:        in.DockerUsername,
-		Password:        in.DockerPassword,
-		Insecure:        in.Config.Gateway.InsecureRegistry,
-		PlainHTTP:       in.Config.Gateway.PlainHTTP,
+		ReleaseName:      releaseName,
+		Namespace:        in.Namespace,
+		ChartPath:        in.Config.Gateway.HelmChartPath,
+		ChartName:        in.Config.Gateway.HelmChartName,
+		ValuesYAML:       in.ValuesYAML,
+		ValuesFilePath:   in.ValuesFilePath,
+		Version:          in.Config.Gateway.HelmChartVersion,
+		CreateNamespace:  false,
+		Wait:             true,
+		Timeout:          300,
+		Username:         in.DockerUsername,
+		Password:         in.DockerPassword,
+		Insecure:         in.Config.Gateway.InsecureRegistry,
+		PlainHTTP:        in.Config.Gateway.PlainHTTP,
+		RequiredFeatures: in.RequiredChartFeatures,
 	}); err != nil {
 		return err
 	}
@@ -191,6 +196,13 @@ func otherKindClaimsGateway(ctx context.Context, in legacyCleanupInput) (bool, e
 		return true, nil
 	}
 
+	// With the Gateway API controllers off the operator manages no Kubernetes
+	// Gateway, so none can claim this identity. Reading one here would also start a
+	// Gateway informer, which fails on a cluster without the Gateway API CRDs.
+	if !in.Config.GatewayAPI.Enabled {
+		return false, nil
+	}
+
 	var other gatewayv1.Gateway
 	if err := in.Client.Get(ctx, key, &other); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -245,6 +257,75 @@ func Uninstall(ctx context.Context, in UninstallInput) error {
 		Namespace:      namespace,
 		FromGatewayAPI: in.FromGatewayAPI,
 	})
+}
+
+// PreviousReleaseInput identifies the gateway whose existing Helm release
+// PreviousReleaseValues reads. Client, Config and FromGatewayAPI decide whether a
+// release under the name used before the current naming belongs to this gateway (see
+// removeLegacyRelease).
+type PreviousReleaseInput struct {
+	Config         *config.OperatorConfig
+	Client         client.Reader
+	GatewayName    string
+	Namespace      string
+	FromGatewayAPI bool
+}
+
+// releaseValuesReader reads a Helm release's values, and whether the release exists.
+type releaseValuesReader func(namespace, releaseName string) (map[string]interface{}, bool, error)
+
+// PreviousReleaseValues returns the values of the gateway's existing Helm release, and
+// whether one exists. It also looks under the release name used before the current
+// naming, so a gateway deployed by an older operator is recognised as deployed.
+func PreviousReleaseValues(ctx context.Context, in PreviousReleaseInput) (map[string]interface{}, bool, error) {
+	helmClient, err := helm.NewClientWithOptions(in.Config.Gateway.PlainHTTP)
+	if err != nil {
+		return nil, false, fmt.Errorf("create Helm client: %w", err)
+	}
+	return previousReleaseValues(ctx, helmClient.ReleaseValues, in)
+}
+
+// previousReleaseValues is PreviousReleaseValues with the Helm lookup passed in.
+//
+// Release names derive from the gateway name alone, so an APIGateway and a Kubernetes
+// Gateway (on a class this operator manages) with the same namespace and name share
+// both the current and the legacy release. Neither release can then be attributed to
+// this gateway, and its values must not decide this gateway's admin credential.
+// Reporting "no release" would be worse: the gateway would get a fresh credential and
+// overwrite the other gateway's release with it. A contested name is therefore an
+// error, checked before either release is read, so the gateway fails closed until one
+// of the two is renamed or removed (the rule removeLegacyRelease applies before
+// deleting a legacy release).
+func previousReleaseValues(ctx context.Context, read releaseValuesReader, in PreviousReleaseInput) (map[string]interface{}, bool, error) {
+	contested, err := otherKindClaimsGateway(ctx, legacyCleanupInput{
+		Client:         in.Client,
+		Config:         in.Config,
+		GatewayName:    in.GatewayName,
+		Namespace:      in.Namespace,
+		FromGatewayAPI: in.FromGatewayAPI,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("check for a competing gateway named %q: %w", in.GatewayName, err)
+	}
+	if contested {
+		other := "a Kubernetes Gateway"
+		if in.FromGatewayAPI {
+			other = "an APIGateway"
+		}
+		return nil, false, fmt.Errorf("%s named %q in namespace %q shares this gateway's Helm release; rename or remove one of them",
+			other, in.GatewayName, in.Namespace)
+	}
+
+	current := helm.GetReleaseName(in.GatewayName)
+	values, found, err := read(in.Namespace, current)
+	if err != nil || found {
+		return values, found, err
+	}
+	legacy := helm.LegacyReleaseName(in.GatewayName)
+	if legacy == "" || legacy == current {
+		return nil, false, nil
+	}
+	return read(in.Namespace, legacy)
 }
 
 // ReleaseDeployed reports whether the gateway Helm release exists and its latest revision is deployed.

@@ -41,6 +41,16 @@ configured image.repository:tag.
 {{- end -}}
 
 {{- /*
+Renders "true" when the Gateway API controllers (GatewayClass, Gateway, HTTPRoute) are
+on: gatewayApi.enabled, true when unset.
+*/ -}}
+{{- define "gateway-operator.gatewayApiEnabled" -}}
+{{- if dig "enabled" true (default (dict) .Values.gatewayApi) -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- /*
 RBAC for GatewayClass (cluster-scoped). Namespace Roles cannot grant these
 verbs at cluster scope; when watchNamespaces is set, chart also installs
 clusterrole-gatewayclass.yaml + binding.
@@ -109,6 +119,13 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - update
   - patch
   - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - ""
   resources:
@@ -207,6 +224,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - get
   - patch
   - update
+{{- if include "gateway-operator.gatewayApiEnabled" . }}
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
@@ -223,6 +241,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - get
   - patch
   - update
+{{- end }}
 - apiGroups:
   - apps
   resources:
@@ -249,6 +268,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - update
   - watch
+{{- if include "gateway-operator.gatewayApiEnabled" . }}
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
@@ -306,6 +326,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - get
   - list
   - watch
+{{- end }}
 {{- if include "gateway-operator.isOpenShift" . }}
 - apiGroups:
   - route.openshift.io
@@ -328,4 +349,46 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - update
 {{- end }}
+{{- end -}}
+
+{{/*
+Names of the APIGateway conversion webhook Service and certificate Secret.
+*/}}
+{{- define "gateway-operator.conversionWebhookServiceName" -}}
+{{- printf "%s-webhook" (include "gateway-operator.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "gateway-operator.conversionWebhookSecretName" -}}
+{{- printf "%s-webhook-cert" (include "gateway-operator.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Pod label that marks operator pods serving the APIGateway conversion webhook. The
+webhook Service selects it, so it only reaches pods of a release that serves the
+webhook. It is not part of the Deployment's selector, which is immutable.
+*/}}
+{{- define "gateway-operator.conversionWebhookPodLabel" -}}
+gateway.api-platform.wso2.com/conversion-webhook-server: "true"
+{{- end -}}
+
+{{/*
+Conversion webhook settings with their defaults applied. An upgrade with
+--reuse-values keeps the previous release's values, which predate
+conversionWebhook, so every key falls back to the same default as values.yaml.
+*/}}
+{{- define "gateway-operator.conversionWebhookPort" -}}
+{{- $cw := .Values.conversionWebhook | default dict -}}
+{{- $cw.port | default 9443 -}}
+{{- end -}}
+
+{{/*
+Operator flags for the APIGateway conversion webhook.
+*/}}
+{{- define "gateway-operator.conversionWebhookArgs" -}}
+{{- $cw := .Values.conversionWebhook | default dict -}}
+- --conversion-webhook-port={{ include "gateway-operator.conversionWebhookPort" . }}
+- --conversion-webhook-service-name={{ include "gateway-operator.conversionWebhookServiceName" . }}
+- --conversion-webhook-cert-secret={{ include "gateway-operator.conversionWebhookSecretName" . }}
+- --conversion-webhook-max-request-bytes={{ int64 ($cw.maxRequestBytes | default 67108864) }}
+- --conversion-webhook-pqc-key-exchange={{ ternary $cw.pqcKeyExchange true (hasKey $cw "pqcKeyExchange") }}
 {{- end -}}

@@ -23,19 +23,17 @@ import { renderWithProviders, screen } from '@/test/utils';
 import { BrandLockup } from './BrandLockup';
 
 describe('BrandLockup', () => {
-  it('names the product "Choreo API Management", all in regular weight', () => {
+  it('shows only the logo, named "Choreo API Management" for assistive technology', () => {
     renderWithProviders(<BrandLockup height={32} />);
 
-    const name = screen.getByText('Choreo API Management');
-    expect(name).toBeInTheDocument();
-    expect(name.querySelector('b, strong')).toBeNull();
-    expect(getComputedStyle(name).fontWeight).toBe('400');
+    expect(screen.getByRole('img', { name: 'Choreo API Management' })).toBeInTheDocument();
+    // The artwork carries the name: no second, typeset copy beside it.
+    expect(screen.queryByText('Choreo API Management')).not.toBeInTheDocument();
   });
 
-  it('takes the logo height and the name size as CSS lengths', () => {
-    renderWithProviders(<BrandLockup fontSize="1.125rem" height="1.75rem" />);
+  it('takes the logo height as a CSS length', () => {
+    renderWithProviders(<BrandLockup height="1.75rem" />);
 
-    expect(screen.getByText('Choreo API Management')).toHaveStyle({ fontSize: '1.125rem' });
     expect(document.querySelector('img')).toHaveStyle({ height: '1.75rem' });
   });
 });

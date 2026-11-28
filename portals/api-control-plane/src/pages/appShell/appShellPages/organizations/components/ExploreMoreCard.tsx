@@ -30,12 +30,12 @@ const messages = defineMessages({
   },
   getStartedTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedTitle',
-    defaultMessage: 'Get Started',
+    defaultMessage: 'Get started',
     description: 'Section heading for introductory documentation.',
   },
   getStartedGuide: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide',
-    defaultMessage: 'Get Started with the Choreo API Management',
+    defaultMessage: 'Get started with the Choreo API Management',
   },
   getStartedCreateRest: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateRest',
@@ -47,20 +47,20 @@ const messages = defineMessages({
   },
   designTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designTitle',
-    defaultMessage: 'Design and Deploy',
+    defaultMessage: 'Design and deploy',
     description: 'Section heading. Refers to building an API proxy and putting it on a gateway.',
   },
   designCustomize: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designCustomize',
-    defaultMessage: 'Design and Customize APIs',
+    defaultMessage: 'Design and customize APIs',
   },
   designAttachPolicies: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies',
-    defaultMessage: 'Attach and Manage Policies',
+    defaultMessage: 'Attach and manage policies',
   },
   designDeployTest: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designDeployTest',
-    defaultMessage: 'Deploy and Test an API',
+    defaultMessage: 'Deploy and test an API',
   },
   designPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designPublish',
@@ -68,20 +68,20 @@ const messages = defineMessages({
   },
   gatewaysTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysTitle',
-    defaultMessage: 'Gateways and Portals',
+    defaultMessage: 'Gateways and portals',
     description: 'Section heading. Refers to running gateways, including self-hosted ones, and managing API portals.',
   },
   gatewaysSelfHosted: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysSelfHosted',
-    defaultMessage: 'Self-Hosted Gateways',
+    defaultMessage: 'Self-hosted gateways',
   },
   gatewaysManage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysManage',
-    defaultMessage: 'Manage Gateways',
+    defaultMessage: 'Manage gateways',
   },
   gatewaysPortals: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.gatewaysPortals',
-    defaultMessage: 'Manage API Portals',
+    defaultMessage: 'Manage API portals',
   },
 });
 

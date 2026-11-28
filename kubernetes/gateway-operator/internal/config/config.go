@@ -41,12 +41,21 @@ type OperatorConfig struct {
 	// Reconciliation configuration
 	Reconciliation ReconciliationConfig `koanf:"reconciliation"`
 
+	// Cache selects which objects the operator's informer cache holds.
+	Cache CacheConfig `koanf:"cache"`
+
 	// Logging configuration
 	Logging LoggingConfig `koanf:"logging"`
 }
 
 // GatewayAPIConfig holds settings for gateway.networking.k8s.io resources.
 type GatewayAPIConfig struct {
+	// Enabled turns on the Gateway API controllers (GatewayClass, Gateway, HTTPRoute).
+	// When false they are not started, nothing caches Gateway API resources, and the
+	// Service and Deployment caches hold only the gateway chart's own objects. The
+	// APIGateway flow and the management resources are unaffected.
+	Enabled bool `koanf:"enabled"`
+
 	// GatewayClassNames lists spec.gatewayClassName values this operator manages.
 	// Only Gateway and HTTPRoute parentRefs targeting these classes are reconciled.
 	GatewayClassNames []string `koanf:"gateway_class_names"`
@@ -126,6 +135,25 @@ type ReconciliationConfig struct {
 	InitialBackoff time.Duration `koanf:"initial_backoff"`
 }
 
+// CacheConfig keeps objects the operator never reads out of its informer cache, and
+// bounds how long a controller waits for that cache to fill at startup.
+// Both exclusions are on by default; turn one off only if a resource references an
+// object it excludes.
+type CacheConfig struct {
+	// SyncTimeout is how long each controller waits for the informers it watches to
+	// complete their initial list before it fails to start, which stops the operator.
+	// On a large cluster the initial list can take longer than the default.
+	SyncTimeout time.Duration `koanf:"sync_timeout"`
+
+	// ExcludeHelmReleaseSecrets leaves Secrets labeled owner=helm (Helm's release
+	// storage) out of the cache.
+	ExcludeHelmReleaseSecrets bool `koanf:"exclude_helm_release_secrets"`
+
+	// ExcludeGatewayChartConfigMaps leaves ConfigMaps labeled
+	// app.kubernetes.io/name=gateway (rendered by the gateway chart) out of the cache.
+	ExcludeGatewayChartConfigMaps bool `koanf:"exclude_gateway_chart_config_maps"`
+}
+
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	// Level is the log level (debug, info, warn, error)
@@ -148,6 +176,7 @@ func getDefaults() map[string]interface{} {
 			"helm_values_file_path": "",
 		},
 		"gateway_api": map[string]interface{}{
+			"enabled":             true,
 			"gateway_class_names": []string{"wso2-api-platform"},
 			"cluster_domain":      "cluster.local",
 		},
@@ -157,6 +186,11 @@ func getDefaults() map[string]interface{} {
 			"max_retry_attempts":        10,
 			"max_backoff_duration":      "60s",
 			"initial_backoff":           "1s",
+		},
+		"cache": map[string]interface{}{
+			"sync_timeout":                      "2m",
+			"exclude_helm_release_secrets":      true,
+			"exclude_gateway_chart_config_maps": true,
 		},
 		"logging": map[string]interface{}{
 			"level":       "info",
@@ -212,6 +246,16 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 			return "gateway.helm_chart_version"
 		case "helm_values_file_path":
 			return "gateway.helm_values_file_path"
+		// Keys whose own names contain underscores; the generic mapping below would
+		// split them into the wrong path (GATEWAY_API_ENABLED -> api.enabled).
+		case "api_enabled":
+			return "gateway_api.enabled"
+		case "cache_sync_timeout":
+			return "cache.sync_timeout"
+		case "cache_exclude_helm_release_secrets":
+			return "cache.exclude_helm_release_secrets"
+		case "cache_exclude_gateway_chart_config_maps":
+			return "cache.exclude_gateway_chart_config_maps"
 		default:
 			// For other vars, use standard mapping (underscore to dot)
 			s = strings.ReplaceAll(s, "_", ".")
@@ -290,6 +334,10 @@ func (c *OperatorConfig) Validate() error {
 	// Validate reconciliation config
 	if c.Reconciliation.MaxConcurrentReconciles < 1 {
 		return fmt.Errorf("max concurrent reconciles must be at least 1")
+	}
+
+	if c.Cache.SyncTimeout <= 0 {
+		return fmt.Errorf("cache.sync_timeout must be a positive duration")
 	}
 
 	// Validate retry/backoff config

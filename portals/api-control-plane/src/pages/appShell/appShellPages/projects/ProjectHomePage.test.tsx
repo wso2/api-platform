@@ -84,15 +84,15 @@ describe('ProjectHomePage', () => {
 
     expect(await screen.findByText('Orders API')).toBeInTheDocument();
     expect(screen.getByText('Retail APIs')).toBeInTheDocument();
-    expect(screen.queryByText('Expose and secure APIs')).not.toBeInTheDocument();
+    expect(screen.queryByText('Govern and manage every API')).not.toBeInTheDocument();
   });
 
   it('shows the welcome view in place of the project heading for an empty project', async () => {
     serveProject([]);
     renderHome();
 
-    expect(await screen.findByText('Expose and secure APIs')).toBeInTheDocument();
-    expect(screen.getByText(/It's empty for now/)).toBeInTheDocument();
+    expect(await screen.findByText('Govern and manage every API')).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is published yet/)).toBeInTheDocument();
     expect(screen.queryByText(/Owned by/)).not.toBeInTheDocument();
   });
 
@@ -138,9 +138,9 @@ describe('ProjectHomePage', () => {
 
     // The list is empty but the project is not known yet: a skeleton, not "You're in the  project".
     await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).not.toBeNull());
-    expect(screen.queryByText(/It's empty for now/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nothing is published yet/)).not.toBeInTheDocument();
 
-    expect(await screen.findByText('Expose and secure APIs')).toBeInTheDocument();
+    expect(await screen.findByText('Govern and manage every API')).toBeInTheDocument();
     expect(screen.getByText('Retail APIs')).toBeInTheDocument();
   });
 
@@ -207,7 +207,7 @@ describe('ProjectHomePage', () => {
     // …then move to a project with none: the welcome view, not "No matching APIs".
     await user.click(screen.getByRole('link', { name: 'switch project' }));
 
-    expect(await screen.findByText('Expose and secure APIs')).toBeInTheDocument();
+    expect(await screen.findByText('Govern and manage every API')).toBeInTheDocument();
     expect(screen.queryByText('No matching APIs')).not.toBeInTheDocument();
   });
 });
