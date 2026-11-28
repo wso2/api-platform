@@ -446,6 +446,18 @@ conn_max_idle_time = "5m"
 # gateway only reads: give its identity "read" on <mount>/data/<assigned paths>.
 # Works with OpenBao and HashiCorp Vault.
 #
+# If a resolver is unreachable or returns a server error, the gateway does not
+# serve the artifact unresolved and does not stop. At startup the artifact is
+# left out and the rest load. A change that arrives during the outage is held
+# back. Either way the gateway retries, backing off up to one minute, and
+# applies the latest stored revision once the secret can be read. A missing
+# entry or a denied read is an error in the artifact and is not retried.
+#
+# Supported path: deploy artifacts that use kv:// references to the gateway
+# directly, through its management API. The Platform API does not understand
+# external references yet: on create or update it looks them up as
+# organization secrets and rejects them.
+#
 # [[controller.vault.resolvers]]
 # name = "amp-shared"                 # the <resolver> in kv:// references
 # type = "openbao"

@@ -84,9 +84,17 @@ func TestIntegration_KVResolverWithScopedToken(t *testing.T) {
 	write(base+"/gw1/openai", map[string]any{"api_key": "sk-v2"})
 	write(base+"/gw2/openai", map[string]any{"api_key": "sk-other"})
 
+	// An entry with delete_version_after set carries a future deletion time on
+	// every live version and must still read until then.
+	write(base+"/gw1/expiring", map[string]any{"api_key": "sk-expiring"})
+	status, _ := bao(t, addr, root, http.MethodPost, "secret/metadata/"+base+"/gw1/expiring",
+		map[string]any{"delete_version_after": "1h"})
+	require.Contains(t, []int{http.StatusOK, http.StatusNoContent}, status)
+	write(base+"/gw1/expiring", map[string]any{"api_key": "sk-expiring-v2"})
+
 	// gw1's identity can read only its own entries.
 	policy := `path "secret/data/` + base + `/gw1/*" { capabilities = ["read"] }`
-	status, _ := bao(t, addr, root, http.MethodPut, "sys/policies/acl/gw1-read-"+strings.ReplaceAll(run, ".", ""), map[string]any{"policy": policy})
+	status, _ = bao(t, addr, root, http.MethodPut, "sys/policies/acl/gw1-read-"+strings.ReplaceAll(run, ".", ""), map[string]any{"policy": policy})
 	require.Contains(t, []int{http.StatusOK, http.StatusNoContent}, status)
 	status, tok := bao(t, addr, root, http.MethodPost, "auth/token/create", map[string]any{
 		"policies": []string{"gw1-read-" + strings.ReplaceAll(run, ".", "")}, "ttl": "10m", "no_default_policy": true,
@@ -110,6 +118,10 @@ func TestIntegration_KVResolverWithScopedToken(t *testing.T) {
 	got, err = v.Resolve(ref("/gw1/openai?version=1#api_key"))
 	require.NoError(t, err)
 	assert.Equal(t, "sk-v1", got, "pinned version")
+
+	got, err = v.Resolve(ref("/gw1/expiring#api_key"))
+	require.NoError(t, err, "a version scheduled for deletion is still live")
+	assert.Equal(t, "sk-expiring-v2", got)
 
 	_, err = v.Resolve(ref("/gw2/openai#api_key"))
 	assert.ErrorIs(t, err, vault.ErrAccessDenied, "another gateway's entry")

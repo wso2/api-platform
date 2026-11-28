@@ -539,11 +539,20 @@ func main() {
 	// the initial snapshots below cover all of them.
 	runtimeStore := storage.NewRuntimeConfigStore()
 	log.Info("Loading runtime configs from existing API configurations")
-	if err := loadStartupRuntimeConfigs(configStore.GetAll(), runtimeStore, secretVault, transformerRegistry,
+	deferredConfigs, err := loadStartupRuntimeConfigs(configStore.GetAll(), runtimeStore, secretVault, transformerRegistry,
 		&cfg.Router, gatewayJWKSEnabled, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
-		utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log), log); err != nil {
+		utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log), log)
+	if err != nil {
 		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
 		os.Exit(1)
+	}
+	// An artifact whose secrets could not be read is held out of memory, so the
+	// first snapshot gives it no route, and the event listener applies it once
+	// the secret store recovers. The stored row is untouched.
+	for _, c := range deferredConfigs {
+		if err := configStore.Delete(c.UUID); err != nil && !storage.IsNotFoundError(err) {
+			log.Warn("Failed to hold back deferred artifact", slog.String("api_id", c.UUID), slog.Any("error", err))
+		}
 	}
 
 	// Generate initial xDS snapshot
@@ -780,6 +789,7 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("EventListener started for multi-replica sync")
+	evtListener.RetryDeferred(deferredConfigs)
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer, err := handlers.NewAPIServer(

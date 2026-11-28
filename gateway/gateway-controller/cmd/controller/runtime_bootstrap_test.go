@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -17,6 +18,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/vault"
 	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
@@ -466,4 +468,30 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_UndeploysAccessControlR
 	assert.Equal(t, models.StateDeployed, valid.DesiredState)
 	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "metadata-api"))
 	assert.False(t, ok, "a refused artifact must not get a policy chain")
+}
+
+func TestLoadStartupRuntimeConfigs_DefersArtifactsWhenSecretStoreIsUnavailable(t *testing.T) {
+	runtimeStore := storage.NewRuntimeConfigStore()
+	secretResolver := &fakeSecretResolver{errors: map[string]error{
+		"kv://bao/apps/llm": fmt.Errorf("%w: request to openbao failed", vault.ErrUnavailable),
+	}}
+	configs := []*models.StoredConfig{
+		{
+			UUID: "rest-1", Kind: models.KindRestApi, Handle: "needs-bao", DisplayName: "Needs Bao", Version: "v1",
+			Configuration: configWithTemplateSpec{Spec: map[string]any{"displayName": `{{ secret "kv://bao/apps/llm" }}`}},
+		},
+		{UUID: "provider-1", Kind: models.KindLlmProvider, Handle: "provider-a", DisplayName: "Provider A", Version: "v1"},
+	}
+
+	// skip_invalid_deployments_on_startup is off: an outage must still not stop startup.
+	deferred, err := loadStartupRuntimeConfigs(configs, runtimeStore, secretResolver, &fakeRuntimeTransformer{},
+		&config.RouterConfig{}, false, false, nil, newDiscardLogger())
+
+	require.NoError(t, err)
+	require.Len(t, deferred, 1)
+	assert.Equal(t, "rest-1", deferred[0].UUID)
+	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "needs-bao"))
+	assert.False(t, ok, "the deferred artifact is not loaded unresolved")
+	_, ok = runtimeStore.Get(storage.Key(models.KindLlmProvider, "provider-a"))
+	assert.True(t, ok, "unrelated artifacts keep loading")
 }

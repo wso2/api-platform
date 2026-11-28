@@ -93,6 +93,9 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 			l.undeployAfterRefusal(storedConfig, event.EventID, err)
 			return
 		}
+		if l.retryIfUnavailable(event, err) {
+			return
+		}
 		l.logger.Error("Failed to render config templates for LLM provider",
 			slog.String("provider_id", entityID),
 			slog.String("event_id", event.EventID),
@@ -138,6 +141,7 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed LLM provider create/update event",
 		slog.String("provider_id", entityID),
 		slog.String("event_id", event.EventID))
@@ -177,6 +181,9 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 			l.undeployAfterRefusal(storedConfig, event.EventID, err)
 			return
 		}
+		if l.retryIfUnavailable(event, err) {
+			return
+		}
 		l.logger.Error("Failed to render config templates for LLM proxy",
 			slog.String("proxy_id", entityID),
 			slog.String("event_id", event.EventID),
@@ -212,6 +219,7 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy replica sync")
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed LLM proxy create/update event",
 		slog.String("proxy_id", entityID),
 		slog.String("event_id", event.EventID))
@@ -278,6 +286,7 @@ func (l *EventListener) handleLLMProviderDelete(event eventhub.Event) {
 		}
 	}
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed LLM provider delete event",
 		slog.String("provider_id", entityID),
 		slog.String("event_id", event.EventID))
@@ -335,6 +344,7 @@ func (l *EventListener) handleLLMProxyDelete(event eventhub.Event) {
 		}
 	}
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed LLM proxy delete event",
 		slog.String("proxy_id", entityID),
 		slog.String("event_id", event.EventID))

@@ -36,6 +36,10 @@ var (
 	ErrNotFound = errors.New("secret not found")
 	// ErrAccessDenied means the store refused the gateway's identity.
 	ErrAccessDenied = errors.New("access to secret denied")
+	// ErrUnavailable means the store could not be reached or answered with a
+	// server-side failure. The same read may succeed later, so callers retry
+	// instead of treating the artifact as invalid.
+	ErrUnavailable = errors.New("secret store unavailable")
 )
 
 // Adapter is one backing store of the gateway vault.

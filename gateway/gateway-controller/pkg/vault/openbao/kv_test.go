@@ -21,6 +21,7 @@ package openbao
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -43,14 +44,17 @@ type fakeKV struct {
 	token     string
 	namespace string
 	// entries[path][version] = data; version 0 is never used.
-	entries  map[string]map[int]map[string]any
-	deleted  map[string]bool // "path@version"
-	requests []*http.Request
-	logins   atomic.Int32
+	entries map[string]map[int]map[string]any
+	deleted map[string]bool // "path@version"
+	// scheduled marks live versions that carry a future deletion time, as
+	// with delete_version_after set.
+	scheduled map[string]bool // "path@version"
+	requests  []*http.Request
+	logins    atomic.Int32
 }
 
 func newFakeKV(token string) *fakeKV {
-	return &fakeKV{token: token, entries: map[string]map[int]map[string]any{}, deleted: map[string]bool{}}
+	return &fakeKV{token: token, entries: map[string]map[int]map[string]any{}, deleted: map[string]bool{}, scheduled: map[string]bool{}}
 }
 
 func (f *fakeKV) put(path string, data map[string]any) int {
@@ -124,6 +128,9 @@ func (f *fakeKV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"data": nil, "metadata": meta}})
 		return
 	}
+	if f.scheduled[path+"@"+strconv.Itoa(version)] {
+		meta["deletion_time"] = "2999-01-01T00:00:00Z"
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"data": data, "metadata": meta}})
 }
 
@@ -192,6 +199,19 @@ func TestKV_NotFoundCases(t *testing.T) {
 			assert.ErrorIs(t, err, vault.ErrNotFound)
 		})
 	}
+}
+
+func TestKV_ReadsVersionScheduledForDeletion(t *testing.T) {
+	f := newFakeKV("tok")
+	f.put("expiring", map[string]any{"value": "still-live"})
+	f.scheduled["expiring@1"] = true
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	kv := newTestKV(t, srv, Config{TokenFile: writeFile(t, "token", "tok")})
+
+	got, err := kv.Get(context.Background(), ref("expiring", "value", 0))
+	require.NoError(t, err, "a future deletion time does not make a live version unreadable")
+	assert.Equal(t, "still-live", got)
 }
 
 func TestKV_NonStringField(t *testing.T) {
@@ -310,8 +330,40 @@ func TestKV_Timeout(t *testing.T) {
 
 	start := time.Now()
 	_, err := kv.Get(context.Background(), ref("a", "value", 0))
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, vault.ErrUnavailable, "a timeout is retryable")
 	assert.Less(t, time.Since(start), time.Second)
+}
+
+func TestKV_UnavailableOnlyForTransientFailures(t *testing.T) {
+	for _, tc := range []struct {
+		status    int
+		retryable bool
+	}{
+		{http.StatusServiceUnavailable, true},
+		{http.StatusInternalServerError, true},
+		{http.StatusTooManyRequests, true},
+		{http.StatusBadRequest, false},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+			}))
+			defer srv.Close()
+			kv := newTestKV(t, srv, Config{TokenFile: writeFile(t, "token", "tok")})
+
+			_, err := kv.Get(context.Background(), ref("a", "value", 0))
+			require.Error(t, err)
+			assert.Equal(t, tc.retryable, errors.Is(err, vault.ErrUnavailable))
+		})
+	}
+
+	srv := httptest.NewServer(http.NotFoundHandler())
+	addr := srv.URL
+	srv.Close()
+	kv, err := New(Config{Name: "amp", Address: addr, TokenFile: writeFile(t, "token", "tok")}, nil)
+	require.NoError(t, err)
+	_, err = kv.Get(context.Background(), ref("a", "value", 0))
+	assert.ErrorIs(t, err, vault.ErrUnavailable, "a refused connection is retryable")
 }
 
 func TestNew_ValidatesConfig(t *testing.T) {

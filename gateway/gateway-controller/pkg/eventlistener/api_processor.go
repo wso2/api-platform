@@ -84,6 +84,9 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 			l.undeployAfterRefusal(storedConfig, event.EventID, err)
 			return
 		}
+		if l.retryIfUnavailable(event, err) {
+			return
+		}
 		l.logger.Error("Failed to render config templates for API",
 			slog.String("api_id", entityID),
 			slog.String("event_id", event.EventID),
@@ -129,6 +132,7 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
 	l.syncAPIKeysForAPI(storedConfig, event.EventID)
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed API create/update event",
 		slog.String("api_id", entityID),
 		slog.String("event_id", event.EventID))
@@ -221,6 +225,7 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 		}
 	}
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed API delete event",
 		slog.String("api_id", entityID),
 		slog.String("event_id", event.EventID))

@@ -95,6 +95,9 @@ func (l *EventListener) handleAgentCreateOrUpdate(event eventhub.Event) {
 			l.handleAgentUndeployed(storedConfig, event)
 			return
 		}
+		if l.retryIfUnavailable(event, err) {
+			return
+		}
 		l.logger.Error("Failed to render config templates for Agent",
 			slog.String("agent_id", entityID),
 			slog.String("event_id", event.EventID),
@@ -119,6 +122,7 @@ func (l *EventListener) handleAgentCreateOrUpdate(event eventhub.Event) {
 	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after Agent replica sync")
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed Agent create/update event",
 		slog.String("agent_id", entityID),
 		slog.String("event_id", event.EventID))
@@ -214,6 +218,7 @@ func (l *EventListener) handleAgentDelete(event eventhub.Event) {
 		}
 	}
 
+	l.clearRetry(event)
 	l.logger.Info("Successfully processed Agent delete event",
 		slog.String("agent_id", entityID),
 		slog.String("event_id", event.EventID))

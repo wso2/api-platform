@@ -232,12 +232,19 @@ func (k *KV) Get(ctx context.Context, ref vault.Ref) (string, error) {
 		return "", fmt.Errorf("%w: no entry at %s", vault.ErrNotFound, ref.String())
 	case http.StatusForbidden:
 		return "", fmt.Errorf("%w: %s", vault.ErrAccessDenied, ref.String())
+	case http.StatusTooManyRequests:
+		return "", fmt.Errorf("%w: openbao returned HTTP %d for %s", vault.ErrUnavailable, status, ref.String())
 	default:
+		if status >= http.StatusInternalServerError {
+			return "", fmt.Errorf("%w: openbao returned HTTP %d for %s", vault.ErrUnavailable, status, ref.String())
+		}
 		return "", fmt.Errorf("openbao returned HTTP %d for %s", status, ref.String())
 	}
 
-	// A soft-deleted or destroyed version comes back with no data.
-	if resp.Data.Data == nil || resp.Data.Metadata.Destroyed || resp.Data.Metadata.DeletionTime != "" {
+	// A soft-deleted or destroyed version comes back with no data. A deletion
+	// time alone is not enough: with delete_version_after set, a live version
+	// carries a future deletion time and is still readable until then.
+	if resp.Data.Data == nil || resp.Data.Metadata.Destroyed {
 		return "", fmt.Errorf("%w: %s is deleted", vault.ErrNotFound, ref.String())
 	}
 	raw, ok := resp.Data.Data[ref.Field]
@@ -258,7 +265,7 @@ func (k *KV) call(ctx context.Context, method, path string, query url.Values, ou
 	for attempt := 0; ; attempt++ {
 		token, err := k.auth.token(ctx)
 		if err != nil {
-			return 0, fmt.Errorf("openbao authentication failed: %w", err)
+			return 0, fmt.Errorf("%w: openbao authentication failed: %w", vault.ErrUnavailable, err)
 		}
 		status, err := k.do(ctx, method, path, query, nil, token, out)
 		if err != nil {
@@ -296,13 +303,13 @@ func (k *KV) do(ctx context.Context, method, path string, query url.Values, body
 	}
 	resp, err := k.client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("request to openbao failed: %w", err)
+		return 0, fmt.Errorf("%w: request to openbao failed: %w", vault.ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return 0, fmt.Errorf("reading openbao response: %w", err)
+		return 0, fmt.Errorf("%w: reading openbao response: %w", vault.ErrUnavailable, err)
 	}
 	if len(data) > maxResponseBytes {
 		return 0, errors.New("openbao response exceeds the maximum allowed size")
