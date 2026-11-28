@@ -110,10 +110,7 @@ CREATE TABLE IF NOT EXISTS certificates (
     not_before TIMESTAMPTZ NOT NULL,
     not_after TIMESTAMPTZ NOT NULL,
     cert_count INTEGER NOT NULL DEFAULT 1,
-    -- NEW COLUMNS: usage, role, match_json, private_key_ciphertext and
-    -- key_algorithm must be added to existing deployments via the guarded
-    -- ALTER TABLE statements below (idempotent, safe to re-run). usage
-    -- separates backend/upstream trust, a pooled client certificate
+    -- usage separates backend/upstream trust, a pooled client certificate
     -- authority (mTLS), and (usage: identity) a gateway identity — a
     -- certificate chain plus its encrypted private key presented to a
     -- backend requiring mutual TLS on outbound connections; the three
@@ -134,13 +131,6 @@ CREATE TABLE IF NOT EXISTS certificates (
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, name)
 );
--- Upgrade path for already-provisioned databases (CREATE TABLE IF NOT EXISTS
--- above is a no-op against them): add the columns if this table pre-dates them.
-ALTER TABLE certificates ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT 'upstream';
-ALTER TABLE certificates ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'client';
-ALTER TABLE certificates ADD COLUMN IF NOT EXISTS match_json TEXT;
-ALTER TABLE certificates ADD COLUMN IF NOT EXISTS private_key_ciphertext TEXT;
-ALTER TABLE certificates ADD COLUMN IF NOT EXISTS key_algorithm TEXT;
 
 -- LLM Provider Templates table
 CREATE TABLE IF NOT EXISTS llm_provider_templates (

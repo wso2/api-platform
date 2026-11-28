@@ -1,0 +1,2 @@
+-- No-op: SQL Server support was introduced in this release, so any SQL Server
+-- database at 1.2.0 is a fresh install and already has the column.

@@ -67,6 +67,7 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Version Management:'
 	@echo '  make version-set VERSION=X              - Set gateway version and update artifacts'
+	@echo '  make migrations-promote VERSION=X       - Move migration steps from next/ into a release directory'
 	@echo '  make version-bump-patch                 - Bump patch version'
 	@echo '  make version-bump-minor                 - Bump minor version'
 	@echo '  make version-bump-major                 - Bump major version'
@@ -186,6 +187,15 @@ test-integration-all: ## Run the whole integration framework suite (tests/framew
 	cd ../tests/framework && go test ./suites/it -count=1 -timeout=90m $(INTEGRATION_TEST_FLAGS)
 
 # Version Management Targets
+.PHONY: version-set
+migrations-promote: ## Move gateway-controller migration steps from next/ into a release directory
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION required"; \
+		echo "Usage: make migrations-promote VERSION=1.2.0"; \
+		exit 1; \
+	fi
+	@bash scripts/promote-migrations.sh "$(VERSION)"
+
 .PHONY: version-set
 version-set: ## Set gateway version and update artifacts
 	@if [ -z "$(VERSION)" ]; then \

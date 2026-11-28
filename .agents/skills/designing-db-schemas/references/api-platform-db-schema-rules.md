@@ -1,8 +1,8 @@
-# API Platform DB Schema Rules (R0–R10)
+# API Platform DB Schema Rules (R0–R11)
 
 Reference for the `designing-db-schemas` skill. These are the WSO2 API Platform conventions for relational database schemas. Step A2 and Step B2 of the skill read this file and evaluate each rule against the schema.
 
-**Scope:** applies to every SQL schema file in the repository — discovered with the glob in R0-SCOPE, not `schema*.sql`, which misses 9 of the 19 files. For `gateway/gateway-controller/` and `event-gateway/gateway-controller/` schemas, **skip R3** (type rules) — those teams own their type choices. All other rules (R0–R2, R4–R10) apply to every schema file.
+**Scope:** applies to every SQL schema file in the repository — discovered with the glob in R0-SCOPE, not `schema*.sql`, which misses 9 of the 19 files. For `gateway/gateway-controller/` and `event-gateway/gateway-controller/` schemas, **skip R3** (type rules) — those teams own their type choices. All other rules (R0–R2, R4–R11) apply to every schema file.
 
 > **Recording blanket-missing findings.** When a rule is violated uniformly across many tables (e.g. a convention that no tables follow), record **one representative finding** that names the pattern and gives a couple of examples, rather than one finding per table.
 
@@ -10,7 +10,7 @@ Reference for the `designing-db-schemas` skill. These are the WSO2 API Platform 
 
 ## R0 · Change Admissibility
 
-**These are GA products with no migration framework.** The following ship to customers, and their tables are already in customer databases:
+**These are GA products.** The following ship to customers, and their tables are already in customer databases:
 
 | GA product | Schema ownership |
 |---|---|
@@ -22,7 +22,22 @@ Reference for the `designing-db-schemas` skill. These are the WSO2 API Platform 
 
 Each bootstraps from hand-maintained per-dialect files of `CREATE TABLE IF NOT EXISTS`, selected by driver name at `platform-api/internal/database/connection.go:192`. R1–R10 describe how to build a **new** table or column correctly. They are not a licence to rewrite a shipped one.
 
-**R0-FROZEN** — On a table that has shipped, the only permitted changes are additive and backward-compatible: a new nullable-or-defaulted column, a new index, a new table. Never, on a shipped table: change a column's type or width, rename a column or table, add or drop a primary key, change a foreign key's target or `ON DELETE` action, add `NOT NULL` to an existing nullable column, or add a `UNIQUE` constraint. Each rewrites or revalidates customer data on upgrade.
+R11's migration steps give a change somewhere to live, but they do not make every change safe. The test is **whether the previous release still works against the migrated database** - that is what lets an operator run the migration while the old binary is serving, and swap afterwards. A change that breaks the old binary cannot be one step, however the DDL is written.
+
+**R0-FROZEN** — On a table that has shipped, the permitted changes are: a new nullable-or-defaulted column, a new index, a new table, and **widening** a column (`VARCHAR(40)` to `VARCHAR(255)`). Everything else is a migration plan, not a schema edit:
+
+| Change | Why not |
+|---|---|
+| Narrow a width | truncates data, or the `ALTER` fails on existing rows |
+| Rename a column or table | the previous release queries the old name and breaks immediately |
+| Retype a column | the old binary may not scan it; rewrites the table |
+| Add `NOT NULL` | fails if any row holds NULL |
+| Add `UNIQUE` | fails if duplicates exist |
+| Add or drop a PK, change an FK target or `ON DELETE` | revalidates customer data |
+
+A rename cannot be done in one step at all: add the new column, write both, backfill, switch reads, drop the old one a release later. Three releases, and it needs approval before any of it starts.
+
+**R0-WIDEN** — Widening ships like any other change: the new width in the schema file, an `ALTER` per dialect in `migrations/next/`. Check first whether the engine rewrites the table at that size - a rewrite takes a lock, which turns a no-downtime step into an outage. Postgres does not rewrite for a `VARCHAR` length increase; SQL Server varies by version and by whether the column is indexed.
 
 **R0-LEGACY-ACCEPTED** — A shipped table that violates R1–R10 is **accepted legacy, not a finding to fix**. Report it at severity `LEGACY-ACCEPTED` and record it in the deviations table of `.claude/rules/db-schema-changes.md`; do not propose remediation DDL. Bringing it into conformance needs a versioned migration plan approved outside this skill — never a drive-by schema edit. Column removal is a two-release sequence under the same approval: stop reading the column and ship, drop it later.
 
@@ -40,9 +55,9 @@ find . -name "*.sql" -not -path "*/node_modules/*" -not -path "*/target/*" | sor
 
 | Component | Files | Rules |
 |---|---|---|
-| Platform API | `platform-api/internal/database/schema{,.postgres,.sqlite,.sqlserver}.sql` | R0–R10 |
-| Event-gateway plugin | `platform-api/plugins/eventgateway/schema/schema.{postgres,sqlite,sqlserver}.sql` | R0–R10 |
-| API Portal | `portals/api-portal/database/schema.{postgres,sqlite,sqlserver}.sql` | R0–R10 |
+| Platform API | `platform-api/internal/database/schema{,.postgres,.sqlite,.sqlserver}.sql` | R0–R11 |
+| Event-gateway plugin | `platform-api/plugins/eventgateway/schema/schema.{postgres,sqlite,sqlserver}.sql` | R0–R11 |
+| API Portal | `portals/api-portal/database/schema.{postgres,sqlite,sqlserver}.sql` | R0–R11 |
 | Gateway Controller | `gateway/gateway-controller/pkg/storage/gateway-controller-db{,.postgres,.sqlserver}.sql` **and** `gateway/gateway-controller/resources/gateway-controller-db.sql` | R0–R2, R4–R10 (**R3 exempt**) |
 | Event Gateway Controller | `event-gateway/gateway-controller/pkg/dbschema/eventgateway-db{,.postgres,.sqlserver}.sql` | R0–R2, R4–R10 (**R3 exempt**) |
 | Fixtures | `platform-api/internal/database/init-platform-api-db.sql` | keep in sync |
@@ -53,14 +68,9 @@ find . -name "*.sql" -not -path "*/node_modules/*" -not -path "*/target/*" | sor
 grep -rln "<table_name>" --include="*.sql" .
 ```
 
-**R0-UPGRADE-PATH** — `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already exists, so a column added to a `CREATE TABLE` body reaches fresh installs only. A **column added to an existing table** therefore ships a matching per-dialect `ALTER TABLE`, nullable or defaulted so it applies while the previous release is still running. A **new table** or a **new index** needs no `ALTER` — its guarded `CREATE ... IF NOT EXISTS` (R9) already runs against both fresh and existing databases:
+**R0-UPGRADE-PATH** — `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already exists, so anything added only to a schema file reaches fresh installs only. That applies to a new table and a new index exactly as much as to a new column: the schema file is not re-run against an existing database.
 
-```sql
-ALTER TABLE <t> ADD COLUMN <col> <type> NULL;   -- postgres / sqlite
-ALTER TABLE <t> ADD <col> <type> NULL;          -- sqlserver
-```
-
-If a component has no upgrade-script location, create one beside its schema files and say so in the PR description. Never skip it.
+Every change therefore ships a migration step as well. R11 covers what the step contains and where it goes.
 
 ---
 
@@ -399,6 +409,21 @@ CREATE INDEX idx_... ON dbo.<table>(...);
 
 Keep `CREATE INDEX` statements in a dedicated block after all `CREATE TABLE` statements. A `CREATE TABLE` or `CREATE INDEX` without an existence guard is always a finding at MEDIUM severity.
 
+**R9-STEP-GUARD** — In a migration step the guard is not defensive, it is the only protection, and an unguarded statement there is a finding at **HIGH** severity.
+
+There is no runner yet, so steps are applied by hand and nothing records what has already run. A file can be applied twice, or the wrong one applied for the database's actual state. A guarded statement no-ops; an unguarded one fails or corrupts.
+
+SQLite has no `ADD COLUMN IF NOT EXISTS`, so there the step's transaction is the only protection - which is why a step must never be split across transactions.
+
+```sql
+-- Postgres
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT 'upstream';
+
+-- SQL Server
+IF COL_LENGTH('dbo.certificates', 'usage') IS NULL
+ALTER TABLE dbo.certificates ADD usage NVARCHAR(20) NOT NULL DEFAULT 'upstream';
+```
+
 ---
 
 ## R10 · Naming Conventions
@@ -406,6 +431,68 @@ Keep `CREATE INDEX` statements in a dedicated block after all `CREATE TABLE` sta
 **R10-LOWERCASE** — Every SQL identifier — table names, column names, index names, and constraint names — must be lowercase `snake_case`. PostgreSQL folds unquoted identifiers to lowercase, so a mixed-case identifier only resolves if **every** reference quotes it (`"MyTable"`), which is brittle and breaks silently across engines and ORMs. Use `organization_uuid`, not `organizationUuid` or `OrganizationUUID`; `idx_apis_org`, not `idx_APIs_Org`. An upper-case or camelCase identifier is a finding at MEDIUM severity.
 
 **R10-MAPPING-SUFFIX** — Pure junction/mapping tables (those defined under R1-COMPOSITE-PK) must be named with a `_mappings` suffix, e.g. `application_api_mappings`, `gateway_association_mappings`. The suffix distinguishes link tables from entity tables at a glance and keeps the schema self-documenting. A pure mapping table named without the `_mappings` suffix is a finding at LOW severity. (Tables that link two entities but also carry their own identity/lifecycle are entity tables, not mapping tables — they keep a UUID PK and an entity-style name.)
+
+---
+
+## R11 · Schema Files and Migration Steps
+
+Applies to every component: Platform API, the eventgateway plugin, API Portal, Gateway Controller, Event Gateway Controller.
+
+A schema change is **two edits in the same PR**. Either one alone is wrong.
+
+**1. Update the schema file.** It is the complete current definition of a fresh install - every table, every column, every index. A new column goes in its `CREATE TABLE` body; a new table gets its own `CREATE`.
+
+**R11-NO-ALTER** — The schema file contains `CREATE` only. An `ALTER` there applies only to a database that already exists, re-runs on every startup, and cannot tell an install from an upgrade. An `ALTER` in a schema file is a finding at **HIGH** severity.
+
+**2. Add a migration step to `next/`.** The schema file reaches fresh installs only - `CREATE TABLE IF NOT EXISTS` is a no-op against an existing database - so every change needs a step that brings an existing database to the same shape.
+
+```
+<component>/migrations/
+  1.2.0/           released - never edit, never add to
+  2026.09.24/
+  2026.10.0.1/
+  next/            put your change here
+```
+
+**R11-NEXT-ONLY** — New work goes in `next/` and nowhere else. Never edit a file under a release directory, and never create a release directory - that happens at release time, when `next/*` moves into the new tag directory. Changing a released step is a finding at **HIGH** severity: the marker still reports the release, so that database silently differs from every other installation at the same version. Fix a shipped step with a new step.
+
+**R11-NAMING** — One file per change, per dialect:
+
+```
+NNN_short_snake_case_name.{sqlite,postgres,sqlserver}.sql
+```
+
+`NNN` goes up in tens so a change can be inserted between two without renaming either. All three dialect files exist even when one is a no-op with a one-line reason - a missing file is then always a mistake.
+
+**R11-STEP-CONTENT** — What the step carries:
+
+| Change | Step |
+|---|---|
+| New column | per-dialect `ALTER TABLE ... ADD COLUMN`, nullable or defaulted |
+| New table | its own `CREATE TABLE` - not a re-run of the schema file |
+| New index | its own guarded `CREATE INDEX` |
+
+A new table or index needs a step for the same reason a column does: the schema file is not re-run against an existing database. `createMissingSchemaObjects` in gateway-controller exists because a release shipped without one.
+
+**R11-IDEMPOTENT** — Every statement in a step carries its own existence guard, so running the step twice does nothing the second time.
+
+```sql
+-- Postgres
+ALTER TABLE <t> ADD COLUMN IF NOT EXISTS <col> <type>;
+CREATE TABLE IF NOT EXISTS <t> (...);
+
+-- SQL Server
+IF COL_LENGTH('dbo.<t>', '<col>') IS NULL
+ALTER TABLE dbo.<t> ADD <col> <type> NULL;
+```
+
+The point is not tidiness, it is recovery. A step is several statements. Without guards, if statement three fails, the first two are already applied - and re-running after the fix dies on statement one, so the database is stuck half-migrated with no way forward but manual surgery on a customer's system. With guards the applied statements no-op and the run continues from the real failure.
+
+It also makes a step safe to re-apply when nobody is sure whether it ran, which is the normal state of a hand-applied migration.
+
+SQLite has no `ADD COLUMN IF NOT EXISTS`. A SQLite step cannot be guarded, so it is exactly the one that strands a database halfway - keep SQLite steps small and run them in one transaction.
+
+**R11-COMMENTS** — Short and only where the SQL does not speak for itself: why a file is a no-op, what a non-obvious column means. Not a paragraph per statement.
 
 ---
 
@@ -490,4 +577,43 @@ DATETIME2(7) DEFAULT SYSUTCDATETIME() — all timestamps in SQL Server
 
 SMALLINT      — boolean flags in Postgres and SQL Server (is_active, is_default …) — use 0/1
 INTEGER       — boolean flags in SQLite — use 0/1
+```
+
+---
+
+## Self-review checklist
+
+Run through this before outputting DDL. Each line names the rule that explains it.
+
+```text
+[ ] R0  Additive only - no retype/rename/PK-FK change/NOT NULL/UNIQUE on a shipped table
+[ ] R1  Entity tables: uuid VARCHAR(40) PRIMARY KEY
+[ ] R1  Junction tables: composite PK, not UNIQUE-only, not a surrogate UUID
+[ ] R1  Non-leading FK columns of a composite PK have their own indexes
+[ ] R1  Named resources carry handle + name + version, all NOT NULL
+[ ] R1  handle VARCHAR(40) slug, name VARCHAR(255) display string, no UNIQUE on name
+[ ] R2  organization_uuid FK present and included in UNIQUE constraints
+[ ] R3  No bare TEXT in Postgres; SQLite TEXT and SQL Server NVARCHAR(MAX) are intentional
+[ ] R3  Large payloads: BYTEA (Postgres) / BLOB (SQLite) / VARBINARY(MAX) (SQL Server), not wide VARCHAR
+[ ] R3  JSONB only when a query reads inside it; scan target checked against the driver
+[ ] R3  Boolean flags: SMALLINT (Postgres, SQL Server) / INTEGER (SQLite), 0 or 1 - never BOOLEAN
+[ ] R3  VARCHAR widths per R3-VARCHAR-SIZES; indexed columns <= 255
+[ ] R3  Timestamps: TIMESTAMPTZ (Postgres) / DATETIME (SQLite) / DATETIME2(7) (SQL Server), UTC
+[ ] R4  No CHECK constraints for enums - validate in the service layer
+[ ] R4  Required columns NOT NULL with a DEFAULT where sensible
+[ ] R4  No plaintext credential column; hashed or vault-referenced and named so
+[ ] R4  Every FK has an explicit ON DELETE
+[ ] R5  User-initiated tables get all four audit columns; system-managed omit created_by/updated_by
+[ ] R5  Domain entity tables have data_version VARCHAR(20) NOT NULL DEFAULT '1.0'
+[ ] R6  FKs, organization_uuid and filtered status columns indexed, unless already leftmost in a key
+[ ] R7  Go model/repository/DTO updated in the same commit; named columns, no SELECT *
+[ ] R8  Applied to every dialect file, or the divergence is intentional and documented
+[ ] R9  All DDL idempotent per engine
+[ ] R10 Lowercase snake_case; pure mapping tables suffixed _mappings
+[ ] R11 Schema file updated to the full current definition, CREATE only - no ALTER
+[ ] R11 Step added in migrations/next/, all three dialects, NNN_name.<dialect>.sql
+[ ] R11 New table or index: the step carries its own CREATE, not a schema-file re-run
+[ ] R11 No file under a release directory touched, no release directory created
+[ ] R11 Every statement guarded (IF NOT EXISTS / COL_LENGTH) so a re-run is a no-op
+[ ] R11 Comments short - only what the SQL does not say
 ```
