@@ -6,4 +6,6 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     PRIMARY KEY (gateway_id, uuid),
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
--- Runner grants this to the runtime role after commit (R11-GRANT).
+-- Postgres: the creating role owns this table. If a DBA applies the migration
+-- rather than the controller's own database user, grant it to that user or
+-- the gateway cannot read it.

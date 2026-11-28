@@ -29,8 +29,31 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-// alterStatement matches an ALTER TABLE outside a comment.
-var alterStatement = regexp.MustCompile(`(?i)^\s*ALTER\s+TABLE\b`)
+// alterStatement matches ALTER TABLE anywhere in a file, with any whitespace
+// (newlines included) between the two keywords.
+var alterStatement = regexp.MustCompile(`(?is)\bALTER\s+TABLE\b`)
+
+// lineComment and blockComment are blanked before matching so an ALTER named
+// in a comment is not reported, and an ALTER hidden in one is not missed.
+var (
+	lineComment  = regexp.MustCompile(`--[^\n]*`)
+	blockComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
+)
+
+// stripComments replaces comment text with spaces, keeping newlines, so byte
+// offsets still map to the original line numbers.
+func stripComments(sql string) string {
+	blank := func(m string) string {
+		out := []byte(m)
+		for i, c := range out {
+			if c != '\n' {
+				out[i] = ' '
+			}
+		}
+		return string(out)
+	}
+	return lineComment.ReplaceAllStringFunc(blockComment.ReplaceAllStringFunc(sql, blank), blank)
+}
 
 // knownAlters records schema files still carrying an ALTER. It is empty: the
 // certificate columns that used to sit at the bottom of the Postgres and SQL
@@ -51,11 +74,11 @@ func TestSchemaFilesDeclareOnly(t *testing.T) {
 		b, err := os.ReadFile(file)
 		assert.NilError(t, err)
 
+		sql := stripComments(string(b))
 		var found []string
-		for i, line := range strings.Split(string(b), "\n") {
-			if alterStatement.MatchString(line) {
-				found = append(found, fmt.Sprintf("line %d: %s", i+1, strings.TrimSpace(line)))
-			}
+		for _, loc := range alterStatement.FindAllStringIndex(sql, -1) {
+			line := 1 + strings.Count(sql[:loc[0]], "\n")
+			found = append(found, fmt.Sprintf("line %d: %s", line, strings.TrimSpace(firstLine(sql[loc[0]:]))))
 		}
 
 		base := filepath.Base(file)
@@ -74,4 +97,12 @@ func TestSchemaFilesDeclareOnly(t *testing.T) {
 			"pkg/storage/migrations/<release>/ instead.\n  %s",
 			base, len(found), len(found)-allowed, strings.Join(found, "\n  "))
 	}
+}
+
+// firstLine returns s up to its first newline, for a one-line error message.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
