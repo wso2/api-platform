@@ -75,6 +75,7 @@ type EventListener struct {
 	secretResolver        funcs.SecretResolver
 	policyVersionResolver utils.PolicyVersionResolver
 	webhookSecretHandler  WebhookSecretEventHandler
+	retries               *renderRetries
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -143,6 +144,7 @@ func NewEventListener(
 		policyValidator:       config.NewPolicyValidator(policyDefinitions, nil),
 		secretResolver:        secretResolver,
 		policyVersionResolver: policyVersionResolver,
+		retries:               newRenderRetries(),
 		ctx:                   ctx,
 		cancel:                cancel,
 	}
@@ -189,6 +191,11 @@ func (l *EventListener) Stop() {
 
 // processEvents handles incoming events from the EventHub subscription
 func (l *EventListener) processEvents() {
+	// Replays share this loop with hub events, so the two never interleave.
+	var replays <-chan eventhub.Event
+	if l.retries != nil {
+		replays = l.retries.ch
+	}
 	for {
 		select {
 		case <-l.ctx.Done():
@@ -198,6 +205,8 @@ func (l *EventListener) processEvents() {
 				l.logger.Info("Event channel closed, stopping event processing")
 				return
 			}
+			l.processEventSafely(event)
+		case event := <-replays:
 			l.processEventSafely(event)
 		}
 	}

@@ -48,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -121,6 +122,7 @@ func NewAPIServer(
 	eventHub eventhub.EventHub,
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 	secretService *secrets.SecretService,
+	secretResolver funcs.SecretResolver,
 	restAPIService *restapi.RestAPIService,
 	httpClient *http.Client,
 	agentService *agent.AgentService,
@@ -142,7 +144,7 @@ func NewAPIServer(
 		panic("APIServer requires non-empty gateway ID")
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, eventHub, gatewayID, secretService, httpClient)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, eventHub, gatewayID, secretResolver, httpClient)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
@@ -150,7 +152,7 @@ func NewAPIServer(
 	policyValidator := config.NewPolicyValidator(policyDefinitions, nil)
 	parser := config.NewParser()
 	routerConfig := &systemConfig.Router
-	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretService, policyVersionResolver)
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretResolver, policyVersionResolver)
 
 	server := &APIServer{
 		store:                store,

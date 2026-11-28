@@ -435,6 +435,47 @@ max_idle_conns = 2
 conn_max_lifetime = "30m"
 conn_max_idle_time = "5m"
 
+# External secret resolvers. {{ secret "handle" }} keeps reading the gateway's
+# encrypted database. A reference of the form
+#
+#   {{ secret "kv://<resolver>/<path>[?version=<n>][#<field>]" }}
+#
+# reads an existing entry from the named resolver's KV v2 mount at render time
+# and keeps the value in memory only; the stored artifact keeps the reference.
+# <field> defaults to "value". Pin ?version= for an immutable reference. The
+# gateway only reads: give its identity "read" on <mount>/data/<assigned paths>.
+# Works with OpenBao and HashiCorp Vault.
+#
+# If a resolver is unreachable or returns a server error, the gateway does not
+# serve the artifact unresolved and does not stop. At startup the artifact is
+# left out and the rest load. A change that arrives during the outage is held
+# back. Either way the gateway retries, backing off up to one minute, and
+# applies the latest stored revision once the secret can be read. A missing
+# entry or a denied read is an error in the artifact and is not retried.
+#
+# Supported path: deploy artifacts that use kv:// references to the gateway
+# directly, through its management API. The Platform API does not understand
+# external references yet: on create or update it looks them up as
+# organization secrets and rejects them.
+#
+# [[controller.vault.resolvers]]
+# name = "amp-shared"                 # the <resolver> in kv:// references
+# type = "openbao"
+# address = '{{ env "APIP_GW_CONTROLLER_VAULT_ADDR" }}'
+# mount = "secret"                    # KV v2 mount path
+# namespace = ""                      # optional
+# ca_file = ""                        # PEM bundle for the server certificate
+# tls_skip_verify = false
+# request_timeout = "10s"
+#
+# [controller.vault.resolvers.auth]
+# token_file = "/var/run/secrets/openbao/token"   # or use kubernetes below
+#
+# # [controller.vault.resolvers.auth.kubernetes]
+# # role = "gateway-controller"
+# # mount_path = "kubernetes"
+# # jwt_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
 # =============================================================================
 # ROUTER CONFIGURATION
 # =============================================================================

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/vault"
 )
 
 func hydrateStoredConfigsFromDatabaseOnStartup(
@@ -111,9 +113,10 @@ func loadStartupRuntimeConfigs(
 	skipInvalidDeployments bool,
 	onRefused func(*models.StoredConfig) error,
 	log *slog.Logger,
-) error {
+) ([]*models.StoredConfig, error) {
 	refused := 0
-	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+	var deferred []*models.StoredConfig
+	loadedCount, err := loadRuntimeConfigs(
 		loadedAPIs, runtimeStore, secretResolver, transformer, log, skipInvalidDeployments,
 		func(c *models.StoredConfig) error {
 			refused++
@@ -122,17 +125,19 @@ func loadStartupRuntimeConfigs(
 			}
 			return onRefused(c)
 		},
+		func(c *models.StoredConfig) { deferred = append(deferred, c) },
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if log == nil {
-		return nil
+		return deferred, nil
 	}
 	log.Info("Loaded runtime configs from API configurations",
 		slog.Int("total_apis", len(loadedAPIs)),
 		slog.Int("configs_loaded", loadedCount),
-		slog.Int("undeployed_as_refused", refused))
+		slog.Int("undeployed_as_refused", refused),
+		slog.Int("deferred_secret_store_unavailable", len(deferred)))
 	warnMtlsAPIsWithoutDedicatedHostname(loadedAPIs, routerConfig, log)
 	if gatewayJWKSEnabled && runtimeStore != nil {
 		if conflicts := transform.GatewayJWKSConflicts(runtimeStore.GetAll()); len(conflicts) > 0 {
@@ -142,7 +147,7 @@ func loadStartupRuntimeConfigs(
 				slog.Any("routes", conflicts))
 		}
 	}
-	return nil
+	return deferred, nil
 }
 
 func loadRuntimeConfigsFromExistingAPIConfigurations(
@@ -153,6 +158,26 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 	log *slog.Logger,
 	skipInvalidDeployments bool,
 	onEnvRefused func(*models.StoredConfig) error,
+) (int, error) {
+	return loadRuntimeConfigs(loadedConfigs, runtimeStore, secretResolver, transformer, log,
+		skipInvalidDeployments, onEnvRefused, nil)
+}
+
+// loadRuntimeConfigs renders and transforms each stored artifact into
+// runtimeStore. An artifact whose secrets could not be read because a secret
+// store was unavailable is handed to onUnavailable and left out, whatever
+// skipInvalidDeployments says: one store outage must not stop the gateway or
+// take unrelated APIs offline. With a nil onUnavailable it is treated like any
+// other render failure.
+func loadRuntimeConfigs(
+	loadedConfigs []*models.StoredConfig,
+	runtimeStore *storage.RuntimeConfigStore,
+	secretResolver funcs.SecretResolver,
+	transformer models.ConfigTransformer,
+	log *slog.Logger,
+	skipInvalidDeployments bool,
+	onEnvRefused func(*models.StoredConfig) error,
+	onUnavailable func(*models.StoredConfig),
 ) (int, error) {
 	if runtimeStore == nil || transformer == nil {
 		return 0, nil
@@ -173,6 +198,16 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 				// whatever skipInvalidDeployments says. Other artifacts keep loading.
 				if upstreamguard.IsArtifactRefusal(err) {
 					utils.UndeployRefusedAtStartup(apiConfig, onEnvRefused, upstreamguard.RefusalReason(err), log)
+					continue
+				}
+				if onUnavailable != nil && errors.Is(err, vault.ErrUnavailable) {
+					if log != nil {
+						log.Warn("Secret store unavailable during startup load; deferring the artifact until it recovers",
+							slog.String("api_id", apiConfig.UUID),
+							slog.String("kind", apiConfig.Kind),
+							slog.Any("error", err))
+					}
+					onUnavailable(apiConfig)
 					continue
 				}
 				if log != nil {
