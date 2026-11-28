@@ -23,8 +23,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
+
+	"github.com/cucumber/godog"
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -54,17 +57,28 @@ const (
 	// activeTokenStatus is the only token status the console counts as active; a token with
 	// no status is active too, as the console treats it.
 	activeTokenStatus = "active"
+
+	// selfHostedEnvironmentProperty is the property the cloud sets to a self-hosted gateway's
+	// bound environment, which the portals read it from.
+	selfHostedEnvironmentProperty = "environment"
 )
 
 // registerSelfHostedGatewaySteps binds the steps that register a self-hosted gateway, manage its
 // registration tokens and delete it.
 func (s *Steps) registerSelfHostedGatewaySteps(sc stepRegistrar) {
 	sc.Step(`^I create a synthetic self-hosted APIP gateway$`, s.createSelfHostedGateway)
+	sc.Step(`^I create a synthetic self-hosted APIP gateway with:$`, s.createSelfHostedGatewayWith)
 	sc.Step(`^the self-hosted APIP gateway should be retrievable and awaiting connection$`, s.getSelfHostedGatewayAwaitingConnection)
-	sc.Step(`^I generate a registration token for the self-hosted APIP gateway$`, s.generateRegistrationToken)
+	sc.Step(`^the self-hosted APIP gateway should be retrievable and inactive, with the endpoints and properties it was created with$`,
+		s.assertSelfHostedGatewayKeepsItsValues)
+	sc.Step(`^the self-hosted APIP gateway should name the console user as its creator$`, s.assertSelfHostedGatewayCreator)
+	sc.Step(`^the self-hosted APIP gateway should be listed$`, s.assertSelfHostedGatewayListed)
+	sc.Step(`^I generate (?:a|another) registration token for the self-hosted APIP gateway$`, s.generateRegistrationToken)
 	sc.Step(`^I reconfigure the registration token of the self-hosted APIP gateway$`, s.reconfigureRegistrationToken)
+	sc.Step(`^I revoke the first registration token of the self-hosted APIP gateway(?: again)?$`, s.revokeFirstRegistrationToken)
 	sc.Step(`^the self-hosted APIP gateway should have exactly (\d+) active registration tokens?$`, s.assertActiveRegistrationTokens)
 	sc.Step(`^the revoked registration tokens should no longer be active$`, s.assertRevokedTokensInactive)
+	sc.Step(`^the last registration token of the self-hosted APIP gateway should still be active$`, s.assertLastTokenActive)
 	sc.Step(`^I delete the synthetic self-hosted APIP gateway$`, s.deleteSelfHostedGateway)
 	sc.Step(`^the self-hosted APIP gateway should eventually be absent$`, s.verifySelfHostedGatewayDeleted)
 	s.registerLocalGatewaySteps(sc)
@@ -81,6 +95,46 @@ func selfHostedGatewayTokensPath(id string) string {
 // createSelfHostedGateway registers a gateway in the selected environment the way the
 // console does: no endpoint yet, only the pending placeholder.
 func (s *Steps) createSelfHostedGateway(ctx context.Context) error {
+	return s.registerSelfHostedGateway(ctx, []string{pendingEndpoint}, nil)
+}
+
+// createSelfHostedGatewayWith registers a gateway with the endpoints (a JSON array of URLs) and
+// properties (a JSON object) the table gives, and keeps both for the assertions that follow.
+func (s *Steps) createSelfHostedGatewayWith(ctx context.Context, table *godog.Table) error {
+	values, err := tableValues(table)
+	if err != nil {
+		return err
+	}
+	for key := range values {
+		if key != "endpoints" && key != "properties" {
+			return fmt.Errorf("unsupported self-hosted gateway value %q (want endpoints or properties)", key)
+		}
+	}
+	var endpoints []string
+	if err := json.Unmarshal([]byte(values["endpoints"]), &endpoints); err != nil || len(endpoints) == 0 {
+		return fmt.Errorf("endpoints must be a non-empty JSON array of URLs, got %q", values["endpoints"])
+	}
+	properties := map[string]any{}
+	if raw, present := values["properties"]; present {
+		if err := json.Unmarshal([]byte(raw), &properties); err != nil {
+			return fmt.Errorf("properties must be a JSON object, got %q", raw)
+		}
+	}
+	if err := tcontext.Set(ctx, keySelfHostedGatewayEndpoints, values["endpoints"]); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(properties)
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keySelfHostedGatewayProperties, string(encoded)); err != nil {
+		return err
+	}
+	return s.registerSelfHostedGateway(ctx, endpoints, properties)
+}
+
+// registerSelfHostedGateway registers a regular self-hosted gateway in the selected environment.
+func (s *Steps) registerSelfHostedGateway(ctx context.Context, endpoints []string, properties map[string]any) error {
 	environment, err := requiredValue(ctx, keyEnvironmentName)
 	if err != nil {
 		return err
@@ -105,13 +159,17 @@ func (s *Steps) createSelfHostedGateway(ctx context.Context) error {
 	}); err != nil {
 		return fmt.Errorf("registering self-hosted gateway %q for cleanup: %w", cleanupID, err)
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, selfHostedGatewaysPath, map[string]any{
+	body := map[string]any{
 		"displayName":       name,
 		"description":       "Created and deleted by the APIP cloud integration test. Safe to delete.",
 		"environment":       environment,
 		"functionalityType": selfHostedFunctionalityType,
-		"endpoints":         []string{pendingEndpoint},
-	})
+		"endpoints":         endpoints,
+	}
+	if len(properties) > 0 {
+		body["properties"] = properties
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPost, selfHostedGatewaysPath, body)
 	if err != nil {
 		return err
 	}
@@ -178,6 +236,131 @@ func (s *Steps) getSelfHostedGatewayAwaitingConnection(ctx context.Context) erro
 	return checkAwaitingConnection(document, id, environment)
 }
 
+// readSelfHostedGateway reads the scenario's self-hosted gateway by id.
+func (s *Steps) readSelfHostedGateway(ctx context.Context) (map[string]any, string, error) {
+	id, err := requiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, selfHostedGatewayPath(id), nil)
+	if err != nil {
+		return nil, id, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, id, responseError(resp)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(resp.Body, &document); err != nil {
+		return nil, id, fmt.Errorf("decoding APIP self-hosted gateway: %w (%s)", err, resp.Describe())
+	}
+	return document, id, nil
+}
+
+// assertSelfHostedGatewayKeepsItsValues checks a gateway created with endpoints and properties
+// reads back inactive with those endpoints in order and those properties, beside the
+// properties.environment the cloud sets to the bound environment.
+func (s *Steps) assertSelfHostedGatewayKeepsItsValues(ctx context.Context) error {
+	document, id, err := s.readSelfHostedGateway(ctx)
+	if err != nil {
+		return err
+	}
+	environment, err := requiredValue(ctx, keyEnvironmentName)
+	if err != nil {
+		return err
+	}
+	var wantEndpoints []string
+	rawEndpoints, err := requiredValue(ctx, keySelfHostedGatewayEndpoints)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(rawEndpoints), &wantEndpoints); err != nil {
+		return err
+	}
+	wantProperties := map[string]any{}
+	rawProperties, err := requiredValue(ctx, keySelfHostedGatewayProperties)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(rawProperties), &wantProperties); err != nil {
+		return err
+	}
+	if got, _ := document["id"].(string); got != id {
+		return fmt.Errorf("self-hosted gateway id = %q, want %q", got, id)
+	}
+	if got, _ := document["environment"].(string); got != environment {
+		return fmt.Errorf("self-hosted gateway %q environment = %q, want %q", id, got, environment)
+	}
+	if active, ok := document["isActive"].(bool); !ok || active {
+		return fmt.Errorf("self-hosted gateway %q isActive = %v, want false: no controller has connected", id, document["isActive"])
+	}
+	if got, _ := document["functionalityType"].(string); got != selfHostedFunctionalityType {
+		return fmt.Errorf("self-hosted gateway %q functionalityType = %q, want %q", id, got, selfHostedFunctionalityType)
+	}
+	endpoints, _ := document["endpoints"].([]any)
+	if len(endpoints) != len(wantEndpoints) {
+		return fmt.Errorf("self-hosted gateway %q endpoints = %v, want %v", id, document["endpoints"], wantEndpoints)
+	}
+	for i, want := range wantEndpoints {
+		if !reflect.DeepEqual(endpoints[i], want) {
+			return fmt.Errorf("self-hosted gateway %q endpoints = %v, want %v", id, document["endpoints"], wantEndpoints)
+		}
+	}
+	properties, _ := document["properties"].(map[string]any)
+	for key, want := range wantProperties {
+		// Structurally: a property may hold an object or an array, which != cannot compare.
+		if got, present := properties[key]; !present || !reflect.DeepEqual(got, want) {
+			return fmt.Errorf("self-hosted gateway %q property %q = %v, want %v", id, key, properties[key], want)
+		}
+	}
+	if got, _ := properties[selfHostedEnvironmentProperty].(string); got != environment {
+		return fmt.Errorf("self-hosted gateway %q property %q = %v, want its environment %q",
+			id, selfHostedEnvironmentProperty, got, environment)
+	}
+	return nil
+}
+
+// assertSelfHostedGatewayCreator checks the gateway names the console user as its creator.
+func (s *Steps) assertSelfHostedGatewayCreator(ctx context.Context) error {
+	document, id, err := s.readSelfHostedGateway(ctx)
+	if err != nil {
+		return err
+	}
+	want, err := consoleUserDisplayName(ctx)
+	if err != nil {
+		return err
+	}
+	if got, _ := document["createdBy"].(string); got != want {
+		return fmt.Errorf("self-hosted gateway %q createdBy = %q, want the console user %q", id, got, want)
+	}
+	return nil
+}
+
+// assertSelfHostedGatewayListed checks the self-hosted gateway list, which holds every
+// self-hosted gateway of the organisation, names the scenario's gateway.
+func (s *Steps) assertSelfHostedGatewayListed(ctx context.Context) error {
+	id, err := requiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, selfHostedGatewaysPath, nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return responseError(resp)
+	}
+	items, err := listItems(resp)
+	if err != nil {
+		return fmt.Errorf("decoding self-hosted gateways: %w", err)
+	}
+	for _, item := range items {
+		if got, _ := item["id"].(string); got == id {
+			return nil
+		}
+	}
+	return fmt.Errorf("self-hosted gateway %q is not listed: %s", id, resp.Describe())
+}
+
 // checkAwaitingConnection asserts the state of a self-hosted gateway no controller has
 // connected to yet: inactive, in its environment, with only the pending endpoint.
 func checkAwaitingConnection(document map[string]any, id, environment string) error {
@@ -231,11 +414,75 @@ func (s *Steps) mintRegistrationTokenValue(ctx context.Context, gatewayID string
 		return "", fmt.Errorf("minting a registration token: %s %s -> %d, want %d (body withheld: it may hold a token)",
 			resp.Method, resp.URL, resp.StatusCode, http.StatusCreated)
 	}
-	_, token, err := parseMintedToken(resp.Body)
+	tokenID, token, err := parseMintedToken(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("minting a registration token for self-hosted gateway %q: %w", gatewayID, err)
 	}
+	if err := recordIssuedToken(ctx, tokenID); err != nil {
+		return "", err
+	}
 	return token, nil
+}
+
+// recordIssuedToken appends a minted token's id, never its value, to the scenario's issued ids.
+func recordIssuedToken(ctx context.Context, tokenID string) error {
+	issued := optionalValue(ctx, keyIssuedTokenIDs)
+	if issued != "" {
+		issued += ","
+	}
+	return tcontext.Set(ctx, keyIssuedTokenIDs, issued+tokenID)
+}
+
+// issuedTokenIDs returns the ids of the tokens the scenario issued, in issue order.
+func issuedTokenIDs(ctx context.Context) ([]string, error) {
+	issued := optionalValue(ctx, keyIssuedTokenIDs)
+	if issued == "" {
+		return nil, fmt.Errorf("no registration token was issued in this scenario")
+	}
+	return strings.Split(issued, ","), nil
+}
+
+// revokeFirstRegistrationToken revokes the first token the scenario issued, by id, and records it
+// as revoked. Revoking it again is answered the same way.
+func (s *Steps) revokeFirstRegistrationToken(ctx context.Context) error {
+	id, err := requiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	issued, err := issuedTokenIDs(ctx)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodDelete,
+		selfHostedGatewayTokensPath(id)+"/"+url.PathEscape(issued[0]), nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		return responseError(resp)
+	}
+	return tcontext.Set(ctx, keyRevokedTokenIDs, issued[0])
+}
+
+// assertLastTokenActive checks the last token the scenario issued is still active.
+func (s *Steps) assertLastTokenActive(ctx context.Context) error {
+	id, err := requiredValue(ctx, keySelfHostedGatewayID)
+	if err != nil {
+		return err
+	}
+	issued, err := issuedTokenIDs(ctx)
+	if err != nil {
+		return err
+	}
+	last := issued[len(issued)-1]
+	active, err := s.activeRegistrationTokenIDs(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(active, last) {
+		return fmt.Errorf("registration token %q of self-hosted gateway %q is not active; active: %v", last, id, active)
+	}
+	return nil
 }
 
 // mintedTokenID checks a mint response carries both a token and its id, and returns the id.

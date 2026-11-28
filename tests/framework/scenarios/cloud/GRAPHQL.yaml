@@ -90,3 +90,21 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_graphql.feature
           scenario: "A GraphQL API with API key security refuses a request without a key, accepts its keys, and refuses a revoked key while another key still works"
+  - id: ID_APIP_GRAPHQL_009
+    title: "A GraphQL API whose SDL URL is the cloud metadata address is refused before the SDL is fetched, while one with an inline SDL is created."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises NETAC-PA-016.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_graphql.feature
+          scenario: "A GraphQL API whose SDL URL is the cloud metadata address is refused before the SDL is fetched, while one with an inline SDL is created"
+  - id: ID_APIP_GRAPHQL_010
+    title: "Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL is fetched."
+    priority: P1
+    cloud:
+      # The cloud counterpart of on-premises NETAC-PA-020.
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_graphql.feature
+          scenario: "Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL is fetched"

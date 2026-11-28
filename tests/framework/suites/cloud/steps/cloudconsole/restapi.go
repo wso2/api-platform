@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -100,11 +101,13 @@ func withKind(path, kind string) string {
 	return path + separator + "kind=" + url.QueryEscape(kind)
 }
 
-// apiOverrideKeys lists the definition fields a values table may replace; the first three are
-// plain strings and the rest carry JSON.
+// apiOverrideKeys lists the definition fields a values table may replace: the first three are
+// plain strings, upstreamUrl is the main upstream's URL, paddingBytes adds a field of that many
+// bytes the definition does not define, so a body's size is all that sets it apart, and the rest
+// carry JSON.
 var apiOverrideKeys = map[string]bool{
-	"displayName": true, "context": true, "version": true,
-	"operations": true, "policies": true, "security": true,
+	"displayName": true, "context": true, "version": true, "upstreamUrl": true, "paddingBytes": true,
+	"upstream": true, "operations": true, "policies": true, "security": true,
 }
 
 // tableValues reads a two-column key/value Gherkin table.
@@ -131,6 +134,10 @@ func tableValues(table *godog.Table) (map[string]string, error) {
 
 // applyAPIOverrides replaces fields of a REST API definition with the values a scenario supplies.
 func applyAPIOverrides(ctx context.Context, definition map[string]any, overrides map[string]string) error {
+	_, whole := overrides["upstream"]
+	if _, byURL := overrides["upstreamUrl"]; whole && byURL {
+		return fmt.Errorf("a REST API names its upstream or its upstreamUrl, not both")
+	}
 	keys := make([]string, 0, len(overrides))
 	for key := range overrides {
 		keys = append(keys, key)
@@ -145,12 +152,20 @@ func applyAPIOverrides(ctx context.Context, definition map[string]any, overrides
 			return err
 		}
 		switch key {
-		case "operations", "policies", "security":
+		case "upstream", "operations", "policies", "security":
 			var parsed any
 			if err := json.Unmarshal([]byte(value), &parsed); err != nil {
 				return fmt.Errorf("REST API value %q is not valid JSON: %w", key, err)
 			}
 			definition[key] = parsed
+		case "upstreamUrl":
+			definition["upstream"] = map[string]any{"main": map[string]string{"url": value}}
+		case "paddingBytes":
+			size, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil || size <= 0 {
+				return fmt.Errorf("REST API value %q must be a positive byte count, got %q", key, value)
+			}
+			definition["padding"] = strings.Repeat("x", size)
 		default:
 			definition[key] = value
 		}
@@ -340,22 +355,7 @@ func (s *Steps) storedDefinition(ctx context.Context, ref apiRef) (map[string]an
 
 // updateAPI replaces the synthetic REST API's definition with the stored one plus the overrides.
 func (s *Steps) updateAPI(ctx context.Context, table *godog.Table) error {
-	overrides, err := tableValues(table)
-	if err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, primaryAPI.id)
-	if err != nil {
-		return err
-	}
-	definition, err := s.storedDefinition(ctx, primaryAPI)
-	if err != nil {
-		return err
-	}
-	if err := applyAPIOverrides(ctx, definition, overrides); err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPut, "/rest-apis/"+url.PathEscape(id), definition)
+	resp, definition, err := s.sendAPIUpdate(ctx, table)
 	if err != nil {
 		return err
 	}
@@ -363,6 +363,63 @@ func (s *Steps) updateAPI(ctx context.Context, table *godog.Table) error {
 		return responseError(resp)
 	}
 	return storeDefinition(ctx, primaryAPI, definition)
+}
+
+// tryUpdateAPI sends an update the platform may refuse and leaves its answer for the assertion
+// steps. The stored definition stays as it was, since a refused update changes nothing.
+func (s *Steps) tryUpdateAPI(ctx context.Context, table *godog.Table) error {
+	_, _, err := s.sendAPIUpdate(ctx, table)
+	return err
+}
+
+// sendAPIUpdate sends the stored definition of the synthetic REST API with the overrides applied,
+// and returns the answer and the definition it sent.
+func (s *Steps) sendAPIUpdate(ctx context.Context, table *godog.Table) (*httpx.Response, map[string]any, error) {
+	// A request that fails before it is sent must not leave an earlier answer to be asserted.
+	httpx.ClearPublished(ctx)
+	overrides, err := tableValues(table)
+	if err != nil {
+		return nil, nil, err
+	}
+	id, err := requiredValue(ctx, primaryAPI.id)
+	if err != nil {
+		return nil, nil, err
+	}
+	definition, err := s.storedDefinition(ctx, primaryAPI)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := applyAPIOverrides(ctx, definition, overrides); err != nil {
+		return nil, nil, err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPut, "/rest-apis/"+url.PathEscape(id), definition)
+	if err != nil {
+		return nil, nil, err
+	}
+	return resp, definition, nil
+}
+
+// assertUpstreamIsTheBackend checks that the platform holds the testbench backend as the synthetic
+// REST API's main upstream.
+func (s *Steps) assertUpstreamIsTheBackend(ctx context.Context, which string) error {
+	env, fallback := backendEnv, defaultBackend
+	if which == "echo backend" {
+		env, fallback = echoBackendEnv, defaultEchoBackend
+	}
+	backend, err := testbenchURL(env, fallback)
+	if err != nil {
+		return err
+	}
+	definition, err := s.readDefinitionOf(ctx, primaryAPI)
+	if err != nil {
+		return err
+	}
+	upstream, _ := definition["upstream"].(map[string]any)
+	main, _ := upstream["main"].(map[string]any)
+	if got, _ := main["url"].(string); strings.TrimRight(got, "/") != backend {
+		return fmt.Errorf("expected the main upstream %q, the platform holds %v", backend, definition["upstream"])
+	}
+	return nil
 }
 
 func (s *Steps) deployAPI(ctx context.Context, label string) error {
