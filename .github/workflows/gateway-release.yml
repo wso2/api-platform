@@ -79,6 +79,13 @@ jobs:
           git push origin ai-gateway/v${{ steps.version.outputs.version }}
 
 
+      - name: Sync migration steps to the public repo
+        env:
+          GH_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+          UPSTREAM_REPO: wso2/api-platform
+        run: |
+          bash gateway/scripts/sync-migrations-upstream.sh ${{ steps.version.outputs.version }}
+
       - name: Set next dev version
         env:
           NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
