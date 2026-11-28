@@ -210,6 +210,8 @@ func TestCheckURL(t *testing.T) {
 		"https://BLOCKED.example./x",     // host rule after normalization
 		"https://169.254.169.254/latest", // literal metadata address
 		"https://[fe80::1]/",             // literal link-local
+		"https://169。254。169。254/",       // literal metadata address with ideographic full stops
+		"https://１６９．２５４．１６９．２５４/",       // and in full-width digits and stops
 	}
 	for _, raw := range refusedCases {
 		if err := p.CheckURL(ctx, raw, false); !errors.Is(err, ErrDestinationNotAllowed) {
@@ -224,6 +226,9 @@ func TestCheckURL(t *testing.T) {
 	}
 	if err := p.CheckURL(ctx, "https://10.0.0.5:8443/api", false); err != nil {
 		t.Errorf("positive control: private literal with private networks permitted = %v", err)
+	}
+	if err := p.CheckURL(ctx, "https://10。0。0。5/api", false); err != nil {
+		t.Errorf("positive control: a permitted literal with ideographic full stops = %v", err)
 	}
 
 	// A malformed URL is an error but not a refusal.
@@ -312,4 +317,20 @@ func TestStricter_OnlyTightens(t *testing.T) {
 		t.Fatal("merging with permit_private must not refuse private addresses")
 	}
 
+}
+
+func TestCheckIPLiteral(t *testing.T) {
+	p := mustBuild(t, GuardConfig{Enabled: true})
+	for host, want := range map[string]bool{"169.254.169.254": false, "169。254。169。254": false, "[fe80::1]": false, "10.0.0.5": true} {
+		literal, err := p.CheckIPLiteral(host)
+		if !literal || (err == nil) != want {
+			t.Errorf("CheckIPLiteral(%q) = %v, %v; want literal and allowed=%v", host, literal, err, want)
+		}
+		if err != nil && !errors.Is(err, ErrDestinationNotAllowed) {
+			t.Errorf("CheckIPLiteral(%q): %v does not match ErrDestinationNotAllowed", host, err)
+		}
+	}
+	if literal, err := p.CheckIPLiteral("api.example.com"); literal || err != nil {
+		t.Errorf("a hostname is neither a literal nor refused here, got %v, %v", literal, err)
+	}
 }

@@ -67,6 +67,13 @@ Feature: In deny mode the control plane refuses denied hosts and, when asked to,
       | endpointUrl    | https://llm.example.com/v1         |
       | openapiSpecUrl | https://198.51.100.9/openapi.yaml  |
     Then the response status code should be 201
+    # A template family is identified by its display name, so the refused one can be
+    # looked up by name to show it was never created.
+    And the JSON response field "groupId" should be "${CTX:allowedTemplate}"
+    When I send a "GET" request to the control plane at "/llm-provider-templates?query=groupId%3A${CTX:refusedTemplate}"
+    Then the response status code should be 404
+    When I send a "GET" request to the control plane at "/llm-provider-templates?query=groupId%3A${CTX:allowedTemplate}"
+    Then the response status code should be 200
     When I send a multipart "POST" request to the control plane at "/rest-apis/import-openapi" with fields:
       | id          | ${CTX:api}                                   |
       | displayName | ${CTX:api}                                   |

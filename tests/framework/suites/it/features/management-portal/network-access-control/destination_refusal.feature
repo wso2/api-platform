@@ -146,6 +146,14 @@ Feature: The control plane never connects to a destination its network access co
     When I send a "GET" request to the control plane at "/llm-provider-templates/${CTX:templateId}"
     Then the response status code should be 200
     And the JSON response field "metadata.openapiSpecUrl" should be "https://specs.example.com/llm/openapi.yaml"
+    When I update the LLM provider template "${CTX:templateId}" via the control plane from "resources/templates/llm-provider-template-cp.yaml" with values:
+      | displayName    | ${CTX:allowedTemplate}                       |
+      | endpointUrl    | https://llm.example.com/v1                   |
+      | openapiSpecUrl | https://specs.example.com/llm/openapi-v2.yaml |
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/llm-provider-templates/${CTX:templateId}"
+    Then the response status code should be 200
+    And the JSON response field "metadata.openapiSpecUrl" should be "https://specs.example.com/llm/openapi-v2.yaml"
 
   @NETAC-PA-011 @type:negative
   Scenario: A REST API whose upstream is the cloud metadata address is refused on create and on update, while a permitted upstream is created

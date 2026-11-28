@@ -411,8 +411,9 @@ type HTTPClientProxyConfig struct {
 	// Egress states how origin-destination SSRF risk is handled when a forward proxy is
 	// also configured: "delegated" (trust the proxy's own egress controls) or
 	// "manual_connect" (validate the origin locally before ever issuing CONNECT). Must be
-	// set explicitly whenever Mode != "none" and SSRF.Enabled — httpclient.New fails
-	// closed at startup otherwise rather than silently choosing one.
+	// set explicitly whenever Mode != "none" and either DestinationGuard.Enabled or
+	// server.network_security.access_control.deny_private_networks is true — startup fails
+	// closed otherwise rather than silently choosing one.
 	Egress string `koanf:"egress"`
 }
 

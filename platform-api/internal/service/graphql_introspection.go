@@ -242,6 +242,11 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		// A hostname refused only once it resolves, or a refused redirect hop, is a
+		// refusal like the pre-check above, not an unreachable endpoint.
+		if refused := utils.DestinationNotAllowedError(err); refused != nil {
+			return "", refused
+		}
 		return "", fmt.Errorf("failed to reach GraphQL endpoint for introspection: %w", err)
 	}
 	defer resp.Body.Close()
