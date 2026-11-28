@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/url"
 	"reflect"
 	"regexp"
 	"sort"
@@ -41,6 +42,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/health"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/vault"
 	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
@@ -229,6 +231,7 @@ type Controller struct {
 	Auth         AuthConfig         `koanf:"auth"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
+	Vault        VaultConfig        `koanf:"vault"`
 	EventHub     EventHubConfig     `koanf:"event_hub"`
 }
 
@@ -1098,6 +1101,40 @@ type EncryptionConfig struct {
 type ProviderConfig struct {
 	Type string                `koanf:"type"` // "aesgcm"
 	Keys []EncryptionKeyConfig `koanf:"keys"`
+}
+
+// VaultConfig lists the external stores that {{ secret "kv://<resolver>/<path>#<field>" }}
+// references can read. Plain {{ secret "handle" }} placeholders keep reading the
+// encrypted database and need no entry here.
+type VaultConfig struct {
+	Resolvers []VaultResolverConfig `koanf:"resolvers"`
+}
+
+// VaultResolverConfig configures one read-only external resolver.
+type VaultResolverConfig struct {
+	Name           string          `koanf:"name"`            // used as <resolver> in kv:// references
+	Type           string          `koanf:"type"`            // "openbao" (OpenBao or HashiCorp Vault KV v2)
+	Address        string          `koanf:"address"`         // e.g. https://openbao.example:8200
+	Mount          string          `koanf:"mount"`           // KV v2 mount path, default "secret"
+	Namespace      string          `koanf:"namespace"`       // optional namespace
+	CAFile         string          `koanf:"ca_file"`         // optional PEM bundle for the server certificate
+	TLSSkipVerify  bool            `koanf:"tls_skip_verify"` // default false; testing only
+	RequestTimeout time.Duration   `koanf:"request_timeout"` // per-request bound, default 10s
+	Auth           VaultAuthConfig `koanf:"auth"`
+}
+
+// VaultAuthConfig selects how a resolver authenticates. Exactly one of
+// TokenFile and Kubernetes.Role must be set.
+type VaultAuthConfig struct {
+	TokenFile  string                    `koanf:"token_file"` // file holding a token, re-read after a 403
+	Kubernetes VaultKubernetesAuthConfig `koanf:"kubernetes"`
+}
+
+// VaultKubernetesAuthConfig configures login through the Kubernetes auth method.
+type VaultKubernetesAuthConfig struct {
+	Role      string `koanf:"role"`
+	MountPath string `koanf:"mount_path"` // default "kubernetes"
+	JWTFile   string `koanf:"jwt_file"`   // default the pod's service account token
 }
 
 // EncryptionKeyConfig defines a single encryption key
@@ -2150,6 +2187,71 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate external secret resolvers (kv:// references)
+	if err := c.validateVaultConfig(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateVaultConfig checks every external secret resolver. Adapters repeat
+// the path checks when they are built; this reports mistakes at load time.
+func (c *Config) validateVaultConfig() error {
+	seen := make(map[string]struct{}, len(c.Controller.Vault.Resolvers))
+	for i, r := range c.Controller.Vault.Resolvers {
+		field := fmt.Sprintf("controller.vault.resolvers[%d]", i)
+
+		if !vault.ValidResolverName(r.Name) {
+			return fmt.Errorf("%s.name %q must be a lower-case DNS label (letters, digits and '-')", field, r.Name)
+		}
+		if _, dup := seen[r.Name]; dup {
+			return fmt.Errorf("%s.name %q is configured more than once", field, r.Name)
+		}
+		seen[r.Name] = struct{}{}
+
+		if r.Type != "openbao" {
+			return fmt.Errorf("%s.type %q is not supported (supported: openbao)", field, r.Type)
+		}
+		addr := strings.TrimSpace(r.Address)
+		if addr == "" {
+			return fmt.Errorf("%s.address is required", field)
+		}
+		u, err := url.Parse(addr)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("%s.address must be an http or https URL with a host", field)
+		}
+		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("%s.address must not contain credentials, a query or a fragment", field)
+		}
+		if mount := strings.Trim(strings.TrimSpace(r.Mount), "/"); mount != "" {
+			if err := vault.ValidatePath(mount); err != nil {
+				return fmt.Errorf("%s.mount: %w", field, err)
+			}
+		}
+		if ns := strings.Trim(strings.TrimSpace(r.Namespace), "/"); ns != "" {
+			if err := vault.ValidatePath(ns); err != nil {
+				return fmt.Errorf("%s.namespace: %w", field, err)
+			}
+		}
+		if r.RequestTimeout < 0 {
+			return fmt.Errorf("%s.request_timeout must not be negative", field)
+		}
+
+		hasToken := strings.TrimSpace(r.Auth.TokenFile) != ""
+		hasKube := strings.TrimSpace(r.Auth.Kubernetes.Role) != ""
+		switch {
+		case hasToken && hasKube:
+			return fmt.Errorf("%s.auth must set exactly one of token_file and kubernetes.role", field)
+		case !hasToken && !hasKube:
+			return fmt.Errorf("%s.auth requires token_file or kubernetes.role", field)
+		}
+		if mp := strings.Trim(strings.TrimSpace(r.Auth.Kubernetes.MountPath), "/"); hasKube && mp != "" {
+			if err := vault.ValidatePath(mp); err != nil {
+				return fmt.Errorf("%s.auth.kubernetes.mount_path: %w", field, err)
+			}
+		}
+	}
 	return nil
 }
 

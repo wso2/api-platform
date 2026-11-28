@@ -359,6 +359,14 @@ func main() {
 	}
 	log.Info("Loaded encryption providers")
 
+	// The vault resolves every {{ secret "..." }} placeholder: plain handles from the
+	// encrypted database (as before) and kv:// references from configured resolvers.
+	secretVault, err := buildSecretVault(cfg.Controller.Vault, secretsService, log)
+	if err != nil {
+		log.Error("Failed to initialize the gateway secret vault", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// Load policy definitions from files before any startup hydration or policy derivation.
 	policyLoader := utils.NewPolicyLoader(log)
 	policyDir := cfg.Controller.Policies.DefinitionsPath
@@ -531,7 +539,7 @@ func main() {
 	// the initial snapshots below cover all of them.
 	runtimeStore := storage.NewRuntimeConfigStore()
 	log.Info("Loading runtime configs from existing API configurations")
-	if err := loadStartupRuntimeConfigs(configStore.GetAll(), runtimeStore, secretsService, transformerRegistry,
+	if err := loadStartupRuntimeConfigs(configStore.GetAll(), runtimeStore, secretVault, transformerRegistry,
 		&cfg.Router, gatewayJWKSEnabled, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
 		utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log), log); err != nil {
 		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
@@ -683,8 +691,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService, sharedHTTPClient)
-	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService, policyVersionResolver)
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretVault, sharedHTTPClient)
+	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretVault, policyVersionResolver)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
 
@@ -703,7 +711,7 @@ func main() {
 		templateDefinitions,
 		subscriptionSnapshotManager,
 		eventHubInstance,
-		secretsService,
+		secretVault,
 		webhooksecret.GetStoreInstance(),
 		nil,
 		sharedHTTPClient,
@@ -726,14 +734,14 @@ func main() {
 		apiSvc, apiKeyXDSManager,
 		cpClient, &cfg.Router, cfg,
 		sharedHTTPClient, config.NewParser(), validator, log,
-		eventHubInstance, secretsService,
+		eventHubInstance, secretVault,
 	)
 	agentSvc := agent.NewAgentService(
 		configStore, db, config.NewParser(),
 		config.NewAgentValidator().
 			WithPolicyValidator(config.NewPolicyValidator(policyDefinitions, nil)).
 			WithUpstreamTLSValidator(upstreamTLSValidator),
-		log, eventHubInstance, secretsService, cfg.Controller.Server.GatewayID,
+		log, eventHubInstance, secretVault, cfg.Controller.Server.GatewayID,
 	)
 	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
 
@@ -764,7 +772,7 @@ func main() {
 		log,
 		cfg,
 		policyDefinitions,
-		secretsService,
+		secretVault,
 		policyVersionResolver,
 	)
 	if err := evtListener.Start(); err != nil {
@@ -791,6 +799,7 @@ func main() {
 		eventHubInstance,
 		subscriptionSnapshotManager,
 		secretsService,
+		secretVault,
 		restAPIService,
 		sharedHTTPClient,
 		agentSvc,

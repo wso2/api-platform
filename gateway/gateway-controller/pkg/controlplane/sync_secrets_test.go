@@ -21,6 +21,8 @@ package controlplane
 import (
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -503,3 +505,36 @@ func TestSecretHashCache_IsolatedPerHandle(t *testing.T) {
 // Stub to make compilation succeed — the real time.Time argument is used by
 // syncSecretsIncremental but not needed by our extracted helpers.
 var _ = time.Now
+
+// ---------------------------------------------------------------------------
+// External kv:// references are left to the gateway vault
+// ---------------------------------------------------------------------------
+
+func TestSyncSecretRefsFromYAML_SkipsExternalRefs(t *testing.T) {
+	var requested []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.URL.Path)
+		_, _ = w.Write([]byte(`{"value":"sk-local"}`))
+	}))
+	defer srv.Close()
+
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL}, srv.Client(), slog.Default())
+
+	yaml := []byte(`
+upstream:
+  auth:
+    value: '{{ secret "amp-abc-1" }}'
+headers:
+  - value: '{{ secret "kv://amp-shared/gateways/gw1/openai?version=2#api_key" }}'
+  - value: "{{ secret \"kv://customer/llm/key\" }}"
+`)
+	c.syncSecretRefsFromYAML(yaml, "corr-1")
+
+	assert.Equal(t, []string{"/secrets/amp-abc-1/value"}, requested,
+		"only the local handle is fetched from the control plane")
+	assert.Equal(t, map[string]string{"amp-abc-1": "sk-local"}, syncer.upserted)
+	_, cached := c.secretHashCache.Load("kv://customer/llm/key")
+	assert.False(t, cached)
+}

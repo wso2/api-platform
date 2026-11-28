@@ -22,6 +22,7 @@ import (
 	"log/slog"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/vault"
 )
 
 // syncSecrets pulls secrets from the Platform API and upserts them into local
@@ -187,6 +188,12 @@ func (c *Client) syncSecretRefsFromYAML(yamlData []byte, correlationID string) {
 	}
 
 	for handle := range seen {
+		// External kv:// references are read from their own resolver at render
+		// time and are never fetched from the control plane or stored locally.
+		if vault.IsExternalRef(handle) {
+			continue
+		}
+
 		// Skip handles that were already synced (present in the hash cache).
 		if _, cached := c.secretHashCache.Load(handle); cached {
 			continue
