@@ -45,6 +45,13 @@
  *          preserves the existing auth header/type, omits value (relying on
  *          the backend's preserveMCPUpstreamAuthValue fallback, same as the
  *          Policies-only save path), and creates no new secret
+ *   TC-102 Refetch after a URL-only edit → request sends url + proxyId, reusing
+ *          the stored credential, never auth
+ *   TC-103 Editing the endpoint after a refetch (issue #3577) → the staged
+ *          discovered capabilities are flagged stale, and Save sends the
+ *          previously stored capabilities instead of the stale discovered ones
+ *   TC-104 Editing the credential after a refetch (issue #3577) → same as
+ *          TC-103: flagged stale, and the stale capabilities are not saved
  */
 describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info)', () => {
   const suffix = Date.now().toString().slice(-8);
@@ -66,6 +73,19 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
       body: {
         serverInfo: { name: 'Stub MCP Server', version: '1.0.0' },
         tools: [],
+        resources: [],
+        prompts: [],
+      },
+    }).as(alias);
+
+  // Non-empty capability set, so staged (refetched) capabilities are distinguishable
+  // from the stored ones — the proxy is created in beforeEach with none.
+  const stubFetchServerInfoWithCapabilities = (alias) =>
+    cy.intercept('POST', '**/fetch-server-info*', {
+      statusCode: 200,
+      body: {
+        serverInfo: { name: 'Stub MCP Server', version: '1.0.0' },
+        tools: [{ name: 'discoveredTool', description: 'A tool discovered by refetch' }],
         resources: [],
         prompts: [],
       },
@@ -374,5 +394,80 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
     });
 
     cy.contains('Connection verified', { timeout: 15000 }).should('be.visible');
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-103
+  // ---------------------------------------------------------------------------
+  it('TC-103: editing the target after a refetch marks the staged capabilities stale, and Save falls back to the previously stored ones', () => {
+    stubFetchServerInfoWithCapabilities('refetchWithTool');
+
+    cy.get('[data-testid="backend-connection-refetch"]', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+    cy.wait('@refetchWithTool');
+
+    cy.contains('Discovered Capabilities', { timeout: 15000 }).should('be.visible');
+    cy.contains('discoveredTool', { timeout: 15000 }).should('be.visible');
+    cy.get('[data-testid="backend-connection-refetch-stale"]').should('not.exist');
+
+    // The endpoint changes after discovery ran — the staged tool was discovered
+    // from the old endpoint and was never validated against this one.
+    cy.get('[data-testid="backend-connection-endpoint-url"]')
+      .clear()
+      .type('https://after-refetch-edit.mcp.example.com/mcp');
+
+    cy.get('[data-testid="backend-connection-refetch-stale"]', { timeout: 15000 })
+      .should('be.visible');
+
+    cy.intercept('PUT', /\/mcp-proxies\/[^/?]+(\?|$)/).as('updateServer');
+    cy.contains('button', 'Save', { timeout: 15000 }).should('not.be.disabled').click();
+
+    cy.wait('@updateServer').then((pi) => {
+      expect(pi.response.statusCode, 'PUT /mcp-proxies status').to.be.oneOf([200, 201]);
+      expect(
+        pi.request.body?.upstream?.main?.url,
+        'PUT carries the newly edited (unvalidated) url'
+      ).to.equal('https://after-refetch-edit.mcp.example.com/mcp');
+      const tools = pi.request.body?.capabilities?.tools ?? [];
+      expect(
+        tools.some((t) => t.name === 'discoveredTool'),
+        'the stale, refetched-but-never-revalidated tool must not be saved'
+      ).to.be.false;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-104
+  // ---------------------------------------------------------------------------
+  it('TC-104: editing the credential after a refetch marks the staged capabilities stale too', () => {
+    stubFetchServerInfoWithCapabilities('refetchWithTool2');
+
+    cy.get('[data-testid="backend-connection-refetch"]', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+    cy.wait('@refetchWithTool2');
+    cy.contains('discoveredTool', { timeout: 15000 }).should('be.visible');
+
+    // The refetch ran with the stored (masked) credential; typing a new one means
+    // the staged capabilities no longer describe what Save would persist.
+    cy.get('[data-testid="backend-connection-auth-value"]')
+      .focus()
+      .clear()
+      .type('a-newly-typed-credential');
+
+    cy.get('[data-testid="backend-connection-refetch-stale"]', { timeout: 15000 })
+      .should('be.visible');
+
+    cy.intercept('PUT', /\/mcp-proxies\/[^/?]+(\?|$)/).as('updateServer');
+    cy.contains('button', 'Save', { timeout: 15000 }).should('not.be.disabled').click();
+
+    cy.wait('@updateServer').then((pi) => {
+      const tools = pi.request.body?.capabilities?.tools ?? [];
+      expect(
+        tools.some((t) => t.name === 'discoveredTool'),
+        'stale capabilities from before the credential edit must not be saved'
+      ).to.be.false;
+    });
   });
 });
