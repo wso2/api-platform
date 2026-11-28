@@ -50,7 +50,10 @@ export GOPRIVATE='github.com/acme/*'
 ap gateway image build --git-credential github.com=<github-username>:POLICY_TOKEN
 
 # Build with a netrc file and a private module proxy (GONOPROXY=none sends GOPRIVATE modules through the proxy too)
-ap gateway image build --netrc ~/.netrc-gateway-policies --go-env GOPROXY=https://goproxy.acme.com,direct --go-env GONOPROXY=none`
+ap gateway image build --netrc ~/.netrc-gateway-policies --go-env GOPROXY=https://goproxy.acme.com,direct --go-env GONOPROXY=none
+
+# Build with podman instead of docker (or set AP_CONTAINER_ENGINE=podman)
+ap gateway image build --name my-gateway --container-engine podman`
 )
 
 var (
@@ -70,16 +73,20 @@ var (
 	netrcFile                string
 	gitCredentials           []string
 	goEnvFlags               []string
+	containerEngineFlag      string
 
 	// Computed values
-	imageTag      string
-	builderAccess gateway.BuilderAccess
+	imageTag        string
+	builderAccess   gateway.BuilderAccess
+	containerEngine string
 )
 
 var buildCmd = &cobra.Command{
-	Use:     BuildCmdLiteral,
-	Short:   "Build gateway Docker image with policies",
-	Long:    "Build a WSO2 API Platform Gateway Docker image with specified policies from build file.",
+	Use:   BuildCmdLiteral,
+	Short: "Build gateway images with policies",
+	Long: "Build WSO2 API Platform Gateway images with the policies specified in the build file.\n\n" +
+		"The images are built with docker by default. Use --container-engine or the " +
+		utils.EnvContainerEngine + " environment variable to build with podman or buildah instead.",
 	Example: BuildCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		err := checkFetchTimeout(cmd.Flags().Changed("fetch-timeout"), fetchTimeout)
@@ -97,7 +104,7 @@ func init() {
 	// Optional flags with defaults
 	buildCmd.Flags().StringVar(&gatewayName, "name", "", "Gateway name (defaults to directory name)")
 	buildCmd.Flags().StringVarP(&buildFilePath, "path", "p", ".", "Path to directory containing build files (default: current directory)")
-	buildCmd.Flags().StringVar(&imageRepository, "repository", utils.DefaultImageRepository, "Docker image repository")
+	buildCmd.Flags().StringVar(&imageRepository, "repository", utils.DefaultImageRepository, "Image repository")
 	buildCmd.Flags().BoolVar(&push, "push", false, "Push image to registry after build")
 	buildCmd.Flags().BoolVar(&noCache, "no-cache", false, "Build without using cache")
 	buildCmd.Flags().StringVar(&platform, "platform", "", "Target platform (e.g., linux/amd64)")
@@ -106,7 +113,7 @@ func init() {
 	// Access to Go module policies in private repositories. StringArray, not
 	// StringSlice: GOPRIVATE-style values contain commas.
 	buildCmd.Flags().StringVar(&netrcFile, "netrc", "",
-		"netrc file with credentials for private Go module hosts and proxies, mounted read-only into the gateway-builder container")
+		"netrc file with credentials for private Go module hosts and proxies; a private copy is mounted read-only into the gateway-builder container")
 	buildCmd.Flags().StringArrayVar(&gitCredentials, "git-credential", nil,
 		"Credentials for a private Go module host as <host>=<username>:<ENV_VAR>, where ENV_VAR names an environment variable holding the token (repeatable)")
 	buildCmd.Flags().StringArrayVar(&goEnvFlags, "go-env", nil,
@@ -117,6 +124,9 @@ func init() {
 	// Zero means "not set": the builder then uses its own default (5m).
 	buildCmd.Flags().DurationVar(&fetchTimeout, "fetch-timeout", 0,
 		"How long to wait for each gomodule policy to download, for example 10m (default 5m)")
+
+	buildCmd.Flags().StringVar(&containerEngineFlag, "container-engine", "",
+		"Container engine to build with: docker, podman or buildah (default: $"+utils.EnvContainerEngine+", else docker)")
 }
 
 // resolveBuilderAccess validates the private-module flags before any build work
@@ -159,7 +169,7 @@ func printBuilderAccess(access gateway.BuilderAccess) {
 	if access.HasCredentials() {
 		fmt.Println("  Builder credentials:")
 		if access.NetrcFile != "" {
-			fmt.Printf("    • netrc file %s (mounted read-only)\n", access.NetrcFile)
+			fmt.Printf("    • netrc file %s (a private copy is mounted read-only)\n", access.NetrcFile)
 		}
 		for _, c := range access.GitCredentials {
 			fmt.Printf("    • %s as %s (from --git-credential)\n", c.Host, c.Username)
@@ -256,20 +266,17 @@ func runBuildCommand() error {
 		return err
 	}
 
-	// Step 1: Check Docker availability
-	fmt.Println("[1/8] Checking Docker Availability")
-	if err := utils.IsDockerAvailable(); err != nil {
-		return fmt.Errorf("Docker is not available: %w", err)
+	// Step 1: Resolve and check the container engine
+	fmt.Println("[1/6] Checking Container Engine")
+	engine, source, err := utils.ResolveContainerEngine(containerEngineFlag)
+	if err != nil {
+		return err
 	}
-	fmt.Println("  ✓ Docker is available")
-
-	// Check docker buildx if platform is specified
-	if platform != "" {
-		if err := utils.IsDockerBuildxAvailable(); err != nil {
-			return fmt.Errorf("docker buildx is not available but required for --platform flag: %w\n\nPlease install docker buildx or remove the --platform flag", err)
-		}
-		fmt.Println("  ✓ Docker buildx is available")
+	containerEngine = engine
+	if err := utils.CheckContainerEngine(containerEngine, platform != ""); err != nil {
+		return err
 	}
+	fmt.Printf("  ✓ %s is available (from %s)\n", containerEngine, source)
 
 	fmt.Println()
 	return runUnifiedBuild()
@@ -325,6 +332,7 @@ func runUnifiedBuild() error {
 
 	// Display resolved images used for the build
 	fmt.Println("  Resolved images:")
+	fmt.Printf("    • Container engine:   %s\n", containerEngine)
 	fmt.Printf("    • Builder:            %s\n", gatewayBuilder)
 	fmt.Printf("    • Gateway Controller: %s\n", gatewayControllerBaseImg)
 	fmt.Printf("    • Gateway Runtime:    %s\n\n", gatewayRuntimeBaseImg)
@@ -361,7 +369,7 @@ func runUnifiedBuild() error {
 
 	fmt.Printf("  ✓ Workspace ready: %s\n\n", tempDir)
 
-	// Step 6: Run Docker build (gateway-builder + image build)
+	// Step 6: Run the gateway-builder and build the images
 	fmt.Println("[6/6] Building Gateway Images")
 	if err := runDockerBuild(tempDir); err != nil {
 		return fmt.Errorf("failed to build gateway images: %w", err)
@@ -396,17 +404,14 @@ func displayBuildSummary(policyCount int) {
 	fmt.Printf("  • %s/%s-gateway-controller:%s\n", imageRepository, gatewayName, gatewayVersion)
 	fmt.Println()
 
-	// Where images are
-	if push {
+	// Where images are: --platform builds are always pushed
+	if push || platform != "" {
 		fmt.Printf("✓ Images pushed to registry: %s\n", imageRepository)
-		if platform != "" {
-			fmt.Printf("  Platform: %s\n", platform)
-		}
 	} else {
-		fmt.Println("✓ Images available in local Docker")
-		if platform != "" {
-			fmt.Printf("  Platform: %s\n", platform)
-		}
+		fmt.Printf("✓ Images available in local %s image storage\n", containerEngine)
+	}
+	if platform != "" {
+		fmt.Printf("  Platform: %s\n", platform)
 	}
 	fmt.Println()
 
@@ -439,6 +444,7 @@ func runDockerBuild(tempDir string) error {
 		OutputCopyDir:              outputDir,
 		BuilderAccess:              builderAccess,
 		FetchTimeout:               fetchTimeout,
+		ContainerEngine:            containerEngine,
 	}
 
 	// Run the build

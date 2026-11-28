@@ -21,13 +21,14 @@ package gateway
 // The gateway-builder container fetches gomodule policies with the go command,
 // so a policy in a private repository needs Go module settings (GOPRIVATE, ...)
 // and credentials for its host inside that container. This file decides which
-// settings may be passed and turns the credential flags into a read-only netrc
-// mount. Nothing here is written into the build workspace, whose output can be
+// settings may be passed and turns the credential flags into a read-only mount
+// of a private netrc copy. Nothing here is written into the build workspace, whose output can be
 // copied into the gateway images.
 
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -346,14 +347,22 @@ func (a BuilderAccess) GoEnvValue(key string) string {
 	return ""
 }
 
-// prepare returns the extra `docker run` arguments, the environment for the docker
-// process (nil to inherit), and a cleanup func that is always safe to call.
+// prepare returns the extra builder run arguments, the environment for the
+// container engine process (nil to inherit), and a cleanup func that is always
+// safe to call. mount returns the run arguments that mount the credentials
+// file, in the form the container engine accepts.
 //
-// Settings are passed as name-only -e flags with their values in the docker
+// Settings are passed as name-only -e flags with their values in the engine
 // process's environment, so values never appear on the command line or in the
-// build log. --git-credential tokens are written to a netrc in a new private
-// directory under scratchParent, which must not be the build workspace.
-func (a BuilderAccess) prepare(scratchParent string, baseEnv []string) (args []string, env []string, cleanup func(), err error) {
+// build log.
+//
+// The credentials file the builder sees is always a private copy in a new
+// directory under scratchParent, which must not be the build workspace: the
+// --git-credential tokens written as a netrc, or the contents of the --netrc
+// file. The user's own --netrc file is never mounted, so podman and buildah
+// relabel only the copy, with a label private to the one builder container, and
+// cleanup deletes it.
+func (a BuilderAccess) prepare(scratchParent string, baseEnv []string, mount credentialMount) (args []string, env []string, cleanup func(), err error) {
 	cleanup = func() {}
 
 	if len(a.GoEnv) > 0 {
@@ -365,29 +374,36 @@ func (a BuilderAccess) prepare(scratchParent string, baseEnv []string) (args []s
 		env = mergeEnv(baseEnv, overrides)
 	}
 
-	netrc := a.NetrcFile
-	if len(a.GitCredentials) > 0 {
-		// The owner's process ID in the name lets a later run tell a live build's folder
-		// from a leftover one (sweepStaleCredentialDirs).
-		dir, err := os.MkdirTemp(scratchParent, fmt.Sprintf("%spid%d-*", credentialDirPrefix, os.Getpid())) // created 0700
-		if err != nil {
-			return nil, nil, cleanup, fmt.Errorf("failed to create a private directory for builder credentials: %w", err)
+	var content []byte
+	switch {
+	case len(a.GitCredentials) > 0:
+		content = netrcContent(a.GitCredentials)
+	case a.NetrcFile != "":
+		if content, err = readNetrcFile(a.NetrcFile); err != nil {
+			return nil, nil, cleanup, err
 		}
-		cleanup = func() { _ = os.RemoveAll(dir) }
-		netrc, err = writeNetrc(dir, a.GitCredentials)
-		if err != nil {
-			cleanup()
-			return nil, nil, func() {}, err
-		}
+	default:
+		return args, env, cleanup, nil
 	}
-	if netrc != "" {
-		mount, err := bindMountSpec(netrc, netrcMountTarget)
-		if err != nil {
-			cleanup()
-			return nil, nil, func() {}, err
-		}
-		args = append(args, "--mount", mount)
+
+	// The owner's process ID in the name lets a later run tell a live build's folder
+	// from a leftover one (sweepStaleCredentialDirs).
+	dir, err := os.MkdirTemp(scratchParent, fmt.Sprintf("%spid%d-*", credentialDirPrefix, os.Getpid())) // created 0700
+	if err != nil {
+		return nil, nil, cleanup, fmt.Errorf("failed to create a private directory for builder credentials: %w", err)
 	}
+	cleanup = func() { _ = os.RemoveAll(dir) }
+	netrc, err := writeNetrc(dir, content)
+	if err != nil {
+		cleanup()
+		return nil, nil, func() {}, err
+	}
+	mountArgs, err := mount(netrc, netrcMountTarget)
+	if err != nil {
+		cleanup()
+		return nil, nil, func() {}, err
+	}
+	args = append(args, mountArgs...)
 	return args, env, cleanup, nil
 }
 
@@ -427,17 +443,43 @@ func sweepStaleCredentialDirs(parent string, alive func(pid int) bool, now time.
 	}
 }
 
-// writeNetrc writes the credentials to a new 0600 file in dir and returns its path.
-func writeNetrc(dir string, creds []GitCredential) (string, error) {
-	f, err := os.CreateTemp(dir, "netrc-*") // created 0600
+// maxNetrcBytes is the largest --netrc file that is copied for the builder. A
+// netrc holds a few lines per host, so anything larger is not one.
+const maxNetrcBytes = 1 << 20
+
+// readNetrcFile reads the --netrc file for its private copy.
+func readNetrcFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to create the builder credentials file: %w", err)
+		return nil, fmt.Errorf("--netrc: failed to open %s: %w", path, err)
 	}
+	defer f.Close()
+	content, err := io.ReadAll(io.LimitReader(f, maxNetrcBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("--netrc: failed to read %s: %w", path, err)
+	}
+	if len(content) > maxNetrcBytes {
+		return nil, fmt.Errorf("--netrc: %s is too large for a netrc file", path)
+	}
+	return content, nil
+}
+
+// netrcContent returns the credentials in netrc form.
+func netrcContent(creds []GitCredential) []byte {
 	var b strings.Builder
 	for _, c := range creds {
 		fmt.Fprintf(&b, "machine %s\nlogin %s\npassword %s\n\n", c.Host, c.Username, c.token)
 	}
-	if _, err := f.WriteString(b.String()); err != nil {
+	return []byte(b.String())
+}
+
+// writeNetrc writes content to a new 0600 file in dir and returns its path.
+func writeNetrc(dir string, content []byte) (string, error) {
+	f, err := os.CreateTemp(dir, "netrc-*") // created 0600
+	if err != nil {
+		return "", fmt.Errorf("failed to create the builder credentials file: %w", err)
+	}
+	if _, err := f.Write(content); err != nil {
 		f.Close()
 		return "", fmt.Errorf("failed to write the builder credentials file: %w", err)
 	}
@@ -447,16 +489,61 @@ func writeNetrc(dir string, creds []GitCredential) (string, error) {
 	return f.Name(), nil
 }
 
+// credentialMount returns the run arguments that mount the file src read-only at dst.
+type credentialMount func(src, dst string) ([]string, error)
+
+// bindMount mounts the credentials file with --mount, for docker and podman.
+// With relabel, podman gives it an SELinux label private to the builder
+// container, so the builder can read it on SELinux-enforcing hosts and no other
+// container can.
+func bindMount(relabel bool) credentialMount {
+	return func(src, dst string) ([]string, error) {
+		spec, err := bindMountSpec(src, dst, relabel)
+		if err != nil {
+			return nil, err
+		}
+		return []string{"--mount", spec}, nil
+	}
+}
+
+// volumeMount mounts the credentials file with --volume, for buildah: buildah
+// splits a --mount value on commas instead of reading it as CSV, so a quoted
+// path with a comma would not work. --volume splits on colons instead, so a path
+// with a colon is refused. relabel adds Z, the private SELinux label.
+func volumeMount(relabel bool) credentialMount {
+	return func(src, dst string) ([]string, error) {
+		if strings.ContainsAny(src, "\r\n") {
+			return nil, fmt.Errorf("the credentials file path must not contain a line break")
+		}
+		if strings.Contains(src, ":") {
+			return nil, fmt.Errorf("buildah cannot mount the credentials file %s because its path contains a colon", src)
+		}
+		opts := "ro"
+		if relabel {
+			opts += ",Z"
+		}
+		return []string{"--volume", src + ":" + dst + ":" + opts}, nil
+	}
+}
+
 // bindMountSpec builds a read-only --mount value. --mount (unlike -v) fails when
 // the source is missing instead of creating an empty directory there, and its
 // value is CSV, so the source path is quoted when it contains a comma or quote.
-func bindMountSpec(src, dst string) (string, error) {
+//
+// relabel adds relabel=private, the --mount form of the :Z volume option, which
+// podman accepts and docker does not. Private is right because the file is a
+// copy made for this one builder container.
+func bindMountSpec(src, dst string, relabel bool) (string, error) {
 	if strings.ContainsAny(src, "\r\n") {
 		return "", fmt.Errorf("the credentials file path must not contain a line break")
 	}
+	fields := []string{"type=bind", "src=" + src, "dst=" + dst, "readonly"}
+	if relabel {
+		fields = append(fields, "relabel=private")
+	}
 	var b strings.Builder
 	w := csv.NewWriter(&b)
-	if err := w.Write([]string{"type=bind", "src=" + src, "dst=" + dst, "readonly"}); err != nil {
+	if err := w.Write(fields); err != nil {
 		return "", err
 	}
 	w.Flush()
