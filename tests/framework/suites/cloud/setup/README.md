@@ -37,7 +37,7 @@ named with the prefix `apip-test-`:
 
 | Project | Runners |
 |---|---|
-| `apip-test-project-1` | `apip-basic` (with the GraphQL features), `apip-deploy`, `apip-gateway`, `apip-gateway-config`, `apip-secrets`, `apip-self-hosted-gateway-runtime` |
+| `apip-test-project-1` | `apip-basic` (with the GraphQL and subscription plan features), `apip-deploy` (with the managed gateway runtime and route features), `apip-gateway`, `apip-gateway-config`, `apip-secrets`, `apip-self-hosted-gateway-runtime` |
 | `apip-test-project-2` | every other runner: `apip-auth`, `apip-self-hosted-gateway`, `apip-promotion`, `apip-portal` (and `apip-project`) |
 
 A scenario works in the project of its feature file (one feature file is one runner). The default
@@ -180,7 +180,7 @@ with a suffix of **this run**:
 | managed API Portals | only a portal a scenario built for itself (`syn-portal-`) |
 | REST APIs and GraphQL APIs | the run's APIs, in `apip-test-project-1`, `apip-test-project-2` and the projects the run created |
 | subscription plans | the plans the run created (`syn-plan-`) |
-| secrets, self-hosted gateways, managed gateways, projects | the run's entries |
+| secrets, service accounts, self-hosted gateways, managed gateways, projects | the run's entries |
 
 Whatever the finalizer removes is a leak the per-scenario cleanup missed and is logged as one.
 

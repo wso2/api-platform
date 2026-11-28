@@ -623,6 +623,37 @@ func TestApplyAPIOverridesRejectsUnsupportedAndMalformedValues(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestApplyAPIOverridesSetsAWholeUpstreamAndPadding(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set("ref", `{{ secret \"h\" }}`)
+
+	definition := map[string]any{"upstream": map[string]any{"main": map[string]string{"url": "https://old.example.com"}}}
+	require.NoError(t, applyAPIOverrides(ctx, definition, map[string]string{
+		"upstream":     `{"main":{"url":"https://echo.example.com","auth":{"type":"api-key","header":"x-probe","value":"${CTX:ref}"}}}`,
+		"paddingBytes": " 5 ",
+	}))
+	upstream, ok := definition["upstream"].(map[string]any)
+	require.True(t, ok)
+	main, ok := upstream["main"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "https://echo.example.com", main["url"])
+	require.Equal(t, map[string]any{"type": "api-key", "header": "x-probe", "value": `{{ secret "h" }}`}, main["auth"])
+	require.Equal(t, "xxxxx", definition["padding"])
+
+	for _, invalid := range []string{"0", "-1", "many", ""} {
+		err := applyAPIOverrides(ctx, map[string]any{}, map[string]string{"paddingBytes": invalid})
+		require.ErrorContains(t, err, "positive byte count", invalid)
+	}
+	err := applyAPIOverrides(ctx, map[string]any{}, map[string]string{"upstream": "not json"})
+	require.ErrorContains(t, err, "not valid JSON")
+	err = applyAPIOverrides(ctx, map[string]any{}, map[string]string{
+		"upstream": `{"main":{"url":"https://a.example.com"}}`, "upstreamUrl": "https://b.example.com",
+	})
+	require.ErrorContains(t, err, "not both")
+}
+
 func TestAPIRefForSelectsPrimaryOrNewVersion(t *testing.T) {
 	require.Equal(t, primaryAPI, apiRefFor("synthetic REST API"))
 	require.Equal(t, versionAPI, apiRefFor(newVersionAPILabel))
@@ -737,6 +768,30 @@ func TestFindActiveGatewayRecordsItsEnvironment(t *testing.T) {
 		require.NoError(t, err, key)
 		require.Equal(t, want, got, key)
 	}
+}
+
+func TestFindActiveGatewayRecordsItsPublicHostAndDropsAnEarlierOne(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	host := " gw.example.com "
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		item := map[string]any{"id": "gw-1", "isActive": true, "endpoints": []string{"https://gw.example.com"}}
+		if host != "" {
+			item["host"] = host
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{item}})
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+	require.NoError(t, steps.findActiveGateway(ctx))
+	got, err := requiredValue(ctx, keyGatewayHost)
+	require.NoError(t, err)
+	require.Equal(t, "gw.example.com", got)
+
+	host = ""
+	require.NoError(t, steps.findActiveGateway(ctx))
+	require.Empty(t, optionalValue(ctx, keyGatewayHost), "a gateway that lists no host must not inherit the previous gateway's")
 }
 
 func TestFindActiveGatewayDropsTheEnvironmentOfAnEarlierChoice(t *testing.T) {
@@ -1335,6 +1390,31 @@ func TestDeploymentAssertionsRequireTheActiveGateway(t *testing.T) {
 	require.Error(t, steps.assertDeployedBuildIsPrepared(ctx))
 }
 
+func TestDeploymentHostAssertions(t *testing.T) {
+	steps, ctx, local, _ := cloudSteps(t, nil)
+	local.Set(keyGatewayID, "dev-default")
+	local.Set(keyAPIID, "syn-api-1")
+
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"gw.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentOnGatewayHost(ctx), "lists no public host")
+	local.Set(keyGatewayHost, "gw.example.com")
+	require.NoError(t, steps.assertDeploymentOnGatewayHost(ctx))
+	local.Set(keyGatewayHost, "other.example.com")
+	require.ErrorContains(t, steps.assertDeploymentOnGatewayHost(ctx), `main host "gw.example.com", want "other.example.com"`)
+
+	local.Set(keyGatewayHost, "gw.example.com")
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"gw.example.com","vhostSandbox":"sb.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentOnGatewayHost(ctx), "want none")
+
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"syn-api-1.example.com","vhostSandbox":"syn-api-1-sandbox.example.com"}]}`)
+	require.NoError(t, steps.assertDeploymentHosts(ctx, "${CTX:cloudAPIID}.example.com", "${CTX:cloudAPIID}-sandbox.example.com"))
+	require.ErrorContains(t, steps.assertDeploymentHosts(ctx, "${CTX:cloudAPIID}.example.com", "other-sandbox.example.com"), "sandbox host")
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"dev-default","deploymentId":"d","vhostMain":"syn-api-1.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentHosts(ctx, "${CTX:cloudAPIID}.example.com", "syn-api-1-sandbox.example.com"), "sandbox host")
+	publishedResponse(t, steps, ctx, 201, `{"list":[{"gatewayId":"other","deploymentId":"d","vhostMain":"gw.example.com"}]}`)
+	require.ErrorContains(t, steps.assertDeploymentHosts(ctx, "gw.example.com", ""), "does not list gateway")
+}
+
 func TestEchoBackendSteps(t *testing.T) {
 	steps, ctx, local, _ := cloudSteps(t, nil)
 	t.Setenv(echoBackendEnv, "")
@@ -1800,7 +1880,8 @@ func newLeftoverStub() *leftoverStub {
 		"/api-portals/ops-portal/apis/rest-api/syn-api-abcde234-2/publication":   true,
 		"/api-portals/ops-portal/apis/rest-api/ops-api/publication":              true,
 	}, lists: map[string][]map[string]any{
-		"/secrets": {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/secrets":          {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/service-accounts": {{"id": "syn-sa-abcde234-1"}, {"id": "ops-deployer"}},
 		"/managed-api-portals": {
 			{"id": "dap-abcde234", "name": "dap-abcde234", "status": "active"},
 			{"id": "syn-portal-abcde234-3", "name": "Synthetic syn-portal-abcde234-3", "status": "pending"},
@@ -1852,12 +1933,13 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"graphql-apis/syn-gql-abcde234-1",
 		"subscription-plans/syn-plan-abcde234-1",
 		"secrets/syn-secret-abcde234-1",
+		"service-accounts/syn-sa-abcde234-1",
 		"self-hosted-gateways/development-syn-shgw-abcde234-1",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
-	}, stub.deleted[:13])
-	require.Len(t, removed, 13)
+	}, stub.deleted[:14])
+	require.Len(t, removed, 14)
 	for _, collection := range projectScopedCollections {
 		listed := slices.Clone(stub.listedProjects[collection])
 		slices.Sort(listed)
@@ -1869,6 +1951,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		require.NotEqual(t, "managed-gateways/development-syn-gw-zzzzz222-1", id, "another run's gateway stays")
 		require.NotEqual(t, "self-hosted-gateways/development-ops-shgw", id)
 		require.NotEqual(t, "secrets/ops-secret", id)
+		require.NotEqual(t, "service-accounts/ops-deployer", id, "an account the organisation owns stays")
 		require.NotContains(t, id, "ops-api", "an API the organisation owns stays")
 		require.NotContains(t, id, "ops-project-api")
 		require.NotContains(t, id, "ops-gql")
@@ -3322,6 +3405,42 @@ const promotionStages = `{"list":[
 	{"environment":"env-1","gateways":[{"gatewayId":"gw-1","status":"NOT_DEPLOYED"}]},
 	{"environment":"env-2","gateways":[]}]}`
 
+func TestTestbenchURLAcceptsALocalTestbenchOnlyWhenTheLocalDataPlaneIsOn(t *testing.T) {
+	const env = "CLOUD_IT_TEST_TESTBENCH_URL"
+	local := "http://development-wso2cloud.openchoreoapis.localhost:19080/apip-testbench-mocks/backend/"
+
+	got, err := testbenchURL(env, "https://testbench.example.com/mocks/backend/")
+	require.NoError(t, err)
+	require.Equal(t, "https://testbench.example.com/mocks/backend", got, "the default, without a trailing slash")
+
+	for _, value := range []string{local, "http://testbench.example.com/backend", "ftp://x.localhost/b", "https://", " "} {
+		t.Setenv(env, value)
+		if strings.TrimSpace(value) == "" {
+			got, err := testbenchURL(env, "https://testbench.example.com/backend")
+			require.NoError(t, err, "a blank value falls back to the default")
+			require.Equal(t, "https://testbench.example.com/backend", got)
+			continue
+		}
+		_, err := testbenchURL(env, "https://testbench.example.com/backend")
+		require.ErrorContains(t, err, env, value)
+	}
+
+	t.Setenv(cloudLocalDataPlaneEnv, "true")
+	t.Setenv(env, local)
+	got, err = testbenchURL(env, "")
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSuffix(local, "/"), got)
+	for _, value := range []string{"http://testbench.example.com/backend", "http://127.0.0.1:19080/backend",
+		"http://user:pass@x.localhost/backend", "ftp://x.localhost/backend"} {
+		t.Setenv(env, value)
+		_, err := testbenchURL(env, "")
+		require.Error(t, err, "only a named .localhost host over http(s) is widened: %s", value)
+	}
+	t.Setenv(env, "https://testbench.example.com/backend")
+	_, err = testbenchURL(env, "")
+	require.NoError(t, err, "https stays accepted")
+}
+
 func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) {
 	local := []string{
 		"http://gw-development.openchoreoapis.localhost:19080/api",
@@ -3573,7 +3692,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				status = "failed"
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-api-portals/"), "status": status})
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/graphql-apis", "/subscription-plans", "/self-hosted-gateways"}, r.URL.Path):
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/service-accounts", "/rest-apis", "/graphql-apis", "/subscription-plans", "/self-hosted-gateways"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -6916,6 +7035,167 @@ func TestStillActive(t *testing.T) {
 	require.Empty(t, stillActive([]string{"old-1"}, []string{"new-1"}))
 }
 
+// selfHostedPlatform answers the /self-hosted-gateways routes for one environment, keeping the
+// gateways it registered and each gateway's tokens with their status.
+type selfHostedPlatform struct {
+	created   map[string]any
+	gateways  map[string]map[string]any
+	tokens    map[string][]map[string]any
+	minted    int
+	revokes   []string
+	createdBy string
+}
+
+func (p *selfHostedPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const prefix = "/self-hosted-gateways/"
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/self-hosted-gateways":
+			p.created = map[string]any{}
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&p.created))
+			env, _ := p.created["environment"].(string)
+			name, _ := p.created["displayName"].(string)
+			properties, _ := p.created["properties"].(map[string]any)
+			stored := map[string]any{"environment": env}
+			for k, v := range properties {
+				stored[k] = v
+			}
+			id := env + "-" + name
+			p.gateways[id] = map[string]any{
+				"id": id, "environment": env, "isActive": false, "functionalityType": p.created["functionalityType"],
+				"endpoints": p.created["endpoints"], "properties": stored, "createdBy": p.createdBy,
+			}
+			writeJSON(w, http.StatusCreated, p.gateways[id])
+		case r.Method == http.MethodGet && r.URL.Path == "/self-hosted-gateways":
+			list := []any{}
+			for _, gateway := range p.gateways {
+				list = append(list, gateway)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"list": list})
+		case strings.HasSuffix(r.URL.Path, "/tokens") && r.Method == http.MethodPost:
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), "/tokens")
+			p.minted++
+			tokenID := fmt.Sprintf("tok-%d", p.minted)
+			p.tokens[id] = append(p.tokens[id], map[string]any{"id": tokenID, "status": "active"})
+			writeJSON(w, http.StatusCreated, map[string]any{"id": tokenID, "token": "secret-" + tokenID})
+		case strings.HasSuffix(r.URL.Path, "/tokens") && r.Method == http.MethodGet:
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), "/tokens")
+			active := []any{}
+			for _, token := range p.tokens[id] {
+				if token["status"] == "active" {
+					active = append(active, token)
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"list": active})
+		case strings.Contains(r.URL.Path, "/tokens/") && r.Method == http.MethodDelete:
+			id, tokenID, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, prefix), "/tokens/")
+			p.revokes = append(p.revokes, tokenID)
+			for _, token := range p.tokens[id] {
+				if token["id"] == tokenID {
+					token["status"] = "revoked"
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, prefix):
+			gateway, ok := p.gateways[strings.TrimPrefix(r.URL.Path, prefix)]
+			if !ok {
+				writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+				return
+			}
+			writeJSON(w, http.StatusOK, gateway)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func selfHostedSteps(t *testing.T, claims map[string]any) (*Steps, context.Context, *cleanup.Registry, *selfHostedPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, jwtFor(t, map[string]any{"alg": "RS256"}, claims))
+	platform := &selfHostedPlatform{gateways: map[string]map[string]any{}, tokens: map[string][]map[string]any{}, createdBy: "Randil"}
+	steps, ctx, local, registry := cloudSteps(t, platform.handler(t))
+	local.Set(keyEnvironmentName, "development")
+	return steps, ctx, registry, platform
+}
+
+func TestCreateSelfHostedGatewayWithKeepsTheEndpointsAndProperties(t *testing.T) {
+	steps, ctx, registry, platform := selfHostedSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.createSelfHostedGatewayWith(ctx, valuesTable(t,
+		[]string{"endpoints", `["http://a.example.com", "http://b.example.com"]`},
+		[]string{"properties", `{"region": "eu", "tier": "gold"}`})))
+	require.Equal(t, []any{"http://a.example.com", "http://b.example.com"}, platform.created["endpoints"])
+	require.Equal(t, map[string]any{"region": "eu", "tier": "gold"}, platform.created["properties"])
+	id := optionalValue(ctx, keySelfHostedGatewayID)
+	require.True(t, strings.HasPrefix(id, "development-"))
+	require.Contains(t, pendingOf(registry, kindSelfHostedGateway), id)
+
+	require.NoError(t, steps.assertSelfHostedGatewayKeepsItsValues(ctx))
+	require.NoError(t, steps.assertSelfHostedGatewayCreator(ctx))
+	require.NoError(t, steps.assertSelfHostedGatewayListed(ctx))
+
+	gateway := platform.gateways[id]
+	for name, change := range map[string]func(){
+		"another endpoint order": func() { gateway["endpoints"] = []any{"http://b.example.com", "http://a.example.com"} },
+		"a missing endpoint":     func() { gateway["endpoints"] = []any{"http://a.example.com"} },
+		"another property value": func() {
+			gateway["properties"] = map[string]any{"region": "us", "tier": "gold", "environment": "development"}
+		},
+		"no environment property": func() { gateway["properties"] = map[string]any{"region": "eu", "tier": "gold"} },
+		"active":                  func() { gateway["isActive"] = true },
+		"another environment":     func() { gateway["environment"] = "production" },
+		"another kind":            func() { gateway["functionalityType"] = "ai" },
+	} {
+		saved := map[string]any{}
+		for k, v := range gateway {
+			saved[k] = v
+		}
+		change()
+		require.Error(t, steps.assertSelfHostedGatewayKeepsItsValues(ctx), name)
+		for k, v := range saved {
+			gateway[k] = v
+		}
+	}
+
+	gateway["createdBy"] = "user-1"
+	require.Error(t, steps.assertSelfHostedGatewayCreator(ctx), "the creator must be the console user's name")
+	delete(platform.gateways, id)
+	require.Error(t, steps.assertSelfHostedGatewayListed(ctx))
+
+	for _, rows := range [][][]string{
+		{{"endpoints", `[]`}},
+		{{"endpoints", `"http://a.example.com"`}},
+		{{"endpoints", `["http://a.example.com"]`}, {"properties", `["x"]`}},
+		{{"endpoints", `["http://a.example.com"]`}, {"labels", `{}`}},
+	} {
+		require.Error(t, steps.createSelfHostedGatewayWith(ctx, valuesTable(t, rows...)), rows)
+	}
+}
+
+func TestRegistrationTokensAreRevokedOneAtATime(t *testing.T) {
+	steps, ctx, _, platform := selfHostedSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.createSelfHostedGateway(ctx))
+	require.Equal(t, []any{pendingEndpoint}, platform.created["endpoints"], "the console's create is unchanged")
+	_, hasProperties := platform.created["properties"]
+	require.False(t, hasProperties)
+	require.Error(t, steps.revokeFirstRegistrationToken(ctx), "nothing was issued yet")
+
+	require.NoError(t, steps.generateRegistrationToken(ctx))
+	require.NoError(t, steps.generateRegistrationToken(ctx))
+	require.Equal(t, "tok-1,tok-2", optionalValue(ctx, keyIssuedTokenIDs), "ids, never values, are kept")
+	require.NoError(t, steps.assertActiveRegistrationTokens(ctx, 2))
+
+	require.NoError(t, steps.revokeFirstRegistrationToken(ctx))
+	require.NoError(t, steps.revokeFirstRegistrationToken(ctx))
+	require.Equal(t, []string{"tok-1", "tok-1"}, platform.revokes)
+	require.NoError(t, steps.assertActiveRegistrationTokens(ctx, 1))
+	require.NoError(t, steps.assertRevokedTokensInactive(ctx))
+	require.NoError(t, steps.assertLastTokenActive(ctx))
+
+	id := optionalValue(ctx, keySelfHostedGatewayID)
+	platform.tokens[id][1]["status"] = "revoked"
+	require.Error(t, steps.assertLastTokenActive(ctx))
+}
+
 func TestSelfHostedGatewayPathsEscapeID(t *testing.T) {
 	require.Equal(t, "/self-hosted-gateways/id%2Fwith%20separator", selfHostedGatewayPath("id/with separator"))
 	require.Equal(t, "/self-hosted-gateways/gw-1/tokens", selfHostedGatewayTokensPath("gw-1"))
@@ -8713,6 +8993,44 @@ func TestValidateSpecFixtureAndItsAssertions(t *testing.T) {
 	require.Error(t, steps.assertValidation(ctx, "find no errors"), "only a 200 is a validation result")
 }
 
+func TestValidateBackendURLSendsTheURLAndExpectsNoContent(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(backendEnv, "https://testbench.example.com/mocks/backend/")
+	var sentURL string
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, validateOpenAPIPath, r.URL.Path)
+		fields, files, ok := handlerForm(t, w, r)
+		if !ok {
+			return
+		}
+		assert.Empty(t, files, "a URL is sent, not a file")
+		sentURL = fields["url"]
+		writeJSON(w, http.StatusOK, map[string]any{"isValid": false, "errors": []map[string]string{{"message": "not an OpenAPI definition"}}})
+	})
+
+	require.NoError(t, steps.validateBackendURL(ctx))
+	require.Equal(t, "https://testbench.example.com/mocks/backend/", sentURL)
+	require.NoError(t, steps.assertValidation(ctx, "list the errors and return no content"))
+	require.Error(t, steps.assertValidation(ctx, "list the errors and return the definition"), "a URL has no fixture to compare")
+
+	for name, body := range map[string]string{
+		"content":       `{"isValid":false,"errors":[{"message":"m"}],"content":"{}"}`,
+		"no errors":     `{"isValid":false,"errors":[]}`,
+		"valid":         `{"isValid":true,"errors":[]}`,
+		"empty message": `{"isValid":false,"errors":[{"message":""}]}`,
+	} {
+		publishedResponse(t, steps, ctx, http.StatusOK, body)
+		require.Error(t, steps.assertValidation(ctx, "list the errors and return no content"), name)
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"code":"DESTINATION_NOT_ALLOWED"}`)
+	require.Error(t, steps.assertValidation(ctx, "list the errors and return no content"), "a refused fetch is not a result")
+
+	t.Setenv(backendEnv, "http://testbench.example.com/backend")
+	require.Error(t, steps.validateBackendURL(ctx), "the backend URL is checked before anything is sent")
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "nothing stale is left published")
+}
+
 // restAPIStub serves one REST API's definition routes from a definition it keeps.
 type restAPIStub struct {
 	t          *testing.T
@@ -10163,4 +10481,616 @@ func TestStarterRunsWithoutAPortalAdministratorAndSaysWhy(t *testing.T) {
 			require.Empty(t, swept)
 		})
 	}
+}
+
+func TestTryUpdateAPILeavesTheRefusalAndKeepsTheStoredDefinition(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(backendEnv, "https://backend.example.test/")
+	var sent map[string]any
+	putStatus := http.StatusBadRequest
+	held := map[string]any{"id": "api-1", "upstream": map[string]any{"main": map[string]any{"url": "https://backend.example.test"}}}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/rest-apis/api-1":
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+			if putStatus != http.StatusOK {
+				writeJSON(w, putStatus, map[string]any{"code": "DESTINATION_NOT_ALLOWED", "errors": []map[string]string{{"field": "upstream.main.url"}}})
+				return
+			}
+			writeJSON(w, http.StatusOK, sent)
+		case r.Method == http.MethodGet && r.URL.Path == "/rest-apis/api-1":
+			writeJSON(w, http.StatusOK, held)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	})
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyAPIDefinition, `{"id":"api-1","upstream":{"main":{"url":"https://backend.example.test"}}}`)
+	refused := valuesTable(t, []string{"upstreamUrl", "http://169.254.169.254/latest"})
+
+	require.NoError(t, steps.tryUpdateAPI(ctx, refused), "a refusal is the answer under test, not a step failure")
+	require.Equal(t, map[string]any{"main": map[string]any{"url": "http://169.254.169.254/latest"}}, sent["upstream"])
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
+	require.NoError(t, steps.assertCloudErrorField(ctx, "upstream.main.url"))
+	stored, err := steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, "https://backend.example.test", stored["upstream"].(map[string]any)["main"].(map[string]any)["url"], "a refused update changes nothing")
+	require.NoError(t, steps.assertUpstreamIsTheBackend(ctx))
+	require.Error(t, steps.updateAPI(ctx, refused), "the plain update step still fails on a refusal")
+
+	held["upstream"] = map[string]any{"main": map[string]any{"url": "http://169.254.169.254/latest"}}
+	require.ErrorContains(t, steps.assertUpstreamIsTheBackend(ctx), "expected the main upstream")
+	held["upstream"] = nil
+	require.Error(t, steps.assertUpstreamIsTheBackend(ctx), "an API with no upstream")
+
+	require.Error(t, steps.tryUpdateAPI(ctx, valuesTable(t, []string{"upstream", "https://elsewhere.example.test"})))
+	_, err = httpx.Published(ctx)
+	require.Error(t, err, "a request that is never sent leaves no earlier answer behind")
+
+	putStatus = http.StatusOK
+	require.NoError(t, steps.updateAPI(ctx, valuesTable(t, []string{"upstreamUrl", "https://echo.example.test"})))
+	stored, err = steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, "https://echo.example.test", stored["upstream"].(map[string]any)["main"].(map[string]any)["url"])
+}
+
+func TestAssertCloudErrorField(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	require.Error(t, steps.assertCloudErrorField(ctx, "sdlUrl"), "no answer")
+
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"code":"DESTINATION_NOT_ALLOWED","errors":[{"field":"sdlUrl"},{"field":"upstream.main.url"}]}`)
+	require.NoError(t, steps.assertCloudErrorField(ctx, "sdlUrl"))
+	require.ErrorContains(t, steps.assertCloudErrorField(ctx, "upstream.main.url"), "names \"sdlUrl\"", "only the first field error counts")
+
+	for name, body := range map[string]string{
+		"no field errors":    `{"code":"DESTINATION_NOT_ALLOWED"}`,
+		"empty field errors": `{"code":"DESTINATION_NOT_ALLOWED","errors":[]}`,
+		"not json":           `not json`,
+	} {
+		publishedResponse(t, steps, ctx, http.StatusBadRequest, body)
+		require.ErrorContains(t, steps.assertCloudErrorField(ctx, "sdlUrl"), "names no field error", name)
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"errors":[{"message":"no field"}]}`)
+	require.ErrorContains(t, steps.assertCloudErrorField(ctx, "sdlUrl"), `names ""`)
+}
+
+func TestValidateGraphQLSchemaWithSendsTheNamedSource(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set("echo", "https://echo.example.test")
+
+	stub.validation = `{"resolved":false,"sdl":"","sdlErrors":[{"message":"Syntax Error"}]}`
+	require.NoError(t, steps.validateGraphQLSchemaWith(ctx, valuesTable(t, []string{"schemaSource", "url"}, []string{"sdlUrl", "${CTX:echo}"})))
+	require.Equal(t, map[string]any{"schemaSource": "url", "sdlUrl": "https://echo.example.test"}, stub.validated)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved"))
+
+	require.NoError(t, steps.validateGraphQLSchemaWith(ctx, valuesTable(t, []string{"schemaSource", "introspection"}, []string{"upstreamUrl", "http://169.254.169.254/graphql"})))
+	require.Equal(t, map[string]any{"schemaSource": "introspection", "upstream": map[string]any{"main": map[string]any{"url": "http://169.254.169.254/graphql"}}}, stub.validated)
+
+	for name, table := range map[string]*godog.Table{
+		"an unsupported value": valuesTable(t, []string{"schemaSource", "inline"}, []string{"sdl", "type Query { a: String }"}),
+		"no schema source":     valuesTable(t, []string{"sdlUrl", "https://echo.example.test"}),
+		"an unknown context":   valuesTable(t, []string{"schemaSource", "url"}, []string{"sdlUrl", "${CTX:missing}"}),
+	} {
+		stub.validated = nil
+		require.Error(t, steps.validateGraphQLSchemaWith(ctx, table), name)
+		require.Nil(t, stub.validated, name+": nothing is sent")
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+}
+
+// serviceAccountPlatform answers the service-account create, delete and token exchange routes, and
+// records what it was sent. "{{name}}" in createBody is the display name the step sent.
+type serviceAccountPlatform struct {
+	createStatus int
+	createBody   string
+	created      map[string]any
+	deleted      []string
+	tokenStatus  int
+	tokenBody    string
+	tokenForm    url.Values
+	tokenAuth    string
+}
+
+func (p *serviceAccountPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/service-accounts/token":
+			assert.NoError(t, r.ParseForm())
+			assert.Equal(t, formContentType, r.Header.Get("Content-Type"))
+			p.tokenForm, p.tokenAuth = r.PostForm, r.Header.Get("Authorization")
+			w.WriteHeader(p.tokenStatus)
+			_, _ = w.Write([]byte(p.tokenBody))
+		case r.Method == http.MethodPost && r.URL.Path == "/service-accounts":
+			p.created = nil
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&p.created))
+			name, _ := p.created["displayName"].(string)
+			w.WriteHeader(p.createStatus)
+			_, _ = w.Write([]byte(strings.ReplaceAll(p.createBody, "{{name}}", name)))
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/service-accounts/"):
+			p.deleted = append(p.deleted, strings.TrimPrefix(r.URL.Path, "/service-accounts/"))
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func serviceAccountSteps(t *testing.T) (*Steps, context.Context, *cleanup.Registry, *serviceAccountPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &serviceAccountPlatform{createStatus: http.StatusCreated, tokenStatus: http.StatusOK}
+	steps, ctx, _, registry := cloudSteps(t, platform.handler(t))
+	return steps, ctx, registry, platform
+}
+
+func TestCreateServiceAccountKeepsTheCredentialsAndRegistersTheAccount(t *testing.T) {
+	steps, ctx, registry, platform := serviceAccountSteps(t)
+	platform.createBody = `{"serviceAccount":{"id":"{{name}}","displayName":"{{name}}"},` +
+		`"clientId":"sa_client","clientSecret":"apsa_secret"}`
+
+	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
+	name := optionalValue(ctx, keyServiceAccountID)
+	require.Equal(t, name, platform.created["displayName"])
+	require.Equal(t, []any{"ap_service_account"}, platform.created["roles"])
+	require.Equal(t, "sa_client", optionalValue(ctx, keyServiceAccountClientID))
+	require.Equal(t, "apsa_secret", optionalValue(ctx, keyServiceAccountClientSecret))
+	require.Equal(t, []string{name}, pendingOf(registry, kindServiceAccount))
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the answer that carries the secret is never published")
+
+	// The platform may answer with another id than the name: that one is registered instead.
+	platform.createBody = `{"serviceAccount":{"id":"other-id"},"clientId":"sa_client","clientSecret":"apsa_secret"}`
+	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
+	require.Equal(t, "other-id", optionalValue(ctx, keyServiceAccountID))
+	require.ElementsMatch(t, []string{name, "other-id"}, pendingOf(registry, kindServiceAccount))
+
+	// The id is the account's, inside serviceAccount: an id beside the credentials is not read,
+	// and the account stays registered under the name it was created with.
+	platform.createBody = `{"id":"flat-id","clientId":"sa_client","clientSecret":"apsa_secret"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "names no id")
+	require.NotContains(t, pendingOf(registry, kindServiceAccount), "flat-id")
+	require.Len(t, pendingOf(registry, kindServiceAccount), 3)
+
+	// A refused create stores nothing, so nothing stays registered; the answer has no secret.
+	before := pendingOf(registry, kindServiceAccount)
+	platform.createStatus, platform.createBody = http.StatusBadRequest, `{"code":"VALIDATION_FAILED"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "VALIDATION_FAILED")
+	require.ElementsMatch(t, before, pendingOf(registry, kindServiceAccount))
+
+	// A created account whose answer cannot be read stays registered under its name, and the
+	// error never repeats the answer, which may carry the secret.
+	platform.createStatus, platform.createBody = http.StatusCreated, `{"clientSecret":"apsa_leak"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "names no id")
+	require.NotContains(t, err.Error(), "apsa_leak")
+	require.Contains(t, pendingOf(registry, kindServiceAccount), optionalValue(ctx, keyServiceAccountID))
+
+	require.Error(t, steps.createServiceAccount(ctx, " "), "a role is required")
+}
+
+func TestExchangeServiceAccountCredentialsSendsTheFormAndRedactsTheToken(t *testing.T) {
+	steps, ctx, _, platform := serviceAccountSteps(t)
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyServiceAccountClientID, "sa_client")
+	local.Set(keyServiceAccountClientSecret, "apsa_s&cret")
+
+	platform.tokenStatus, platform.tokenBody = http.StatusUnauthorized, `{"code":"UNAUTHORIZED","message":"Invalid or expired credentials."}`
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", valuesTable(t,
+		[]string{"client_id", "${CTX:" + keyServiceAccountClientID + "}"},
+		[]string{"client_secret", "apsa_wrong"},
+		[]string{"scope", ""})))
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "client_id": {"sa_client"}, "client_secret": {"apsa_wrong"}, "scope": {""}},
+		platform.tokenForm, "grant_type defaults, and an empty value is sent")
+	require.Empty(t, platform.tokenAuth, "the exchange is sent without a console token")
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusUnauthorized))
+	require.NoError(t, steps.assertCloudErrorMessage(ctx, "Invalid or expired credentials."))
+	require.ErrorContains(t, steps.assertCloudErrorMessage(ctx, "other"), "expected error message")
+	require.NoError(t, steps.assertNoAccessToken(ctx))
+
+	// HTTP Basic form-encodes the id and the secret before joining them.
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, " using HTTP Basic", "${CTX:"+keyServiceAccountClientID+"}",
+		"${CTX:"+keyServiceAccountClientSecret+"}", valuesTable(t, []string{"scope", "ap:project:read"})))
+	require.Equal(t, "Basic "+base64.StdEncoding.EncodeToString([]byte("sa_client:apsa_s%26cret")), platform.tokenAuth)
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "scope": {"ap:project:read"}}, platform.tokenForm)
+
+	// An issued token is published only redacted.
+	platform.tokenStatus, platform.tokenBody = http.StatusOK, `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900}`
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", valuesTable(t, []string{"scope", "ap:project:read"})))
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, string(published.Body), "eyJ.token.sig")
+	require.ErrorContains(t, steps.assertNoAccessToken(ctx), "carries an access token")
+
+	for name, table := range map[string]*godog.Table{
+		"a key named twice":  valuesTable(t, []string{"scope", "a"}, []string{"scope", "b"}),
+		"an empty key":       valuesTable(t, []string{" ", "a"}),
+		"an unknown context": valuesTable(t, []string{"scope", "${CTX:missing}"}),
+		"a three-cell row":   valuesTable(t, []string{"scope", "a", "b"}),
+		"no table":           nil,
+	} {
+		platform.tokenForm = nil
+		require.Error(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", table), name)
+		require.Nil(t, platform.tokenForm, name+": nothing is sent")
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `not json`)
+	require.ErrorContains(t, steps.assertNoAccessToken(ctx), "not a JSON object")
+}
+
+func TestAssertCredentialsExchangeNeverReportsTheToken(t *testing.T) {
+	steps, ctx, _, platform := serviceAccountSteps(t)
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "ap:project:read"), keyServiceAccountClientID)
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyServiceAccountClientID, "sa_client")
+	local.Set(keyServiceAccountClientSecret, "apsa_secret")
+
+	platform.tokenBody = `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900,"scope":"ap:project:read"}`
+	require.NoError(t, steps.assertCredentialsExchange(ctx, "ap:project:read"))
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "client_id": {"sa_client"},
+		"client_secret": {"apsa_secret"}, "scope": {"ap:project:read"}}, platform.tokenForm)
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the issued token is never published")
+
+	for name, body := range map[string]string{
+		"another scope":   `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900,"scope":"ap:other"}`,
+		"no token":        `{"token_type":"Bearer","expires_in":900,"scope":"ap:project:read"}`,
+		"another type":    `{"access_token":"eyJ.token.sig","token_type":"MAC","expires_in":900,"scope":"ap:project:read"}`,
+		"no lifetime":     `{"access_token":"eyJ.token.sig","token_type":"Bearer","scope":"ap:project:read"}`,
+		"not a JSON body": `access_token=eyJ.token.sig`,
+	} {
+		platform.tokenBody = body
+		err := steps.assertCredentialsExchange(ctx, "ap:project:read")
+		require.Error(t, err, name)
+		require.NotContains(t, err.Error(), "eyJ.token.sig", name)
+	}
+	platform.tokenStatus, platform.tokenBody = http.StatusUnauthorized, `{"code":"UNAUTHORIZED"}`
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "ap:project:read"), "refused the account's own credentials")
+}
+
+func TestRedactAccessToken(t *testing.T) {
+	require.Nil(t, redactAccessToken(nil))
+	plain := &httpx.Response{Body: []byte(`{"code":"UNAUTHORIZED"}`)}
+	require.Same(t, plain, redactAccessToken(plain), "an answer without a token is kept")
+	issued := &httpx.Response{Body: []byte(`{"access_token":"secret-token","expires_in":900}`)}
+	redacted := redactAccessToken(issued)
+	require.JSONEq(t, `{"access_token":"[redacted]","expires_in":900}`, string(redacted.Body))
+	require.Contains(t, string(issued.Body), "secret-token", "the original answer is not changed")
+	require.Equal(t, redactedValue, string(redactAccessToken(&httpx.Response{Body: []byte(`"access_token": secret-token`)}).Body),
+		"an answer that is not JSON but names the field is dropped")
+	require.Equal(t, redactedValue, string(redactAccessToken(&httpx.Response{Body: []byte(`access_token=secret-token&expires_in=900`)}).Body),
+		"a form-encoded answer is dropped too")
+}
+
+func TestServiceAccountCleanupDeletesTheAccount(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &serviceAccountPlatform{}
+	topo := cloudAPIStub(t, platform.handler(t))
+	registry := cleanup.NewRegistry(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, RegisterDeleters(registry, topo))
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, cleanup.Install(ctx, registry))
+	require.NoError(t, registerServiceAccount(ctx, "syn-sa-1"))
+	require.NoError(t, registry.Sweep(ctx))
+	require.Equal(t, []string{"syn-sa-1"}, platform.deleted)
+}
+
+// planPlatform answers the subscription-plan routes and records what it was sent.
+type planPlatform struct {
+	createStatus int
+	updateStatus int
+	sent         []string
+	bodies       []map[string]any
+	query        url.Values
+	plan         string
+	page         string
+	pricing      string
+}
+
+func (p *planPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p.sent = append(p.sent, r.Method+" "+r.URL.Path)
+		var body map[string]any
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			p.bodies = append(p.bodies, body)
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/subscription-plans":
+			w.Header().Set("Location", "/api/v0.9/subscription-plans/"+body["id"].(string))
+			writeJSON(w, p.createStatus, map[string]any{"id": body["id"], "createdBy": "Randil", "limits": body["limits"]})
+		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/subscription-plans/"):
+			writeJSON(w, p.updateStatus, map[string]any{"id": body["id"]})
+		case r.Method == http.MethodGet && r.URL.Path == "/subscription-plans":
+			p.query = r.URL.Query()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(p.page))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pricing"):
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(p.pricing))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/subscription-plans/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(p.plan))
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func planSteps(t *testing.T, claims map[string]any) (*Steps, context.Context, *cleanup.Registry, *planPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, jwtFor(t, map[string]any{"alg": "RS256"}, claims))
+	platform := &planPlatform{createStatus: http.StatusCreated, updateStatus: http.StatusOK}
+	steps, ctx, _, registry := cloudSteps(t, platform.handler(t))
+	return steps, ctx, registry, platform
+}
+
+func TestSubmitPlanCarriesTheScenarioWordAndRegistersThePlan(t *testing.T) {
+	steps, ctx, registry, platform := planSteps(t, map[string]any{"name": "Randil", "sub": "user-1"})
+
+	require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t,
+		[]string{"status", "ACTIVE"}, []string{"limits", `[{"limitType":"REQUEST_COUNT","timeUnit":"MINUTE","limitCount":10}]`})))
+	a, err := planID(ctx, "A")
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(a, syntheticPlanPrefix), "the finalizer and the portal sweep find plans by the prefix")
+	word := optionalValue(ctx, keyPlanWord)
+	require.Equal(t, map[string]any{"id": a, "displayName": word + " Plan A", "status": "ACTIVE",
+		"limits": []any{map[string]any{"limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "limitCount": float64(10)}}}, platform.bodies[0])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusCreated))
+	require.NoError(t, steps.assertPlanLocation(ctx, "A"))
+	require.NoError(t, steps.assertPlanCreator(ctx))
+	require.NoError(t, steps.assertPlanLimitCount(ctx, 1))
+	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "expected 0 limits")
+	require.Error(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})), "a label names one plan")
+
+	// The second plan shares the word; a refused create drops its registration.
+	platform.createStatus = http.StatusBadRequest
+	require.NoError(t, steps.submitPlan(ctx, "B", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.Equal(t, word+" Plan B", platform.bodies[1]["displayName"])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+
+	// A duplicate reuses the id and registers nothing new.
+	platform.createStatus = http.StatusConflict
+	require.NoError(t, steps.submitDuplicatePlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.Equal(t, a, platform.bodies[2]["id"])
+	require.Equal(t, word+" Duplicate", platform.bodies[2]["displayName"])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+
+	for name, table := range map[string]*godog.Table{
+		"an unknown field":         valuesTable(t, []string{"description", "x"}),
+		"limits that are not JSON": valuesTable(t, []string{"limits", "[{"}),
+	} {
+		require.Error(t, steps.submitPlan(ctx, "bad-"+name, table), name)
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+	require.ErrorContains(t, steps.updatePlan(ctx, "missing", valuesTable(t, []string{"status", "ACTIVE"})), `no synthetic subscription plan "missing"`)
+	require.Error(t, steps.submitPlan(ctx, " ", valuesTable(t, []string{"status", "ACTIVE"})), "a label is required")
+}
+
+func TestPlanCreatorIsTheConsoleUsersNameOrItsID(t *testing.T) {
+	for name, tc := range map[string]struct {
+		claims map[string]any
+		ok     bool
+	}{
+		"the name claim":          {map[string]any{"name": "Randil", "sub": "user-1"}, true},
+		"another name":            {map[string]any{"name": "Someone", "sub": "user-1"}, false},
+		"the sub without a name":  {map[string]any{"sub": "Randil"}, true},
+		"no name and another sub": {map[string]any{"sub": "user-1"}, false},
+		"neither claim":           {map[string]any{}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			steps, ctx, _, _ := planSteps(t, tc.claims)
+			require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+			if tc.ok {
+				require.NoError(t, steps.assertPlanCreator(ctx))
+			} else {
+				require.Error(t, steps.assertPlanCreator(ctx))
+			}
+		})
+	}
+}
+
+func TestPlanReadsListsAndUpdates(t *testing.T) {
+	steps, ctx, _, platform := planSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.NoError(t, steps.submitPlan(ctx, "B", valuesTable(t, []string{"status", "ACTIVE"})))
+	a, _ := planID(ctx, "A")
+	b, _ := planID(ctx, "B")
+	require.ErrorContains(t, steps.assertPlanLocation(ctx, "A"), "expected the Location", "the last answer locates B")
+
+	platform.page = `{"list":[{"id":"` + a + `","limits":[{"timeUnit":"MINUTE","limitCount":10}]},{"id":"` + b + `","limits":[{"timeUnit":"HOUR","limitCount":100}]}],"pagination":{"total":3}}`
+	require.NoError(t, steps.listPlans(ctx, 2))
+	require.Equal(t, url.Values{"query": {optionalValue(ctx, keyPlanWord)}, "limit": {"2"}}, platform.query)
+	require.NoError(t, steps.assertPlanPage(ctx, 2, 3))
+	require.Error(t, steps.assertPlanPage(ctx, 3, 3))
+	require.Error(t, steps.assertPlanPage(ctx, 2, 2))
+	require.NoError(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"))
+	require.NoError(t, steps.assertListedPlanLimit(ctx, "B", 100, "HOUR"))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "A", 10, "HOUR"))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "B", 10, "HOUR"))
+	platform.page = `{"list":[],"pagination":{}}`
+	require.NoError(t, steps.listPlans(ctx, 100))
+	require.ErrorContains(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"), "does not list")
+	require.Error(t, steps.assertPlanPage(ctx, 0, 0), "a page without a total")
+
+	require.NoError(t, steps.updatePlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"}, []string{"pricing", `{"pricingType":"FLAT_RATE"}`})))
+	require.Equal(t, "PUT /subscription-plans/"+a, platform.sent[len(platform.sent)-1])
+	require.Equal(t, map[string]any{"pricingType": "FLAT_RATE"}, platform.bodies[len(platform.bodies)-1]["pricing"])
+
+	platform.plan = `{"id":"` + a + `","limits":[]}`
+	require.NoError(t, steps.readPlan(ctx, "synthetic subscription plan", "A"))
+	require.Equal(t, "GET /subscription-plans/"+a, platform.sent[len(platform.sent)-1])
+	require.NoError(t, steps.assertPlanLimitCount(ctx, 0))
+	require.NoError(t, steps.assertPlanHasNoPricing(ctx))
+	platform.plan = `{"id":"` + a + `","pricing":{"pricingType":"FLAT_RATE"}}`
+	require.NoError(t, steps.readPlan(ctx, "synthetic subscription plan", "A"))
+	require.ErrorContains(t, steps.assertPlanHasNoPricing(ctx), "expected no pricing")
+
+	platform.pricing = `{"code":"SUBSCRIPTION_PLAN_PRICING_NOT_FOUND","message":"This subscription plan has no pricing."}`
+	require.NoError(t, steps.readPlan(ctx, "pricing of the synthetic subscription plan", "A"))
+	require.Equal(t, "GET /subscription-plans/"+a+"/pricing", platform.sent[len(platform.sent)-1])
+	require.NoError(t, steps.assertCloudErrorCode(ctx, "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"))
+	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "not a subscription plan")
+}
+
+func TestJSONBodyOfSizeIsExactAndValid(t *testing.T) {
+	for _, size := range []int{14, 15, 1024} {
+		body, err := jsonBodyOfSize(size)
+		require.NoError(t, err)
+		require.Len(t, body, size)
+		require.True(t, json.Valid(body), size)
+	}
+	_, err := jsonBodyOfSize(13)
+	require.ErrorContains(t, err, "at least 14 bytes")
+}
+
+func TestSendOnceSendsTheHeaderAndBodyAndPublishesAnyStatus(t *testing.T) {
+	var gotHeader string
+	var gotBody int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-Request-Id")
+		body, _ := io.ReadAll(r.Body)
+		gotBody = len(body)
+		w.Header().Set("X-Request-Id", "answered")
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer server.Close()
+	steps, ctx, local, _ := cloudSteps(t, nil)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set("probe", "client-1")
+
+	require.NoError(t, steps.sendOnceWithHeader(ctx, http.MethodGet, server.URL, "X-Request-Id", "${CTX:probe}"))
+	require.Equal(t, "client-1", gotHeader)
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusTeapot), "a single send publishes whatever status it gets")
+	require.NoError(t, steps.assertResponseHeader(ctx, "x-request-id", "be", "answered"))
+
+	require.NoError(t, steps.sendOnceWithJSONBody(ctx, http.MethodPost, server.URL, 64))
+	require.Equal(t, 64, gotBody)
+	require.ErrorContains(t, steps.sendOnceWithHeader(ctx, http.MethodGet, server.URL, " ", "v"), "header name is required")
+}
+
+func TestResponseHeaderAssertions(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	headers := http.Header{}
+	headers.Set("Cache-Control", "public, max-age=300")
+	headers.Set("X-Request-Id", "9b821994-8aa4-4fbb-a21f-f6cea5b78a0b")
+	headers.Set("ETag", `"abc"`)
+	require.NoError(t, steps.funnel.Publish(ctx, &httpx.Response{StatusCode: 200, Headers: headers}))
+
+	require.NoError(t, steps.assertResponseHeader(ctx, "cache-control", "be", "public, max-age=300"))
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "Cache-Control", "be", "no-store"), `want "no-store"`)
+	require.NoError(t, steps.assertResponseHeader(ctx, "Cache-Control", "contain", "max-age"))
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "Allow", "contain", "GET"), "want it to contain")
+	require.NoError(t, steps.assertResponseHeader(ctx, "X-Request-Id", "not be", "policy-set-value"))
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "ETag", "not be", `"abc"`), "want anything else")
+	require.NoError(t, steps.assertResponseHeader(ctx, "Allow", "not be", "GET"), "an absent header is not the value")
+	require.ErrorContains(t, steps.assertResponseHeader(ctx, "ETag", "match", "x"), "unsupported header relation")
+
+	require.NoError(t, steps.storeResponseHeader(ctx, "ETag", "jwksETag"))
+	got, err := requiredValue(ctx, "jwksETag")
+	require.NoError(t, err)
+	require.Equal(t, `"abc"`, got)
+	require.ErrorContains(t, steps.storeResponseHeader(ctx, "Allow", "allow"), "no \"Allow\" header to store")
+
+	require.NoError(t, steps.assertGeneratedRequestID(ctx))
+	headers.Set("X-Request-Id", "client-request-id-123")
+	require.ErrorContains(t, steps.assertGeneratedRequestID(ctx), "not one the gateway generated")
+	headers.Del("X-Request-Id")
+	require.ErrorContains(t, steps.assertGeneratedRequestID(ctx), "not one the gateway generated")
+}
+
+func TestBodyAssertions(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	publishedResponse(t, steps, ctx, 304, "")
+	require.NoError(t, steps.assertEmptyBody(ctx))
+	require.ErrorContains(t, steps.assertResponseOmits(ctx, "checks"), "not JSON")
+
+	publishedResponse(t, steps, ctx, 200, `{"status":"healthy","checks":{}}`)
+	require.ErrorContains(t, steps.assertEmptyBody(ctx), "want none")
+	require.NoError(t, steps.assertResponseOmits(ctx, "checks.policy_engine"))
+	require.ErrorContains(t, steps.assertResponseOmits(ctx, "checks"), "want it absent")
+
+	publishedResponse(t, steps, ctx, 200, `{"headers":{"x-request-id":"client-request-id-123"}}`)
+	require.NoError(t, steps.assertEchoedHeader(ctx, "X-Request-Id", "client-request-id-123"))
+	require.ErrorContains(t, steps.assertEchoedHeader(ctx, "X-Request-Id", "other"), `want "other"`)
+	require.ErrorContains(t, steps.assertEchoedHeader(ctx, "X-Other", "x"), `no "X-Other" header`)
+}
+
+func TestSendUntilTimedOutNeedsTheStatusAfterTheTimeout(t *testing.T) {
+	var delay atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(time.Duration(delay.Load()))
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+
+	delay.Store(int64(1100 * time.Millisecond))
+	require.NoError(t, steps.sendUntilTimedOut(ctx, http.MethodGet, server.URL, 1, http.StatusServiceUnavailable))
+
+	delay.Store(0)
+	short, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	require.Error(t, steps.sendUntilTimedOut(short, http.MethodGet, server.URL, 1, http.StatusServiceUnavailable),
+		"an immediate 503 is a refusal, not a timeout the gateway waited out")
+	require.ErrorContains(t, steps.sendUntilTimedOut(ctx, http.MethodGet, server.URL, 0, http.StatusServiceUnavailable), "positive number of seconds")
+}
+
+func TestDefaultGatewaysFirstKeepsTheListingOrderOtherwise(t *testing.T) {
+	items := []map[string]any{
+		{"id": "development-syn-gw-1", "isDefault": false},
+		{"id": "development-default", "isDefault": true},
+		{"id": "other"},
+		{"id": "production-default", "isDefault": true},
+	}
+	var ids []string
+	for _, item := range defaultGatewaysFirst(items) {
+		ids = append(ids, item["id"].(string))
+	}
+	require.Equal(t, []string{"development-default", "production-default", "development-syn-gw-1", "other"}, ids)
+	require.Equal(t, "development-syn-gw-1", items[0]["id"], "the listing itself is not reordered")
+}
+
+func TestFindActiveGatewayPrefersTheDefaultGateway(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
+			{"id": "development-syn-gw-qr8cz8", "isActive": true, "endpoints": []string{"https://syn.example.com"}},
+			{"id": "development-default", "isActive": true, "isDefault": true, "endpoints": []string{"https://gw.example.com"}},
+		}})
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, steps.findActiveGateway(ctx))
+	id, err := requiredValue(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "development-default", id)
+}
+
+func TestSendUntilHeaderWaitsForTheHeaderValue(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) >= 3 {
+			w.Header().Set("X-Matched-Operation", "inner")
+		} else {
+			w.Header().Set("X-Matched-Operation", "outer-wildcard")
+		}
+	}))
+	defer server.Close()
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	require.NoError(t, steps.sendUntilHeader(ctx, http.MethodGet, server.URL, "X-Matched-Operation", "inner"))
+	require.GreaterOrEqual(t, calls.Load(), int32(3))
+	short, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	require.Error(t, steps.sendUntilHeader(short, http.MethodGet, server.URL, "X-Matched-Operation", "never"))
 }
