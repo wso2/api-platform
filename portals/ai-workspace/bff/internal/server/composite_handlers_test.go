@@ -109,7 +109,7 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platformURL},
-		Cookie:       config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2"},
+		Cookie:       config.CookieConfig{SessionPrefix: "_ai_workspace_session_"},
 	}
 
 	s := &Server{
@@ -121,9 +121,7 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 	// Wrap the handler so we can inject the session cookie (split across its two
 	// parts) on every request.
 	bffSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		part1, part2 := splitSessionToken(jwt)
-		r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name1, Value: part1})
-		r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name2, Value: part2})
+		addSessionCookies(r, cfg.Cookie, jwt)
 		s.handleCreateWithSecretCompensation(w, r, "/llm-providers", paths.PlatformAPI)
 	}))
 	t.Cleanup(bffSrv.Close)
@@ -280,7 +278,7 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	platform, _ := fakeControlPlane(t, nil)
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platform.URL},
-		Cookie:       config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2"},
+		Cookie:       config.CookieConfig{SessionPrefix: "_ai_workspace_session_"},
 	}
 	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
 	// the zero value would instead apply httpclient's own 10MiB cap, which these
@@ -336,7 +334,7 @@ func buildPublishTestServer(t *testing.T, platformURL, jwt string) *httptest.Ser
 
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platformURL},
-		Cookie:       config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2"},
+		Cookie:       config.CookieConfig{SessionPrefix: "_ai_workspace_session_"},
 	}
 	s := &Server{
 		cfg:          cfg,
@@ -360,11 +358,15 @@ func buildPublishTestServer(t *testing.T, platformURL, jwt string) *httptest.Ser
 }
 
 // addSessionCookies attaches jwt to r the way the browser carries it: split across
-// the session cookie's two parts.
+// the session chunk cookies.
 func addSessionCookies(r *http.Request, c config.CookieConfig, jwt string) {
-	part1, part2 := splitSessionToken(jwt)
-	r.AddCookie(&http.Cookie{Name: c.Name1, Value: part1})
-	r.AddCookie(&http.Cookie{Name: c.Name2, Value: part2})
+	chunks, err := splitSessionToken(jwt)
+	if err != nil {
+		panic(err)
+	}
+	for i, chunk := range chunks {
+		r.AddCookie(&http.Cookie{Name: sessionChunkName(c.SessionPrefix, i+1), Value: chunk})
+	}
 }
 
 const publishTestPath = "/api/api-portals/acme-portal/mcp-proxies/my-proxy/publish"

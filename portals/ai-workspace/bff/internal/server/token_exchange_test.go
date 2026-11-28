@@ -168,7 +168,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 	}
 
 	cfg := &config.Config{
-		Cookie: config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2", Secure: true, SameSite: "lax"},
+		Cookie: config.CookieConfig{SessionPrefix: "_ai_workspace_session_", Secure: true, SameSite: "lax"},
 		Auth: config.AuthConfig{
 			Mode: config.AuthModeOIDC,
 			OIDC: config.OIDCConfig{
@@ -508,22 +508,21 @@ func (h *exchangeTestHarness) callbackRequest(t *testing.T) *http.Request {
 // part with an empty value, so "no usable session cookie" and "no cookie at all" are
 // the same assertion. Both parts must be present, matching tokenFromCookie.
 func sessionCookieValue(h *exchangeTestHarness, rec *httptest.ResponseRecorder) string {
-	var part1, part2 string
+	byName := map[string]string{}
 	for _, c := range rec.Result().Cookies() {
-		if c.Value == "" || c.MaxAge < 0 {
-			continue
-		}
-		switch c.Name {
-		case h.server.cfg.Cookie.Name1:
-			part1 = c.Value
-		case h.server.cfg.Cookie.Name2:
-			part2 = c.Value
+		if c.Value != "" && c.MaxAge >= 0 {
+			byName[c.Name] = c.Value
 		}
 	}
-	if part1 == "" || part2 == "" {
-		return ""
+	var token string
+	for i := 1; i <= sessionMaxChunks; i++ {
+		v, ok := byName[sessionChunkName(h.server.cfg.Cookie.SessionPrefix, i)]
+		if !ok {
+			break
+		}
+		token += v
 	}
-	return joinSessionToken(part1, part2)
+	return token
 }
 
 // TestLoginClassifiesExchangeFailure: the login path must tell its two failure classes

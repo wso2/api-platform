@@ -17,7 +17,9 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,26 +38,52 @@ func sameSite(v string) http.SameSite {
 	}
 }
 
+// sessionChunkSize bounds the value of one session cookie. Browsers drop a cookie
+// whose name plus value exceeds 4096 bytes, so the chunk leaves room for the name and
+// the attributes.
+const sessionChunkSize = 3500
+
+// sessionMaxChunks bounds how many session cookies a token may take: 8 × 3500 bytes.
+// A token beyond that fails the login with an error instead of storing a partial JWT.
+const sessionMaxChunks = 8
+
 // setSessionCookie writes the session cookie carrying the JWT itself, bounded by
-// the supplied absolute expiry. The JWT is split across two HttpOnly cookies
-// (Name1/Name2) so a single Set-Cookie value stays under browsers' and
-// intermediate proxies' per-cookie size ceiling even when the JWT's scope list is
-// large (see defaultOIDCScopes). Neither half is meaningful on its own; the proxy
-// reads the reassembled JWT straight from the pair — no server-side lookup.
+// the supplied absolute expiry. The JWT is split into as many HttpOnly chunk cookies
+// as its size requires (see splitSessionToken), so each Set-Cookie value stays under
+// browsers' and intermediate proxies' per-cookie size ceiling however large the
+// JWT's claims are. The proxy reads the reassembled JWT straight from the chunks —
+// no server-side lookup.
+//
+// Chunk indices beyond the ones this token uses are expired, so a token that shrinks
+// leaves no stale trailing chunk behind. An error (token too large) is returned
+// before anything is written; the caller must fail the request.
 //
 // Path is scoped to the app's base path so a host serving several portals under
 // different prefixes doesn't send this session to any of the others.
-func (s *Server) setSessionCookie(w http.ResponseWriter, jwt string, absExpiry time.Time) {
+func (s *Server) setSessionCookie(w http.ResponseWriter, jwt string, absExpiry time.Time) error {
+	chunks, err := splitSessionToken(jwt)
+	if err != nil {
+		return err
+	}
 	maxAge := 0
 	if !absExpiry.IsZero() {
 		if d := time.Until(absExpiry); d > 0 {
 			maxAge = int(d.Seconds())
 		}
 	}
-	part1, part2 := splitSessionToken(jwt)
 	path := s.path("/")
-	s.writeSessionCookiePart(w, s.cfg.Cookie.Name1, part1, path, maxAge)
-	s.writeSessionCookiePart(w, s.cfg.Cookie.Name2, part2, path, maxAge)
+	for i, chunk := range chunks {
+		s.writeSessionCookiePart(w, sessionChunkName(s.cfg.Cookie.SessionPrefix, i+1), chunk, path, maxAge)
+	}
+	for i := len(chunks); i < sessionMaxChunks; i++ {
+		s.writeSessionCookiePart(w, sessionChunkName(s.cfg.Cookie.SessionPrefix, i+1), "", path, -1)
+	}
+	return nil
+}
+
+// sessionChunkName is the name of the n-th (1-based) session chunk cookie.
+func sessionChunkName(prefix string, n int) string {
+	return prefix + strconv.Itoa(n)
 }
 
 func (s *Server) writeSessionCookiePart(w http.ResponseWriter, name, value, path string, maxAge int) {
@@ -70,18 +98,22 @@ func (s *Server) writeSessionCookiePart(w http.ResponseWriter, name, value, path
 	})
 }
 
-// splitSessionToken divides the JWT into two arbitrary halves so it can be carried
-// by two cookies instead of one. The split point carries no meaning on its own —
-// joinSessionToken just concatenates the parts back in order.
-func splitSessionToken(jwt string) (string, string) {
-	mid := (len(jwt) + 1) / 2
-	return jwt[:mid], jwt[mid:]
-}
-
-// joinSessionToken reassembles the JWT from its two session-cookie parts, in the same
-// order splitSessionToken produced them. Used by tokenFromCookie (handlers.go).
-func joinSessionToken(part1, part2 string) string {
-	return part1 + part2
+// splitSessionToken divides the JWT into consecutive chunks of at most sessionChunkSize
+// bytes, one per cookie. The chunks carry no meaning on their own: tokenFromCookie
+// concatenates them back in index order. A token that would need more than
+// sessionMaxChunks chunks is rejected.
+func splitSessionToken(jwt string) ([]string, error) {
+	n := (len(jwt) + sessionChunkSize - 1) / sessionChunkSize
+	if n > sessionMaxChunks {
+		return nil, fmt.Errorf("session token is %d bytes; at most %d bytes fit in %d session cookies",
+			len(jwt), sessionChunkSize*sessionMaxChunks, sessionMaxChunks)
+	}
+	chunks := make([]string, 0, n)
+	for start := 0; start < len(jwt); start += sessionChunkSize {
+		end := min(start+sessionChunkSize, len(jwt))
+		chunks = append(chunks, jwt[start:end])
+	}
+	return chunks, nil
 }
 
 // legacyRootCookiePath is the origin-root Path the session cookie used before it moved
@@ -111,7 +143,10 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	if paths[0] != legacyRootCookiePath {
 		paths = append(paths, legacyRootCookiePath)
 	}
-	names := append([]string{s.cfg.Cookie.Name1, s.cfg.Cookie.Name2}, legacyCookieNames...)
+	names := append([]string{}, legacyCookieNames...)
+	for i := 1; i <= sessionMaxChunks; i++ {
+		names = append(names, sessionChunkName(s.cfg.Cookie.SessionPrefix, i))
+	}
 	for _, path := range paths {
 		for _, name := range names {
 			http.SetCookie(w, &http.Cookie{

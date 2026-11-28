@@ -51,11 +51,10 @@ func replicaServer(t *testing.T, material string) *Server {
 	return &Server{
 		cfg: &config.Config{
 			Cookie: config.CookieConfig{
-				Name1:       "_ai_workspace_session_1",
-				Name2:       "_ai_workspace_session_2",
-				StatePrefix: "_ai_workspace_state_",
-				Secure:      true,
-				SameSite:    "lax",
+				SessionPrefix: "_ai_workspace_session_",
+				StatePrefix:   "_ai_workspace_state_",
+				Secure:        true,
+				SameSite:      "lax",
 			},
 		},
 		stateCodec: session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks, session.DefaultClaimMapping()),

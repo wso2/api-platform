@@ -29,30 +29,30 @@ import (
 func cookieTestServer() *Server {
 	return &Server{cfg: &config.Config{
 		Cookie: config.CookieConfig{
-			Name1:       "_ai_workspace_session_1",
-			Name2:       "_ai_workspace_session_2",
-			StatePrefix: "_ai_workspace_state_",
-			Secure:      true,
-			SameSite:    "lax",
+			SessionPrefix: "_ai_workspace_session_",
+			StatePrefix:   "_ai_workspace_state_",
+			Secure:        true,
+			SameSite:      "lax",
 		},
 	}}
 }
 
-// The session is split across two cookies, both scoped to the app's base path, so a
-// host serving several portals under different prefixes never forwards this session to
-// the others.
+// A small token takes one chunk; every other chunk index is expired so a shrinking
+// token leaves no stale trailing chunk. All cookies are scoped to the app's base path,
+// so a host serving several portals under different prefixes never forwards this
+// session to the others.
 func TestSetSessionCookieScopedToBasePath(t *testing.T) {
 	s := cookieTestServer()
 	rec := httptest.NewRecorder()
-	s.setSessionCookie(rec, "jwt-value", time.Now().Add(time.Hour))
+	if err := s.setSessionCookie(rec, "jwt-value", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 2 {
-		t.Fatalf("got %d cookies, want 2", len(cookies))
+	if len(cookies) != sessionMaxChunks {
+		t.Fatalf("got %d cookies, want %d (1 chunk + expiries)", len(cookies), sessionMaxChunks)
 	}
-	names := map[string]bool{}
 	for _, c := range cookies {
-		names[c.Name] = true
 		if c.Path != "/ai-workspace/" {
 			t.Errorf("cookie %q Path = %q, want %q", c.Name, c.Path, "/ai-workspace/")
 		}
@@ -61,37 +61,72 @@ func TestSetSessionCookieScopedToBasePath(t *testing.T) {
 				c.Name, c.HttpOnly, c.Secure)
 		}
 	}
-	if !names[s.cfg.Cookie.Name1] || !names[s.cfg.Cookie.Name2] {
-		t.Fatalf("got cookies %v, want both %q and %q", names, s.cfg.Cookie.Name1, s.cfg.Cookie.Name2)
+	first := cookies[0]
+	if first.Name != sessionChunkName(s.cfg.Cookie.SessionPrefix, 1) || first.Value != "jwt-value" {
+		t.Fatalf("first cookie = %q=%q, want the token in chunk 1", first.Name, first.Value)
+	}
+	for _, c := range cookies[1:] {
+		if c.MaxAge >= 0 || c.Value != "" {
+			t.Errorf("unused chunk %q not expired: MaxAge=%d Value=%q", c.Name, c.MaxAge, c.Value)
+		}
 	}
 }
 
-// The JWT reassembled from the two cookie parts must equal the original value.
-func TestSetSessionCookieRoundTrips(t *testing.T) {
+// A token larger than one chunk is split into consecutive chunks, each under the
+// per-cookie limit, and reassembled exactly.
+func TestSetSessionCookieRoundTripsMultiChunk(t *testing.T) {
 	s := cookieTestServer()
+	want := strings.Repeat("a", 2*sessionChunkSize+123) + ".payload.signature"
 	rec := httptest.NewRecorder()
-	want := "header.payload-with-a-lot-of-scopes.signature"
-	s.setSessionCookie(rec, want, time.Now().Add(time.Hour))
+	if err := s.setSessionCookie(rec, want, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest("GET", "/", nil)
+	written := 0
 	for _, c := range rec.Result().Cookies() {
-		req.AddCookie(c)
+		if c.MaxAge >= 0 && c.Value != "" {
+			if len(c.Name)+len(c.Value) > 4096 {
+				t.Fatalf("cookie %q is %d bytes, above the browser limit", c.Name, len(c.Name)+len(c.Value))
+			}
+			req.AddCookie(c)
+			written++
+		}
+	}
+	if written != 3 {
+		t.Fatalf("token of %d bytes used %d chunks, want 3", len(want), written)
 	}
 	got, ok := s.tokenFromCookie(req)
 	if !ok || got != want {
-		t.Fatalf("tokenFromCookie() = %q, %v, want %q, true", got, ok, want)
+		t.Fatalf("tokenFromCookie() did not reassemble the token: ok=%v len=%d want len=%d", ok, len(got), len(want))
 	}
 }
 
-// A missing second cookie must fail closed rather than silently returning a truncated
-// JWT — see GO-AUTH-001.
-func TestTokenFromCookieFailsClosedOnMissingPart(t *testing.T) {
+// A token that needs more chunks than sessionMaxChunks fails with an error and writes
+// no session cookie, instead of storing half a JWT.
+func TestSetSessionCookieRejectsOversizedToken(t *testing.T) {
 	s := cookieTestServer()
-	req := httptest.NewRequest("GET", "/", nil)
-	req.AddCookie(&http.Cookie{Name: s.cfg.Cookie.Name1, Value: "only-part-one"})
+	rec := httptest.NewRecorder()
+	tooBig := strings.Repeat("a", sessionChunkSize*sessionMaxChunks+1)
+	if err := s.setSessionCookie(rec, tooBig, time.Now().Add(time.Hour)); err == nil {
+		t.Fatal("setSessionCookie() = nil, want an error for a token above the chunk budget")
+	}
+	if n := len(rec.Result().Cookies()); n != 0 {
+		t.Fatalf("oversized token wrote %d cookies, want none", n)
+	}
+}
 
+// Without any session chunk cookie there is no token. Chunks are read in order and the
+// first missing or empty index ends the token, so a gap cannot splice two tokens.
+func TestTokenFromCookieWithoutChunks(t *testing.T) {
+	s := cookieTestServer()
+	if _, ok := s.tokenFromCookie(httptest.NewRequest("GET", "/", nil)); ok {
+		t.Fatal("tokenFromCookie() = ok, want false with no session cookies")
+	}
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: sessionChunkName(s.cfg.Cookie.SessionPrefix, 2), Value: "orphan"})
 	if _, ok := s.tokenFromCookie(req); ok {
-		t.Fatal("tokenFromCookie() = ok, want false when the second cookie is missing")
+		t.Fatal("tokenFromCookie() = ok, want false when chunk 1 is missing")
 	}
 }
 
@@ -105,10 +140,9 @@ func TestClearSessionCookieAlsoClearsLegacyRootPath(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.clearSessionCookie(rec)
 
-	wantNames := map[string]bool{
-		s.cfg.Cookie.Name1:      true,
-		s.cfg.Cookie.Name2:      true,
-		config.LegacyCookieName: true,
+	wantNames := map[string]bool{config.LegacyCookieName: true}
+	for i := 1; i <= sessionMaxChunks; i++ {
+		wantNames[sessionChunkName(s.cfg.Cookie.SessionPrefix, i)] = true
 	}
 	byPath := map[string]map[string]bool{"/ai-workspace/": {}, "/": {}}
 	for _, c := range rec.Result().Cookies() {
