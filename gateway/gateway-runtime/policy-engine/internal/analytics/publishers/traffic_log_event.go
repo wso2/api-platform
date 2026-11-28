@@ -83,6 +83,9 @@ type TrafficLogAPI struct {
 type TrafficLogOperation struct {
 	Method string `json:"method,omitempty"`
 	Path   string `json:"path,omitempty"`
+	// PathTemplate is the matched operation path template as configured on the API,
+	// relative to the API context (e.g. "/student/{ID}"). Absent when no operation matched.
+	PathTemplate string `json:"pathTemplate,omitempty"`
 }
 
 // TrafficLogTarget holds upstream response information.
@@ -141,6 +144,9 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		op := TrafficLogOperation{
 			Method: event.Operation.APIMethod,
 			Path:   event.Operation.APIResourceTemplate,
+		}
+		if tmpl, ok := event.Properties[dto.PropKeyOperationPath].(string); ok {
+			op.PathTemplate = tmpl
 		}
 		if op != (TrafficLogOperation{}) {
 			tl.Operation = &op
