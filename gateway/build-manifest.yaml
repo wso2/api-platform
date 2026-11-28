@@ -1,7 +1,7 @@
 version: v1
 policies:
     - name: advanced-ratelimit
-      version: v1.4.0
+      version: v1.4.1
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
     - name: analytics-header-filter
       version: v1.0.1
@@ -16,7 +16,7 @@ policies:
       version: v1.5.1
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
     - name: azure-content-safety-content-moderation
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v1
     - name: azure-llm-cost
       version: v1.0.0
@@ -61,13 +61,13 @@ policies:
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.7.0
+      version: v1.7.1
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
     - name: llm-cost-based-ratelimit
-      version: v1.2.0
+      version: v1.3.1
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
     - name: llm-header-router
       version: v0.9.1
@@ -79,7 +79,7 @@ policies:
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
-      version: v1.5.1
+      version: v1.5.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
       version: v1.4.0
@@ -112,7 +112,7 @@ policies:
       version: v0.10.0
       gomodule: github.com/wso2/gateway-controllers/policies/oauth2-token-exchange@v0
     - name: opaque-token-auth
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
     - name: openai-to-anthropic-transformer
       version: v0.10.1
@@ -175,7 +175,7 @@ policies:
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
     - name: token-based-ratelimit
-      version: v1.2.0
+      version: v1.3.1
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
     - name: typesafe-jev-content-safety
       version: v0.9.0
