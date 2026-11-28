@@ -108,6 +108,11 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		return nil, apperror.OrganizationExists.New().WithLogMessage("an organization with this handle already exists")
 	}
 
+	// An identity-provider organization maps to exactly one platform organization.
+	if err := s.ensureOrganizationNotRegistered(idpOrgRefUUID); err != nil {
+		return nil, err
+	}
+
 	if name == "" {
 		name = handle // Default name to handle if not provided
 	}
@@ -138,6 +143,15 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	orgModel.UpdatedBy = performedBy
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
+		// A concurrent registration can pass the checks above. The unique
+		// constraint on handle catches a second registration of the same
+		// handle here. Two concurrent registrations for the same
+		// identity-provider organization with different handles are not
+		// caught: idp_organization_ref_uuid has no unique constraint.
+		if repository.IsUniqueViolation(err) {
+			return nil, apperror.OrganizationExists.Wrap(err).
+				WithLogMessage("an organization with this UUID or handle already exists")
+		}
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", orgModel.ID, "organization", orgModel.ID, performedBy)
@@ -186,6 +200,37 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	}
 
 	return orgResponse, nil
+}
+
+// ensureOrganizationNotRegistered returns apperror.OrganizationExists when the
+// caller's organization reference already belongs to a registered organization.
+//
+// The reference comes from the request context, which OrganizationResolverMiddleware
+// rewrites to the platform organization UUID once the token's organization claim
+// matches an existing organization. It therefore holds either the raw
+// identity-provider organization id (nothing registered yet) or the UUID of the
+// organization already registered for it, so both lookups are needed, in the
+// same order the resolver uses. An empty reference (no organization claim) is
+// not checked.
+func (s *OrganizationService) ensureOrganizationNotRegistered(orgRef string) error {
+	if orgRef == "" {
+		return nil
+	}
+	existing, err := s.orgRepo.GetOrganizationByIdpOrgRefUUID(orgRef)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		existing, err = s.orgRepo.GetOrganizationByUUID(orgRef)
+		if err != nil {
+			return err
+		}
+	}
+	if existing != nil {
+		return apperror.OrganizationExists.New().
+			WithLogMessage("an organization is already registered for this identity-provider organization")
+	}
+	return nil
 }
 
 // createsDefaultProject reports whether new organizations get a default project, which they do

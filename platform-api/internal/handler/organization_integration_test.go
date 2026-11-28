@@ -17,7 +17,7 @@
 
 // Tests GET /api/v0.9/organizations: listing is always scoped to the
 // caller's user_organization_mappings rows, plus the membership heal on
-// first list.
+// first list. Also tests the uniqueness rules of POST /api/v0.9/organizations.
 
 package handler
 
@@ -29,6 +29,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -209,5 +210,56 @@ func TestOrganizationHandler_ListOrganizations_HealsMembershipForResolvedOrg(t *
 	}
 	if count != 1 {
 		t.Fatalf("expected the heal to have created a membership row, got count=%d", count)
+	}
+}
+
+// postOrganization sends POST /api/v0.9/organizations with the given handle on
+// behalf of a caller whose token carries orgClaim.
+func postOrganization(t *testing.T, r http.Handler, orgClaim, handle string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := `{"id":"` + handle + `","displayName":"` + handle + `","region":"us"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v0.9/organizations", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Test-User", "sub-org-admin")
+	req.Header.Set("X-Test-Org", orgClaim)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+// Registering an organization works once per organization claim; a second
+// registration for the same claim, under any handle, returns 409 Conflict.
+func TestOrganizationHandler_RegisterOrganization_SecondRegistrationForSameOrgIsConflict(t *testing.T) {
+	r, db, cleanup := setupOrganizationHandlerTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if rec := postOrganization(t, r, "idp-org-1", "first-org"); rec.Code != http.StatusCreated {
+		t.Fatalf("first RegisterOrganization: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := postOrganization(t, r, "idp-org-1", "second-org")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("second RegisterOrganization: expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM organizations WHERE idp_organization_ref_uuid = ?`, "idp-org-1").Scan(&count); err != nil {
+		t.Fatalf("failed to count organizations: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one organization for idp-org-1, got %d", count)
+	}
+}
+
+// A handle already used by another organization returns 409 Conflict.
+func TestOrganizationHandler_RegisterOrganization_TakenHandleIsConflict(t *testing.T) {
+	r, _, cleanup := setupOrganizationHandlerTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if rec := postOrganization(t, r, "idp-org-1", "shared-handle"); rec.Code != http.StatusCreated {
+		t.Fatalf("first RegisterOrganization: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := postOrganization(t, r, "idp-org-2", "shared-handle"); rec.Code != http.StatusConflict {
+		t.Fatalf("RegisterOrganization with a taken handle: expected 409, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

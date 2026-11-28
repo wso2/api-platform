@@ -22,6 +22,8 @@ export interface paths {
          * Register a new organization
          * @description Registers a new organization with a unique UUID and handle.
          *     This endpoint is used during the organization onboarding process.
+         *     Only one organization can be registered per organization in the identity provider;
+         *     registering a second one, or using a handle that is already taken, returns 409 Conflict.
          *     A valid Bearer JWT token with the `ap:organization:create` or `ap:organization:manage` scope is required.
          */
         post: operations["RegisterOrganization"];

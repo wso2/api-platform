@@ -72,7 +72,7 @@ func setupSecretTestEnv(t *testing.T) (http.Handler, func()) {
 		t.Fatalf("failed to insert org: %v", err)
 	}
 	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
-		VALUES ('org-it-002', 'test-org-b', 'Test Org B', 'default', 'idp-ref', datetime('now'), datetime('now'))`); err != nil {
+		VALUES ('org-it-002', 'test-org-b', 'Test Org B', 'default', 'idp-ref-b', datetime('now'), datetime('now'))`); err != nil {
 		t.Fatalf("failed to insert org-b: %v", err)
 	}
 
