@@ -1,0 +1,1 @@
+-- No-op: SQL Server support was introduced in 1.2.0.

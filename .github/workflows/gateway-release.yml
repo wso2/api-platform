@@ -61,10 +61,15 @@ jobs:
       - name: Build and push multi arch Docker images
         run: make build-and-push-gateway-multiarch
 
+      - name: Promote migration steps for this release
+        run: |
+          make -C gateway migrations-promote VERSION=${{ steps.version.outputs.version }}
+
       - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A gateway/gateway-controller/pkg/storage/migrations
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             git commit -am "Release gateway version ${{ steps.version.outputs.version }}"
           fi
@@ -73,6 +78,13 @@ jobs:
           git push origin gateway/v${{ steps.version.outputs.version }}
           git push origin ai-gateway/v${{ steps.version.outputs.version }}
 
+
+      - name: Sync migration steps to the public repo
+        env:
+          GH_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+          UPSTREAM_REPO: wso2/api-platform
+        run: |
+          bash gateway/scripts/sync-migrations-upstream.sh ${{ steps.version.outputs.version }}
 
       - name: Set next dev version
         env:

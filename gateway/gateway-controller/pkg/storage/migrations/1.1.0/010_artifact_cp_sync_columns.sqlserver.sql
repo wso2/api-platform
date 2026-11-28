@@ -1,0 +1,2 @@
+-- No-op: SQL Server support was introduced in 1.2.0, so no SQL Server database
+-- can be older than that.
