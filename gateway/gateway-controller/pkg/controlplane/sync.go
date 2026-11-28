@@ -300,6 +300,10 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 		return
 	}
 
+	// Templates refreshed in this batch, so a template shared by several
+	// providers is fetched once.
+	refreshedTemplates := map[string]struct{}{}
+
 	// Process each deployment in the batch
 	for _, dep := range batch {
 		yamlData, ok := yamlMap[dep.DeploymentID]
@@ -322,6 +326,7 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 				)
 				continue
 			}
+			c.ensureLLMProviderTemplateFromYAML(yamlData, correlationID, refreshedTemplates)
 			_, err = c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.llmDeploymentService)
 

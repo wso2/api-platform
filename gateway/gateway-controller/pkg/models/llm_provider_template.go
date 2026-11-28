@@ -39,9 +39,22 @@ type StoredLLMProviderTemplate struct {
 	UpdatedAt     time.Time               `json:"updatedAt"`
 }
 
+// AnnotationTemplateOrigin marks a template the gateway fetched from the control plane. The gateway sets it itself
+// when it saves a fetched template, and refreshes only templates that carry it, so a template it ships or one
+// applied through the management API or the operator is never replaced by a control-plane fetch.
+const AnnotationTemplateOrigin = "gateway.api-platform.wso2.com/origin"
+
 // GetHandle returns the template handle
 func (t *StoredLLMProviderTemplate) GetHandle() string {
 	return t.Configuration.Metadata.Name
+}
+
+// IsFromControlPlane reports whether the template was fetched from the control plane.
+func (t *StoredLLMProviderTemplate) IsFromControlPlane() bool {
+	if t == nil || t.Configuration.Metadata.Annotations == nil {
+		return false
+	}
+	return (*t.Configuration.Metadata.Annotations)[AnnotationTemplateOrigin] == string(OriginControlPlane)
 }
 
 func (t *StoredLLMProviderTemplate) GetGroupID() string {
