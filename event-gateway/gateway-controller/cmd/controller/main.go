@@ -660,7 +660,7 @@ func main() {
 	apiServer, err := handlers.NewAPIServer(
 		configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, clientAuthorities, log, cpClient,
 		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance,
-		subscriptionSnapshotManager, secretsService, restAPIService, httpClient, agentSvc,
+		subscriptionSnapshotManager, secretsService, secretsService, restAPIService, httpClient, agentSvc,
 	)
 	if err != nil {
 		log.Error("Failed to create API server", slog.Any("error", err))
