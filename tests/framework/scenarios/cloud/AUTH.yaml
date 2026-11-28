@@ -90,3 +90,36 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_auth.feature
           scenario: "Every cloud control-plane route requires authentication"
+  - id: ID_APIP_AUTH_009
+    title: "The service-account token exchange refuses a wrong secret, an unknown client, a missing or ungranted scope and another grant type, and issues no token."
+    priority: P0
+    cloud:
+      # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
+      # refuses <case>".
+      status: known-issue
+      issue: "Service accounts are off in the cloud by decision: they are turned off on every cloud environment, since the console hides them and nothing in the cloud calls the token endpoint, so POST /service-accounts answers 404 on development (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). https://github.com/wso2-enterprise/wso2cloud-deployment/pull/6686"
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The service-account token exchange refuses <case>"
+  - id: ID_APIP_AUTH_010
+    title: "The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret."
+    priority: P1
+    cloud:
+      # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
+      # refuses a client that authenticates twice, and a wrong HTTP Basic secret".
+      status: known-issue
+      issue: "Service accounts are off in the cloud by decision: they are turned off on every cloud environment, since the console hides them and nothing in the cloud calls the token endpoint, so POST /service-accounts answers 404 on development (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). https://github.com/wso2-enterprise/wso2cloud-deployment/pull/6686"
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The service-account token exchange refuses a client that authenticates twice, and a wrong HTTP Basic secret"
+  - id: ID_APIP_AUTH_011
+    title: "The service-account token exchange refuses a request that leaves out the scope, and issues no token."
+    priority: P1
+    cloud:
+      # The cloud counterpart of the on-premises service_accounts.feature scenario "The exchange
+      # refuses a request that leaves out the scope".
+      status: known-issue
+      issue: "Service accounts are off in the cloud by decision: they are turned off on every cloud environment, since the console hides them and nothing in the cloud calls the token endpoint, so POST /service-accounts answers 404 on development (seen 2026-11-27). Passes on a cloud with service accounts on (the local cloud, 2026-11-26). https://github.com/wso2-enterprise/wso2cloud-deployment/pull/6686"
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The service-account token exchange refuses a request that leaves out the scope"

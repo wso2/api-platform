@@ -61,6 +61,7 @@ var finalizerCollections = []struct {
 	budget time.Duration
 }{
 	{collection: secretsCollection, idFields: []string{"id", "handle"}},
+	{collection: serviceAccountsCollection, idFields: []string{"id"}},
 	{collection: selfHostedGatewaysPath, idFields: []string{"id"}},
 	{collection: managedGatewaysCollection, idFields: []string{"id"}},
 	// Each project is retried for finalizerDeleteTimeout, so the budget holds several of them.

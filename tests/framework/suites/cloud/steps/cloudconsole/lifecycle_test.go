@@ -1800,7 +1800,8 @@ func newLeftoverStub() *leftoverStub {
 		"/api-portals/ops-portal/apis/rest-api/syn-api-abcde234-2/publication":   true,
 		"/api-portals/ops-portal/apis/rest-api/ops-api/publication":              true,
 	}, lists: map[string][]map[string]any{
-		"/secrets": {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/secrets":          {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/service-accounts": {{"id": "syn-sa-abcde234-1"}, {"id": "ops-deployer"}},
 		"/managed-api-portals": {
 			{"id": "dap-abcde234", "name": "dap-abcde234", "status": "active"},
 			{"id": "syn-portal-abcde234-3", "name": "Synthetic syn-portal-abcde234-3", "status": "pending"},
@@ -1852,12 +1853,13 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"graphql-apis/syn-gql-abcde234-1",
 		"subscription-plans/syn-plan-abcde234-1",
 		"secrets/syn-secret-abcde234-1",
+		"service-accounts/syn-sa-abcde234-1",
 		"self-hosted-gateways/development-syn-shgw-abcde234-1",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
-	}, stub.deleted[:13])
-	require.Len(t, removed, 13)
+	}, stub.deleted[:14])
+	require.Len(t, removed, 14)
 	for _, collection := range projectScopedCollections {
 		listed := slices.Clone(stub.listedProjects[collection])
 		slices.Sort(listed)
@@ -1869,6 +1871,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		require.NotEqual(t, "managed-gateways/development-syn-gw-zzzzz222-1", id, "another run's gateway stays")
 		require.NotEqual(t, "self-hosted-gateways/development-ops-shgw", id)
 		require.NotEqual(t, "secrets/ops-secret", id)
+		require.NotEqual(t, "service-accounts/ops-deployer", id, "an account the organisation owns stays")
 		require.NotContains(t, id, "ops-api", "an API the organisation owns stays")
 		require.NotContains(t, id, "ops-project-api")
 		require.NotContains(t, id, "ops-gql")
@@ -3322,6 +3325,45 @@ const promotionStages = `{"list":[
 	{"environment":"env-1","gateways":[{"gatewayId":"gw-1","status":"NOT_DEPLOYED"}]},
 	{"environment":"env-2","gateways":[]}]}`
 
+func TestTestbenchURLAcceptsALocalTestbenchOnlyWhenTheLocalDataPlaneIsOn(t *testing.T) {
+	const env = "CLOUD_IT_TEST_TESTBENCH_URL"
+	local := "http://development-wso2cloud.openchoreoapis.localhost:19080/apip-testbench-mocks/backend/"
+	// The caller's shell may have the local data plane on; the refusals below need it off.
+	t.Setenv(cloudLocalDataPlaneEnv, "false")
+	t.Setenv(env, "")
+
+	got, err := testbenchURL(env, "https://testbench.example.com/mocks/backend/")
+	require.NoError(t, err)
+	require.Equal(t, "https://testbench.example.com/mocks/backend", got, "the default, without a trailing slash")
+
+	for _, value := range []string{local, "http://testbench.example.com/backend", "ftp://x.localhost/b", "https://", " "} {
+		t.Setenv(env, value)
+		if strings.TrimSpace(value) == "" {
+			got, err := testbenchURL(env, "https://testbench.example.com/backend")
+			require.NoError(t, err, "a blank value falls back to the default")
+			require.Equal(t, "https://testbench.example.com/backend", got)
+			continue
+		}
+		_, err := testbenchURL(env, "https://testbench.example.com/backend")
+		require.ErrorContains(t, err, env, value)
+	}
+
+	t.Setenv(cloudLocalDataPlaneEnv, "true")
+	t.Setenv(env, local)
+	got, err = testbenchURL(env, "")
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSuffix(local, "/"), got)
+	for _, value := range []string{"http://testbench.example.com/backend", "http://127.0.0.1:19080/backend",
+		"http://user:pass@x.localhost/backend", "ftp://x.localhost/backend"} {
+		t.Setenv(env, value)
+		_, err := testbenchURL(env, "")
+		require.Error(t, err, "only a named .localhost host over http(s) is widened: %s", value)
+	}
+	t.Setenv(env, "https://testbench.example.com/backend")
+	_, err = testbenchURL(env, "")
+	require.NoError(t, err, "https stays accepted")
+}
+
 func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) {
 	local := []string{
 		"http://gw-development.openchoreoapis.localhost:19080/api",
@@ -3573,7 +3615,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				status = "failed"
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-api-portals/"), "status": status})
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/graphql-apis", "/subscription-plans", "/self-hosted-gateways"}, r.URL.Path):
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/service-accounts", "/rest-apis", "/graphql-apis", "/subscription-plans", "/self-hosted-gateways"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -9280,15 +9322,24 @@ func TestValidateGraphQLSchemaAndItsAssertions(t *testing.T) {
 	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"))
 
 	for name, body := range map[string]string{
-		"no errors":    `{"resolved":false,"sdl":""}`,
-		"a null error": `{"resolved":false,"sdl":"","sdlErrors":[null]}`,
-		"no message":   `{"resolved":false,"sdl":"","sdlErrors":[{"message":" "}]}`,
-		"a schema":     `{"resolved":false,"sdl":"type Query { a: String }","sdlErrors":[{}]}`,
-		"not a result": `{"sdl":""}`,
+		"no errors":              `{"resolved":false,"sdl":""}`,
+		"a null error":           `{"resolved":false,"sdl":"","sdlErrors":[null]}`,
+		"no message":             `{"resolved":false,"sdl":"","sdlErrors":[{"message":" "}]}`,
+		"a schema":               `{"resolved":false,"sdl":"type Query { a: String }","sdlErrors":[{}]}`,
+		"not a result":           `{"sdl":""}`,
+		"a blank message":        `{"resolved":false,"sdl":"","message":"  "}`,
+		"a message and a schema": `{"resolved":false,"sdl":"type Query { a: String }","message":"no"}`,
 	} {
 		publishedResponse(t, steps, ctx, http.StatusOK, body)
 		require.Error(t, steps.assertGraphQLValidation(ctx, "not resolved"), name)
 	}
+	// An endpoint that could not be introspected is diagnosed in the answer's message instead.
+	publishedResponse(t, steps, ctx, http.StatusOK,
+		`{"resolved":false,"sdl":"","message":"The provided endpoint could not be used to derive a GraphQL schema."}`)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved"))
+	require.Error(t, steps.assertGraphQLValidation(ctx, "not resolved with SDL errors"), "a message alone does not prove a fetch")
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":false,"sdl":"","message":"no","sdlErrors":[{"message":"Syntax Error"}]}`)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved with SDL errors"))
 	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"type Query { other: String }"}`)
 	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"), "a schema other than the one given")
 }
@@ -10163,4 +10214,489 @@ func TestStarterRunsWithoutAPortalAdministratorAndSaysWhy(t *testing.T) {
 			require.Empty(t, swept)
 		})
 	}
+}
+
+func TestTryUpdateAPILeavesTheRefusalAndKeepsTheStoredDefinition(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(backendEnv, "https://backend.example.test/")
+	var sent map[string]any
+	putStatus := http.StatusBadRequest
+	held := map[string]any{"id": "api-1", "upstream": map[string]any{"main": map[string]any{"url": "https://backend.example.test"}}}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/rest-apis/api-1":
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+			if putStatus != http.StatusOK {
+				writeJSON(w, putStatus, map[string]any{"code": "DESTINATION_NOT_ALLOWED", "errors": []map[string]string{{"field": "upstream.main.url"}}})
+				return
+			}
+			writeJSON(w, http.StatusOK, sent)
+		case r.Method == http.MethodGet && r.URL.Path == "/rest-apis/api-1":
+			writeJSON(w, http.StatusOK, held)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	})
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyAPIDefinition, `{"id":"api-1","upstream":{"main":{"url":"https://backend.example.test"}}}`)
+	refused := valuesTable(t, []string{"upstreamUrl", "http://169.254.169.254/latest"})
+
+	require.NoError(t, steps.tryUpdateAPI(ctx, refused), "a refusal is the answer under test, not a step failure")
+	require.Equal(t, map[string]any{"main": map[string]any{"url": "http://169.254.169.254/latest"}}, sent["upstream"])
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
+	require.NoError(t, steps.assertCloudErrorField(ctx, "upstream.main.url"))
+	stored, err := steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, "https://backend.example.test", stored["upstream"].(map[string]any)["main"].(map[string]any)["url"], "a refused update changes nothing")
+	require.NoError(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"))
+	require.Error(t, steps.updateAPI(ctx, refused), "the plain update step still fails on a refusal")
+
+	held["upstream"] = map[string]any{"main": map[string]any{"url": "http://169.254.169.254/latest"}}
+	require.ErrorContains(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"), "expected the main upstream")
+	held["upstream"] = nil
+	require.Error(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"), "an API with no upstream")
+
+	t.Setenv(echoBackendEnv, "https://echo.example.test")
+	held["upstream"] = map[string]any{"main": map[string]any{"url": "https://echo.example.test/"}}
+	require.NoError(t, steps.assertUpstreamIsTheBackend(ctx, "echo backend"))
+	require.ErrorContains(t, steps.assertUpstreamIsTheBackend(ctx, "testbench backend"), "expected the main upstream")
+
+	require.Error(t, steps.tryUpdateAPI(ctx, valuesTable(t, []string{"upstream", "https://elsewhere.example.test"})))
+	_, err = httpx.Published(ctx)
+	require.Error(t, err, "a request that is never sent leaves no earlier answer behind")
+
+	putStatus = http.StatusOK
+	require.NoError(t, steps.updateAPI(ctx, valuesTable(t, []string{"upstreamUrl", "https://echo.example.test"})))
+	stored, err = steps.storedDefinition(ctx, primaryAPI)
+	require.NoError(t, err)
+	require.Equal(t, "https://echo.example.test", stored["upstream"].(map[string]any)["main"].(map[string]any)["url"])
+}
+
+func TestAssertCloudErrorField(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, nil)
+	require.Error(t, steps.assertCloudErrorField(ctx, "sdlUrl"), "no answer")
+
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"code":"DESTINATION_NOT_ALLOWED","errors":[{"field":"sdlUrl"},{"field":"upstream.main.url"}]}`)
+	require.NoError(t, steps.assertCloudErrorField(ctx, "sdlUrl"))
+	require.ErrorContains(t, steps.assertCloudErrorField(ctx, "upstream.main.url"), "names \"sdlUrl\"", "only the first field error counts")
+
+	for name, body := range map[string]string{
+		"no field errors":    `{"code":"DESTINATION_NOT_ALLOWED"}`,
+		"empty field errors": `{"code":"DESTINATION_NOT_ALLOWED","errors":[]}`,
+		"not json":           `not json`,
+	} {
+		publishedResponse(t, steps, ctx, http.StatusBadRequest, body)
+		require.ErrorContains(t, steps.assertCloudErrorField(ctx, "sdlUrl"), "names no field error", name)
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `{"errors":[{"message":"no field"}]}`)
+	require.ErrorContains(t, steps.assertCloudErrorField(ctx, "sdlUrl"), `names ""`)
+}
+
+func TestValidateGraphQLSchemaWithSendsTheNamedSource(t *testing.T) {
+	steps, ctx, local, stub := graphQLSteps(t)
+	local.Set("echo", "https://echo.example.test")
+
+	stub.validation = `{"resolved":false,"sdl":"","sdlErrors":[{"message":"Syntax Error"}]}`
+	require.NoError(t, steps.validateGraphQLSchemaWith(ctx, valuesTable(t, []string{"schemaSource", "url"}, []string{"sdlUrl", "${CTX:echo}"})))
+	require.Equal(t, map[string]any{"schemaSource": "url", "sdlUrl": "https://echo.example.test"}, stub.validated)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "not resolved"))
+
+	require.NoError(t, steps.validateGraphQLSchemaWith(ctx, valuesTable(t, []string{"schemaSource", "introspection"}, []string{"upstreamUrl", "http://169.254.169.254/graphql"})))
+	require.Equal(t, map[string]any{"schemaSource": "introspection", "upstream": map[string]any{"main": map[string]any{"url": "http://169.254.169.254/graphql"}}}, stub.validated)
+	// A fetched schema resolves as any schema: the scenario does not know the text the URL serves.
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"type Query { other: String }"}`)
+	require.NoError(t, steps.assertGraphQLValidation(ctx, "resolved"))
+	publishedResponse(t, steps, ctx, http.StatusOK, `{"resolved":true,"sdl":"  "}`)
+	require.Error(t, steps.assertGraphQLValidation(ctx, "resolved"), "an empty schema")
+
+	for name, table := range map[string]*godog.Table{
+		"an unsupported value": valuesTable(t, []string{"schemaSource", "inline"}, []string{"sdl", "type Query { a: String }"}),
+		"no schema source":     valuesTable(t, []string{"sdlUrl", "https://echo.example.test"}),
+		"an unknown context":   valuesTable(t, []string{"schemaSource", "url"}, []string{"sdlUrl", "${CTX:missing}"}),
+	} {
+		stub.validated = nil
+		require.Error(t, steps.validateGraphQLSchemaWith(ctx, table), name)
+		require.Nil(t, stub.validated, name+": nothing is sent")
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+}
+
+// serviceAccountPlatform answers the service-account create, delete and token exchange routes, and
+// records what it was sent. "{{name}}" in createBody is the display name the step sent.
+type serviceAccountPlatform struct {
+	createStatus int
+	createBody   string
+	created      map[string]any
+	deleted      []string
+	tokenStatus  int
+	tokenBody    string
+	tokenForm    url.Values
+	tokenAuth    string
+}
+
+func (p *serviceAccountPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/service-accounts/token":
+			assert.NoError(t, r.ParseForm())
+			assert.Equal(t, formContentType, r.Header.Get("Content-Type"))
+			p.tokenForm, p.tokenAuth = r.PostForm, r.Header.Get("Authorization")
+			w.WriteHeader(p.tokenStatus)
+			_, _ = w.Write([]byte(p.tokenBody))
+		case r.Method == http.MethodPost && r.URL.Path == "/service-accounts":
+			p.created = nil
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&p.created))
+			name, _ := p.created["displayName"].(string)
+			w.WriteHeader(p.createStatus)
+			_, _ = w.Write([]byte(strings.ReplaceAll(p.createBody, "{{name}}", name)))
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/service-accounts/"):
+			p.deleted = append(p.deleted, strings.TrimPrefix(r.URL.Path, "/service-accounts/"))
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func serviceAccountSteps(t *testing.T) (*Steps, context.Context, *cleanup.Registry, *serviceAccountPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &serviceAccountPlatform{createStatus: http.StatusCreated, tokenStatus: http.StatusOK}
+	steps, ctx, _, registry := cloudSteps(t, platform.handler(t))
+	return steps, ctx, registry, platform
+}
+
+func TestCreateServiceAccountKeepsTheCredentialsAndRegistersTheAccount(t *testing.T) {
+	steps, ctx, registry, platform := serviceAccountSteps(t)
+	platform.createBody = `{"serviceAccount":{"id":"{{name}}","displayName":"{{name}}"},` +
+		`"clientId":"sa_client","clientSecret":"apsa_secret"}`
+
+	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
+	name := optionalValue(ctx, keyServiceAccountID)
+	require.Equal(t, name, platform.created["displayName"])
+	require.Equal(t, []any{"ap_service_account"}, platform.created["roles"])
+	require.Equal(t, "sa_client", optionalValue(ctx, keyServiceAccountClientID))
+	require.Equal(t, "apsa_secret", optionalValue(ctx, keyServiceAccountClientSecret))
+	require.Equal(t, []string{name}, pendingOf(registry, kindServiceAccount))
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the answer that carries the secret is never published")
+
+	// The platform may answer with another id than the name: that one is registered instead.
+	platform.createBody = `{"serviceAccount":{"id":"other-id"},"clientId":"sa_client","clientSecret":"apsa_secret"}`
+	require.NoError(t, steps.createServiceAccount(ctx, "ap_service_account"))
+	require.Equal(t, "other-id", optionalValue(ctx, keyServiceAccountID))
+	require.ElementsMatch(t, []string{name, "other-id"}, pendingOf(registry, kindServiceAccount))
+
+	// The id is the account's, inside serviceAccount: an id beside the credentials is not read,
+	// and the account stays registered under the name it was created with.
+	platform.createBody = `{"id":"flat-id","clientId":"sa_client","clientSecret":"apsa_secret"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "names no id")
+	require.NotContains(t, pendingOf(registry, kindServiceAccount), "flat-id")
+	require.Len(t, pendingOf(registry, kindServiceAccount), 3)
+
+	// An answer with another id but no credentials still has that id registered before the step
+	// fails, so the account it created is cleaned up.
+	platform.createBody = `{"serviceAccount":{"id":"no-secret-id"},"clientId":"sa_client"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "no client ID and secret")
+	require.Contains(t, pendingOf(registry, kindServiceAccount), "no-secret-id")
+
+	// A refused create stores nothing, so nothing stays registered; the answer has no secret.
+	before := pendingOf(registry, kindServiceAccount)
+	platform.createStatus, platform.createBody = http.StatusBadRequest, `{"code":"VALIDATION_FAILED"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "VALIDATION_FAILED")
+	require.ElementsMatch(t, before, pendingOf(registry, kindServiceAccount))
+
+	// A created account whose answer cannot be read stays registered under its name, and the
+	// error never repeats the answer, which may carry the secret.
+	platform.createStatus, platform.createBody = http.StatusCreated, `{"clientSecret":"apsa_leak"}`
+	err = steps.createServiceAccount(ctx, "ap_service_account")
+	require.ErrorContains(t, err, "names no id")
+	require.NotContains(t, err.Error(), "apsa_leak")
+	require.Contains(t, pendingOf(registry, kindServiceAccount), optionalValue(ctx, keyServiceAccountID))
+
+	require.Error(t, steps.createServiceAccount(ctx, " "), "a role is required")
+}
+
+func TestExchangeServiceAccountCredentialsSendsTheFormAndRedactsTheToken(t *testing.T) {
+	steps, ctx, _, platform := serviceAccountSteps(t)
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyServiceAccountClientID, "sa_client")
+	local.Set(keyServiceAccountClientSecret, "apsa_s&cret")
+
+	platform.tokenStatus, platform.tokenBody = http.StatusUnauthorized, `{"code":"UNAUTHORIZED","message":"Invalid or expired credentials."}`
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", valuesTable(t,
+		[]string{"client_id", "${CTX:" + keyServiceAccountClientID + "}"},
+		[]string{"client_secret", "apsa_wrong"},
+		[]string{"scope", ""})))
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "client_id": {"sa_client"}, "client_secret": {"apsa_wrong"}, "scope": {""}},
+		platform.tokenForm, "grant_type defaults, and an empty value is sent")
+	require.Empty(t, platform.tokenAuth, "the exchange is sent without a console token")
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusUnauthorized))
+	require.NoError(t, steps.assertCloudErrorMessage(ctx, "Invalid or expired credentials."))
+	require.ErrorContains(t, steps.assertCloudErrorMessage(ctx, "other"), "expected error message")
+	require.NoError(t, steps.assertNoAccessToken(ctx))
+
+	// HTTP Basic form-encodes the id and the secret before joining them.
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, " using HTTP Basic", "${CTX:"+keyServiceAccountClientID+"}",
+		"${CTX:"+keyServiceAccountClientSecret+"}", valuesTable(t, []string{"scope", "ap:project:read"})))
+	require.Equal(t, "Basic "+base64.StdEncoding.EncodeToString([]byte("sa_client:apsa_s%26cret")), platform.tokenAuth)
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "scope": {"ap:project:read"}}, platform.tokenForm)
+
+	// An issued token is published only redacted.
+	platform.tokenStatus, platform.tokenBody = http.StatusOK, `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900}`
+	require.NoError(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", valuesTable(t, []string{"scope", "ap:project:read"})))
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, string(published.Body), "eyJ.token.sig")
+	require.ErrorContains(t, steps.assertNoAccessToken(ctx), "carries an access token")
+
+	for name, table := range map[string]*godog.Table{
+		"a key named twice":  valuesTable(t, []string{"scope", "a"}, []string{"scope", "b"}),
+		"an empty key":       valuesTable(t, []string{" ", "a"}),
+		"an unknown context": valuesTable(t, []string{"scope", "${CTX:missing}"}),
+		"a three-cell row":   valuesTable(t, []string{"scope", "a", "b"}),
+		"no table":           nil,
+	} {
+		platform.tokenForm = nil
+		require.Error(t, steps.exchangeServiceAccountCredentials(ctx, "", "", "", table), name)
+		require.Nil(t, platform.tokenForm, name+": nothing is sent")
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+	publishedResponse(t, steps, ctx, http.StatusBadRequest, `not json`)
+	require.ErrorContains(t, steps.assertNoAccessToken(ctx), "not a JSON object")
+}
+
+func TestAssertCredentialsExchangeNeverReportsTheToken(t *testing.T) {
+	steps, ctx, _, platform := serviceAccountSteps(t)
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "", "ap:project:read"), keyServiceAccountClientID)
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyServiceAccountClientID, "sa_client")
+	local.Set(keyServiceAccountClientSecret, "apsa_secret")
+
+	platform.tokenBody = `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900,"scope":"ap:project:read"}`
+	require.NoError(t, steps.assertCredentialsExchange(ctx, "", "ap:project:read"))
+	require.Equal(t, url.Values{"grant_type": {"client_credentials"}, "client_id": {"sa_client"},
+		"client_secret": {"apsa_secret"}, "scope": {"ap:project:read"}}, platform.tokenForm)
+	require.NoError(t, steps.assertCredentialsExchange(ctx, " using HTTP Basic", "ap:project:read"))
+	require.Empty(t, platform.tokenForm.Get("client_id"), "HTTP Basic sends no credential fields")
+	require.Empty(t, platform.tokenForm.Get("client_secret"))
+	require.Equal(t, basicClientCredentials("sa_client", optionalValue(ctx, keyServiceAccountClientSecret)), platform.tokenAuth)
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "the issued token is never published")
+
+	for name, body := range map[string]string{
+		"another scope":   `{"access_token":"eyJ.token.sig","token_type":"Bearer","expires_in":900,"scope":"ap:other"}`,
+		"no token":        `{"token_type":"Bearer","expires_in":900,"scope":"ap:project:read"}`,
+		"another type":    `{"access_token":"eyJ.token.sig","token_type":"MAC","expires_in":900,"scope":"ap:project:read"}`,
+		"no lifetime":     `{"access_token":"eyJ.token.sig","token_type":"Bearer","scope":"ap:project:read"}`,
+		"not a JSON body": `access_token=eyJ.token.sig`,
+	} {
+		platform.tokenBody = body
+		err := steps.assertCredentialsExchange(ctx, "", "ap:project:read")
+		require.Error(t, err, name)
+		require.NotContains(t, err.Error(), "eyJ.token.sig", name)
+	}
+	platform.tokenStatus, platform.tokenBody = http.StatusUnauthorized, `{"code":"UNAUTHORIZED"}`
+	require.ErrorContains(t, steps.assertCredentialsExchange(ctx, "", "ap:project:read"), "refused the account's own credentials")
+}
+
+func TestRedactAccessToken(t *testing.T) {
+	require.Nil(t, redactAccessToken(nil))
+	plain := &httpx.Response{Body: []byte(`{"code":"UNAUTHORIZED"}`)}
+	require.Same(t, plain, redactAccessToken(plain), "an answer without a token is kept")
+	issued := &httpx.Response{Body: []byte(`{"access_token":"secret-token","expires_in":900}`)}
+	redacted := redactAccessToken(issued)
+	require.JSONEq(t, `{"access_token":"[redacted]","expires_in":900}`, string(redacted.Body))
+	require.Contains(t, string(issued.Body), "secret-token", "the original answer is not changed")
+	require.Equal(t, redactedValue, string(redactAccessToken(&httpx.Response{Body: []byte(`"access_token": secret-token`)}).Body),
+		"an answer that is not JSON but names the field is dropped")
+	require.Equal(t, redactedValue, string(redactAccessToken(&httpx.Response{Body: []byte(`access_token=secret-token&expires_in=900`)}).Body),
+		"a form-encoded answer is dropped too")
+	escaped := redactAccessToken(&httpx.Response{Body: []byte(`{"acc\u0065ss_token":"secret-token","expires_in":900}`)})
+	require.NotContains(t, string(escaped.Body), "secret-token", "an escaped spelling of the key is the same key")
+	require.JSONEq(t, `{"access_token":"[redacted]","expires_in":900}`, string(escaped.Body))
+}
+
+func TestServiceAccountCleanupDeletesTheAccount(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &serviceAccountPlatform{}
+	topo := cloudAPIStub(t, platform.handler(t))
+	registry := cleanup.NewRegistry(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, RegisterDeleters(registry, topo))
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, cleanup.Install(ctx, registry))
+	require.NoError(t, registerServiceAccount(ctx, "syn-sa-1"))
+	require.NoError(t, registry.Sweep(ctx))
+	require.Equal(t, []string{"syn-sa-1"}, platform.deleted)
+}
+
+// planPlatform answers the subscription-plan routes and records what it was sent.
+type planPlatform struct {
+	createStatus int
+	updateStatus int
+	sent         []string
+	bodies       []map[string]any
+	query        url.Values
+	plan         string
+	page         string
+	pricing      string
+}
+
+func (p *planPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p.sent = append(p.sent, r.Method+" "+r.URL.Path)
+		var body map[string]any
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			p.bodies = append(p.bodies, body)
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/subscription-plans":
+			w.Header().Set("Location", "/api/v0.9/subscription-plans/"+body["id"].(string))
+			writeJSON(w, p.createStatus, map[string]any{"id": body["id"], "createdBy": "Randil", "limits": body["limits"]})
+		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/subscription-plans/"):
+			writeJSON(w, p.updateStatus, map[string]any{"id": body["id"]})
+		case r.Method == http.MethodGet && r.URL.Path == "/subscription-plans":
+			p.query = r.URL.Query()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(p.page))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pricing"):
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(p.pricing))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/subscription-plans/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(p.plan))
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "NOT_FOUND"})
+		}
+	}
+}
+
+func planSteps(t *testing.T, claims map[string]any) (*Steps, context.Context, *cleanup.Registry, *planPlatform) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, jwtFor(t, map[string]any{"alg": "RS256"}, claims))
+	platform := &planPlatform{createStatus: http.StatusCreated, updateStatus: http.StatusOK}
+	steps, ctx, _, registry := cloudSteps(t, platform.handler(t))
+	return steps, ctx, registry, platform
+}
+
+func TestSubmitPlanCarriesTheScenarioWordAndRegistersThePlan(t *testing.T) {
+	steps, ctx, registry, platform := planSteps(t, map[string]any{"name": "Randil", "sub": "user-1"})
+
+	require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t,
+		[]string{"status", "ACTIVE"}, []string{"limits", `[{"limitType":"REQUEST_COUNT","timeUnit":"MINUTE","limitCount":10}]`})))
+	a, err := planID(ctx, "A")
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(a, syntheticPlanPrefix), "the finalizer and the portal sweep find plans by the prefix")
+	word := optionalValue(ctx, keyPlanWord)
+	require.Equal(t, map[string]any{"id": a, "displayName": word + " Plan A", "status": "ACTIVE",
+		"limits": []any{map[string]any{"limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "limitCount": float64(10)}}}, platform.bodies[0])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusCreated))
+	require.NoError(t, steps.assertPlanLocation(ctx, "A"))
+	require.NoError(t, steps.assertPlanCreator(ctx))
+	require.NoError(t, steps.assertPlanLimitCount(ctx, 1))
+	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "expected 0 limits")
+	require.Error(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})), "a label names one plan")
+
+	// The second plan shares the word; a refused create drops its registration.
+	platform.createStatus = http.StatusBadRequest
+	require.NoError(t, steps.submitPlan(ctx, "B", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.Equal(t, word+" Plan B", platform.bodies[1]["displayName"])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+
+	// A duplicate reuses the id and registers nothing new.
+	platform.createStatus = http.StatusConflict
+	require.NoError(t, steps.submitDuplicatePlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.Equal(t, a, platform.bodies[2]["id"])
+	require.Equal(t, word+" Duplicate", platform.bodies[2]["displayName"])
+	require.Equal(t, []string{a}, pendingOf(registry, cleanup.KindSubscriptionPlan))
+
+	for name, table := range map[string]*godog.Table{
+		"an unknown field":         valuesTable(t, []string{"description", "x"}),
+		"limits that are not JSON": valuesTable(t, []string{"limits", "[{"}),
+	} {
+		require.Error(t, steps.submitPlan(ctx, "bad-"+name, table), name)
+		_, err := httpx.Published(ctx)
+		require.Error(t, err, name+": no earlier answer is left behind")
+	}
+	require.ErrorContains(t, steps.updatePlan(ctx, "missing", valuesTable(t, []string{"status", "ACTIVE"})), `no synthetic subscription plan "missing"`)
+	require.Error(t, steps.submitPlan(ctx, " ", valuesTable(t, []string{"status", "ACTIVE"})), "a label is required")
+}
+
+func TestPlanCreatorIsTheConsoleUsersNameOrItsID(t *testing.T) {
+	for name, tc := range map[string]struct {
+		claims map[string]any
+		ok     bool
+	}{
+		"the name claim":          {map[string]any{"name": "Randil", "sub": "user-1"}, true},
+		"another name":            {map[string]any{"name": "Someone", "sub": "user-1"}, false},
+		"the sub without a name":  {map[string]any{"sub": "Randil"}, true},
+		"no name and another sub": {map[string]any{"sub": "user-1"}, false},
+		"neither claim":           {map[string]any{}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			steps, ctx, _, _ := planSteps(t, tc.claims)
+			require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+			if tc.ok {
+				require.NoError(t, steps.assertPlanCreator(ctx))
+			} else {
+				require.Error(t, steps.assertPlanCreator(ctx))
+			}
+		})
+	}
+}
+
+func TestPlanReadsListsAndUpdates(t *testing.T) {
+	steps, ctx, _, platform := planSteps(t, map[string]any{"name": "Randil"})
+	require.NoError(t, steps.submitPlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"})))
+	require.NoError(t, steps.submitPlan(ctx, "B", valuesTable(t, []string{"status", "ACTIVE"})))
+	a, _ := planID(ctx, "A")
+	b, _ := planID(ctx, "B")
+	require.ErrorContains(t, steps.assertPlanLocation(ctx, "A"), "expected the Location", "the last answer locates B")
+
+	platform.page = `{"list":[{"id":"` + a + `","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"MINUTE","limitCount":10}]},{"id":"` + b + `","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":100}]}],"pagination":{"total":3}}`
+	require.NoError(t, steps.listPlans(ctx, 2))
+	require.Equal(t, url.Values{"query": {optionalValue(ctx, keyPlanWord)}, "limit": {"2"}}, platform.query)
+	require.NoError(t, steps.assertPlanPage(ctx, 2, 3))
+	require.Error(t, steps.assertPlanPage(ctx, 3, 3))
+	require.Error(t, steps.assertPlanPage(ctx, 2, 2))
+	require.NoError(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"))
+	require.NoError(t, steps.assertListedPlanLimit(ctx, "B", 100, "HOUR"))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "A", 10, "HOUR"))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "B", 10, "HOUR"))
+	platform.page = `{"list":[{"id":"` + a + `","limits":[{"limitType":"TOKEN_COUNT","timeUnit":"MINUTE","limitCount":10}]},{"id":"` + b + `","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":100},{"limitType":"REQUEST_COUNT","timeUnit":"DAY","limitCount":5}]}],"pagination":{"total":3}}`
+	require.NoError(t, steps.listPlans(ctx, 2))
+	require.Error(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"), "a limit of another type")
+	require.Error(t, steps.assertListedPlanLimit(ctx, "B", 100, "HOUR"), "a limit the scenario did not submit")
+	platform.page = `{"list":[],"pagination":{}}`
+	require.NoError(t, steps.listPlans(ctx, 100))
+	require.ErrorContains(t, steps.assertListedPlanLimit(ctx, "A", 10, "MINUTE"), "does not list")
+	require.Error(t, steps.assertPlanPage(ctx, 0, 0), "a page without a total")
+
+	require.NoError(t, steps.updatePlan(ctx, "A", valuesTable(t, []string{"status", "ACTIVE"}, []string{"pricing", `{"pricingType":"FLAT_RATE"}`})))
+	require.Equal(t, "PUT /subscription-plans/"+a, platform.sent[len(platform.sent)-1])
+	require.Equal(t, map[string]any{"pricingType": "FLAT_RATE"}, platform.bodies[len(platform.bodies)-1]["pricing"])
+
+	platform.plan = `{"id":"` + a + `","limits":[]}`
+	require.NoError(t, steps.readPlan(ctx, "synthetic subscription plan", "A"))
+	require.Equal(t, "GET /subscription-plans/"+a, platform.sent[len(platform.sent)-1])
+	require.NoError(t, steps.assertPlanLimitCount(ctx, 0))
+	require.NoError(t, steps.assertPlanHasNoPricing(ctx))
+	platform.plan = `{"id":"` + a + `","pricing":{"pricingType":"FLAT_RATE"}}`
+	require.NoError(t, steps.readPlan(ctx, "synthetic subscription plan", "A"))
+	require.ErrorContains(t, steps.assertPlanHasNoPricing(ctx), "expected no pricing")
+
+	platform.pricing = `{"code":"SUBSCRIPTION_PLAN_PRICING_NOT_FOUND","message":"This subscription plan has no pricing."}`
+	require.NoError(t, steps.readPlan(ctx, "pricing of the synthetic subscription plan", "A"))
+	require.Equal(t, "GET /subscription-plans/"+a+"/pricing", platform.sent[len(platform.sent)-1])
+	require.NoError(t, steps.assertCloudErrorCode(ctx, "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"))
+	require.ErrorContains(t, steps.assertPlanLimitCount(ctx, 0), "not a subscription plan")
 }

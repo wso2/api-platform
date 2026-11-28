@@ -142,3 +142,51 @@ Feature: APIP cloud GraphQL API lifecycle
     Then I send the GraphQL request "{ hello }" to the synthetic GraphQL API with header "X-API-Key" set to the API key until status 401
     And I send the GraphQL request "{ hello }" to the synthetic GraphQL API with header "X-API-Key" set to the other API key until status 200
     And the GraphQL response should come from the GraphQL backend
+
+  @ID_APIP_GRAPHQL_009 @type:negative
+  Scenario: A GraphQL API whose SDL URL is the cloud metadata address is refused before the SDL is fetched, while one with an inline SDL is created
+    Given I obtain an APIP cloud console token
+    And I find the APIP test project
+    When I submit a synthetic GraphQL API creation request with:
+      | schemaSource | url                                   |
+      | sdlUrl       | http://169.254.169.254/schema.graphql |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
+    And the cloud API error should name the field "sdlUrl"
+    And the cloud API response body should not contain "169.254"
+    And the submitted GraphQL API should not exist
+    When I submit a synthetic GraphQL API creation request with:
+      | schemaSource | inline                       |
+      | sdl          | type Query { hello: String } |
+    Then the cloud API response status code should be 201
+    And the submitted GraphQL API should exist
+
+  # The cloud publishes no mock that serves a schema file or answers introspection, so the permitted
+  # SDL URL and introspection endpoint are the echo backend. The SDL URL's errors prove its text was
+  # fetched. The platform answers a failed introspection with a message alone, so the permitted
+  # endpoint proves only that it was not refused, where a refused one is an error.
+  @ID_APIP_GRAPHQL_010 @type:negative
+  Scenario: Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL is fetched
+    Given I obtain an APIP cloud console token
+    And an echo backend is available for deployment overrides
+    When I validate a GraphQL schema with:
+      | schemaSource | url                                   |
+      | sdlUrl       | http://169.254.169.254/schema.graphql |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
+    And the cloud API error should name the field "sdlUrl"
+    And the cloud API response body should not contain "169.254"
+    When I validate a GraphQL schema with:
+      | schemaSource | introspection                  |
+      | upstreamUrl  | http://169.254.169.254/graphql |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
+    And the cloud API error should name the field "upstream.main.url"
+    When I validate a GraphQL schema with:
+      | schemaSource | url                        |
+      | sdlUrl       | ${CTX:cloudEchoBackendURL} |
+    Then the GraphQL schema should be reported as not resolved with SDL errors
+    When I validate a GraphQL schema with:
+      | schemaSource | introspection              |
+      | upstreamUrl  | ${CTX:cloudEchoBackendURL} |
+    Then the GraphQL schema should be reported as not resolved
